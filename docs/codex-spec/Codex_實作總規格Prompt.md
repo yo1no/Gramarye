@@ -1,9 +1,9 @@
 # Codex 實作總規格 Prompt
 ## Minecraft 1.21.1 / NeoForge 21.1.x 魔法 Node 系統
 
-> 使用方式：將本檔與 `16_骨架定案清單_NeoForge1.21.1_凍結版.md` 一起交給 Codex。
+> 使用方式：將本檔與 `17_P3資料模型修正案.md`、`16_骨架定案清單_NeoForge1.21.1_凍結版.md` 一起交給 Codex。
 >
-> 本檔是實作契約；凍結版骨架是架構真相。若兩者衝突，以凍結版骨架為準，停止實作並回報衝突，不得自行改變骨架。
+> 本檔是實作契約；已核准的 scoped amendment 在其明確範圍內優先，其他範圍以凍結版骨架為架構真相。若文件仍衝突，停止實作並回報，不得自行改變骨架。
 
 ---
 
@@ -112,7 +112,7 @@ test(skill): verify unknown action payload preservation
 
 | 型別 | 真相 |
 | --- | --- |
-| SkillDefinition revision | Overworld `SkillDefinitionStore` SavedData |
+| SkillDocument revision | Overworld `SkillDefinitionStore` SavedData |
 | SkillInstance | Overworld `RuntimePersistentStore` SavedData |
 | 生物／造物標記 | 錨點 Entity Attachment |
 | 位置標記 | RuntimePersistentStore |
@@ -126,7 +126,7 @@ test(skill): verify unknown action payload preservation
 
 ## 4.2 不可變技能 revision
 
-- `(SkillId, SkillRevision)` 唯一定位不可變定義。
+- `(SkillId, SkillRevision)` 唯一定位不可變 `SkillDocument`。
 - 玩家提交編輯時建立新 revision 並寫入 `SkillDefinitionStore`。
 - 未提交工作副本不可施放、不可落庫為正式 revision。
 - 施放只 pin revision，不重寫定義。
@@ -289,7 +289,7 @@ Commit → Event → Trigger → Commit → Event
 
 ```java
 public record SkillId(UUID value) {}
-public record SkillRevision(long value) {}
+public record SkillRevision(int value) {}
 public record SkillInstanceId(UUID value) {}
 public record MarkerInstanceId(UUID value) {}
 public record ConstructInstanceId(UUID value) {}
@@ -303,18 +303,19 @@ public record EventId(long value) {}
 - 提供 Codec。
 - 需要網路同步的才提供 StreamCodec。
 - API 不接受語意不明的裸 UUID。
+- `SkillRevision` 範圍固定為 `0..Integer.MAX_VALUE`，canonical JSON 為普通整數。未來配置達上限必須回傳明確 exhaustion failure，不得 overflow、wrap 或重用 revision。
 
-## 6.2 SkillDefinition
+## 6.2 SkillDocument 與 ValidatedSkillDefinition
 
-最小欄位：
+持久化文件最小欄位：
 
 ```java
-record SkillDefinition(
+record SkillDocument(
     int schemaVersion,
     SkillId skillId,
     SkillRevision revision,
-    List<NodeDefinition> nodes,
-    AppearanceDefinition appearance
+    List<NodeDocument> nodes,
+    AppearanceDocument appearance
 ) {}
 ```
 
@@ -326,24 +327,30 @@ record SkillDefinition(
 - 建構時不偷偷執行 migration。
 - migration 在獨立流程完成。
 - Appearance 可 fallback，但玩法 Node 解析不可被外觀錯誤連坐。
+- `SkillDocument` 只持久化 `DefinitionEnvelope`，不保存 registry descriptor、Resolved／Unknown union、validation issue 或 runtime cache。
+- P3-B 才由 `SkillDocument` 建立 transient resolved／unknown candidate，完成驗證後產生 `ValidatedSkillDefinition`。
+- Runtime API 只接受 `ValidatedSkillDefinition`；此 projection 不持久化且可重建。
+- 不建立讓兩者同時實作的寬鬆 `SkillDefinition` runtime 介面。
 
-## 6.3 NodeDefinition
+## 6.3 NodeDocument
 
 ```java
-record NodeDefinition(
-    int index,
-    TriggerDefinition trigger,
-    ActionDefinition action,
-    AppearanceOverride appearanceOverride
+record NodeDocument(
+    DefinitionEnvelope trigger,
+    DefinitionEnvelope action,
+    AppearanceOverrideDocument appearanceOverride
 ) {}
 ```
 
 要求：
 
-- index 唯一、穩定、非負。
-- Node 只能引用更小 index。
-- Node 1 不可選來源依賴 Action。
+- `NodeDocument` 不保存 index；`SkillDocument.nodes` 的 List position 是該 revision 內唯一的零起算 `nodeIndex`。
+- persistence 與 runtime 使用零起算 index，UI 顯示 `index + 1`。
+- Node 只能引用更小 index，驗證留給 P3-B。
+- 不建立 `NodeId`。
+- UI Node 1（`nodeIndex = 0`）不可選來源依賴 Action。
 - 一個 Node 恰有一個 Trigger 與一個 Action。
+- 存在 Unknown classification 時，編輯器不得重排無法安全更新隱藏 reference 的 Node。
 
 ## 6.4 DefinitionEnvelope
 
@@ -362,14 +369,33 @@ record DefinitionEnvelope(
 3. 未知型別能完整 round-trip。
 4. 錯誤不刪除原始資料。
 
-建立：
+下列 definition union 是 registry resolution 後的 transient classification，不是 `SkillDocument` 的持久化欄位：
 
 ```java
 sealed interface TriggerDefinition permits ResolvedTriggerDefinition, UnknownTriggerDefinition
 sealed interface ActionDefinition permits ResolvedActionDefinition, UnknownActionDefinition
 ```
 
-## 6.5 Context
+P3-B 固定流程：
+
+```text
+SkillDocument DefinitionEnvelope
+→ registry resolution
+→ transient resolved/unknown candidate
+→ validation
+→ ValidatedSkillDefinition
+```
+
+## 6.5 SkillDraft
+
+`SkillDraft` 是業務上可編輯、Java instance 上不可變的 snapshot。P3-A 建立正式 Draft Codec，並以明確 Missing／Present slot 表達不完整 Trigger 與 Action，不使用 `null`。
+
+- Draft top-level 外觀直接使用 `AppearanceDocument`，Draft Node 使用 `AppearanceOverrideDocument`；不建立 `DraftAppearance`。
+- Draft 持有候選 `SkillId`，但 SkillId 生成、配置與所有權驗證屬 P3-C。P3-A 不提供 production random UUID factory。
+- Optional `baseRevision` 只是 optimistic concurrency metadata，不是 Draft 的正式 revision。
+- Draft 可為空、不完整或暫時不合法，不得直接施放或冒充 `SkillDocument`。
+
+## 6.6 Context
 
 ```java
 record SourceContext(
@@ -377,7 +403,7 @@ record SourceContext(
     SkillId skillId,
     SkillRevision revision,
     SkillInstanceId skillInstanceId,
-    int rootNodeId,
+    int rootNodeIndex,
     OriginKind originKind
 ) {}
 ```
@@ -693,16 +719,16 @@ optional bounded target hint
 
 # 12. Presentation Layer 規格
 
-## 12.1 Appearance
+## 12.1 Appearance storage schema
 
 ```java
 record AppearanceDefinition(
-    int primaryArgb,
-    int secondaryArgb,
-    ResourceLocation soundProfileId,
-    ResourceLocation particleProfileId,
-    Optional<ResourceLocation> trailProfileId,
-    int intensityFixed
+    OptionalInt primaryArgb,
+    OptionalInt secondaryArgb,
+    ProfileSelection soundProfile,
+    ProfileSelection particleProfile,
+    ProfileSelection trailProfile,
+    OptionalInt intensityMilli
 ) {}
 ```
 
@@ -711,10 +737,30 @@ record AppearanceDefinition(
 - 有界。
 - 玩法 Codec 與外觀 Codec 錯誤隔離。
 - 未知欄位忽略。
-- 越界 clamp。
-- 整體錯誤 fallback。
-- 保存有限錯誤資訊。
+- 欄位缺失表示 Inherit；僅指定顏色或 intensity 也是合法 partial appearance。
+- Top-level 缺失、`null` 或 `{}` 解讀為 Default，canonical 編碼統一寫 `{}`。Node override 缺失或 `null` 解讀為 None，canonical 省略欄位。
+- Profile 採 `Inherit | Disabled | Specified(ResourceLocation)` tagged 三態。Canonical Disabled 是 `{"mode":"disabled"}`，Specified 是 `{"mode":"specified","id":"namespace:path"}`；JSON `null` 只是寬鬆 Disabled 輸入。
+- 可正規化的值解碼為 Decoded canonical value。型別正確且具明確範圍的數值越界 clamp 至 hard boundary，由 P3-B 產生 bounded warning。
+- 無法解析的 ARGB、無效 Profile 結構、型別錯誤或其他無法可靠解釋的錯誤，使整個 blob 成為 Unparsed；不做逐欄位 salvage，並在 quarantine hard bounds 內保存完整 raw snapshot。
+- raw subtree 超過 quarantine hard depth／node count 時成為 Rejected，不保存超限 raw tree。
+- Decoded／Unparsed／Rejected 都使用 presentation fallback，不得使 gameplay document 失效。
+- 保存有限 transient 錯誤資訊，不寫入 `SkillDocument`。
 - 不阻止技能施放。
+
+Hard limits 與預設 policy：
+
+```text
+MAX_UNPARSED_APPEARANCE_DEPTH = 32
+MAX_UNPARSED_APPEARANCE_NODES = 1024
+DEFAULT_UNPARSED_APPEARANCE_DEPTH = 16
+DEFAULT_UNPARSED_APPEARANCE_NODES = 256
+MAX_SKILL_DOCUMENT_BYTES = 1 MiB
+DEFAULT_SKILL_DOCUMENT_BYTES = 256 KiB
+MAX_SKILL_DOCUMENT_DEPTH = 64
+DEFAULT_SKILL_DOCUMENT_DEPTH = 32
+```
+
+Appearance depth 從外觀子樹 root 以 1 起算；SkillDocument global depth 從 document root 以 1 起算，兩者獨立。Byte limit 只在真正 raw-byte I/O 邊界執行，不使用 `toString().length()` 估算。
 
 ## 12.2 Profile
 
@@ -810,7 +856,7 @@ payload：
 1. 平台版本鎖定。
 2. Mod registries。
 3. Typed IDs。
-4. SkillDefinition／NodeDefinition。
+4. SkillDraft／SkillDocument／NodeDocument 與未來 `ValidatedSkillDefinition` 的分層邊界。
 5. DefinitionEnvelope 與 unknown proxy。
 6. Schema migration interface。
 7. SkillDefinitionStore。
@@ -827,6 +873,19 @@ payload：
 18. 單元測試。
 
 階段 0 不得建立大量 placeholder 類別。沒有實際責任的元件先以 interface／record 或明確 TODO 文件表示。
+
+P3 與 P4 工程責任固定切分為：
+
+```text
+P3-A：SkillRevision int、SkillDraft／SkillDocument／NodeDocument、
+      Appearance storage schema 與 Codec
+P3-B：migration、Envelope resolution、validation、ValidatedSkillDefinition
+P3-C：submission、SkillId 鑄造、revision allocation
+P3-D：SkillDefinitionStore domain API
+P4：Overworld SavedData 與玩家 Attachment
+```
+
+P3-D 只建立 domain API 與 behavior；在 P4 接入 Overworld SavedData 前，不建立另一個 production persistent store。
 
 ---
 

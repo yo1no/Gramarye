@@ -25,19 +25,25 @@ Do not use `java.example.gramarye`, `com.example.gramarye`, or another placehold
 
 Read these files before planning or editing architecture:
 
-1. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
-2. `docs/codex-spec/Codex_實作總規格Prompt.md`
-3. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
+1. `docs/codex-spec/17_P3資料模型修正案.md`
+2. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
+3. `docs/codex-spec/Codex_實作總規格Prompt.md`
+4. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
 
 Priority:
 
 ```text
-Frozen architecture specification
+Approved scoped amendment within its stated scope
+> Frozen architecture specification
 > Codex implementation contract
 > Detailed implementation steps
 > Existing code
 > Task-specific prompt
 ```
+
+`17_P3資料模型修正案.md` is the currently approved scoped amendment. It supersedes the
+P3 clauses that it explicitly identifies; outside that scope, the frozen architecture specification remains
+authoritative.
 
 If specifications conflict, stop the affected work and report the exact conflict. Do not redesign the frozen architecture.
 

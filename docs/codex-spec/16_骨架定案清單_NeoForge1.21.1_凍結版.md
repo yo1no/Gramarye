@@ -5,6 +5,8 @@
 > 本檔只定義「日後改動會牽動全系統」的骨架、不變量、資料邊界與失敗政策。數值、公式、完整 Trigger／Action 目錄、UI、美術、成長與經濟仍屬內容層。
 >
 > **重要聲明：任何軟體架構都不可能保證未來零問題。** 本清單的目標是把高風險問題前移、建立可遷移與可診斷能力，使未來問題能局部修正，而不是要求永遠不改程式。
+>
+> P3 資料模型的已核准範圍限定修訂記錄於 `17_P3資料模型修正案.md`；本文相關條文已同步該修正案。
 
 ---
 
@@ -37,12 +39,15 @@
 ## 3. 三種資料模型分離
 
 - 【決定】不得宣稱「一份 Codec 同時處理所有資料」。分成：
-  - `SkillDefinition`：不可變技能定義，Codec／JSON。
+  - `SkillDocument`：固定 revision 的不可變持久化文件，Codec／JSON；Trigger／Action 只保存 `DefinitionEnvelope`。
+  - `ValidatedSkillDefinition`：由 `SkillDocument` 解析與驗證後重建的不可持久化 runtime projection，runtime API 只接受此型別。
   - `SkillRuntimeState`：技能實例、標記、排程與持久化狀態，獨立 Codec 或明確 NBT 編碼。
   - `SkillSyncPayload`：客戶端顯示所需資料，使用 `StreamCodec`。
 - 【原則】三者可以共用不可變 value object，但不得共用完整資料形狀。
 - 【限制】所有 collection、string、byte array、Node 數與巢狀深度在 decode 前後都要有硬上限。
 - 【限制】Codec 解析成功不代表資料合法；解析後仍必須通過語意驗證器。
+- 【介面邊界】不建立讓 `SkillDocument` 與 `ValidatedSkillDefinition` 同時實作的寬鬆 `SkillDefinition` runtime 介面。
+- 【文件硬限】`MAX_SKILL_DOCUMENT_BYTES = 1 MiB`、`MAX_SKILL_DOCUMENT_DEPTH = 64`；預設政策值為 256 KiB 與 32。Byte limit 只在真正持有 raw bytes 的 I/O 邊界執行；post-parse global depth proxy 從 document root depth 1 起算並必須 short-circuit。
 
 ## 4. 定義 Envelope 與未知型別保全
 
@@ -57,9 +62,11 @@ DefinitionEnvelope
 
 - 【決定】先讀取 `typeId + rawPayload`，再交給已註冊型別解析。
 - 【禁止】不可只使用一般 registry-dispatch Codec 後才嘗試保留未知型別；未知型別可能在 dispatch 階段就失敗並失去原始參數。
-- 【未知型別】保存原 type ID、完整 raw payload、schemaVersion 與錯誤訊息。
+- 【文件邊界】`SkillDocument` 只保存 Trigger／Action 的原始 `DefinitionEnvelope`，不持久化 Resolved／Unknown union。
+- 【未知型別】P3-B 在 registry resolution 後產生 transient Unknown classification，其中引用文件內的原 type ID、完整 raw payload 與 schemaVersion，並提供有界錯誤訊息。
 - 【行為】技能標記為「損壞待修」，不可施放，但可查看、匯出、刪除與等待依賴恢復後重試解析。
 - 【重試時機】未知型別只在伺服器啟動／資料載入階段、且 Registry 已完成註冊後重試解析；不支援執行中熱插 Java 型別。
+- 【Runtime projection】只有不含 Unknown 且完成驗證的 transient candidate 可建立 `ValidatedSkillDefinition`；此 projection 可由 `SkillDocument` 重建，不得持久化為第二真相。
 
 ## 5. Schema migration 與技能 Revision 分離
 
@@ -70,10 +77,11 @@ DefinitionEnvelope
 - 【決定】migration 失敗時保留原始資料與錯誤，不覆寫原檔。
 - 【決定】寫回新格式前，建立世界／技能資料備份或採原子替換策略。
 - 【決定】技能 revision 永不原地修改；編輯永遠建立新 revision。
+- 【數值範圍】`SkillRevision` 是 `0..Integer.MAX_VALUE` 的非負 `int`，canonical JSON 使用普通整數。配置器達上限必須回傳明確 exhaustion failure，不得 overflow、wrap 或重用 revision。
 
-## 6. 不可變技能定義儲存庫
+## 6. 不可變技能文件儲存庫
 
-- 【決定】`SkillDefinitionStore` 以 `(SkillId, SkillRevision)` 定位定義。
+- 【決定】`SkillDefinitionStore` 以 `(SkillId, SkillRevision)` 定位不可變 `SkillDocument`。Store 的歷史名稱不改變其儲存 `SkillDocument` 的責任。
 - 【決定】`SkillInstance` 只引用 `(SkillId, SkillRevision)`，不深拷貝整份技能。
 - 【決定】定義物件必須不可變；Node、參數 collection 也不可暴露可變引用。
 - 【落庫】revision 在玩家**提交編輯當下**寫入世界級 `SkillDefinitionStore`（主世界 SavedData）；施放時只對該 revision 增加執行期引用（pin），不再寫入定義本體。解析不得依賴技能擁有者在線。
@@ -81,6 +89,7 @@ DefinitionEnvelope
 - 【刪除語義】玩家刪除技能只移除自己的最新 revision 引用；被進行中技能實例、標記、造物或排程 pin 的 revision 繼續存在。
 - 【決定】舊 revision 只在沒有玩家定義引用、技能實例、標記、造物、排程或其他持久化引用時才可回收。
 - 【決定】回收需以可驗證引用計數或 mark-and-sweep 完成，不靠猜測。
+- 【Draft】`SkillDraft` 是業務上可編輯、Java instance 上不可變的 snapshot；使用 `AppearanceDocument` 與 `AppearanceOverrideDocument`，不建立 `DraftAppearance`。Draft 持有候選 `SkillId`，但 SkillId 鑄造、配置與所有權驗證屬 P3-C。
 
 ---
 
@@ -122,7 +131,7 @@ DefinitionEnvelope
 | Cooldown | 玩家 Attachment | 客戶端 SyncPayload | 登入與變更時 | 伺服器 Attachment 為準 |
 | Mana | 玩家 Attachment | 客戶端 SyncPayload | 登入與交易後 | 伺服器 Attachment 為準 |
 | Revision 定義本體 | `SkillDefinitionStore` | 玩家最新 revision 引用、編輯器未提交工作副本 | **提交落庫**、施放 pin、啟動重建引用計數 | Store 為準 |
-| Presentation 設定 | SkillDefinition revision 中的 AppearanceDefinition | 客戶端解析快取 | 定義同步／資源重載 | 定義為準；缺資源採 fallback |
+| Presentation 設定 | SkillDocument revision 中的 AppearanceDocument | 客戶端解析快取 | 文件同步／資源重載 | 文件為準；缺資源採 fallback |
 
 - 【標記生命週期】錨點在卸載期間被永久移除時，標記隨 Attachment 靜默消失，不補發「標記被移除」事件；暫時卸載不等於移除，Entity 再載入時由其持久資料恢復。
 - 【禁止】同一物件不得同時把完整本體持久化在 Attachment 與中央 Store。
@@ -179,7 +188,7 @@ SourceContext（不可變）
 ├─ casterId
 ├─ skillId + revision
 ├─ skillInstanceId
-├─ rootNodeId
+├─ rootNodeIndex
 └─ originKind
 
 EffectState（每個效果實例獨立）
@@ -306,7 +315,7 @@ ActionExecutor
 ## 23. Payload 最小化
 
 - 【決定】客戶端只送 Intent：技能槽、操作類型、client sequence、有限瞄準資訊。
-- 【禁止】客戶端上傳完整 SkillDefinition、ItemStack、Action 參數、目標清單或任意長 collection 來要求立即執行。
+- 【禁止】客戶端上傳完整 SkillDocument、ItemStack、Action 參數、目標清單或任意長 collection 來要求立即執行。
 - 【決定】伺服器以自己保存的技能、物品與玩家狀態重建操作。
 - 【限制】所有 serverbound string、collection、map、byte array 使用有最大值的 StreamCodec；禁止無界解碼。
 - 【必要版本】使用包含網路物件配置漏洞修補的 NeoForge 21.1.229 以上。
@@ -329,21 +338,27 @@ ActionExecutor
 ## 25-B. 表現層與玩家自訂外觀
 
 - 【核心分離】玩法層只決定「發生什麼」；表現層只決定「看起來與聽起來像什麼」。音效、顏色、粒子與尾跡不得影響命中、傷害、範圍、魔耗、冷卻或 Trigger 判定。
-- 【資料】每個 SkillDefinition revision 可選擇保存不可變 `AppearanceDefinition`；Node 可保存 `AppearanceOverride`，只覆寫與技能預設不同的欄位。
+- 【資料】每個 `SkillDocument` revision 保存不可變 `AppearanceDocument`；Node 可保存 `AppearanceOverrideDocument`。Appearance 是部分覆寫模型，欄位缺失表示 Inherit，不要求非空 Appearance 同時指定 sound、particle 或 trail。
 
 ```text
 AppearanceDefinition
-├─ primaryColor: ARGB int
-├─ secondaryColor: ARGB int
-├─ soundProfileId: ResourceLocation
-├─ particleProfileId: ResourceLocation
-├─ trailProfileId: ResourceLocation?
-└─ intensity: bounded fixed-point
+├─ primaryColor: inherit | ARGB int
+├─ secondaryColor: inherit | ARGB int
+├─ soundProfile: Inherit | Disabled | Specified(ResourceLocation)
+├─ particleProfile: Inherit | Disabled | Specified(ResourceLocation)
+├─ trailProfile: Inherit | Disabled | Specified(ResourceLocation)
+└─ intensityMilli: inherit | bounded fixed-point
 ```
 
+- 【缺省】Top-level `appearance` 缺失、`null` 或 `{}` 都寬鬆解讀為 Default；canonical encoding 統一寫 `{}`。Node override 缺失或 `null` 解讀為 None；canonical encoding 省略欄位。
+- 【Profile 三態】Profile 欄位缺失表示 Inherit；`{"mode":"disabled"}` 表示 Disabled；`{"mode":"specified","id":"namespace:path"}` 表示 Specified。Canonical schema 不使用 JSON `null` 表示 Disabled；寬鬆 JSON 可接受 `null` 並正規化為 tagged Disabled。三態必須在 JsonOps、NbtOps 與兩者轉換間保持語意。
 - 【解析順序】模組預設 → 技能預設 → Node 覆寫 → 單次 PresentationEvent 覆寫。
 - 【缺資源政策】未知／缺失的音效、粒子或尾跡 Profile 只回退到預設表現並產生受限警告；不得把技能標為玩法損壞，也不得阻止施放。
-- 【解碼隔離】`AppearanceDefinition` 與 `AppearanceOverride` 使用寬鬆且有界的獨立解碼路徑：未知欄位忽略、越界值 clamp 至允許邊界、整體外觀資料損壞時退回模組預設，並保留原始資料與受限錯誤訊息。任何外觀解碼失敗都不得使玩法定義解析失敗、不得把技能標為玩法損壞、不得阻止施放。
+- 【解碼隔離】`AppearanceDefinition` 與 `AppearanceOverride` 使用寬鬆且有界的獨立解碼路徑。可正規化輸入產生 Decoded canonical value；型別正確且具明確區間的數值越界（例如 intensity）clamp 至 hard boundary，並由 P3-B 產生 transient bounded warning。
+- 【向前相容】未知 appearance 欄位忽略；已知欄位的不可解釋結構才使整個 blob 進入 Unparsed。
+- 【Unparsed】ARGB 無法解析或 numeric 超出 bit-pattern 範圍、Profile mode 未知或結構矛盾、欄位型別錯誤等無法可靠解釋的錯誤，使整個 appearance blob 進入 Unparsed；不做逐欄位 salvage，並在 quarantine hard bounds 內保留完整 raw snapshot。
+- 【Rejected】Appearance raw subtree 超過 `MAX_UNPARSED_APPEARANCE_DEPTH = 32` 或 `MAX_UNPARSED_APPEARANCE_NODES = 1024` 時進入 Rejected，不保留超限 raw tree。預設政策值為 depth 16、nodes 256；超 policy 但未超 hard 由 P3-B 產生 WARNING，不改變儲存狀態。Appearance relative depth 從子樹 root depth 1 起算。
+- 【Fallback】Decoded／Unparsed／Rejected 狀態都不得使 gameplay `SkillDocument` 失效或阻止施放；presentation 使用 fallback。Unparsed raw accessor 必須 defensive deep-copy，不得暴露 mutable tree。
 - 【事件覆寫來源】單次 `PresentationEvent` 的外觀覆寫只能由伺服器已驗證的技能定義、Action descriptor 與執行狀態產生；不得直接採信客戶端覆寫值，也不得超過該 Action 宣告的外觀參數範圍。
 - 【玩家輸入限制】玩家只可選擇伺服器允許的已註冊 Profile 與有界參數；不得輸入檔案路徑、URL、Java 類別、著色器程式或無上限粒子腳本。
 - 【顏色】內部統一使用 ARGB int；JSON Codec 可接受十六進位文字，但解碼後立即正規化。
@@ -425,11 +440,14 @@ PresentationEvent
 ## 30. Node 與引用
 
 - 一個 Node = 一個 Trigger + 一個 Action。
-- Node 只能引用前方 Node 或合法外部 Anchor／事件。
-- 分裂、連鎖、重複是普通 Action，但要求合法前方來源，因此不可在 Node 1。
+- `SkillDocument.nodes` 的 List position 是該 revision 內唯一的零起算 `nodeIndex`；`NodeDocument` 不儲存重複 index，也不建立 `NodeId`。
+- Node 只能引用較小 `nodeIndex` 的 Node 或合法外部 Anchor／事件；驗證屬 P3-B。
+- UI 顯示使用 `nodeIndex + 1`；runtime 與 persistence 都使用零起算 index。
+- 分裂、連鎖、重複是普通 Action，但要求合法前方來源，因此不可在 UI Node 1（`nodeIndex = 0`）。
 - 同一來源、同一事件、同一 tick 的 Node 依排列順序執行。
 - Action 改變的世界狀態立即生效；未改變的 EventContext 快照不變。
 - Action 失敗預設不停止其他同事件 Node，除非 Trigger 明確依賴其成功事件。
+- 存在 Unknown classification 時，編輯器不得執行無法安全更新隱藏 reference 的 Node reorder。
 
 ## 31. 衍生效果繼承
 
@@ -550,6 +568,19 @@ PresentationEvent
 - 建立 AppearanceDefinition、PresentationEvent 與最小 PresentationBudget 骨架。
 - 建立內部 event、EffectPipeline、ManaTransaction、Scheduler、trace。
 
+### 地基階段的工程 P3～P4 切分
+
+```text
+P3-A：SkillRevision int、SkillDraft／SkillDocument／NodeDocument、
+      Appearance storage schema 與 Codec
+P3-B：migration、Envelope resolution、validation、ValidatedSkillDefinition
+P3-C：submission、SkillId 鑄造、revision allocation
+P3-D：SkillDefinitionStore domain API
+P4：Overworld SavedData 與玩家 Attachment
+```
+
+P3-D 未接 SavedData 前只建立 domain behavior 與測試用儲存實作，不建立另一個 production persistent store。P4 的 Overworld SavedData adapter 才是世界層持久化真相。
+
 ## 1A. 最小單人垂直切片
 
 ```text
@@ -614,7 +645,7 @@ PresentationEvent
 - [ ] serverbound payload 只傳 Intent，所有變長資料都有硬上限。
 - [ ] Trigger／Action 未知型別能完整保留 raw payload。
 - [ ] schemaVersion 與 skillRevision 完全分離。
-- [ ] SkillDefinition 不可變，執行期引用固定 revision。
+- [ ] SkillDocument 不可變，runtime 只接受可重建的 ValidatedSkillDefinition，執行期引用固定 revision。
 - [ ] 玩家／實體資料使用 Attachment；跨維度資料使用 Overworld SavedData。
 - [ ] Attachment 死亡複製與 End 返回政策已有測試。
 - [ ] SavedData 每次變更都能保證 setDirty。

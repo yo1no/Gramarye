@@ -2,6 +2,8 @@
 
 本文件把凍結骨架拆成可交給 Codex 逐階段執行的工程工作包。
 
+P3 相關工作包已依 `17_P3資料模型修正案.md` 同步。修正案在其明確範圍內優先，其他架構仍以凍結規格為準。
+
 ## 階段名稱映射
 
 - 凍結骨架的 Stage 0 是由工程階段 P0～P8 共同完成的概念性完整地基階段。
@@ -85,6 +87,8 @@ ConstructInstanceId
 ScheduleId
 EventId
 ```
+
+`SkillRevision` 固定為 `record SkillRevision(int value)`，合法範圍 `0..Integer.MAX_VALUE`，canonical JSON 為普通整數。配置達上限時必須回傳 exhaustion failure，不得 overflow、wrap 或重用 revision。
 
 ### 測試
 
@@ -171,8 +175,10 @@ OutputKind
 → 檢查 raw payload 上限
 → 查 type registry
 → 已知：使用該型別 Codec 解碼
-→ 未知／失敗：建立 UnknownDefinition
+→ 未知／失敗：建立 transient UnknownDefinition classification
 ```
+
+P2 的 Resolved／Unknown definition 是 registry resolution 邊界的 transient 分類。P3-A `SkillDocument` 只持久化原始 `DefinitionEnvelope`，不持久化這些 union。
 
 ## 工作 4：Round-trip
 
@@ -204,86 +210,111 @@ OutputKind
 
 ---
 
-# 階段 P3：不可變 SkillDefinition 與 Revision Store
-
-## 目標
-
-完成正式技能定義的提交、引用與回收。
-
-## 工作 1：資料
-
-建立：
+# 階段 P3：不可變技能文件、驗證、提交與 Store domain
 
 ```text
-SkillDefinition
-NodeDefinition
+P3-A：SkillRevision int、SkillDraft／SkillDocument／NodeDocument、
+      Appearance storage schema 與 Codec
+P3-B：migration、Envelope resolution、validation、ValidatedSkillDefinition
+P3-C：submission、SkillId 鑄造、revision allocation
+P3-D：SkillDefinitionStore domain API
+P4：Overworld SavedData 與玩家 Attachment
+```
+
+## P3-A：SkillDraft／SkillDocument／NodeDocument 與 Appearance storage
+
+### 目標
+
+建立首次正式持久化 schema，不做 registry resolution、validation、submission 或 Store。
+
+### 資料與 Codec
+
+```text
+SkillRevision(int)
+SkillDraft + DraftNode + Missing／Present Trigger／Action slots
+SkillDocument
+NodeDocument
 SkillReference
-SkillDraft
+AppearanceDocument
+AppearanceOverrideDocument
 ```
 
-`SkillDraft` 與 `SkillDefinition` 不混用。
+- `SkillDocument` 只保存 `DefinitionEnvelope`；`NodeDocument` 不保存 index。
+- nodes List position 是該 revision 內唯一的零起算 `nodeIndex`；不建立 `NodeId`。
+- `SkillDraft` 與 `SkillDocument` 不混用。Draft 使用同一 `AppearanceDocument`，不建立 `DraftAppearance`。
+- Draft 的 SkillId 是候選身分；P3-A 不建立 production random factory。
+- Appearance 建立 partial override、Profile tagged 三態、hard numeric clamp、whole-blob Unparsed、over-hard Rejected 與 raw snapshot alias isolation。
+- 強制 appearance relative depth／node proxy 與 SkillDocument global parsed-tree hard-depth proxy。
 
-## 工作 2：提交服務
-
-建立：
+### P3-A limits
 
 ```text
-SkillDefinitionSubmissionService
+MAX_UNPARSED_APPEARANCE_DEPTH = 32
+MAX_UNPARSED_APPEARANCE_NODES = 1024
+DEFAULT_UNPARSED_APPEARANCE_DEPTH = 16
+DEFAULT_UNPARSED_APPEARANCE_NODES = 256
+MAX_SKILL_DOCUMENT_BYTES = 1 MiB
+DEFAULT_SKILL_DOCUMENT_BYTES = 256 KiB
+MAX_SKILL_DOCUMENT_DEPTH = 64
+DEFAULT_SKILL_DOCUMENT_DEPTH = 32
 ```
 
-流程：
+Appearance relative depth 與 document global depth 都從各自 root depth 1 起算。Byte limit 只由未來真正持有 raw bytes 的 I/O 邊界執行。
+
+## P3-B：Migration、resolution 與 validation
+
+```text
+SkillDocument DefinitionEnvelope
+→ skill/payload migration contracts
+→ registry resolution
+→ transient resolved/unknown candidate
+→ structural/descriptor/cross-node validation
+→ ValidatedSkillDefinition
+```
+
+- `ValidatedSkillDefinition` 是可重建 runtime projection，不是第二持久化真相。
+- P3-B 產生 clamp warning、appearance quarantine policy warning、profile lookup／missing-profile warning 與 gameplay／presentation validation report。
+- Node reference 只能指向較小 index；Unknown classification 阻止 runtime projection。
+
+## P3-C：Submission 與 identity allocation
+
+建立 `SkillDefinitionSubmissionService`：
 
 ```text
 接收 server-side draft
-→ schema migration
-→ gameplay decode
-→ appearance tolerant decode
-→ semantic validation
-→ 配發新 revision
-→ 寫入 SkillDefinitionStore
-→ setDirty
-→ 更新玩家 latest revision reference
+→ migration/resolution/validation
+→ 驗證 SkillId 所有權
+→ 配發 SkillId（新技能）與新 revision
+→ 原子提交到 Store port
 ```
 
-失敗不得污染 Store。
+- SkillId 鑄造權與所有權驗證屬 P3-C。
+- revision 達 `Integer.MAX_VALUE` 必須回傳 exhaustion failure。
+- 失敗不得污染 Store。
 
-## 工作 3：Store
+## P3-D：SkillDefinitionStore domain API
 
-API 建議：
+API 責任：
 
 ```java
-Optional<SkillDefinition> find(SkillId id, SkillRevision revision);
+Optional<SkillDocument> find(SkillId id, SkillRevision revision);
 SubmitResult submit(...);
 PinHandle pin(...);
 void unpin(PinHandle handle);
 ReclaimReport reclaim();
 ```
 
-PinHandle 關閉必須 idempotent。
+- PinHandle 關閉必須 idempotent。
+- 定義 atomic allocate-and-insert、pin／unpin 與 mark-and-sweep domain behavior。
+- P3-D 不接 SavedData；production 不建立另一個 persistent store，儲存實作只用於測試。
+- Mark-and-sweep roots 包括玩家 latest/equipped refs、SkillInstance、Marker、Construct 與 Schedule。
 
-## 工作 4：回收
+## P3 Definition of Done
 
-第一版優先使用 mark-and-sweep，來源包括：
-
-- 玩家 latest revision refs。
-- equipped refs。
-- SkillInstance。
-- Marker。
-- Construct。
-- Schedule。
-
-若引用計數難以跨 crash 保證正確，啟動時以 mark-and-sweep 重建，不把持久化 refcount 當唯一真相。
-
-## 測試
-
-- 提交即落庫。
-- 從未施放的技能重啟後存在。
-- 施放不重寫 definition。
-- 編輯建立新 revision。
-- 舊實例仍讀舊 revision。
-- 玩家刪除不刪除被 pin revision。
-- 無引用 revision 可回收。
-- crash-like stale count 可由掃描修正。
+- P3-A 模型與 Codec 的 hard bounds、alias isolation 與跨 Ops 測試通過。
+- P3-B 不持久化 resolved／unknown classification 或 runtime projection。
+- P3-C 提交失敗不污染 Store，revision exhaustion 不 overflow。
+- P3-D pin/unpin/reclaim 可測且沒有 production persistent store。
 
 ---
 
@@ -292,6 +323,12 @@ PinHandle 關閉必須 idempotent。
 ## 目標
 
 把資料放到正確住址，沒有雙重真相。
+
+## 工作 0：SkillDefinitionStore SavedData adapter
+
+- 將 P3-D domain API 接入 Overworld SavedData，儲存不可變 `SkillDocument`。
+- Overworld SavedData 是唯一 production world-level persistent store，不與 P3-D 測試實作雙寫。
+- 每次 mutation 必須 `setDirty()`。
 
 ## 工作 1：Player Attachment
 
@@ -335,6 +372,7 @@ EquippedSkillState
 
 ## Definition of Done
 
+- `SkillDefinitionStore` 的 production 持久化真相只在 Overworld SavedData。
 - 相同 Marker 本體不在 Store 與 Attachment 同時存在。
 - 所有 SavedData mutation 都 setDirty。
 - 玩家 Attachment 不依靠自動 client sync。
@@ -513,16 +551,11 @@ payload handler 只建立 Intent，切到 server main thread 後執行。
 
 走通表現事件咽喉，但不做大量美術內容。
 
-## 工作 1：Appearance tolerant decode
+## 工作 1：Appearance runtime integration
 
-把 gameplay definition 與 appearance decode 分成兩段。
+P8 不重新建立 persistence decoder。P3-A 已負責 Appearance storage schema、partial override、Profile tagged 三態、hard numeric clamp、Unparsed／Rejected isolation、raw snapshot 與 hard proxy bounds；P3-B 已負責 bounded diagnostics、clamp／quarantine warnings、profile lookup 與 runtime projection。
 
-建議 outer skill decode：
-
-1. 先讀玩法必要欄位。
-2. Appearance raw object 交給 tolerant decoder。
-3. decoder 失敗回 default + diagnostic。
-4. SkillDefinition 仍為有效玩法定義。
+P8 只將這些結果接入 Profile registry、datapack instances、PresentationEvent、network、client budget 與 render fallback。
 
 ## 工作 2：Profile type registry
 
@@ -644,7 +677,7 @@ Action: damage
 不得讓 datapack 直接建立玩家 revision；資料包範本與玩家提交 revision 的責任需分清：
 
 - datapack：提供模板／Profile／系統內容。
-- SkillDefinitionStore：保存玩家提交 revision。
+- SkillDefinitionStore：保存玩家提交的 `SkillDocument` revision。
 
 ---
 
@@ -793,7 +826,7 @@ ChargeCapacityCalculator
 - fixed-point 優先。
 - 不允許 NaN／Infinity。
 - calculator version 可記錄於 trace。
-- 公式變更不修改舊 SkillDefinition revision 的資料語意，或必須有明確版本政策。
+- 公式變更不修改舊 `SkillDocument` revision 的資料語意，或必須有明確版本政策。
 
 ---
 
