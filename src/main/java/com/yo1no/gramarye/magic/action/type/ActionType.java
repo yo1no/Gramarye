@@ -12,6 +12,13 @@ import com.yo1no.gramarye.magic.validation.ValidationResult;
  * the P2-A descriptor boundary.</p>
  */
 public interface ActionType<P extends ActionPayload> {
+    /**
+     * Returns the current data-format version for this descriptor's payload.
+     *
+     * <p>The value must be non-negative and is independent of skill revisions.</p>
+     */
+    int currentPayloadSchemaVersion();
+
     MapCodec<P> payloadCodec();
 
     ActionCapabilities capabilities();

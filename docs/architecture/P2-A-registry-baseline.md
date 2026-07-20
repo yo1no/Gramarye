@@ -6,4 +6,4 @@ This phase record is subordinate to the [frozen architecture specification](../c
 - Registry entry keys are the only Trigger/Action type IDs; descriptors do not duplicate an ID field.
 - The registries have no default, numeric-ID sync, explicit maximum ID, or P2-A production entries.
 - Payload descriptors are strongly typed and expose only a `MapCodec`, immutable capabilities, and P1 semantic validation.
-- P5 will connect typed trigger event kinds to the internal event model. P2-B envelope and unknown-payload dispatch remain deferred.
+- P5 will connect typed trigger event kinds to the internal event model. Envelope resolution was deferred from this phase and is recorded in the [P2-B baseline](P2-B-definition-envelope.md).

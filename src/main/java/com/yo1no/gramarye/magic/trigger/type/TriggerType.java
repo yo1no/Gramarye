@@ -12,6 +12,13 @@ import com.yo1no.gramarye.magic.validation.ValidationResult;
  * ordinary invalid player data with {@link ValidationResult}, not exceptions.</p>
  */
 public interface TriggerType<P extends TriggerPayload> {
+    /**
+     * Returns the current data-format version for this descriptor's payload.
+     *
+     * <p>The value must be non-negative and is independent of skill revisions.</p>
+     */
+    int currentPayloadSchemaVersion();
+
     MapCodec<P> payloadCodec();
 
     TriggerCapabilities capabilities();

@@ -24,6 +24,9 @@ public final class MagicRegistries {
     public static final DeferredRegister<ActionType<?>> ACTION_TYPES =
             DeferredRegister.create(ACTION_TYPE_REGISTRY_KEY, Gramarye.MOD_ID);
 
+    private static Registry<TriggerType<?>> triggerTypeRegistry;
+    private static Registry<ActionType<?>> actionTypeRegistry;
+
     private MagicRegistries() {
     }
 
@@ -34,9 +37,25 @@ public final class MagicRegistries {
         ACTION_TYPES.register(modBus);
     }
 
+    /** Returns the formal trigger descriptor registry after {@link NewRegistryEvent}. */
+    public static Registry<TriggerType<?>> triggerTypeRegistry() {
+        if (triggerTypeRegistry == null) {
+            throw new IllegalStateException("Trigger type registry is not available before NewRegistryEvent");
+        }
+        return triggerTypeRegistry;
+    }
+
+    /** Returns the formal action descriptor registry after {@link NewRegistryEvent}. */
+    public static Registry<ActionType<?>> actionTypeRegistry() {
+        if (actionTypeRegistry == null) {
+            throw new IllegalStateException("Action type registry is not available before NewRegistryEvent");
+        }
+        return actionTypeRegistry;
+    }
+
     private static void registerCustomRegistries(NewRegistryEvent event) {
-        event.create(new RegistryBuilder<>(TRIGGER_TYPE_REGISTRY_KEY));
-        event.create(new RegistryBuilder<>(ACTION_TYPE_REGISTRY_KEY));
+        triggerTypeRegistry = event.create(new RegistryBuilder<>(TRIGGER_TYPE_REGISTRY_KEY));
+        actionTypeRegistry = event.create(new RegistryBuilder<>(ACTION_TYPE_REGISTRY_KEY));
     }
 
     private static <T> ResourceKey<Registry<T>> createRegistryKey(String path) {

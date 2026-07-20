@@ -115,6 +115,11 @@ class TypeDescriptorTest {
                 Set.of(TriggerGranularity.PER_EVENT));
 
         @Override
+        public int currentPayloadSchemaVersion() {
+            return 0;
+        }
+
+        @Override
         public MapCodec<TestTriggerPayload> payloadCodec() {
             return TestTriggerPayload.CODEC;
         }
@@ -161,6 +166,11 @@ class TypeDescriptorTest {
                 true,
                 ControlClass.NONE,
                 AppearanceParameterPolicy.none());
+
+        @Override
+        public int currentPayloadSchemaVersion() {
+            return 0;
+        }
 
         @Override
         public MapCodec<TestActionPayload> payloadCodec() {

@@ -16,3 +16,4 @@ Implementation guidance is provided by the [Codex implementation contract](../co
 
 - [P0 platform and repository baseline](P0-baseline.md)
 - [P2-A descriptor registry baseline](P2-A-registry-baseline.md)
+- [P2-B definition envelope baseline](P2-B-definition-envelope.md)

@@ -1,7 +1,18 @@
 package com.yo1no.gramarye.gametest;
 
+import com.google.gson.JsonObject;
+import com.mojang.serialization.Dynamic;
+import com.mojang.serialization.JsonOps;
 import com.yo1no.gramarye.Gramarye;
 import com.yo1no.gramarye.magic.api.registry.MagicRegistries;
+import com.yo1no.gramarye.magic.definition.action.UnknownActionDefinition;
+import com.yo1no.gramarye.magic.definition.codec.ActionDefinitionCodec;
+import com.yo1no.gramarye.magic.definition.codec.TriggerDefinitionCodec;
+import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
+import com.yo1no.gramarye.magic.definition.envelope.DefinitionFailure;
+import com.yo1no.gramarye.magic.definition.lookup.RegistryActionTypeLookup;
+import com.yo1no.gramarye.magic.definition.lookup.RegistryTriggerTypeLookup;
+import com.yo1no.gramarye.magic.definition.trigger.UnknownTriggerDefinition;
 import net.minecraft.core.DefaultedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -31,18 +42,52 @@ public final class PlatformGameTests {
         helper.assertTrue(
                 MagicRegistries.ACTION_TYPE_REGISTRY_KEY.location().equals(registryLocation("action_type")),
                 "Action descriptor registry key must be gramarye:action_type");
-        assertEmptyDescriptorRegistry(helper, MagicRegistries.TRIGGER_TYPE_REGISTRY_KEY);
-        assertEmptyDescriptorRegistry(helper, MagicRegistries.ACTION_TYPE_REGISTRY_KEY);
+        assertCurrentDescriptorRegistryState(
+                helper,
+                MagicRegistries.TRIGGER_TYPE_REGISTRY_KEY,
+                MagicRegistries.triggerTypeRegistry());
+        assertCurrentDescriptorRegistryState(
+                helper,
+                MagicRegistries.ACTION_TYPE_REGISTRY_KEY,
+                MagicRegistries.actionTypeRegistry());
         helper.succeed();
     }
 
-    private static void assertEmptyDescriptorRegistry(
+    @GameTest(templateNamespace = "minecraft", template = "bastion/blocks/air", timeoutTicks = 20)
+    public static void productionDefinitionLookupsResolveMissingTypesSafely(GameTestHelper helper) {
+        var missingId = ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, "p2_b_missing_type");
+        var triggerLookup = new RegistryTriggerTypeLookup();
+        var actionLookup = new RegistryActionTypeLookup();
+        helper.assertTrue(triggerLookup.find(missingId).isEmpty(), "Missing trigger type must return empty");
+        helper.assertTrue(actionLookup.find(missingId).isEmpty(), "Missing action type must return empty");
+
+        var envelope = new DefinitionEnvelope(
+                missingId,
+                0,
+                new Dynamic<>(JsonOps.INSTANCE, new JsonObject()));
+        var trigger = TriggerDefinitionCodec.resolve(envelope, triggerLookup);
+        var action = ActionDefinitionCodec.resolve(envelope, actionLookup);
+        helper.assertTrue(
+                trigger instanceof UnknownTriggerDefinition unknown
+                        && unknown.failure().code() == DefinitionFailure.Code.UNKNOWN_TYPE,
+                "Missing trigger type must resolve to UnknownTriggerDefinition");
+        helper.assertTrue(
+                action instanceof UnknownActionDefinition unknown
+                        && unknown.failure().code() == DefinitionFailure.Code.UNKNOWN_TYPE,
+                "Missing action type must resolve to UnknownActionDefinition");
+        helper.succeed();
+    }
+
+    private static void assertCurrentDescriptorRegistryState(
             GameTestHelper helper,
-            ResourceKey<? extends Registry<?>> registryKey) {
+            ResourceKey<? extends Registry<?>> registryKey,
+            Registry<?> formalRegistry) {
         var registry = BuiltInRegistries.REGISTRY.getOptional(registryKey.location()).orElseThrow();
 
         helper.assertTrue(registry.key().equals(registryKey), "Descriptor registry has the wrong registry key");
-        helper.assertTrue(registry.size() == 0, "Descriptor registry must be empty in P2-A");
+        helper.assertTrue(registry == formalRegistry, "Lookup adapter must expose the formally registered registry");
+        // This is a phase-state assertion. Update it when the first production descriptor is introduced.
+        helper.assertTrue(registry.size() == 0, "P2-B currently has no production descriptor entries");
         helper.assertFalse(registry instanceof DefaultedRegistry<?>, "Descriptor registry must not have a default entry");
         helper.assertFalse(registry.doesSync(), "Descriptor registry must not sync numeric IDs");
     }
