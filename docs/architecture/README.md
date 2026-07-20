@@ -1,0 +1,17 @@
+# Architecture index
+
+The single authoritative architecture specification is the [NeoForge 1.21.1 frozen skeleton](../codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md). This directory records decisions and phase baselines; it does not duplicate or replace the frozen specification.
+
+Implementation guidance is provided by the [Codex implementation contract](../codex-spec/Codex_實作總規格Prompt.md) and the [detailed implementation phases](../codex-spec/NeoForge1.21.1_詳細實作步驟.md), in the priority order defined by `AGENTS.md`.
+
+## Accepted decisions
+
+- [ADR-0001: Platform lock](ADR-0001-platform-lock.md)
+- [ADR-0002: Single source of truth](ADR-0002-single-source-of-truth.md)
+- [ADR-0003: Server-authoritative network](ADR-0003-server-authoritative-network.md)
+- [ADR-0004: Effect pipeline](ADR-0004-effect-pipeline.md)
+- [ADR-0005: Skill revision store](ADR-0005-skill-revision-store.md)
+
+## Phase baselines
+
+- [P0 platform and repository baseline](P0-baseline.md)

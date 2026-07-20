@@ -37,14 +37,11 @@ base {
 // Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+def serverGameDirectory = providers.environmentVariable('GRAMARYE_SERVER_GAME_DIR').orElse('run/server')
+
 neoForge {
     // Specify the version of NeoForge to use.
     version = project.neo_version
-
-    parchment {
-        mappingsVersion = project.parchment_mappings_version
-        minecraftVersion = project.parchment_minecraft_version
-    }
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -61,6 +58,7 @@ neoForge {
 
         server {
             server()
+            gameDirectory = project.file(serverGameDirectory.get())
             programArgument '--nogui'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
@@ -70,7 +68,9 @@ neoForge {
         // The gametest system is also enabled by default for other run configs under the /test command.
         gameTestServer {
             type = "gameTestServer"
-            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            gameDirectory = project.file('run/gametest')
+            // The P0 smoke test uses Minecraft's built-in one-block air structure.
+            systemProperty 'neoforge.enabledGameTestNamespaces', "${project.mod_id},minecraft"
         }
 
         data {
@@ -107,6 +107,11 @@ neoForge {
             sourceSet(sourceSets.main)
         }
     }
+}
+
+// The dedicated-server smoke harness sends the normal `stop` command through stdin.
+tasks.named('runServer', JavaExec).configure {
+    standardInput = System.in
 }
 
 // Sets up a dependency configuration called 'localRuntime'.
@@ -148,9 +153,11 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             minecraft_version      : minecraft_version,
             minecraft_version_range: minecraft_version_range,
             neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
             loader_version_range   : loader_version_range,
             mod_id                 : mod_id,
             mod_name               : mod_name,
+            mod_description        : mod_description,
             mod_license            : mod_license,
             mod_version            : mod_version,
     ]
@@ -189,4 +196,171 @@ idea {
         downloadSources = true
         downloadJavadoc = true
     }
+}
+
+def gitCommitProvider = providers.exec {
+    commandLine 'git', 'rev-parse', '--verify', 'HEAD'
+}.standardOutput.asText.map { it.trim() }
+def manifestMetadata = [
+        title           : mod_name,
+        version         : mod_version,
+        minecraftVersion: minecraft_version,
+        neoForgeVersion : neo_version,
+        schemaBaseline  : schema_baseline,
+]
+
+tasks.named('jar', Jar).configure {
+    includeEmptyDirs = false
+    inputs.property('gramaryeGitCommit', gitCommitProvider)
+    manifestMetadata.each { key, value -> inputs.property("gramaryeManifest.${key}", value) }
+    doFirst {
+        manifest.attributes(
+                'Implementation-Title': manifestMetadata.title,
+                'Implementation-Version': manifestMetadata.version,
+                'Gramarye-Git-Commit': gitCommitProvider.get(),
+                'Gramarye-Minecraft-Version': manifestMetadata.minecraftVersion,
+                'Gramarye-NeoForge-Version': manifestMetadata.neoForgeVersion,
+                'Gramarye-Schema-Baseline': manifestMetadata.schemaBaseline,
+        )
+    }
+}
+
+def expectedPlatform = [
+        minecraftVersion: '1.21.1',
+        minecraftRange  : '[1.21.1]',
+        neoForgeVersion : '21.1.241',
+        neoForgeRange   : '[21.1.241,21.2)',
+        javaVersion     : 21,
+        gradleVersion   : '9.2.1',
+        modId           : 'gramarye',
+        dataNamespace   : 'gramarye',
+        packageRoot     : 'com.yo1no.gramarye',
+        wrapperChecksum : '72f44c9f8ebcb1af43838f45ee5c4aa9c5444898b3468ab3f4af7b6076c5bc3f',
+]
+def configuredJavaVersion = java.toolchain.languageVersion.get().asInt()
+def configuredGradleVersion = gradle.gradleVersion
+def baselinePropertiesFile = layout.projectDirectory.file('gradle.properties')
+def baselineAgentsFile = layout.projectDirectory.file('AGENTS.md')
+def baselineWrapperFile = layout.projectDirectory.file('gradle/wrapper/gradle-wrapper.properties')
+def generatedMetadataFile = layout.buildDirectory.file('generated/sources/modMetadata/META-INF/neoforge.mods.toml')
+def productionJavaRoot = layout.projectDirectory.dir('src/main/java')
+def productionJavaSources = fileTree(productionJavaRoot) {
+    include '**/*.java'
+}
+def authoritativeSpecPaths = [
+        'docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md',
+        'docs/codex-spec/Codex_實作總規格Prompt.md',
+        'docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md',
+]
+def authoritativeSpecFiles = authoritativeSpecPaths.collect { layout.projectDirectory.file(it) }
+
+tasks.register('verifyPlatformBaseline') {
+    group = 'verification'
+    description = 'Verifies the frozen P0 platform, identity, package, wrapper, and metadata baseline.'
+    dependsOn generateModMetadata
+
+    inputs.file baselinePropertiesFile
+    inputs.file baselineAgentsFile
+    inputs.file baselineWrapperFile
+    inputs.file generatedMetadataFile
+    inputs.files productionJavaSources
+    inputs.files authoritativeSpecFiles
+    expectedPlatform.each { key, value -> inputs.property("expected.${key}", value) }
+
+    doLast {
+        def failures = []
+        def baselineProperties = new Properties()
+        baselinePropertiesFile.asFile.withInputStream { baselineProperties.load(it) }
+
+        def requiredProperties = [
+                minecraft_version      : expectedPlatform.minecraftVersion,
+                minecraft_version_range: expectedPlatform.minecraftRange,
+                neo_version            : expectedPlatform.neoForgeVersion,
+                neo_version_range      : expectedPlatform.neoForgeRange,
+                mod_id                 : expectedPlatform.modId,
+                data_namespace         : expectedPlatform.dataNamespace,
+                mod_group_id           : expectedPlatform.packageRoot,
+        ]
+        requiredProperties.each { key, expected ->
+            def actual = baselineProperties.getProperty(key.toString())
+            if (actual != expected) {
+                failures << "gradle.properties ${key} expected '${expected}' but was '${actual}'"
+            }
+        }
+
+        if (configuredJavaVersion != expectedPlatform.javaVersion) {
+            failures << "Java toolchain expected ${expectedPlatform.javaVersion} but was ${configuredJavaVersion}"
+        }
+        if (configuredGradleVersion != expectedPlatform.gradleVersion) {
+            failures << "Gradle expected ${expectedPlatform.gradleVersion} but was ${configuredGradleVersion}"
+        }
+
+        def agentsText = baselineAgentsFile.asFile.getText('UTF-8')
+        [
+                "MOD_ID=${expectedPlatform.modId}",
+                "DATA_NAMESPACE=${expectedPlatform.dataNamespace}",
+                "MINECRAFT_VERSION=${expectedPlatform.minecraftVersion}",
+                'NEOFORGE_VERSION=21.1.x',
+                'MIN_NEOFORGE_VERSION=21.1.229',
+                "JAVA_VERSION=${expectedPlatform.javaVersion}",
+                "JAVA_PACKAGE_ROOT=${expectedPlatform.packageRoot}",
+        ].each { identity ->
+            if (!agentsText.contains("`${identity}`")) {
+                failures << "AGENTS.md is missing frozen identity '${identity}'"
+            }
+        }
+
+        authoritativeSpecFiles.eachWithIndex { specFile, index ->
+            if (!specFile.asFile.isFile()) {
+                failures << "Authoritative specification path does not exist: ${authoritativeSpecPaths[index]}"
+            }
+        }
+
+        def wrapperProperties = new Properties()
+        baselineWrapperFile.asFile.withInputStream { wrapperProperties.load(it) }
+        if (!wrapperProperties.getProperty('distributionUrl', '').endsWith('/gradle-9.2.1-bin.zip')) {
+            failures << 'Gradle wrapper distribution is not gradle-9.2.1-bin.zip'
+        }
+        if (wrapperProperties.getProperty('distributionSha256Sum') != expectedPlatform.wrapperChecksum) {
+            failures << 'Gradle wrapper distribution checksum does not match the official Gradle 9.2.1 binary checksum'
+        }
+
+        def javaRootPath = productionJavaRoot.asFile.toPath()
+        def expectedPackageDirectory = expectedPlatform.packageRoot.replace('.', '/')
+        productionJavaSources.files.each { sourceFile ->
+            def relativePath = javaRootPath.relativize(sourceFile.toPath()).toString().replace(File.separator, '/')
+            if (!relativePath.startsWith("${expectedPackageDirectory}/")) {
+                failures << "Java source is outside package root ${expectedPlatform.packageRoot}: ${relativePath}"
+            }
+            def packageMatcher = sourceFile.getText('UTF-8') =~ /(?m)^package\s+([A-Za-z0-9_.]+);/
+            if (!packageMatcher.find() || !(packageMatcher.group(1) == expectedPlatform.packageRoot || packageMatcher.group(1).startsWith("${expectedPlatform.packageRoot}."))) {
+                failures << "Java package declaration is outside ${expectedPlatform.packageRoot}: ${relativePath}"
+            }
+        }
+
+        def metadataText = generatedMetadataFile.get().asFile.getText('UTF-8')
+        [
+                "modId=\"${expectedPlatform.modId}\"",
+                "versionRange=\"${expectedPlatform.neoForgeRange}\"",
+                "versionRange=\"${expectedPlatform.minecraftRange}\"",
+        ].each { requiredMetadata ->
+            if (!metadataText.contains(requiredMetadata)) {
+                failures << "Generated mod metadata is missing '${requiredMetadata}'"
+            }
+        }
+
+        if (!failures.isEmpty()) {
+            throw new GradleException("Platform baseline verification failed:\n - " + failures.join('\n - '))
+        }
+
+        logger.lifecycle('Verified Gramarye P0 platform baseline: Minecraft {}, NeoForge {}, Java {}, Gradle {}.',
+                expectedPlatform.minecraftVersion,
+                expectedPlatform.neoForgeVersion,
+                expectedPlatform.javaVersion,
+                expectedPlatform.gradleVersion)
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('verifyPlatformBaseline')
 }

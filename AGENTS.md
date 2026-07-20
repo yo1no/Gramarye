@@ -8,7 +8,7 @@
 - `NEOFORGE_VERSION=21.1.x`
 - `MIN_NEOFORGE_VERSION=21.1.229`
 - `JAVA_VERSION=21`
-- `JAVA_PACKAGE_ROOT=REPLACE_ME_BEFORE_IMPLEMENTATION`
+- `JAVA_PACKAGE_ROOT=com.yo1no.gramarye`
 
 `MOD_ID` and `DATA_NAMESPACE` are frozen. Do not rename them.
 
@@ -54,6 +54,12 @@ For each phase:
 7. Report completed work, tests, remaining work, and risks.
 
 Do not implement P0–P19 in one task.
+
+## Phase name mapping
+
+- Frozen Stage 0 = engineering phases P0–P8 collectively.
+- Engineering P9 = frozen architecture stage 1A.
+- When the user specifies a P number, use the engineering P number in `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md` as the execution scope.
 
 ## Core invariants
 
