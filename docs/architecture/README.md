@@ -15,3 +15,4 @@ Implementation guidance is provided by the [Codex implementation contract](../co
 ## Phase baselines
 
 - [P0 platform and repository baseline](P0-baseline.md)
+- [P2-A descriptor registry baseline](P2-A-registry-baseline.md)
