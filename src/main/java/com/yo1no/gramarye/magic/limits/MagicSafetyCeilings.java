@@ -21,8 +21,35 @@ public final class MagicSafetyCeilings {
     /** Technical ceiling that bounds per-lineage visited-target collection growth. */
     public static final int MAX_VISITED_TARGETS = 128;
 
-    /** Technical ceiling for a future fixed-point presentation intensity value. */
+    /** Technical ceiling for presentation intensity in milli-units (1000 = 1.0). */
     public static final int MAX_APPEARANCE_INTENSITY = 10_000;
+
+    /** Technical ceiling for a retained unparsed appearance subtree, with its root at depth 1. */
+    public static final int MAX_UNPARSED_APPEARANCE_DEPTH = 32;
+
+    /** Technical ceiling for values retained in one unparsed appearance subtree. */
+    public static final int MAX_UNPARSED_APPEARANCE_NODES = 1_024;
+
+    /** Provisional server policy default for unparsed appearance subtree depth. */
+    public static final int DEFAULT_UNPARSED_APPEARANCE_DEPTH = 16;
+
+    /** Provisional server policy default for unparsed appearance subtree values. */
+    public static final int DEFAULT_UNPARSED_APPEARANCE_NODES = 256;
+
+    /** Technical ceiling for a parsed skill document or draft, with its root at depth 1. */
+    public static final int MAX_SKILL_DOCUMENT_DEPTH = 64;
+
+    /** Provisional server policy default for parsed skill document or draft depth. */
+    public static final int DEFAULT_SKILL_DOCUMENT_DEPTH = 32;
+
+    /** Technical raw-I/O ceiling for a whole skill document or draft (1 MiB). */
+    public static final int MAX_SKILL_DOCUMENT_BYTES = 1_024 * 1_024;
+
+    /** Provisional raw-I/O policy default for a whole skill document or draft (256 KiB). */
+    public static final int DEFAULT_SKILL_DOCUMENT_BYTES = 256 * 1_024;
+
+    /** Technical ceiling for non-persistent normalization facts from one tolerant read. */
+    public static final int MAX_READ_REPORT_FACTS = 1_024;
 
     private MagicSafetyCeilings() {
     }

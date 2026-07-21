@@ -12,14 +12,22 @@ public record MagicPolicyLimits(
         int maxRawPayloadBytes,
         int maxRuntimeTags,
         int maxVisitedTargets,
-        int maxAppearanceIntensity) {
+        int maxAppearanceIntensity,
+        int maxUnparsedAppearanceDepth,
+        int maxUnparsedAppearanceNodes,
+        int maxSkillDocumentDepth,
+        int maxSkillDocumentBytes) {
     public static final MagicPolicyLimits DEFAULTS = new MagicPolicyLimits(
             64, // Provisional node policy default; not final gameplay balance.
             256, // Provisional string policy default; not final content sizing.
             64 * 1_024, // Provisional raw payload policy default of 64 KiB.
             16, // Provisional runtime-tag policy default; not final gameplay balance.
             32, // Provisional visited-target policy default; not final gameplay balance.
-            1_000); // Provisional intensity policy default; its fixed-point scale is not set in P1.
+            1_000, // Provisional intensity policy default of 1.0; not final presentation balance.
+            MagicSafetyCeilings.DEFAULT_UNPARSED_APPEARANCE_DEPTH,
+            MagicSafetyCeilings.DEFAULT_UNPARSED_APPEARANCE_NODES,
+            MagicSafetyCeilings.DEFAULT_SKILL_DOCUMENT_DEPTH,
+            MagicSafetyCeilings.DEFAULT_SKILL_DOCUMENT_BYTES);
 
     public MagicPolicyLimits {
         requireWithinCeiling("maxNodes", maxNodes, MagicSafetyCeilings.MAX_NODES);
@@ -31,6 +39,22 @@ public record MagicPolicyLimits(
                 "maxAppearanceIntensity",
                 maxAppearanceIntensity,
                 MagicSafetyCeilings.MAX_APPEARANCE_INTENSITY);
+        requireWithinCeiling(
+                "maxUnparsedAppearanceDepth",
+                maxUnparsedAppearanceDepth,
+                MagicSafetyCeilings.MAX_UNPARSED_APPEARANCE_DEPTH);
+        requireWithinCeiling(
+                "maxUnparsedAppearanceNodes",
+                maxUnparsedAppearanceNodes,
+                MagicSafetyCeilings.MAX_UNPARSED_APPEARANCE_NODES);
+        requireWithinCeiling(
+                "maxSkillDocumentDepth",
+                maxSkillDocumentDepth,
+                MagicSafetyCeilings.MAX_SKILL_DOCUMENT_DEPTH);
+        requireWithinCeiling(
+                "maxSkillDocumentBytes",
+                maxSkillDocumentBytes,
+                MagicSafetyCeilings.MAX_SKILL_DOCUMENT_BYTES);
     }
 
     private static void requireWithinCeiling(String name, int value, int ceiling) {

@@ -1,6 +1,6 @@
 # Architecture index
 
-The single authoritative architecture specification is the [NeoForge 1.21.1 frozen skeleton](../codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md). This directory records decisions and phase baselines; it does not duplicate or replace the frozen specification.
+The primary authoritative architecture specification is the [NeoForge 1.21.1 frozen skeleton](../codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md), as refined within its stated scope by the approved [P3 data-model amendment](../codex-spec/17_P3資料模型修正案.md). This directory records decisions and phase baselines; it does not duplicate or replace either authority.
 
 Implementation guidance is provided by the [Codex implementation contract](../codex-spec/Codex_實作總規格Prompt.md) and the [detailed implementation phases](../codex-spec/NeoForge1.21.1_詳細實作步驟.md), in the priority order defined by `AGENTS.md`.
 
@@ -17,3 +17,4 @@ Implementation guidance is provided by the [Codex implementation contract](../co
 - [P0 platform and repository baseline](P0-baseline.md)
 - [P2-A descriptor registry baseline](P2-A-registry-baseline.md)
 - [P2-B definition envelope baseline](P2-B-definition-envelope.md)
+- [P3-A skill document model baseline](P3-A-skill-document-model.md)
