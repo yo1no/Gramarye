@@ -26,7 +26,7 @@ Payload migration may change only payload data and the transient envelope schema
 
 ## Candidate boundary and startup audit
 
-`ResolvedSkillCandidate` is immutable and non-persistent. It contains `SkillReference`, position-derived nodes, the storage-level `AppearanceDocument`, the exact `SkillDocumentReadReport`, and the merged `PipelineFactReport`. Each node carries its Trigger/Action resolution and `AppearanceOverrideDocument`. It has no Codec, writer, execution API, validation projection, or profile availability state.
+`ResolvedSkillCandidate` is immutable and non-persistent. It carries the source `SkillDocument.schemaVersion()` as `skillSchemaVersion`, plus `SkillReference`, position-derived nodes, the storage-level `AppearanceDocument`, the exact `SkillDocumentReadReport`, and the merged `PipelineFactReport`. This source value is not a current-version constant, migration version, registry generation, Codec field, or persistence truth. Each node carries its Trigger/Action resolution and `AppearanceOverrideDocument`. The candidate has no Codec, writer, execution API, validation projection, or profile availability state.
 
 After custom registry registration has completed, common setup audits Trigger and Action descriptor payload-plan coverage plus the skill-level plan against their current schema versions. Invalid coverage is a developer wiring error and fails server startup with a bounded machine-readable code. Empty registries and empty plans are valid while all current schemas are zero.
 

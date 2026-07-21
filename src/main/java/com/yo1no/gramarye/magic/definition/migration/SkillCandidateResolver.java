@@ -109,6 +109,7 @@ public final class SkillCandidateResolver {
                     node.appearanceOverride()));
         }
         return new ResolvedSkillCandidate(
+                document.schemaVersion(),
                 new SkillReference(document.skillId(), document.revision()),
                 nodes,
                 document.appearance(),

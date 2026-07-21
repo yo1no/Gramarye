@@ -9,12 +9,16 @@ import java.util.Objects;
 
 /** Immutable, non-persistent result of attempting resolution for every document node. */
 public record ResolvedSkillCandidate(
+        int skillSchemaVersion,
         SkillReference skill,
         List<ResolvedNodeCandidate> nodes,
         AppearanceDocument appearance,
         SkillDocumentReadReport readReport,
         PipelineFactReport pipelineFacts) {
     public ResolvedSkillCandidate {
+        if (skillSchemaVersion < 0) {
+            throw new IllegalArgumentException("skillSchemaVersion must be non-negative");
+        }
         Objects.requireNonNull(skill, "skill");
         nodes = List.copyOf(Objects.requireNonNull(nodes, "nodes"));
         Objects.requireNonNull(appearance, "appearance");

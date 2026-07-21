@@ -17,6 +17,7 @@ import com.mojang.serialization.JsonOps;
 import com.yo1no.gramarye.magic.definition.action.ResolvedActionDefinition;
 import com.yo1no.gramarye.magic.definition.document.NodeDocument;
 import com.yo1no.gramarye.magic.definition.document.SkillDocument;
+import com.yo1no.gramarye.magic.definition.document.SkillDocumentWriter;
 import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
 import com.yo1no.gramarye.magic.definition.envelope.DefinitionFailure;
 import com.yo1no.gramarye.magic.definition.resolution.ActionResolution;
@@ -74,9 +75,42 @@ class SkillCandidateResolverTest {
         assertEquals(1, actionDecodeCalls.get());
         assertEquals(0, triggerDescriptor.validationCalls());
         assertEquals(0, actionDescriptor.validationCalls());
+        assertEquals(0, candidate.skillSchemaVersion());
         assertEquals(0, node.nodeIndex());
         assertSame(EMPTY_READ_REPORT, candidate.readReport());
         assertSame(document.appearance(), candidate.appearance());
+    }
+
+    @Test
+    void candidatePreservesNonCurrentSourceSchemaVersionWithoutChangingDocumentPersistence() {
+        var schemaZero = P3B2TestFixtures.document(
+                P3B2TestFixtures.envelope(P3B2TestFixtures.UNKNOWN_TRIGGER_ID, 0, 1),
+                P3B2TestFixtures.envelope(P3B2TestFixtures.UNKNOWN_ACTION_ID, 0, 2));
+        var document = new SkillDocument(
+                5,
+                schemaZero.skillId(),
+                schemaZero.revision(),
+                schemaZero.nodes(),
+                schemaZero.appearance());
+        var before = SkillDocumentWriter.write(document, JsonOps.INSTANCE).getOrThrow();
+
+        var candidate = new SkillCandidateResolver(
+                        new P3B2TestFixtures.CountingTriggerLookup(),
+                        new P3B2TestFixtures.CountingActionLookup(),
+                        SkillMigrationPlan.empty())
+                .resolve(document, EMPTY_READ_REPORT);
+        var after = SkillDocumentWriter.write(document, JsonOps.INSTANCE).getOrThrow();
+
+        assertEquals(5, candidate.skillSchemaVersion());
+        assertEquals(5, document.schemaVersion());
+        assertEquals(before, after);
+        assertEquals(5, after.getAsJsonObject().get("schema_version").getAsInt());
+        assertFalse(after.getAsJsonObject().has("skill_schema_version"));
+        assertFalse(after.getAsJsonObject().has("skillSchemaVersion"));
+        assertFalse(hasMethodNamed(ResolvedSkillCandidate.class, "setSkillSchemaVersion"));
+        assertFalse(hasMethodNamed(ResolvedSkillCandidate.class, "currentSchemaVersion"));
+        assertFalse(hasMethodNamed(ResolvedSkillCandidate.class, "latestSchemaVersion"));
+        assertFalse(hasMethodNamed(ResolvedSkillCandidate.class, "migrationVersion"));
     }
 
     @Test
