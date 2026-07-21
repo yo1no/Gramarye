@@ -18,3 +18,4 @@ Implementation guidance is provided by the [Codex implementation contract](../co
 - [P2-A descriptor registry baseline](P2-A-registry-baseline.md)
 - [P2-B definition envelope baseline](P2-B-definition-envelope.md)
 - [P3-A skill document model baseline](P3-A-skill-document-model.md)
+- [P3-B1 skill migration boundary](P3-B1-skill-migration.md)

@@ -16,7 +16,8 @@ public record MagicPolicyLimits(
         int maxUnparsedAppearanceDepth,
         int maxUnparsedAppearanceNodes,
         int maxSkillDocumentDepth,
-        int maxSkillDocumentBytes) {
+        int maxSkillDocumentBytes,
+        int maxSkillDocumentTreeNodes) {
     public static final MagicPolicyLimits DEFAULTS = new MagicPolicyLimits(
             64, // Provisional node policy default; not final gameplay balance.
             256, // Provisional string policy default; not final content sizing.
@@ -27,7 +28,8 @@ public record MagicPolicyLimits(
             MagicSafetyCeilings.DEFAULT_UNPARSED_APPEARANCE_DEPTH,
             MagicSafetyCeilings.DEFAULT_UNPARSED_APPEARANCE_NODES,
             MagicSafetyCeilings.DEFAULT_SKILL_DOCUMENT_DEPTH,
-            MagicSafetyCeilings.DEFAULT_SKILL_DOCUMENT_BYTES);
+            MagicSafetyCeilings.DEFAULT_SKILL_DOCUMENT_BYTES,
+            MagicSafetyCeilings.DEFAULT_SKILL_DOCUMENT_TREE_NODES);
 
     public MagicPolicyLimits {
         requireWithinCeiling("maxNodes", maxNodes, MagicSafetyCeilings.MAX_NODES);
@@ -55,6 +57,10 @@ public record MagicPolicyLimits(
                 "maxSkillDocumentBytes",
                 maxSkillDocumentBytes,
                 MagicSafetyCeilings.MAX_SKILL_DOCUMENT_BYTES);
+        requireWithinCeiling(
+                "maxSkillDocumentTreeNodes",
+                maxSkillDocumentTreeNodes,
+                MagicSafetyCeilings.MAX_SKILL_DOCUMENT_TREE_NODES);
     }
 
     private static void requireWithinCeiling(String name, int value, int ceiling) {

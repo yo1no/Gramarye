@@ -1,14 +1,11 @@
 package com.yo1no.gramarye.magic.definition.document;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.Dynamic;
 import com.mojang.serialization.DynamicOps;
+import com.yo1no.gramarye.magic.definition.tree.DynamicTreeBounds;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
-import net.minecraft.nbt.CollectionTag;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 
 final class DynamicTreeSupport {
@@ -39,14 +36,13 @@ final class DynamicTreeSupport {
     }
 
     static BoundsResult checkBounds(Dynamic<?> dynamic, int maxDepth, long maxNodes) {
-        var value = dynamic.getValue();
-        if (value instanceof JsonElement json) {
-            return checkJson(json, 1, maxDepth, new NodeBudget(maxNodes));
-        }
-        if (value instanceof Tag tag) {
-            return checkNbt(tag, 1, maxDepth, new NodeBudget(maxNodes));
-        }
-        return BoundsResult.UNSUPPORTED;
+        return switch (DynamicTreeBounds.check(dynamic, maxDepth, maxNodes)) {
+            case WITHIN_LIMITS -> BoundsResult.WITHIN_LIMITS;
+            case DEPTH_EXCEEDED -> BoundsResult.DEPTH_EXCEEDED;
+            case NODE_COUNT_EXCEEDED -> BoundsResult.NODE_COUNT_EXCEEDED;
+            case KEY_LENGTH_EXCEEDED -> BoundsResult.KEY_LENGTH_EXCEEDED;
+            case UNSUPPORTED -> BoundsResult.UNSUPPORTED;
+        };
     }
 
     static boolean isNull(Dynamic<?> dynamic) {
@@ -63,76 +59,11 @@ final class DynamicTreeSupport {
                 : diagnostic.substring(0, MagicSafetyCeilings.MAX_STRING_LENGTH);
     }
 
-    private static BoundsResult checkJson(JsonElement value, int depth, int maxDepth, NodeBudget budget) {
-        var status = budget.visit(depth, maxDepth);
-        if (status != BoundsResult.WITHIN_LIMITS) {
-            return status;
-        }
-        if (value instanceof JsonObject object) {
-            for (var entry : object.entrySet()) {
-                status = checkJson(entry.getValue(), depth + 1, maxDepth, budget);
-                if (status != BoundsResult.WITHIN_LIMITS) {
-                    return status;
-                }
-            }
-        } else if (value instanceof JsonArray array) {
-            for (var element : array) {
-                status = checkJson(element, depth + 1, maxDepth, budget);
-                if (status != BoundsResult.WITHIN_LIMITS) {
-                    return status;
-                }
-            }
-        }
-        return BoundsResult.WITHIN_LIMITS;
-    }
-
-    private static BoundsResult checkNbt(Tag value, int depth, int maxDepth, NodeBudget budget) {
-        var status = budget.visit(depth, maxDepth);
-        if (status != BoundsResult.WITHIN_LIMITS) {
-            return status;
-        }
-        if (value instanceof CompoundTag compound) {
-            for (var key : compound.getAllKeys()) {
-                var child = compound.get(key);
-                if (child != null) {
-                    status = checkNbt(child, depth + 1, maxDepth, budget);
-                    if (status != BoundsResult.WITHIN_LIMITS) {
-                        return status;
-                    }
-                }
-            }
-        } else if (value instanceof CollectionTag<?> collection) {
-            for (var child : collection) {
-                status = checkNbt(child, depth + 1, maxDepth, budget);
-                if (status != BoundsResult.WITHIN_LIMITS) {
-                    return status;
-                }
-            }
-        }
-        return BoundsResult.WITHIN_LIMITS;
-    }
-
     enum BoundsResult {
         WITHIN_LIMITS,
         DEPTH_EXCEEDED,
         NODE_COUNT_EXCEEDED,
+        KEY_LENGTH_EXCEEDED,
         UNSUPPORTED
-    }
-
-    private static final class NodeBudget {
-        private final long maximum;
-        private long visited;
-
-        private NodeBudget(long maximum) {
-            this.maximum = maximum;
-        }
-
-        private BoundsResult visit(int depth, int maxDepth) {
-            if (depth > maxDepth) {
-                return BoundsResult.DEPTH_EXCEEDED;
-            }
-            visited++;
-            return visited > maximum ? BoundsResult.NODE_COUNT_EXCEEDED : BoundsResult.WITHIN_LIMITS;
-        }
     }
 }

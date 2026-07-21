@@ -51,6 +51,15 @@ public final class MagicSafetyCeilings {
     /** Technical ceiling for non-persistent normalization facts from one tolerant read. */
     public static final int MAX_READ_REPORT_FACTS = 1_024;
 
+    /** Technical ceiling for non-persistent facts emitted by one definition pipeline run. */
+    public static final int MAX_PIPELINE_FACTS = 1_024;
+
+    /** Technical parsed-tree proxy ceiling for values in one skill document or draft. */
+    public static final int MAX_SKILL_DOCUMENT_TREE_NODES = 65_536;
+
+    /** Provisional server policy default for parsed values in one skill document or draft. */
+    public static final int DEFAULT_SKILL_DOCUMENT_TREE_NODES = 16_384;
+
     private MagicSafetyCeilings() {
     }
 }

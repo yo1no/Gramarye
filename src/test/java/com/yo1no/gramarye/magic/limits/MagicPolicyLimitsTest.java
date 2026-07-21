@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class MagicPolicyLimitsTest {
     @Test
     void acceptsPolicyValuesWithinEveryHardCeiling() {
-        var limits = limits(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        var limits = limits(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
 
         assertAll(
                 () -> assertEquals(1, limits.maxNodes()),
@@ -22,52 +22,34 @@ class MagicPolicyLimitsTest {
                 () -> assertEquals(7, limits.maxUnparsedAppearanceDepth()),
                 () -> assertEquals(8, limits.maxUnparsedAppearanceNodes()),
                 () -> assertEquals(9, limits.maxSkillDocumentDepth()),
-                () -> assertEquals(10, limits.maxSkillDocumentBytes()));
+                () -> assertEquals(10, limits.maxSkillDocumentBytes()),
+                () -> assertEquals(11, limits.maxSkillDocumentTreeNodes()));
     }
 
     @Test
     void rejectsZeroPolicyValues() {
-        assertAll(
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(0, 1, 1, 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 0, 1, 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 0, 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 0, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 0, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 0, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 0, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 0, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 1, 0, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 1, 1, 0)));
+        assertEachInvalidValue(0);
     }
 
     @Test
     void rejectsNegativePolicyValues() {
-        assertAll(
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(-1, 1, 1, 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, -1, 1, 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, -1, 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, -1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, -1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, -1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, -1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, -1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 1, -1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 1, 1, -1)));
+        assertEachInvalidValue(-1);
     }
 
     @Test
     void rejectsPolicyValuesAboveTheirHardCeilings() {
         assertAll(
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(MagicSafetyCeilings.MAX_NODES + 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, MagicSafetyCeilings.MAX_STRING_LENGTH + 1, 1, 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, MagicSafetyCeilings.MAX_RAW_PAYLOAD_BYTES + 1, 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, MagicSafetyCeilings.MAX_RUNTIME_TAGS + 1, 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, MagicSafetyCeilings.MAX_VISITED_TARGETS + 1, 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_APPEARANCE_INTENSITY + 1, 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_UNPARSED_APPEARANCE_DEPTH + 1, 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_UNPARSED_APPEARANCE_NODES + 1, 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_SKILL_DOCUMENT_DEPTH + 1, 1)),
-                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_SKILL_DOCUMENT_BYTES + 1)));
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(MagicSafetyCeilings.MAX_NODES + 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, MagicSafetyCeilings.MAX_STRING_LENGTH + 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, MagicSafetyCeilings.MAX_RAW_PAYLOAD_BYTES + 1, 1, 1, 1, 1, 1, 1, 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, MagicSafetyCeilings.MAX_RUNTIME_TAGS + 1, 1, 1, 1, 1, 1, 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, MagicSafetyCeilings.MAX_VISITED_TARGETS + 1, 1, 1, 1, 1, 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_APPEARANCE_INTENSITY + 1, 1, 1, 1, 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_UNPARSED_APPEARANCE_DEPTH + 1, 1, 1, 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_UNPARSED_APPEARANCE_NODES + 1, 1, 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_SKILL_DOCUMENT_DEPTH + 1, 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_SKILL_DOCUMENT_BYTES + 1, 1)),
+                () -> assertThrows(IllegalArgumentException.class, () -> limits(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, MagicSafetyCeilings.MAX_SKILL_DOCUMENT_TREE_NODES + 1)));
     }
 
     @Test
@@ -93,12 +75,23 @@ class MagicPolicyLimitsTest {
                 () -> assertTrue(defaults.maxSkillDocumentDepth() > 0
                         && defaults.maxSkillDocumentDepth() <= MagicSafetyCeilings.MAX_SKILL_DOCUMENT_DEPTH),
                 () -> assertTrue(defaults.maxSkillDocumentBytes() > 0
-                        && defaults.maxSkillDocumentBytes() <= MagicSafetyCeilings.MAX_SKILL_DOCUMENT_BYTES));
+                        && defaults.maxSkillDocumentBytes() <= MagicSafetyCeilings.MAX_SKILL_DOCUMENT_BYTES),
+                () -> assertTrue(defaults.maxSkillDocumentTreeNodes() > 0
+                        && defaults.maxSkillDocumentTreeNodes()
+                                <= MagicSafetyCeilings.MAX_SKILL_DOCUMENT_TREE_NODES));
     }
 
     private static MagicPolicyLimits limits(int... values) {
         return new MagicPolicyLimits(
                 values[0], values[1], values[2], values[3], values[4],
-                values[5], values[6], values[7], values[8], values[9]);
+                values[5], values[6], values[7], values[8], values[9], values[10]);
+    }
+
+    private static void assertEachInvalidValue(int invalidValue) {
+        for (var index = 0; index < 11; index++) {
+            var values = new int[] {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+            values[index] = invalidValue;
+            assertThrows(IllegalArgumentException.class, () -> limits(values));
+        }
     }
 }

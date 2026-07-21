@@ -79,7 +79,8 @@ final class AppearanceStorageCodec {
             return DataResult.success(new AppearanceDocument.Rejected(
                     AppearanceRejectionCode.NODE_LIMIT_EXCEEDED));
         }
-        if (bounds == DynamicTreeSupport.BoundsResult.UNSUPPORTED) {
+        if (bounds == DynamicTreeSupport.BoundsResult.UNSUPPORTED
+                || bounds == DynamicTreeSupport.BoundsResult.KEY_LENGTH_EXCEEDED) {
             return DataResult.error(() -> "Unsupported appearance Dynamic representation");
         }
 
@@ -112,7 +113,8 @@ final class AppearanceStorageCodec {
             return DataResult.success(new AppearanceOverrideDocument.Rejected(
                     AppearanceRejectionCode.NODE_LIMIT_EXCEEDED));
         }
-        if (bounds == DynamicTreeSupport.BoundsResult.UNSUPPORTED) {
+        if (bounds == DynamicTreeSupport.BoundsResult.UNSUPPORTED
+                || bounds == DynamicTreeSupport.BoundsResult.KEY_LENGTH_EXCEEDED) {
             return DataResult.error(() -> "Unsupported appearance override Dynamic representation");
         }
 
