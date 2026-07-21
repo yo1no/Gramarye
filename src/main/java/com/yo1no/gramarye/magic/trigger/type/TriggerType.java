@@ -2,6 +2,7 @@ package com.yo1no.gramarye.magic.trigger.type;
 
 import com.mojang.serialization.MapCodec;
 import com.yo1no.gramarye.magic.capability.TriggerCapabilities;
+import com.yo1no.gramarye.magic.definition.migration.PayloadMigrationPlan;
 import com.yo1no.gramarye.magic.validation.ValidationContext;
 import com.yo1no.gramarye.magic.validation.ValidationResult;
 
@@ -18,6 +19,11 @@ public interface TriggerType<P extends TriggerPayload> {
      * <p>The value must be non-negative and is independent of skill revisions.</p>
      */
     int currentPayloadSchemaVersion();
+
+    /** Returns this descriptor's immutable adjacent payload-schema migration plan. */
+    default PayloadMigrationPlan payloadMigrationPlan() {
+        return PayloadMigrationPlan.empty();
+    }
 
     MapCodec<P> payloadCodec();
 

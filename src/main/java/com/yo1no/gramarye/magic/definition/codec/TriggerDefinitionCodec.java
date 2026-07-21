@@ -50,12 +50,15 @@ public final class TriggerDefinitionCodec {
         if (descriptor.isEmpty()) {
             return unknown(envelope, Code.UNKNOWN_TYPE, "Unknown trigger type: " + envelope.typeId());
         }
-        return resolveKnown(envelope, descriptor.orElseThrow());
+        return decodeWithDescriptor(envelope, descriptor.orElseThrow());
     }
 
-    private static <P extends TriggerPayload> TriggerDefinition resolveKnown(
+    /** Decodes with an already-resolved descriptor; it performs no lookup or migration. */
+    public static <P extends TriggerPayload> TriggerDefinition decodeWithDescriptor(
             DefinitionEnvelope envelope,
             TriggerType<P> descriptor) {
+        Objects.requireNonNull(envelope, "envelope");
+        Objects.requireNonNull(descriptor, "descriptor");
         try {
             var currentSchemaVersion = descriptor.currentPayloadSchemaVersion();
             if (currentSchemaVersion < 0) {

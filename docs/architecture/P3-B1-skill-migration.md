@@ -14,7 +14,7 @@ The schema probe reads only root `schema_version`. The root must be a map/compou
 
 ## Adjacent migration plan
 
-`SkillMigrationPlan` is an immutable set of unique adjacent edges `N -> N+1`; under those constraints a cycle is structurally impossible. `verifyCoverage(currentVersion)` verifies exact continuous coverage of `0..currentVersion-1`. The plan may be empty for current schema zero. Startup wiring of coverage verification is deferred to the B2+ pipeline integration, and no production dummy step is registered.
+`SkillMigrationPlan` is an immutable set of unique adjacent edges `N -> N+1`; under those constraints a cycle is structurally impossible. `verifyCoverage(currentVersion)` verifies exact continuous coverage of `0..currentVersion-1`. The plan may be empty for current schema zero. P3-B2 wires this coverage check into the post-registration common-setup audit; no production dummy step is registered.
 
 Each step receives a defensive tree copy and returns only a migrated tree. The orchestrator owns all facts. A `DataResult` partial is a failure and is never promoted. After every successful step, the orchestrator checks exact `DynamicOps` instance identity, captures a new bounded snapshot, and probes the required output version. Losing a `RegistryOps` wrapper or replacing the ops instance fails with `STEP_CHANGED_DYNAMIC_OPS`; matching only the JSON/NBT family is insufficient.
 
@@ -32,4 +32,4 @@ Migration failures are non-persistent and machine-readable. They may retain boun
 
 ## B2 integration point
 
-P3-B1 stops at a current-schema raw snapshot. It does not invoke the P3-A tolerant reader, descriptor lookup, payload migration, resolution or validation. B2 orchestration will consume a successful migrated snapshot and then invoke the reader at the explicitly defined boundary.
+P3-B1 itself still stops at a current-schema raw snapshot. P3-B2 orchestration now consumes a successful migrated snapshot, invokes the P3-A tolerant reader once, then performs descriptor lookup, payload migration and typed decode. Validation remains outside this boundary.

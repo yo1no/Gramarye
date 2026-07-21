@@ -16,6 +16,8 @@
 
 實際 persistence load、import 與 repair preview 必須使用 tolerant `SkillDocumentReader`／`SkillDraftReader`。Reader 處理 legacy `null`、exact-integral intensity clamp、未知 appearance 欄位忽略、whole-blob `Unparsed`、over-hard `Rejected` 與非持久化 read facts。P3-A facts 只是 provenance；P3-B 才把它們轉成 bounded warning。
 
+`SkillDocumentReadFailure` 是 raw orchestration 使用的最小 typed Reader failure boundary。它只保存 machine-readable `READER_REJECTED_INPUT`，從 `DataResult` 轉換時不讀取或保存 DFU message、raw tree、exception 或 stack trace。P3-B2 已在 `ResolvedSkillCandidate` 存在後建立完整 `SkillResolutionResult`，沒有使用 placeholder、`Object` 或無意義的泛型 wrapper。
+
 `SkillDocumentWriter`／`SkillDraftWriter` 對 `Default`／`Decoded` 輸出 canonical shape。`Unparsed` 只可無損寫回相同 value family：JSON→JSON 或 NBT→NBT；跨 family 回傳無 partial 的 `DataResult.error`。`Rejected` 不保存 raw，top appearance 寫成 `{}`，node override 省略。
 
 ## Appearance shape

@@ -9,6 +9,15 @@ final class PipelineFactCollector {
     private final List<SkillMigrationFact> facts = new ArrayList<>();
     private boolean truncated;
 
+    PipelineFactCollector() {
+    }
+
+    PipelineFactCollector(PipelineFactReport initialReport) {
+        Objects.requireNonNull(initialReport, "initialReport");
+        facts.addAll(initialReport.facts());
+        truncated = initialReport.truncated();
+    }
+
     void add(SkillMigrationFact fact) {
         Objects.requireNonNull(fact, "fact");
         if (facts.size() < MagicSafetyCeilings.MAX_PIPELINE_FACTS) {

@@ -50,12 +50,15 @@ public final class ActionDefinitionCodec {
         if (descriptor.isEmpty()) {
             return unknown(envelope, Code.UNKNOWN_TYPE, "Unknown action type: " + envelope.typeId());
         }
-        return resolveKnown(envelope, descriptor.orElseThrow());
+        return decodeWithDescriptor(envelope, descriptor.orElseThrow());
     }
 
-    private static <P extends ActionPayload> ActionDefinition resolveKnown(
+    /** Decodes with an already-resolved descriptor; it performs no lookup or migration. */
+    public static <P extends ActionPayload> ActionDefinition decodeWithDescriptor(
             DefinitionEnvelope envelope,
             ActionType<P> descriptor) {
+        Objects.requireNonNull(envelope, "envelope");
+        Objects.requireNonNull(descriptor, "descriptor");
         try {
             var currentSchemaVersion = descriptor.currentPayloadSchemaVersion();
             if (currentSchemaVersion < 0) {

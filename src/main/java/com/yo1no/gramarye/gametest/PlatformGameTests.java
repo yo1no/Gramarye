@@ -12,6 +12,8 @@ import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
 import com.yo1no.gramarye.magic.definition.envelope.DefinitionFailure;
 import com.yo1no.gramarye.magic.definition.lookup.RegistryActionTypeLookup;
 import com.yo1no.gramarye.magic.definition.lookup.RegistryTriggerTypeLookup;
+import com.yo1no.gramarye.magic.definition.migration.DescriptorMigrationAudit;
+import com.yo1no.gramarye.magic.definition.migration.SkillMigrationPlan;
 import com.yo1no.gramarye.magic.definition.trigger.UnknownTriggerDefinition;
 import net.minecraft.core.DefaultedRegistry;
 import net.minecraft.core.Registry;
@@ -75,6 +77,18 @@ public final class PlatformGameTests {
                 action instanceof UnknownActionDefinition unknown
                         && unknown.failure().code() == DefinitionFailure.Code.UNKNOWN_TYPE,
                 "Missing action type must resolve to UnknownActionDefinition");
+        helper.succeed();
+    }
+
+    @GameTest(templateNamespace = "minecraft", template = "bastion/blocks/air", timeoutTicks = 20)
+    public static void descriptorMigrationCoverageAuditPassesAfterRegistryFreeze(GameTestHelper helper) {
+        var failure = DescriptorMigrationAudit.audit(
+                MagicRegistries.triggerTypeRegistry(),
+                MagicRegistries.actionTypeRegistry(),
+                SkillMigrationPlan.empty());
+        helper.assertTrue(
+                failure.isEmpty(),
+                "Production descriptor and skill migration plans must cover their current schemas");
         helper.succeed();
     }
 
