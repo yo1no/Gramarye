@@ -26,6 +26,9 @@ import com.yo1no.gramarye.magic.trigger.type.TriggerPayload;
 import com.yo1no.gramarye.magic.trigger.type.TriggerType;
 import com.yo1no.gramarye.magic.validation.ValidationContext;
 import com.yo1no.gramarye.magic.validation.ValidationIssue;
+import com.yo1no.gramarye.magic.validation.ValidationIssueCode;
+import com.yo1no.gramarye.magic.validation.ValidationIssueMetadata;
+import com.yo1no.gramarye.magic.validation.ValidationPath;
 import com.yo1no.gramarye.magic.validation.ValidationResult;
 import com.yo1no.gramarye.magic.validation.ValidationSeverity;
 import java.util.Arrays;
@@ -133,17 +136,17 @@ class TypeDescriptorTest {
         public ValidationResult validate(TestTriggerPayload payload, ValidationContext context) {
             if (payload.threshold() == 0) {
                 return ValidationResult.of(new ValidationIssue(
-                        "test.trigger.zero_threshold",
+                        ValidationIssueCode.fromNamespaceAndPath("gramarye", "test.trigger.zero_threshold"),
                         ValidationSeverity.WARNING,
-                        "$.threshold",
-                        "A zero threshold is accepted with a warning"));
+                        ValidationPath.empty().field("threshold"),
+                        ValidationIssueMetadata.none()));
             }
             if (payload.threshold() < 0) {
                 return ValidationResult.of(new ValidationIssue(
-                        "test.trigger.negative_threshold",
+                        ValidationIssueCode.fromNamespaceAndPath("gramarye", "test.trigger.negative_threshold"),
                         ValidationSeverity.ERROR,
-                        "$.threshold",
-                        "Threshold must not be negative"));
+                        ValidationPath.empty().field("threshold"),
+                        ValidationIssueMetadata.none()));
             }
             return ValidationResult.valid();
         }
@@ -186,10 +189,10 @@ class TypeDescriptorTest {
         public ValidationResult validate(TestActionPayload payload, ValidationContext context) {
             if (payload.strength() < 0) {
                 return ValidationResult.of(new ValidationIssue(
-                        "test.action.negative_strength",
+                        ValidationIssueCode.fromNamespaceAndPath("gramarye", "test.action.negative_strength"),
                         ValidationSeverity.ERROR,
-                        "$.strength",
-                        "Strength must not be negative"));
+                        ValidationPath.empty().field("strength"),
+                        ValidationIssueMetadata.none()));
             }
             return ValidationResult.valid();
         }

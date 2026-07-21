@@ -54,6 +54,12 @@ public final class MagicSafetyCeilings {
     /** Technical ceiling for non-persistent facts emitted by one definition pipeline run. */
     public static final int MAX_PIPELINE_FACTS = 1_024;
 
+    /** Technical ceiling for segments in one machine-readable validation path. */
+    public static final int MAX_VALIDATION_PATH_SEGMENTS = 64;
+
+    /** Technical ceiling for retained issues in one non-persistent validation result. */
+    public static final int MAX_VALIDATION_ISSUES = 1_024;
+
     /** Technical parsed-tree proxy ceiling for values in one skill document or draft. */
     public static final int MAX_SKILL_DOCUMENT_TREE_NODES = 65_536;
 

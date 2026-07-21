@@ -2,22 +2,16 @@ package com.yo1no.gramarye.magic.validation;
 
 import java.util.Objects;
 
+/** Immutable, bounded and machine-readable description of one validation finding. */
 public record ValidationIssue(
-        String code,
+        ValidationIssueCode code,
         ValidationSeverity severity,
-        String path,
-        String message) {
+        ValidationPath path,
+        ValidationIssueMetadata metadata) {
     public ValidationIssue {
-        requireNonBlank(code, "code");
+        Objects.requireNonNull(code, "code");
         Objects.requireNonNull(severity, "severity");
-        requireNonBlank(path, "path");
-        requireNonBlank(message, "message");
-    }
-
-    private static void requireNonBlank(String value, String name) {
-        Objects.requireNonNull(value, name);
-        if (value.isBlank()) {
-            throw new IllegalArgumentException(name + " must not be blank");
-        }
+        Objects.requireNonNull(path, "path");
+        Objects.requireNonNull(metadata, "metadata");
     }
 }

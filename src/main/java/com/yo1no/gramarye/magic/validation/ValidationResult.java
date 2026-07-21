@@ -1,14 +1,28 @@
 package com.yo1no.gramarye.magic.validation;
 
-import java.util.ArrayList;
+import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 
-public record ValidationResult(List<ValidationIssue> issues) {
-    private static final ValidationResult VALID = new ValidationResult(List.of());
+/** Immutable bounded aggregate of validation issues and truncation state. */
+public record ValidationResult(
+        List<ValidationIssue> issues,
+        boolean truncated,
+        boolean omittedError) {
+    private static final ValidationResult VALID = new ValidationResult(List.of(), false, false);
 
     public ValidationResult {
         issues = List.copyOf(Objects.requireNonNull(issues, "issues"));
+        if (issues.size() > MagicSafetyCeilings.MAX_VALIDATION_ISSUES) {
+            throw new IllegalArgumentException("issues exceeds the validation issue ceiling");
+        }
+        if (new HashSet<>(issues).size() != issues.size()) {
+            throw new IllegalArgumentException("issues must not contain exact duplicates");
+        }
+        if (omittedError && !truncated) {
+            throw new IllegalArgumentException("omittedError requires truncated");
+        }
     }
 
     public static ValidationResult valid() {
@@ -16,7 +30,7 @@ public record ValidationResult(List<ValidationIssue> issues) {
     }
 
     public static ValidationResult of(ValidationIssue issue) {
-        return new ValidationResult(List.of(Objects.requireNonNull(issue, "issue")));
+        return new ValidationResult(List.of(Objects.requireNonNull(issue, "issue")), false, false);
     }
 
     public boolean isValid() {
@@ -24,7 +38,8 @@ public record ValidationResult(List<ValidationIssue> issues) {
     }
 
     public boolean hasErrors() {
-        return issues.stream().anyMatch(issue -> issue.severity() == ValidationSeverity.ERROR);
+        return omittedError
+                || issues.stream().anyMatch(issue -> issue.severity() == ValidationSeverity.ERROR);
     }
 
     public List<ValidationIssue> errors() {
@@ -40,17 +55,9 @@ public record ValidationResult(List<ValidationIssue> issues) {
     }
 
     public ValidationResult merge(ValidationResult other) {
-        Objects.requireNonNull(other, "other");
-        if (issues.isEmpty()) {
-            return other;
-        }
-        if (other.issues.isEmpty()) {
-            return this;
-        }
-
-        var mergedIssues = new ArrayList<ValidationIssue>(issues.size() + other.issues.size());
-        mergedIssues.addAll(issues);
-        mergedIssues.addAll(other.issues);
-        return new ValidationResult(mergedIssues);
+        return new ValidationCollector()
+                .add(this)
+                .add(Objects.requireNonNull(other, "other"))
+                .result();
     }
 }
