@@ -58,7 +58,9 @@ class TypeDescriptorTest {
                 () -> assertFalse(Arrays.stream(TriggerType.class.getMethods())
                         .anyMatch(method -> method.getName().equals("id"))),
                 () -> assertFalse(Arrays.stream(ActionType.class.getMethods())
-                        .anyMatch(method -> method.getName().equals("id"))));
+                        .anyMatch(method -> method.getName().equals("id"))),
+                () -> assertTrue(TestTriggerDescriptor.INSTANCE.payloadInspector().isEmpty()),
+                () -> assertTrue(TestActionDescriptor.INSTANCE.payloadInspector().isEmpty()));
     }
 
     @Test

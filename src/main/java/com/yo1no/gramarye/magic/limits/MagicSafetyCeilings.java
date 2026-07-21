@@ -57,6 +57,25 @@ public final class MagicSafetyCeilings {
     /** Technical ceiling for segments in one machine-readable validation path. */
     public static final int MAX_VALIDATION_PATH_SEGMENTS = 64;
 
+    /** Segments reserved for the future nodes[index].side.payload validation prefix. */
+    public static final int VALIDATION_PATH_PREFIX_RESERVED_SEGMENTS = 8;
+
+    /** Characters reserved for the future nodes[index].side.payload validation prefix. */
+    public static final int VALIDATION_PATH_PREFIX_RESERVED_CHARACTERS = 64;
+
+    /** Technical ceiling for payload-relative path segments emitted by an inspector. */
+    public static final int MAX_INSPECTOR_RELATIVE_PATH_SEGMENTS = requirePositive(
+            "MAX_INSPECTOR_RELATIVE_PATH_SEGMENTS",
+            MAX_VALIDATION_PATH_SEGMENTS - VALIDATION_PATH_PREFIX_RESERVED_SEGMENTS);
+
+    /** Technical ceiling for a rendered payload-relative path emitted by an inspector. */
+    public static final int MAX_INSPECTOR_RELATIVE_PATH_RENDER_LENGTH = requirePositive(
+            "MAX_INSPECTOR_RELATIVE_PATH_RENDER_LENGTH",
+            MAX_STRING_LENGTH - VALIDATION_PATH_PREFIX_RESERVED_CHARACTERS);
+
+    /** Technical ceiling for node references emitted by one Trigger or Action inspector side. */
+    public static final int MAX_INSPECTED_REFERENCES_PER_SIDE = 1_024;
+
     /** Technical ceiling for retained issues in one non-persistent validation result. */
     public static final int MAX_VALIDATION_ISSUES = 1_024;
 
@@ -67,5 +86,12 @@ public final class MagicSafetyCeilings {
     public static final int DEFAULT_SKILL_DOCUMENT_TREE_NODES = 16_384;
 
     private MagicSafetyCeilings() {
+    }
+
+    private static int requirePositive(String name, int value) {
+        if (value <= 0) {
+            throw new ExceptionInInitializerError(name + " must be positive");
+        }
+        return value;
     }
 }
