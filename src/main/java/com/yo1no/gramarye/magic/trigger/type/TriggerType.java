@@ -40,5 +40,14 @@ public interface TriggerType<P extends TriggerPayload> {
 
     TriggerCapabilities capabilities();
 
+    /**
+     * Validates this descriptor's typed payload using payload-relative issue paths.
+     *
+     * <p>An empty path denotes the payload root. Implementations must not prepend outer document
+     * segments such as {@code nodes[index]}, {@code trigger}, or {@code payload}, and must not
+     * produce paths that escape the payload root. P3-B3-C orchestration is responsible for adding
+     * the {@code nodes[index].trigger.payload} prefix while preserving the configured path bounds.
+     * The validation context remains pure policy data and contains no runtime state.</p>
+     */
     ValidationResult validate(P payload, ValidationContext context);
 }

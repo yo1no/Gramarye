@@ -3,6 +3,7 @@ package com.yo1no.gramarye.magic.definition.inspection;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,7 +24,7 @@ import org.junit.jupiter.api.Test;
 class PayloadInspectionPrimitivesTest {
     @Test
     void sealedResultRepresentsCompleteSuccessOrExplicitFailureOnly() {
-        var projection = emptyTriggerProjection();
+        var projection = emptyTriggerProjection(false);
         var failure = new PayloadInspectionFailure(
                 ValidationIssueCode.fromNamespaceAndPath("othermod", "payload.invalid_shape"),
                 new ValidationIssueMetadata.Limit(3, 2));
@@ -95,15 +96,48 @@ class PayloadInspectionPrimitivesTest {
         var projection = new TriggerReferenceProjection(
                 SourceSelection.PRIOR_NODE,
                 TargetSelection.CURRENT_TARGET,
+                true,
                 source);
         source.clear();
 
         assertEquals(List.of(first, second), projection.references());
+        assertTrue(projection.providesCurrentTarget());
         assertThrows(UnsupportedOperationException.class, () -> projection.references().clear());
         assertThrows(IllegalArgumentException.class, () -> new TriggerReferenceProjection(
                 SourceSelection.NONE,
                 TargetSelection.NONE,
+                false,
                 Arrays.asList(first, null)));
+    }
+
+    @Test
+    void currentTargetProvisionIsIndependentAndParticipatesInRecordEquality() {
+        var noneThatProvides = new TriggerReferenceProjection(
+                SourceSelection.NONE,
+                TargetSelection.NONE,
+                true,
+                List.of());
+        var currentTargetThatDoesNotProvide = new TriggerReferenceProjection(
+                SourceSelection.NONE,
+                TargetSelection.CURRENT_TARGET,
+                false,
+                List.of());
+        var equalCopy = new TriggerReferenceProjection(
+                SourceSelection.NONE,
+                TargetSelection.NONE,
+                true,
+                List.of());
+        var differentProvision = new TriggerReferenceProjection(
+                SourceSelection.NONE,
+                TargetSelection.NONE,
+                false,
+                List.of());
+
+        assertTrue(noneThatProvides.providesCurrentTarget());
+        assertFalse(currentTargetThatDoesNotProvide.providesCurrentTarget());
+        assertEquals(noneThatProvides, equalCopy);
+        assertEquals(noneThatProvides.hashCode(), equalCopy.hashCode());
+        assertNotEquals(noneThatProvides, differentProvision);
     }
 
     @Test
@@ -113,6 +147,7 @@ class PayloadInspectionPrimitivesTest {
         var trigger = new TriggerReferenceProjection(
                 SourceSelection.PRIOR_NODE,
                 TargetSelection.CURRENT_TARGET,
+                false,
                 exact);
 
         assertEquals(maximum, exact.consumed());
@@ -195,17 +230,19 @@ class PayloadInspectionPrimitivesTest {
     void explicitNoReferenceInspectorCanReturnAnEmptySuccess() {
         var inspector = (com.yo1no.gramarye.magic.trigger.type.TriggerPayloadInspector<
                         InspectionTestFixtures.TriggerData>) payload ->
-                new PayloadInspectionResult.Success<>(emptyTriggerProjection());
+                new PayloadInspectionResult.Success<>(emptyTriggerProjection(false));
 
         var result = inspector.inspect(new InspectionTestFixtures.TriggerData(0));
         var success = assertInstanceOf(PayloadInspectionResult.Success.class, result);
-        assertEquals(emptyTriggerProjection(), success.projection());
+        assertEquals(emptyTriggerProjection(false), success.projection());
     }
 
-    private static TriggerReferenceProjection emptyTriggerProjection() {
+    private static TriggerReferenceProjection emptyTriggerProjection(
+            boolean providesCurrentTarget) {
         return new TriggerReferenceProjection(
                 SourceSelection.NONE,
                 TargetSelection.NONE,
+                providesCurrentTarget,
                 List.of());
     }
 

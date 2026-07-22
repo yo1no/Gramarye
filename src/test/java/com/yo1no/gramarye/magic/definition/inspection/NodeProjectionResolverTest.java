@@ -34,7 +34,7 @@ class NodeProjectionResolverTest {
             order.add("trigger");
             triggerCalls.incrementAndGet();
             assertEquals(7, payload.sourceNode());
-            return new PayloadInspectionResult.Success<>(triggerProjection(reference(
+            return new PayloadInspectionResult.Success<>(triggerProjection(false, reference(
                     payload.sourceNode(), ReferenceRole.SOURCE, "source_node")));
         });
         var actionDescriptor = new InspectionTestFixtures.ActionDescriptor(payload -> {
@@ -61,6 +61,41 @@ class NodeProjectionResolverTest {
         assertEquals(0, triggerDescriptor.payloadCodecCalls());
         assertEquals(0, actionDescriptor.payloadCodecCalls());
         assertSame(candidate, inspected.sourceCandidate());
+    }
+
+    @Test
+    void triggerCurrentTargetProvisionIsPassedThroughWithoutSelectionInference() {
+        var providingProjection = new TriggerReferenceProjection(
+                SourceSelection.NONE,
+                TargetSelection.NONE,
+                true,
+                List.of());
+        var notProvidingProjection = new TriggerReferenceProjection(
+                SourceSelection.NONE,
+                TargetSelection.CURRENT_TARGET,
+                false,
+                List.of());
+        var providesDespiteNoTargetSelection = new InspectionTestFixtures.TriggerDescriptor(
+                payload -> new PayloadInspectionResult.Success<>(providingProjection));
+        var doesNotProvideDespiteCurrentTargetSelection =
+                new InspectionTestFixtures.TriggerDescriptor(
+                        payload -> new PayloadInspectionResult.Success<>(notProvidingProjection));
+
+        var providing = assertInstanceOf(
+                TriggerInspectionState.Success.class,
+                triggerState(providesDespiteNoTargetSelection));
+        var notProviding = assertInstanceOf(
+                TriggerInspectionState.Success.class,
+                triggerState(doesNotProvideDespiteCurrentTargetSelection));
+
+        assertSame(providingProjection, providing.projection());
+        assertEquals(TargetSelection.NONE, providing.projection().targetSelection());
+        assertTrue(providing.projection().providesCurrentTarget());
+        assertSame(notProvidingProjection, notProviding.projection());
+        assertEquals(
+                TargetSelection.CURRENT_TARGET,
+                notProviding.projection().targetSelection());
+        assertFalse(notProviding.projection().providesCurrentTarget());
     }
 
     @Test
@@ -131,6 +166,7 @@ class NodeProjectionResolverTest {
                 new PayloadInspectionResult.Success<>(new TriggerReferenceProjection(
                         SourceSelection.PRIOR_NODE,
                         TargetSelection.CURRENT_TARGET,
+                        false,
                         Arrays.asList(reference(0, ReferenceRole.SOURCE, "source"), null))));
         var nullFailure = new InspectionTestFixtures.ActionDescriptor(payload ->
                 new PayloadInspectionResult.Failure<ActionReferenceProjection>(null));
@@ -150,11 +186,13 @@ class NodeProjectionResolverTest {
                 new PayloadInspectionResult.Success<>(new TriggerReferenceProjection(
                         SourceSelection.PRIOR_NODE,
                         TargetSelection.CURRENT_TARGET,
+                        false,
                         exactReferences)));
         var triggerOver = new InspectionTestFixtures.TriggerDescriptor(payload ->
                 new PayloadInspectionResult.Success<>(new TriggerReferenceProjection(
                         SourceSelection.PRIOR_NODE,
                         TargetSelection.CURRENT_TARGET,
+                        false,
                         overReferences)));
         var actionExact = new InspectionTestFixtures.ActionDescriptor(payload ->
                 new PayloadInspectionResult.Success<>(new ActionReferenceProjection(
@@ -296,7 +334,7 @@ class NodeProjectionResolverTest {
     @Test
     void mixedResolutionStatesNeverContaminateTheOtherSide() {
         var triggerSuccess = new InspectionTestFixtures.TriggerDescriptor(payload ->
-                new PayloadInspectionResult.Success<>(triggerProjection()));
+                new PayloadInspectionResult.Success<>(triggerProjection(false)));
         var actionSuccess = new InspectionTestFixtures.ActionDescriptor(payload ->
                 new PayloadInspectionResult.Success<>(actionProjection(Set.of())));
         var triggerMissing = InspectionTestFixtures.TriggerDescriptor.missingInspector();
@@ -365,7 +403,7 @@ class NodeProjectionResolverTest {
     @Test
     void independentRunsAreStructurallyDeterministic() {
         var trigger = new InspectionTestFixtures.TriggerDescriptor(payload ->
-                new PayloadInspectionResult.Success<>(triggerProjection(reference(
+                new PayloadInspectionResult.Success<>(triggerProjection(true, reference(
                         payload.sourceNode(), ReferenceRole.SOURCE, "source_node"))));
         var action = new InspectionTestFixtures.ActionDescriptor(payload ->
                 new PayloadInspectionResult.Success<>(actionProjection(
@@ -380,6 +418,17 @@ class NodeProjectionResolverTest {
         var second = resolver.inspect(candidate);
 
         assertEquals(first, second);
+        var firstTrigger = assertInstanceOf(
+                TriggerInspectionState.Success.class,
+                first.nodes().getFirst().trigger());
+        var secondTrigger = assertInstanceOf(
+                TriggerInspectionState.Success.class,
+                second.nodes().getFirst().trigger());
+        assertTrue(firstTrigger.projection().providesCurrentTarget());
+        assertTrue(secondTrigger.projection().providesCurrentTarget());
+        assertEquals(
+                firstTrigger.projection().references(),
+                secondTrigger.projection().references());
         var firstAction = assertInstanceOf(
                 ActionInspectionState.Success.class,
                 first.nodes().getFirst().action());
@@ -411,7 +460,7 @@ class NodeProjectionResolverTest {
 
     private static InspectionTestFixtures.TriggerDescriptor pathInspector(ValidationPath path) {
         return new InspectionTestFixtures.TriggerDescriptor(payload ->
-                new PayloadInspectionResult.Success<>(triggerProjection(new NodeReference(
+                new PayloadInspectionResult.Success<>(triggerProjection(false, new NodeReference(
                         0,
                         ReferenceRole.SOURCE,
                         path,
@@ -461,10 +510,13 @@ class NodeProjectionResolverTest {
         return failure;
     }
 
-    private static TriggerReferenceProjection triggerProjection(NodeReference... references) {
+    private static TriggerReferenceProjection triggerProjection(
+            boolean providesCurrentTarget,
+            NodeReference... references) {
         return new TriggerReferenceProjection(
                 SourceSelection.PRIOR_NODE,
                 TargetSelection.CURRENT_TARGET,
+                providesCurrentTarget,
                 List.of(references));
     }
 
