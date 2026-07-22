@@ -32,6 +32,12 @@ public final class ValidationCollector {
         for (var issue : result.issues()) {
             add(issue);
         }
+        return inheritReportState(result);
+    }
+
+    /** Propagates bounded-report state without adding the source report's unprefixed issues. */
+    public ValidationCollector inheritReportState(ValidationResult result) {
+        Objects.requireNonNull(result, "result");
         truncated |= result.truncated();
         omittedError |= result.omittedError();
         return this;
