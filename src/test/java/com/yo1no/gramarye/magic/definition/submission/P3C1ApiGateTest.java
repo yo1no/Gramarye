@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 
 class P3C1ApiGateTest {
     @Test
-    void onlyTheInputAndIssueVocabularyArePublicP3C1Types() {
+    void p3C1TypesRetainTheirVisibilityAfterP3C2AddsItsPublicApi() {
         assertAll(
                 () -> assertTrue(Modifier.isPublic(SkillSubmissionInput.class.getModifiers())),
                 () -> assertTrue(Modifier.isFinal(SkillSubmissionInput.class.getModifiers())),
