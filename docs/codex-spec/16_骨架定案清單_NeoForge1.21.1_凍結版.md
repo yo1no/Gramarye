@@ -77,7 +77,7 @@ DefinitionEnvelope
 - 【決定】migration 失敗時保留原始資料與錯誤，不覆寫原檔。
 - 【決定】寫回新格式前，建立世界／技能資料備份或採原子替換策略。
 - 【決定】技能 revision 永不原地修改；編輯永遠建立新 revision。
-- 【數值範圍】`SkillRevision` 是 `0..Integer.MAX_VALUE` 的非負 `int`，canonical JSON 使用普通整數。配置器達上限必須回傳明確 exhaustion failure，不得 overflow、wrap 或重用 revision。
+- 【數值範圍】`SkillRevision` 是 `0..Integer.MAX_VALUE` 的非負 `int`，canonical JSON 使用普通整數。P3-C 只提出 revision；P3-D 的 Store allocator 達上限必須回傳明確 exhaustion failure，不得 overflow、wrap 或重用 revision。
 
 ## 6. 不可變技能文件儲存庫
 
@@ -89,7 +89,10 @@ DefinitionEnvelope
 - 【刪除語義】玩家刪除技能只移除自己的最新 revision 引用；被進行中技能實例、標記、造物或排程 pin 的 revision 繼續存在。
 - 【決定】舊 revision 只在沒有玩家定義引用、技能實例、標記、造物、排程或其他持久化引用時才可回收。
 - 【決定】回收需以可驗證引用計數或 mark-and-sweep 完成，不靠猜測。
-- 【Draft】`SkillDraft` 是業務上可編輯、Java instance 上不可變的 snapshot；使用 `AppearanceDocument` 與 `AppearanceOverrideDocument`，不建立 `DraftAppearance`。Draft 持有候選 `SkillId`，但 SkillId 鑄造、配置與所有權驗證屬 P3-C。
+- 【提交邊界】P3-C 只根據當下 authoritative snapshot 產生攜帶 owner／principal、Store precondition、proposed document 與 validated definition 的 immutable `SkillSubmissionPlan`；Prepared plan 不等於 committed revision，不寫 Store，也不配置正式 revision。
+- 【配置真相】revision allocation 的 latest truth 是 Store 中該 `SkillId` 已存在的最大 revision，不是玩家 Attachment 的 latest pointer。P3-D 只有在 atomic compare-and-insert 成功時才正式配置 proposed revision；commit 前仍須重新確認 ownership 與 Store state。
+- 【組合服務】P3-D 完成後的 `SkillDefinitionSubmissionService` 依序取得 authoritative identity／state snapshot、呼叫 P3-C prepare、再呼叫 P3-D commit。P3-C 與 P3-D domain API 不依賴 Minecraft `Player`／`ServerPlayer`。
+- 【Draft】`SkillDraft` 是業務上可編輯、Java instance 上不可變的 snapshot；使用 `AppearanceDocument` 與 `AppearanceOverrideDocument`，不建立 `DraftAppearance`。Draft 持有候選 `SkillId`；P3-C 定義 server-side mint contract，但 transient mint grant 不是跨重啟 submission credential，提交授權仍以當下 authoritative snapshot 為準。
 
 ---
 
@@ -133,6 +136,8 @@ DefinitionEnvelope
 | Revision 定義本體 | `SkillDefinitionStore` | 玩家最新 revision 引用、編輯器未提交工作副本 | **提交落庫**、施放 pin、啟動重建引用計數 | Store 為準 |
 | Presentation 設定 | SkillDocument revision 中的 AppearanceDocument | 客戶端解析快取 | 文件同步／資源重載 | 文件為準；缺資源採 fallback |
 
+- 【Revision latest】Store 中已存在的最大 revision 是配置下一版的唯一 latest truth；玩家 Attachment 的 latest revision 只是玩家正式引用，不參與 allocator 裁決。
+- 【跨位置提交】P4 接入 Store SavedData 與玩家 Attachment 後，兩個持久化位置的更新不是天然原子操作；必須另定 ordering、failure recovery 與 reconciliation。
 - 【標記生命週期】錨點在卸載期間被永久移除時，標記隨 Attachment 靜默消失，不補發「標記被移除」事件；暫時卸載不等於移除，Entity 再載入時由其持久資料恢復。
 - 【禁止】同一物件不得同時把完整本體持久化在 Attachment 與中央 Store。
 
@@ -574,12 +579,18 @@ PresentationEvent
 P3-A：SkillRevision int、SkillDraft／SkillDocument／NodeDocument、
       Appearance storage schema 與 Codec
 P3-B：migration、Envelope resolution、validation、ValidatedSkillDefinition
-P3-C：submission、SkillId 鑄造、revision allocation
-P3-D：SkillDefinitionStore domain API
+P3-C：Draft formalization、server-side SkillId mint contract、authoritative
+      submission precheck、optimistic concurrency precheck、proposed revision、
+      既有 resolution／validation／projection 與 immutable SkillSubmissionPlan；
+      不寫 Store、不配置正式 revision
+P3-D：SkillDefinitionStore domain API、atomic compare-and-insert、正式 revision
+      allocation、commit conflict 與 plan commit boundary
 P4：Overworld SavedData 與玩家 Attachment
 ```
 
 P3-D 未接 SavedData 前只建立 domain behavior 與測試用儲存實作，不建立另一個 production persistent store。P4 的 Overworld SavedData adapter 才是世界層持久化真相。
+
+P3-D 完成後的 composition facade `SkillDefinitionSubmissionService` 取得 authoritative identity／state snapshot，呼叫 P3-C prepare，再呼叫 P3-D commit；P3-C 與 P3-D 本身不依賴 Minecraft player class。完整 submission stage precedence、report merge 與資訊隱藏政策以 [P3 scoped amendment §9-A](17_P3資料模型修正案.md#9-a-p3-c-submission-preparation-與-p3-d-commit-邊界)為準。
 
 ## 1A. 最小單人垂直切片
 

@@ -128,6 +128,8 @@ test(skill): verify unknown action payload preservation
 
 - `(SkillId, SkillRevision)` 唯一定位不可變 `SkillDocument`。
 - 玩家提交編輯時建立新 revision 並寫入 `SkillDefinitionStore`。
+- P3-C 的 Prepared `SkillSubmissionPlan` 只包含 proposed revision；P3-D atomic compare-and-insert 成功後，該 revision 才正式配置並存在。
+- 配置下一版所使用的 latest truth 是 Store 中該 `SkillId` 已存在的最大 revision；玩家 Attachment 的 latest pointer 只是玩家引用。
 - 未提交工作副本不可施放、不可落庫為正式 revision。
 - 施放只 pin revision，不重寫定義。
 - 進行中實例永遠解析固定 revision。
@@ -303,7 +305,7 @@ public record EventId(long value) {}
 - 提供 Codec。
 - 需要網路同步的才提供 StreamCodec。
 - API 不接受語意不明的裸 UUID。
-- `SkillRevision` 範圍固定為 `0..Integer.MAX_VALUE`，canonical JSON 為普通整數。未來配置達上限必須回傳明確 exhaustion failure，不得 overflow、wrap 或重用 revision。
+- `SkillRevision` 範圍固定為 `0..Integer.MAX_VALUE`，canonical JSON 為普通整數。P3-C 只提出 revision；P3-D 正式配置時若 Store latest 已達上限，必須回傳明確 exhaustion failure，不得 overflow、wrap 或重用 revision。
 
 ## 6.2 SkillDocument 與 ValidatedSkillDefinition
 
@@ -391,7 +393,8 @@ SkillDocument DefinitionEnvelope
 `SkillDraft` 是業務上可編輯、Java instance 上不可變的 snapshot。P3-A 建立正式 Draft Codec，並以明確 Missing／Present slot 表達不完整 Trigger 與 Action，不使用 `null`。
 
 - Draft top-level 外觀直接使用 `AppearanceDocument`，Draft Node 使用 `AppearanceOverrideDocument`；不建立 `DraftAppearance`。
-- Draft 持有候選 `SkillId`，但 SkillId 生成、配置與所有權驗證屬 P3-C。P3-A 不提供 production random UUID factory。
+- Draft 持有候選 `SkillId`；P3-C 定義 server-side mint contract 與 authoritative submission precheck input。P3-A 不提供 production random UUID factory，client 也不得鑄造正式 SkillId。
+- transient mint grant 不是跨重啟 submission credential；submission authorization 每次使用當下 authoritative snapshot，identity rejection 不得暴露未授權技能存在性、latest revision 或 owner。
 - Optional `baseRevision` 只是 optimistic concurrency metadata，不是 Draft 的正式 revision。
 - Draft 可為空、不完整或暫時不合法，不得直接施放或冒充 `SkillDocument`。
 
@@ -487,7 +490,9 @@ interface ActionType<P> {
 責任：
 
 - 保存不可變 revision。
-- 提交新 revision。
+- 接收 immutable `SkillSubmissionPlan`，原子比較 Store precondition 並插入新 revision。
+- atomic compare-and-insert 成功時正式配置 proposed revision；失敗回傳 commit conflict，不污染 Store。
+- 以 Store 中該 `SkillId` 已存在的最大 revision 作為 allocator latest truth，不使用玩家 Attachment pointer 配置 revision。
 - 查詢固定 revision。
 - 保存玩家正式引用計數或可重建 metadata。
 - pin／unpin 執行期引用。
@@ -499,6 +504,10 @@ interface ActionType<P> {
 - 保存 Player／Entity live reference。
 - 在查詢 getter 中隱式修改引用。
 - 施放時覆寫 revision。
+
+P3-C 不呼叫本 Store 寫入 API。P3-D 完成後的 composition facade `SkillDefinitionSubmissionService` 取得 authoritative identity／state snapshot、呼叫 P3-C prepare、在 commit 前重新確認 ownership 與 Store state，再呼叫 P3-D commit。P3-C 與 P3-D domain API 不依賴 Minecraft `Player`／`ServerPlayer`。
+
+P4 接入 Overworld SavedData 與玩家 Attachment 後，Store insert 與 Attachment reference 更新不是天然跨位置原子操作；P4 必須定義 ordering、failure recovery 與 reconciliation。
 
 ## 8.2 RuntimePersistentStore
 
@@ -880,12 +889,18 @@ P3 與 P4 工程責任固定切分為：
 P3-A：SkillRevision int、SkillDraft／SkillDocument／NodeDocument、
       Appearance storage schema 與 Codec
 P3-B：migration、Envelope resolution、validation、ValidatedSkillDefinition
-P3-C：submission、SkillId 鑄造、revision allocation
-P3-D：SkillDefinitionStore domain API
+P3-C：Draft formalization、server-side SkillId mint contract、authoritative
+      submission precheck、optimistic concurrency precheck、proposed revision、
+      既有 resolution／validation／projection 與 immutable SkillSubmissionPlan；
+      不寫 Store、不配置正式 revision
+P3-D：SkillDefinitionStore domain API、atomic compare-and-insert、正式 revision
+      allocation、commit conflict 與 plan commit boundary
 P4：Overworld SavedData 與玩家 Attachment
 ```
 
 P3-D 只建立 domain API 與 behavior；在 P4 接入 Overworld SavedData 前，不建立另一個 production persistent store。
+
+P3-D 完成後才由 composition facade `SkillDefinitionSubmissionService` 串接 P3-C prepare 與 P3-D commit。Submission short-circuit、bounded report merge、authorization 資訊隱藏及 plan shape 以 [P3 scoped amendment §9-A](17_P3資料模型修正案.md#9-a-p3-c-submission-preparation-與-p3-d-commit-邊界)為準。
 
 ---
 

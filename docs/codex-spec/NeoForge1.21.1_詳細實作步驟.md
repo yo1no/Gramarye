@@ -216,8 +216,11 @@ P2 的 Resolved／Unknown definition 是 registry resolution 邊界的 transient
 P3-A：SkillRevision int、SkillDraft／SkillDocument／NodeDocument、
       Appearance storage schema 與 Codec
 P3-B：migration、Envelope resolution、validation、ValidatedSkillDefinition
-P3-C：submission、SkillId 鑄造、revision allocation
-P3-D：SkillDefinitionStore domain API
+P3-C：Draft formalization、server-side SkillId mint contract、authoritative
+      submission precheck、optimistic concurrency precheck、proposed revision、
+      既有 resolution／validation／projection 與 immutable SkillSubmissionPlan
+P3-D：SkillDefinitionStore domain API、atomic compare-and-insert、正式 revision
+      allocation、commit conflict 與 plan commit boundary
 P4：Overworld SavedData 與玩家 Attachment
 ```
 
@@ -276,21 +279,35 @@ SkillDocument DefinitionEnvelope
 - P3-B 產生 clamp warning、appearance quarantine policy warning、profile lookup／missing-profile warning 與 gameplay／presentation validation report。
 - Node reference 只能指向較小 index；Unknown classification 阻止 runtime projection。
 
-## P3-C：Submission 與 identity allocation
+## P3-C：Submission preparation 與 identity precheck
 
-建立 `SkillDefinitionSubmissionService`：
+P3-C 建立純資料 preparation boundary；不建立 Store implementation、不寫 Store，也不配置正式 revision：
 
 ```text
-接收 server-side draft
-→ migration/resolution/validation
-→ 驗證 SkillId 所有權
-→ 配發 SkillId（新技能）與新 revision
-→ 原子提交到 Store port
+SkillDraft／SkillDraftReadResult
+→ Draft read warnings
+→ current Draft schema check
+→ authoritative authorization snapshot
+→ optimistic concurrency／revision exhaustion precheck
+→ Draft completeness formalization
+→ proposed SkillRevision
+→ transient SkillDocument
+→ existing P3-B2 resolution
+→ existing P3-B3 validation／projection
+→ immutable SkillSubmissionPlan
 ```
 
-- SkillId 鑄造權與所有權驗證屬 P3-C。
-- revision 達 `Integer.MAX_VALUE` 必須回傳 exhaustion failure。
-- 失敗不得污染 Store。
+- Draft 使用 Missing／Present slot；Missing Trigger／Action 形成 bounded validation ERROR，任何 ERROR 都不得建立 partial `SkillDocument`。
+- SkillId 在 Draft 建立時由 server-side mint contract 產生；client 不得鑄造。Transient mint grant 不是 reservation，也不是跨重啟 submission credential，提交授權必須使用當下 authoritative snapshot。
+- authoritative submission precheck input 以純資料 owner／principal 與 new／existing sealed state 表達，不依賴 Minecraft `Player`／`ServerPlayer`，也不建立第二份 ownership Store。
+- P3-C 只提出 revision：new skill 提出 0；existing skill 依 snapshot 中的 Store latest 提出 `latest + 1`。latest 達 `Integer.MAX_VALUE` 時回傳 revision exhaustion，不得 overflow；失敗不消耗或保留 revision。
+- optimistic concurrency conflict、identity rejection 與 revision exhaustion 使用獨立 machine-readable outcome，不偽裝成技能內容 `ValidationIssue`。
+- identity rejection 不得透露未授權 SkillId 是否存在、latest revision 或 owner。
+- proposed `SkillDocument` 使用 `SkillDocument.CURRENT_SCHEMA_VERSION`，保持 Draft SkillId、node order、Envelope 與 appearance storage state；不呼叫 Writer、不重新 decode Draft。
+- 既有 `SkillCandidateResolver.resolve(typedDocument, emptyDocumentReadReport)`、`SkillValidationAnalyzer.analyze` 與 `SkillDefinitionProjector.project` 各恰好一次；不走 raw resolution，不重跑 Reader、migration 或 projection validation。
+- `SkillSubmissionPlan` 至少攜帶 owner／principal、compare-and-insert precondition、proposed `SkillDocument` 與 `ValidatedSkillDefinition`。Prepared plan 不等於 committed revision，必須 immutable、transient、短生命週期且不可持久化。
+
+Submission short-circuit 順序固定為：read warnings → draft schema → authorization → concurrency／exhaustion → completeness → B2／B3 pipeline。Draft read facts、completeness issues 與 B3 report 合併為單一 bounded `ValidationResult`；每個來源 report 都必須先逐項加入 retained issues，再以 `ValidationCollector.inheritReportState` 傳播 `truncated`／`omittedError`。`Prepared`、`Conflict`、`IdentityRejected` 與 `RevisionExhausted` report 必須 warning-only。
 
 ## P3-D：SkillDefinitionStore domain API
 
@@ -305,16 +322,21 @@ ReclaimReport reclaim();
 ```
 
 - PinHandle 關閉必須 idempotent。
-- 定義 atomic allocate-and-insert、pin／unpin 與 mark-and-sweep domain behavior。
+- 接收 `SkillSubmissionPlan`，以 Store 中該 `SkillId` 已存在的最大 revision 作為唯一 allocator latest truth；玩家 Attachment latest pointer 不參與配置裁決。
+- commit 時重新比較 plan precondition，並在同一 Store domain mutation 中執行 atomic compare-and-insert。成功才正式配置 proposed revision；不符時回傳 machine-readable commit conflict，不覆寫、不猜測、不自動重試。
+- commit 前的 composition boundary 必須重新確認 ownership authorization 與 Store state；P3-D API 本身不依賴 Minecraft player class。
+- 定義 atomic compare-and-insert、pin／unpin 與 mark-and-sweep domain behavior。
 - P3-D 不接 SavedData；production 不建立另一個 persistent store，儲存實作只用於測試。
 - Mark-and-sweep roots 包括玩家 latest/equipped refs、SkillInstance、Marker、Construct 與 Schedule。
+
+P3-D 完成後才建立 composition facade `SkillDefinitionSubmissionService`：取得 authoritative identity／state snapshot → 呼叫 P3-C prepare → commit 前重新確認 authority/state → 呼叫 P3-D commit。Facade 不把 `Player`／`ServerPlayer` 傳入 P3-C 或 P3-D domain API。
 
 ## P3 Definition of Done
 
 - P3-A 模型與 Codec 的 hard bounds、alias isolation 與跨 Ops 測試通過。
 - P3-B 不持久化 resolved／unknown classification 或 runtime projection。
-- P3-C 提交失敗不污染 Store，revision exhaustion 不 overflow。
-- P3-D pin/unpin/reclaim 可測且沒有 production persistent store。
+- P3-C 可產生 immutable plan 或 typed failure；不寫 Store、不配置正式 revision，revision proposal exhaustion 不 overflow，所有非 Invalid outcome report 都是 warning-only。
+- P3-D atomic compare-and-insert、正式 revision allocation、commit conflict、pin/unpin/reclaim 可測且沒有 production persistent store。
 
 ---
 
@@ -328,6 +350,7 @@ ReclaimReport reclaim();
 
 - 將 P3-D domain API 接入 Overworld SavedData，儲存不可變 `SkillDocument`。
 - Overworld SavedData 是唯一 production world-level persistent store，不與 P3-D 測試實作雙寫。
+- Store compare-and-insert 與玩家 Attachment latest reference 更新不是天然跨位置原子操作；明確定義 ordering、failure recovery 與 reconciliation，避免 orphan revision 或 stale pointer 被誤認為成功提交的唯一真相。
 - 每次 mutation 必須 `setDirty()`。
 
 ## 工作 1：Player Attachment
@@ -871,7 +894,7 @@ one controller entity
 
 最後才做完整 Node editor。
 
-編輯器只能產生 draft，提交仍經 `SkillDefinitionSubmissionService`。
+編輯器只能產生 draft；P3-D 完成後，提交經 composition facade `SkillDefinitionSubmissionService` 串接 P3-C prepare 與 P3-D commit。
 
 ---
 

@@ -4,9 +4,9 @@
 
 ## 文件真相與身分
 
-- `SkillRevision` 是非負 32-bit `int`，canonical JSON 是數字。達到 `Integer.MAX_VALUE` 後，P3-C 的 allocator 必須回傳 exhaustion failure，不得 overflow、wrap 或重用。
+- `SkillRevision` 是非負 32-bit `int`，canonical JSON 是數字。P3-C 只提出 revision；達到 `Integer.MAX_VALUE` 後，P3-C precheck 與 P3-D Store allocator 都必須回傳 exhaustion failure，不得 overflow、wrap 或重用。
 - `SkillDocument` 是固定 revision 的唯一持久化文件真相；只保存 `DefinitionEnvelope`，不保存 descriptor、resolved definition、validation issue、diagnostic 或 runtime cache。
-- `SkillDraft` 是不可施放的 immutable editing snapshot。其 `SkillId` 由呼叫者提供；鑄造與所有權驗證留給 P3-C。`baseRevision` 只是 optimistic concurrency metadata，不是正式 revision。
+- `SkillDraft` 是不可施放的 immutable editing snapshot。其 `SkillId` 由呼叫者提供；server-side mint contract 與 authoritative submission precheck 留給 P3-C，ownership persistence 留給後續正確住址。`baseRevision` 只是 optimistic concurrency metadata，不是正式 revision。
 - `nodes` 的 List position 是唯一、零起算 `nodeIndex`。`NodeDocument` 與 `DraftNode` 不保存 index，也沒有 `NodeId`。
 - P3-B 才能從 `SkillDocument` 建立可執行的 `ValidatedSkillDefinition`；P3-A 不建立可執行 projection。
 
@@ -55,8 +55,8 @@ Unknown Trigger／Action type ID、appearance 缺失或 legacy null、appearance
 ## 後續階段邊界
 
 - P3-B：skill-level migration contract、registry resolution、descriptor/cross-node validation、read facts→warnings，以及可重建的 runtime projection。
-- P3-C：submission、SkillId 鑄造／所有權與 revision allocation/exhaustion。
-- P3-D：尚未接持久化的 store domain behavior、pin/unpin/reclaim。
+- P3-C：Draft formalization、server-side SkillId mint／authoritative precheck、proposed revision、既有 B2/B3 pipeline 與 immutable submission plan；不寫 Store、不配置正式 revision。
+- P3-D：atomic compare-and-insert、正式 revision allocation／commit conflict，以及尚未接持久化的 store domain behavior、pin/unpin/reclaim。
 - P4：Overworld `SavedData` 與玩家 Attachment。
 
-P3-A 不實作上述責任，也不建立另一個 persistent store。
+Submission prepare／commit 的完整責任定案見 [P3-C0 submission boundary](P3-C0-submission-boundary.md)。P3-A 不實作上述責任，也不建立另一個 persistent store。
