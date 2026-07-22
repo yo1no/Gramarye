@@ -1,0 +1,44 @@
+# P3-B3 validation and projection decisions
+
+This phase decision record documents the implemented P3-B3 boundary. The authoritative architecture remains [AGENTS.md](../../AGENTS.md) and the [frozen skeleton](../codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md), as refined within its stated scope by the approved [P3 data-model amendment](../codex-spec/17_P3資料模型修正案.md). It records concrete decisions needed to maintain this implementation; it does not duplicate or replace those authorities.
+
+## B3-A: bounded validation primitives
+
+- A validation issue's exact deduplication identity is `code + severity + path + metadata`. The first occurrence wins and retained issues keep insertion order.
+- Merge propagates `truncated` and `omittedError` with logical OR, together with flags produced by the receiving collector. `omittedError` implies `truncated`, and a hidden error must never be lost through merge.
+- `ValidationCollector` is a mutable, single-validation-run, non-thread-safe builder whose output is immutable. Its deduplication state contains only retained issues, so unique issues above the cap cannot cause unbounded growth.
+- `MAX_VALIDATION_ISSUES = 1024` and `MAX_VALIDATION_PATH_SEGMENTS = 64` are non-configurable hard safety ceilings.
+- `ValidationIssueMetadata` is a sealed contract. Adding a variant is a formal API and architecture change. Caller-supplied human messages are intentionally absent; message catalogs and localization belong at UI or logging boundaries. Exception metadata contains only a bounded class name, never an exception message or stack trace.
+
+## B3-B: payload inspection and reference projection
+
+- `SourceSelection` and `TargetSelection` describe what a payload actually selects. `SourceRequirement` and `TargetRequirement` describe a descriptor's static requirement. These vocabularies remain deliberately separate; B3-C owns the mapping between them.
+- Invalid player references such as negative indices, forward references, or role mismatches may still be trustworthy inspection output and therefore remain `Success` until validation emits issues. Inspection fails only when a descriptor contract cannot produce a trustworthy projection.
+- A missing inspector, accessor exception, null contract value, or path-budget violation fails closed. Unexpected `RuntimeException` becomes bounded failure metadata; `Error` escapes. Inspectors must be pure and deterministic.
+- Payload-relative paths reserve `VALIDATION_PATH_PREFIX_RESERVED_SEGMENTS = 8` and `VALIDATION_PATH_PREFIX_RESERVED_CHARACTERS = 64`. With the global ceilings, `MAX_INSPECTOR_RELATIVE_PATH_SEGMENTS = 56` and `MAX_INSPECTOR_RELATIVE_PATH_RENDER_LENGTH = 960`.
+- `MAX_INSPECTED_REFERENCES_PER_SIDE = 1024` bounds one Trigger or Action side. Its bounded copy consumes at most cap plus one elements and short-circuits on overflow. Reference declaration order is stable. Selection enums have declaration order, and Action outputs are retained in enum declaration order.
+- `providesCurrentTarget=false` is an explicit declaration that the Trigger does not provide the same-node current-target slot. There is no implicit-false overload: every inspector or call site supplies the boolean explicitly. A missing inspection contract fails closed, and this value is never inferred from target selection, capability, event kind, or type ID.
+
+## B3-C: deterministic validation analysis
+
+- Unsupported skill schema is gated before inspection. Within one analysis, each resolved side invokes its inspector at most once, its capability accessor exactly once, and its semantic validator exactly once.
+- Declared references and cross-node eligible references are distinct. Selection consistency sees every declared reference, including an invalid index. Cross-node checks see only legal prior references, keep the first semantic occurrence, and require a successful prefix.
+- Node zero emits at most one first-node prior-reference issue per side. Its fixed cascade suppression covers both a selection claiming prior data with no legal prior reference and a prior reference that cannot be legal at node zero. A `producer_missing` issue is intentionally absent because a legal prior index in the continuous node list always has a producer; absence would be a programming invariant failure.
+- `inheritReportState` propagates `truncated` and `omittedError` independently by OR and is idempotent. Truncation alone is not promoted to `omittedError`.
+- The frozen tolerant-read fact set is `INTENSITY_CLAMPED_LOW`, `INTENSITY_CLAMPED_HIGH`, `LEGACY_NULL_PROFILE_NORMALIZED`, `LEGACY_NULL_SCALAR_NORMALIZED`, `LEGACY_NULL_APPEARANCE_DEFAULTED`, `LEGACY_NULL_OVERRIDE_NORMALIZED`, and `UNKNOWN_APPEARANCE_FIELD_IGNORED`. Read facts, source/target requirements, and other policy enums use exhaustive switches without a default so a new enum member is a compile-time policy tripwire.
+- `ValidationContext` holds one immutable `MagicPolicyLimits` truth. Its constructor or factory enforces `0 < policy <= hard ceiling`; the analyzer neither invents defaults nor repeats bounds validation.
+- Profile availability has `AVAILABLE`, `MISSING`, and `UNKNOWN`. Only `MISSING` produces a presentation warning; `UNKNOWN` is not treated as missing. Availability never changes gameplay validity and is not retained in the validated core.
+- Descriptor issue paths must be payload-relative; orchestration adds the node and side prefix. One bounded `ValidationCollector` and a fixed stage order make the report deterministic.
+
+## B3-D: admission gate and validated projection
+
+- `ValidationResult.hasErrors()` is the sole projection admission gate and includes `omittedError`. Rejection constructs no partial definition. `SkillDefinitionProjector` is the only sanctioned production pairing entry and passes the exact `analysis.report()` reference into either outcome without copy, merge, filtering, or reordering.
+- Public outcome constructors can enforce only their severity invariant. A caller that manually pairs an accepted definition with a different warning-only report assumes provenance responsibility; that object is not a sanctioned pipeline output. Warnings remain on `Accepted.report()` rather than in the gameplay-neutral core.
+- The definition's formal identity is `SkillReference`. `ValidatedSkillDefinition` and `ValidatedNodeDefinition` deliberately retain identity equality and do not override `equals` or `hashCode`; descriptor singletons and third-party payloads do not define Store identity. Pure value children may use structural equality but are not revision identities.
+- The earlier review proposal to retain `TriggerReferenceProjection` and `ActionReferenceProjection` was superseded. Validated references are path-free because `ValidationPath` belongs to inspection, validation, and editor-repair provenance. Repair and debug callers must retain the original `SkillValidationAnalysis`.
+- The provenance gate inspected all fields and accessors of `ResolvedTriggerDefinition` and `ResolvedActionDefinition`. Each contains only its typed descriptor, non-negative payload schema version, and typed payload. Neither contains `DefinitionEnvelope`, `Dynamic`, source envelope, raw snapshot, Unknown state, or a raw accessor, so retaining these resolved definitions does not transitively retain serialized provenance.
+- The projector stores no capability snapshot and never rereads `capabilities()`. Runtime consumers may rely only on the descriptor's immutable and deterministic contract. If descriptors ever become reloadable, snapshot or generation semantics require a new design. A projection is valid relative to the policy snapshot used by its analysis; policy replacement or reload discards and rebuilds projections. P3-B3 adds no policy generation or cache.
+- Top and node appearance become typed/default-or-none/fallback runtime-neutral values. Raw appearance, rejection diagnostics, profile availability, profile instances, renderer objects, read reports, and pipeline facts do not enter the core. Profile IDs inside typed appearance remain data; availability affects only transient warnings and presentation resolution.
+- Constructors own the primary model invariants, while downstream admission boundaries retain defensive checks for states that should be unreachable. Such violations are programming exceptions, never player issues. Tests must not weaken public constructors merely to reach these branches.
+- The B3-A/B/C checks that D-phase types did not yet exist were phase-local gates. They are intentionally flipped in B3-D. Later runtime, executor, Store, persistence, attachment, and network types remain outside this phase.
+- The validated projection is transient: it has no Codec, writer, save/load, execution method, persistent schema, or cache. Skill submission, revision allocation, Store behavior, and world persistence remain later engineering phases.

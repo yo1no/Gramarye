@@ -20,3 +20,4 @@ Implementation guidance is provided by the [Codex implementation contract](../co
 - [P3-A skill document model baseline](P3-A-skill-document-model.md)
 - [P3-B1 skill migration boundary](P3-B1-skill-migration.md)
 - [P3-B2 definition resolution boundary](P3-B2-definition-resolution.md)
+- [P3-B3 validation and projection decisions](P3-B3-validation.md)

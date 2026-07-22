@@ -29,9 +29,13 @@ import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
 import com.yo1no.gramarye.magic.definition.envelope.DefinitionFailure;
 import com.yo1no.gramarye.magic.definition.inspection.ActionReferenceProjection;
+import com.yo1no.gramarye.magic.definition.inspection.ActionInspectionState;
+import com.yo1no.gramarye.magic.definition.inspection.InspectedSkillCandidate;
+import com.yo1no.gramarye.magic.definition.inspection.NodeReferenceProjection;
 import com.yo1no.gramarye.magic.definition.inspection.PayloadInspectionResult;
 import com.yo1no.gramarye.magic.definition.inspection.SourceSelection;
 import com.yo1no.gramarye.magic.definition.inspection.TargetSelection;
+import com.yo1no.gramarye.magic.definition.inspection.TriggerInspectionState;
 import com.yo1no.gramarye.magic.definition.inspection.TriggerReferenceProjection;
 import com.yo1no.gramarye.magic.definition.migration.PayloadMigrationFailure;
 import com.yo1no.gramarye.magic.definition.migration.PipelineFactReport;
@@ -256,6 +260,29 @@ final class SkillValidationTestFixtures {
             ActionResolution action,
             AppearanceOverrideDocument appearance) {
         return new ResolvedNodeCandidate(index, trigger, action, appearance);
+    }
+
+    static NodeReferenceProjection inspectedNode(
+            int index,
+            TriggerInspectionState trigger,
+            ActionInspectionState action) {
+        return new NodeReferenceProjection(index, trigger, action);
+    }
+
+    static InspectedSkillCandidate inspection(
+            ResolvedSkillCandidate candidate,
+            NodeReferenceProjection... nodes) {
+        return new InspectedSkillCandidate(candidate, List.of(nodes));
+    }
+
+    static SkillValidationAnalysis analysis(
+            ResolvedSkillCandidate candidate,
+            ValidationResult report,
+            NodeReferenceProjection... nodes) {
+        return new SkillValidationAnalysis(
+                candidate,
+                Optional.of(inspection(candidate, nodes)),
+                report);
     }
 
     static TriggerResolution resolvedTrigger(TriggerDescriptor descriptor) {
