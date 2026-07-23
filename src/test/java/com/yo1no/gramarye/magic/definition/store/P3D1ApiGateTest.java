@@ -38,7 +38,8 @@ class P3D1ApiGateTest {
         assertAll(
                 () -> assertTrue(Modifier.isPublic(SkillDefinitionStore.class.getModifiers())),
                 () -> assertTrue(Modifier.isFinal(SkillDefinitionStore.class.getModifiers())),
-                () -> assertEquals(Set.of("find", "latestReference", "ownerOf", "committedSkillCount"),
+                () -> assertEquals(Set.of(
+                                "find", "latestReference", "ownerOf", "committedSkillCount", "commit"),
                         publicMethods),
                 () -> assertEquals(1, publicConstructors.size()),
                 () -> assertEquals(0, publicConstructors.getFirst().getParameterCount()),
@@ -49,7 +50,7 @@ class P3D1ApiGateTest {
                 () -> assertFalse(Modifier.isPublic(SkillRevisionSnapshot.class.getModifiers())),
                 () -> assertFalse(Modifier.isPublic(SkillDefinitionStoreRestoreResult.class.getModifiers())),
                 () -> assertFalse(Modifier.isPublic(SkillDefinitionStoreRestoreFailure.class.getModifiers())),
-                () -> assertFalse(Modifier.isPublic(SkillStoreCapacityScope.class.getModifiers())),
+                () -> assertTrue(Modifier.isPublic(SkillStoreCapacityScope.class.getModifiers())),
                 () -> assertFalse(Modifier.isPublic(
                         SkillDefinitionStore.class.getDeclaredMethod("snapshot").getModifiers())),
                 () -> assertFalse(Modifier.isPublic(
@@ -165,17 +166,14 @@ class P3D1ApiGateTest {
     }
 
     @Test
-    void phaseLocalFullTreeGateAllowsOnlyD1AndStillRejectsD2PlusTypes() throws Exception {
-        // P3-D1 phase-local: D2/D3 must flip individual assertions only when their phase begins.
+    void phaseLocalFullTreeGateAllowsD2ButStillRejectsD3AndCompositionTypes() throws Exception {
+        // P3-D2 phase-local: D3/composition must flip individual assertions only when reviewed.
         var allProduction = productionClassNames();
         var storeTypes = allProduction.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
                 .map(P3D1ApiGateTest::loadWithoutInitialization)
                 .toList();
         var forbiddenTypeDeclarations = List.of(
-                "SkillQuota",
-                "SkillStoreCommitResult",
-                "SkillStoreCommitConflict",
                 "SkillDefinitionSubmissionService",
                 "RandomUuidSkillIdSource",
                 "SkillSubmissionAuthorizationAdapter");
@@ -189,7 +187,7 @@ class P3D1ApiGateTest {
                 () -> assertTrue(storeTypes.stream()
                         .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                         .noneMatch(method -> Set.of(
-                                        "commit", "insert", "put", "remove", "retire",
+                                        "insert", "put", "remove", "retire",
                                         "pin", "unpin", "reclaim")
                                 .contains(method.getName()))),
                 () -> assertTrue(storeTypes.stream()
@@ -206,16 +204,13 @@ class P3D1ApiGateTest {
                                 && Modifier.isPublic(method.getModifiers()))),
                 () -> assertTrue(Arrays.stream(SkillOwnerId.class.getDeclaredFields())
                         .noneMatch(field -> field.getType().getSimpleName().contains("Codec"))),
-                () -> assertFalse(Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())
-                        .anyMatch(method -> Set.of(
-                                        "commit", "insert", "put", "remove", "retire",
-                                        "pin", "unpin", "reclaim")
-                                .contains(method.getName()))));
+                () -> assertTrue(Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())
+                        .anyMatch(method -> method.getName().equals("commit")
+                                && Modifier.isPublic(method.getModifiers()))));
     }
 
     private static Set<String> productionClassNames() throws Exception {
-        var root = Path.of(SkillDefinitionStore.class.getProtectionDomain()
-                .getCodeSource().getLocation().toURI());
+        var root = projectRoot().resolve("build/classes/java/main");
         try (var paths = Files.walk(root)) {
             return paths.filter(path -> path.toString().endsWith(".class"))
                     .map(root::relativize)
@@ -224,6 +219,18 @@ class P3D1ApiGateTest {
                     .map(name -> name.replace(java.io.File.separatorChar, '.'))
                     .collect(Collectors.toSet());
         }
+    }
+
+    private static Path projectRoot() {
+        for (var candidate = Path.of("").toAbsolutePath().normalize();
+                candidate != null;
+                candidate = candidate.getParent()) {
+            if (Files.isRegularFile(candidate.resolve("build.gradle"))
+                    && Files.isDirectory(candidate.resolve("src/main/java"))) {
+                return candidate;
+            }
+        }
+        throw new AssertionError("Unable to locate the Gradle project root");
     }
 
     private static Class<?> loadWithoutInitialization(String className) {

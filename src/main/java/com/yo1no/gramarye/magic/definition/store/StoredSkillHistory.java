@@ -38,6 +38,19 @@ final class StoredSkillHistory {
         return revisions;
     }
 
+    StoredSkillHistory append(SkillDocument document) {
+        Objects.requireNonNull(document, "document");
+        if (revisions.containsKey(document.revision())) {
+            throw new IllegalArgumentException("replacement revision must be new");
+        }
+
+        var replacement = new TreeMap<SkillRevision, SkillDocument>(
+                Comparator.comparingInt(SkillRevision::value));
+        replacement.putAll(revisions);
+        replacement.put(document.revision(), document);
+        return new StoredSkillHistory(owner, replacement);
+    }
+
     @Override
     public String toString() {
         return "StoredSkillHistory[owner=" + owner

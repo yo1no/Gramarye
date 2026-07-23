@@ -14,6 +14,7 @@ import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.IntFunction;
 import net.minecraft.resources.ResourceLocation;
 
 final class StoreTestFixtures {
@@ -77,6 +78,30 @@ final class StoreTestFixtures {
 
     static SkillDefinitionStore restore(SkillDefinitionStoreSnapshot snapshot) {
         return ((SkillDefinitionStoreRestoreResult.Restored) SkillDefinitionStore.restore(snapshot)).store();
+    }
+
+    static ArrayList<SkillRevisionSnapshot> revisionSnapshots(SkillId skillId, int count) {
+        var revisions = new ArrayList<SkillRevisionSnapshot>(count);
+        for (var revision = 0; revision < count; revision++) {
+            revisions.add(revisionSnapshot(skillId, revision));
+        }
+        return revisions;
+    }
+
+    static ArrayList<SkillHistorySnapshot> historySnapshots(
+            int count,
+            long firstSkillId,
+            IntFunction<SkillOwnerId> owner,
+            int revisionCount) {
+        var histories = new ArrayList<SkillHistorySnapshot>(count);
+        for (var index = 0; index < count; index++) {
+            var skillId = skillId(firstSkillId + index);
+            histories.add(new SkillHistorySnapshot(
+                    skillId,
+                    owner.apply(index),
+                    revisionSnapshots(skillId, revisionCount)));
+        }
+        return histories;
     }
 
     private static DefinitionEnvelope envelope(String path) {

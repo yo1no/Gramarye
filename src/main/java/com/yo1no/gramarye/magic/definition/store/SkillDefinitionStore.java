@@ -5,7 +5,8 @@ import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.api.id.SkillRevision;
 import com.yo1no.gramarye.magic.definition.document.SkillDocument;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
-import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
+import com.yo1no.gramarye.magic.definition.submission.SkillCommitPrecondition;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPlan;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -70,6 +71,31 @@ public final class SkillDefinitionStore {
         return count;
     }
 
+    /**
+     * Atomically admits and commits the revision proposed by {@code plan} within this aggregate.
+     *
+     * <p>The caller must complete fresh authorization immediately before this call and supply an
+     * immutable current-policy quota snapshot. Neither the plan nor the quota is an authorization
+     * credential, and this Store does not validate caller identity. It guarantees only domain
+     * owner, CAS, quota, and technical-capacity consistency. A
+     * {@link SkillStoreCommitResult.Committed} result records only the in-memory aggregate
+     * mutation; it does not mean that SavedData, Attachment, or reconciliation work has completed.
+     * This method follows the Store's server logic-thread confinement contract.</p>
+     */
+    public SkillStoreCommitResult commit(SkillSubmissionPlan plan, SkillQuota quota) {
+        requireCommitInvariants(plan, quota);
+
+        var owner = plan.owner();
+        var precondition = plan.precondition();
+        var document = plan.proposedDocument();
+        return switch (precondition) {
+            case SkillCommitPrecondition.ExpectedAbsent expected ->
+                    commitExpectedAbsent(expected, owner, document, quota);
+            case SkillCommitPrecondition.ExpectedLatest expected ->
+                    commitExpectedLatest(expected, owner, document);
+        };
+    }
+
     SkillDefinitionStoreSnapshot snapshot() {
         var orderedHistories = histories.entrySet().stream()
                 .sorted(Comparator.comparing(entry -> entry.getKey().value()))
@@ -81,11 +107,11 @@ public final class SkillDefinitionStore {
     static SkillDefinitionStoreRestoreResult restore(SkillDefinitionStoreSnapshot snapshot) {
         Objects.requireNonNull(snapshot, "snapshot");
         var historySnapshots = snapshot.histories();
-        if (historySnapshots.size() > MagicSafetyCeilings.MAX_COMMITTED_SKILLS_GLOBAL) {
-            return capacityRejected(
+        if (historySnapshots.size()
+                > SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES.canonicalMaximum()) {
+            return restoreCapacityRejected(
                     SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES,
-                    historySnapshots.size(),
-                    MagicSafetyCeilings.MAX_COMMITTED_SKILLS_GLOBAL);
+                    historySnapshots.size());
         }
 
         var seenSkillIds = new HashSet<SkillId>();
@@ -103,29 +129,27 @@ public final class SkillDefinitionStore {
                 return rejected(new SkillDefinitionStoreRestoreFailure.EmptyHistory(skillId));
             }
             if (revisionSnapshots.size()
-                    > MagicSafetyCeilings.MAX_RETAINED_REVISIONS_PER_SKILL) {
-                return capacityRejected(
+                    > SkillStoreCapacityScope.SKILL_RETAINED_REVISIONS.canonicalMaximum()) {
+                return restoreCapacityRejected(
                         SkillStoreCapacityScope.SKILL_RETAINED_REVISIONS,
-                        revisionSnapshots.size(),
-                        MagicSafetyCeilings.MAX_RETAINED_REVISIONS_PER_SKILL);
+                        revisionSnapshots.size());
             }
 
             var owner = historySnapshot.owner();
             var ownerHistoryCount = ownerHistoryCounts.getOrDefault(owner, 0) + 1;
-            if (ownerHistoryCount > MagicSafetyCeilings.MAX_COMMITTED_SKILLS_PER_OWNER) {
-                return capacityRejected(
+            if (ownerHistoryCount
+                    > SkillStoreCapacityScope.OWNER_SKILL_HISTORIES.canonicalMaximum()) {
+                return restoreCapacityRejected(
                         SkillStoreCapacityScope.OWNER_SKILL_HISTORIES,
-                        ownerHistoryCount,
-                        MagicSafetyCeilings.MAX_COMMITTED_SKILLS_PER_OWNER);
+                        ownerHistoryCount);
             }
 
             var prospectiveGlobalRevisionCount = globalRevisionCount + revisionSnapshots.size();
             if (prospectiveGlobalRevisionCount
-                    > MagicSafetyCeilings.MAX_RETAINED_REVISIONS_GLOBAL) {
-                return capacityRejected(
+                    > SkillStoreCapacityScope.GLOBAL_RETAINED_REVISIONS.canonicalMaximum()) {
+                return restoreCapacityRejected(
                         SkillStoreCapacityScope.GLOBAL_RETAINED_REVISIONS,
-                        prospectiveGlobalRevisionCount,
-                        MagicSafetyCeilings.MAX_RETAINED_REVISIONS_GLOBAL);
+                        prospectiveGlobalRevisionCount);
             }
 
             var seenRevisions = new HashSet<SkillRevision>();
@@ -199,12 +223,169 @@ public final class SkillDefinitionStore {
         return new SkillHistorySnapshot(skillId, history.owner(), revisions);
     }
 
-    private static SkillDefinitionStoreRestoreResult capacityRejected(
+    private SkillStoreCommitResult commitExpectedAbsent(
+            SkillCommitPrecondition.ExpectedAbsent precondition,
+            SkillOwnerId owner,
+            SkillDocument document,
+            SkillQuota quota) {
+        var skillId = precondition.skillId();
+        if (histories.containsKey(skillId)) {
+            return new SkillStoreCommitResult.Conflict(
+                    new SkillStoreCommitConflict.ExpectedAbsentButPresent(skillId));
+        }
+
+        var ownerSkillCount = committedSkillCount(owner);
+        if (ownerSkillCount
+                >= SkillStoreCapacityScope.OWNER_SKILL_HISTORIES.canonicalMaximum()) {
+            return commitCapacityRejected(
+                    SkillStoreCapacityScope.OWNER_SKILL_HISTORIES, ownerSkillCount);
+        }
+
+        var globalSkillCount = histories.size();
+        if (globalSkillCount
+                >= SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES.canonicalMaximum()) {
+            return commitCapacityRejected(
+                    SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES, globalSkillCount);
+        }
+
+        if (quota instanceof SkillQuota.Limited limited
+                && ownerSkillCount >= limited.maxCommittedSkills()) {
+            return new SkillStoreCommitResult.QuotaRejected(
+                    skillId, ownerSkillCount, limited.maxCommittedSkills());
+        }
+
+        var globalRevisionCount = globalRetainedRevisionCount();
+        if (globalRevisionCount
+                >= SkillStoreCapacityScope.GLOBAL_RETAINED_REVISIONS.canonicalMaximum()) {
+            return commitCapacityRejected(
+                    SkillStoreCapacityScope.GLOBAL_RETAINED_REVISIONS,
+                    globalRevisionCount);
+        }
+
+        var revisions = new TreeMap<SkillRevision, SkillDocument>(
+                Comparator.comparingInt(SkillRevision::value));
+        revisions.put(document.revision(), document);
+        var replacement = new StoredSkillHistory(owner, revisions);
+        var committedReference = new SkillReference(skillId, document.revision());
+        var committed = new SkillStoreCommitResult.Committed(committedReference);
+
+        histories.put(skillId, replacement);
+        return committed;
+    }
+
+    private SkillStoreCommitResult commitExpectedLatest(
+            SkillCommitPrecondition.ExpectedLatest precondition,
+            SkillOwnerId owner,
+            SkillDocument document) {
+        var expected = precondition.latest();
+        var skillId = expected.skillId();
+        var history = histories.get(skillId);
+        if (history == null) {
+            return new SkillStoreCommitResult.Conflict(
+                    new SkillStoreCommitConflict.ExpectedLatestButAbsent(expected));
+        }
+        if (!history.owner().equals(owner)) {
+            return new SkillStoreCommitResult.OwnerRejected(skillId);
+        }
+
+        var observed = new SkillReference(skillId, history.revisions().lastKey());
+        if (!observed.equals(expected)) {
+            return new SkillStoreCommitResult.Conflict(
+                    new SkillStoreCommitConflict.LatestMismatch(expected, observed));
+        }
+
+        var successor = observed.revision().successor().orElseThrow(() ->
+                new IllegalStateException("matched stored latest must have a successor"));
+        if (!successor.equals(document.revision())) {
+            throw new IllegalStateException(
+                    "matched stored latest successor must equal the proposed revision");
+        }
+
+        var retainedRevisionCount = history.revisions().size();
+        if (retainedRevisionCount
+                >= SkillStoreCapacityScope.SKILL_RETAINED_REVISIONS.canonicalMaximum()) {
+            return commitCapacityRejected(
+                    SkillStoreCapacityScope.SKILL_RETAINED_REVISIONS,
+                    retainedRevisionCount);
+        }
+
+        var globalRevisionCount = globalRetainedRevisionCount();
+        if (globalRevisionCount
+                >= SkillStoreCapacityScope.GLOBAL_RETAINED_REVISIONS.canonicalMaximum()) {
+            return commitCapacityRejected(
+                    SkillStoreCapacityScope.GLOBAL_RETAINED_REVISIONS,
+                    globalRevisionCount);
+        }
+
+        var replacement = history.append(document);
+        var committedReference = new SkillReference(skillId, document.revision());
+        var committed = new SkillStoreCommitResult.Committed(committedReference);
+
+        histories.put(skillId, replacement);
+        return committed;
+    }
+
+    private int globalRetainedRevisionCount() {
+        var count = 0;
+        for (var history : histories.values()) {
+            count += history.revisions().size();
+        }
+        return count;
+    }
+
+    private static void requireCommitInvariants(
+            SkillSubmissionPlan plan,
+            SkillQuota quota) {
+        Objects.requireNonNull(plan, "plan");
+        Objects.requireNonNull(quota, "quota");
+        Objects.requireNonNull(plan.owner(), "plan.owner");
+        var precondition = Objects.requireNonNull(plan.precondition(), "plan.precondition");
+        var document = Objects.requireNonNull(
+                plan.proposedDocument(), "plan.proposedDocument");
+
+        if (document.schemaVersion() != SkillDocument.CURRENT_SCHEMA_VERSION) {
+            throw new IllegalArgumentException(
+                    "proposed document must use the current skill schema");
+        }
+        if (document.nodes().isEmpty()) {
+            throw new IllegalArgumentException("proposed document must contain a node");
+        }
+        if (!precondition.skillId().equals(document.skillId())) {
+            throw new IllegalArgumentException(
+                    "commit precondition and proposed document SkillId must match");
+        }
+
+        switch (precondition) {
+            case SkillCommitPrecondition.ExpectedAbsent ignored -> {
+                if (document.revision().value() != 0) {
+                    throw new IllegalArgumentException(
+                            "ExpectedAbsent requires proposed revision zero");
+                }
+            }
+            case SkillCommitPrecondition.ExpectedLatest expected -> {
+                var successor = expected.latest().revision().successor().orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "ExpectedLatest must have revision space"));
+                if (!successor.equals(document.revision())) {
+                    throw new IllegalArgumentException(
+                            "ExpectedLatest successor must equal the proposed revision");
+                }
+            }
+        }
+    }
+
+    private static SkillStoreCommitResult commitCapacityRejected(
             SkillStoreCapacityScope scope,
-            int current,
-            int maximum) {
+            int current) {
+        return new SkillStoreCommitResult.CapacityRejected(
+                scope, current, scope.canonicalMaximum());
+    }
+
+    private static SkillDefinitionStoreRestoreResult restoreCapacityRejected(
+            SkillStoreCapacityScope scope,
+            int current) {
         return rejected(new SkillDefinitionStoreRestoreFailure.CapacityExceeded(
-                scope, current, maximum));
+                scope, current, scope.canonicalMaximum()));
     }
 
     private static SkillDefinitionStoreRestoreResult rejected(

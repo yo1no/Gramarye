@@ -22,6 +22,10 @@ sealed interface SkillDefinitionStoreRestoreFailure
                 throw new IllegalArgumentException(
                         "capacity metadata requires non-negative current > maximum");
             }
+            if (maximum != scope.canonicalMaximum()) {
+                throw new IllegalArgumentException(
+                        "capacity maximum must match the canonical scope ceiling");
+            }
         }
     }
 

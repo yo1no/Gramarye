@@ -31,6 +31,18 @@ P3-D remains split into D1 truth/read/snapshot, D2 atomic admission/CAS/insert, 
 - D2 must preserve snapshot detachment: later successful Store replacement must not mutate any snapshot produced before that commit.
 - `SkillRevision.successor()` computes only a candidate value. P3-C proposal uses it, while formal allocation remains exclusively a successful D2 commit effect.
 
+### P3-D2 implementation boundary
+
+- `SkillQuota` is an immutable policy snapshot obtained by composition after fresh authorization. Neither it nor `SkillSubmissionPlan` is an authorization credential, and Store commit is not an authentication boundary.
+- The one normal mutation accepts a plan plus quota snapshot and performs owner verification, quota admission, technical-capacity checks, precondition CAS, and revision insertion before publishing one complete replacement history.
+- `ExpectedAbsent` and `ExpectedLatest` use the precedence fixed by the scoped amendment. In particular, an existing-owner mismatch precedes latest comparison and exposes neither the stored owner nor observed latest.
+- Every typed rejection precedes the first truth mutation. Success prebuilds the replacement history and `Committed` result, performs one outer-map insert／replace, and returns without a fallible callback or retry.
+- A repeated plan follows its original precondition and therefore conflicts; Store does not infer idempotence from document equality and has no retry or attempt cache.
+- The normal commit vocabulary has no revision-exhaustion variant. `ExpectedLatest(MAX)` is invalid plan state, while a race that advances Store latest to MAX is a latest mismatch.
+- Production construction of commit-result and commit-conflict values is centralized at the Store mutation boundary. Public result records remain data-transfer values rather than capability tokens.
+- D1 snapshots remain detached after D2 mutations because existing histories are replaced rather than modified. Immutable document references may be shared without canonicalization or copying.
+- `Committed` means the proposed revision was formally allocated and inserted into the in-memory domain aggregate. It does not mean SavedData was encoded or written, `setDirty()` ran, an Attachment changed, or cross-location reconciliation completed.
+
 ## Deferred persistence and retirement
 
 Removing a player Attachment reference is not Store retirement and does not release quota. A future retire operation needs a persistent tombstone or equivalent no-reuse truth and a separate scoped amendment. Until then, the default policy quota is Unlimited while all technical ceilings remain mandatory.

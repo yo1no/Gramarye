@@ -328,8 +328,16 @@ class SkillDefinitionStoreRestoreTest {
     }
 
     @Test
-    void capacityFailureRequiresStrictlyExceededMetadata() {
+    void capacityFailureRequiresCanonicalStrictlyExceededMetadata() {
+        var canonical = new SkillDefinitionStoreRestoreFailure.CapacityExceeded(
+                SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES,
+                MagicSafetyCeilings.MAX_COMMITTED_SKILLS_GLOBAL + 1,
+                MagicSafetyCeilings.MAX_COMMITTED_SKILLS_GLOBAL);
+
         assertAll(
+                () -> assertEquals(
+                        MagicSafetyCeilings.MAX_COMMITTED_SKILLS_GLOBAL,
+                        canonical.maximum()),
                 () -> assertThrows(IllegalArgumentException.class,
                         () -> new SkillDefinitionStoreRestoreFailure.CapacityExceeded(
                                 SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES, 4_096, 4_096)),
@@ -338,7 +346,12 @@ class SkillDefinitionStoreRestoreTest {
                                 SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES, -1, 4_096)),
                 () -> assertThrows(IllegalArgumentException.class,
                         () -> new SkillDefinitionStoreRestoreFailure.CapacityExceeded(
-                                SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES, 4_097, -1)));
+                                SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES, 4_097, -1)),
+                () -> assertThrows(IllegalArgumentException.class,
+                        () -> new SkillDefinitionStoreRestoreFailure.CapacityExceeded(
+                                SkillStoreCapacityScope.GLOBAL_SKILL_HISTORIES,
+                                MagicSafetyCeilings.MAX_COMMITTED_SKILLS_GLOBAL + 1,
+                                MagicSafetyCeilings.MAX_COMMITTED_SKILLS_GLOBAL - 1)));
     }
 
     @Test

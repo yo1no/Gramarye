@@ -127,20 +127,25 @@ class P3C4ApiGateTest {
     }
 
     @Test
-    void p3D1PhaseLocalGateRecognizesStoreButStillHasNoCommitOrCompositionTypes() throws Exception {
-        // P3-D1 phase-local: Store truth/read is now legal; D2+ types remain absent across production.
+    void p3D2PhaseLocalGateRecognizesCommitModelsButStillHasNoCompositionTypes() throws Exception {
+        // P3-D2 phase-local: Store commit models are legal; composition and D3 remain absent.
         var productionClasses = productionClassNames();
         var absentSimpleNames = List.of(
-                "SkillStoreCommitResult",
-                "SkillStoreCommitConflict",
-                "SkillQuota",
                 "SkillDefinitionSubmissionService",
                 "RandomUuidSkillIdSource",
                 "SkillSubmissionAuthorizationAdapter",
                 "SkillQuotaView");
+        var presentSimpleNames = List.of(
+                "SkillDefinitionStore",
+                "SkillStoreCommitResult",
+                "SkillStoreCommitConflict",
+                "SkillQuota");
 
         assertAll(
                 () -> assertTrue(classExists(STORE_CLASS)),
+                () -> assertTrue(presentSimpleNames.stream().allMatch(name ->
+                        productionClasses.stream().anyMatch(className ->
+                                simpleTopLevelName(className).equals(name)))),
                 () -> assertTrue(absentSimpleNames.stream().noneMatch(name ->
                         productionClasses.stream().anyMatch(className ->
                                 simpleTopLevelName(className).equals(name)))));
@@ -173,9 +178,7 @@ class P3C4ApiGateTest {
     }
 
     private static Set<String> productionClassNames() throws Exception {
-        var storeType = Class.forName(STORE_CLASS, false, P3C4ApiGateTest.class.getClassLoader());
-        var root = Path.of(storeType.getProtectionDomain()
-                .getCodeSource().getLocation().toURI());
+        var root = projectRoot().resolve("build/classes/java/main");
         try (var paths = Files.walk(root)) {
             return paths.filter(path -> path.toString().endsWith(".class"))
                     .map(root::relativize)
@@ -184,6 +187,18 @@ class P3C4ApiGateTest {
                     .map(name -> name.replace(java.io.File.separatorChar, '.'))
                     .collect(Collectors.toSet());
         }
+    }
+
+    private static Path projectRoot() {
+        for (var candidate = Path.of("").toAbsolutePath().normalize();
+                candidate != null;
+                candidate = candidate.getParent()) {
+            if (Files.isRegularFile(candidate.resolve("build.gradle"))
+                    && Files.isDirectory(candidate.resolve("src/main/java"))) {
+                return candidate;
+            }
+        }
+        throw new AssertionError("Unable to locate the Gradle project root");
     }
 
     private static String simpleTopLevelName(String className) {
