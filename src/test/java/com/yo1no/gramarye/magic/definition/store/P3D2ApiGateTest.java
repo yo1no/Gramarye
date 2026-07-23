@@ -36,7 +36,7 @@ class P3D2ApiGateTest {
             "ExpectedAbsentButPresent", "ExpectedLatestButAbsent", "LatestMismatch");
 
     @Test
-    void storeExposesExactlyOneReviewedCommitMutation() throws Exception {
+    void storeExposesOnlyReviewedCommitAndPinMutations() throws Exception {
         var commit = SkillDefinitionStore.class.getDeclaredMethod(
                 "commit", SkillSubmissionPlan.class, SkillQuota.class);
         var publicMethods = Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())
@@ -49,12 +49,13 @@ class P3D2ApiGateTest {
                 () -> assertFalse(Modifier.isStatic(commit.getModifiers())),
                 () -> assertEquals(SkillStoreCommitResult.class, commit.getReturnType()),
                 () -> assertEquals(Set.of(
-                                "find", "latestReference", "ownerOf", "committedSkillCount", "commit"),
+                                "find", "latestReference", "ownerOf", "committedSkillCount",
+                                "commit", "pin"),
                         publicMethods),
                 () -> assertTrue(Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())
                         .noneMatch(method -> Set.of(
                                         "insert", "put", "remove", "retire",
-                                        "pin", "unpin", "reclaim", "save", "load")
+                                        "unpin", "reclaim", "save", "load")
                                 .contains(method.getName()))));
     }
 
@@ -259,7 +260,7 @@ class P3D2ApiGateTest {
     }
 
     @Test
-    void compiledProductionTreeContainsNoD3P4OrCompositionSurface() throws Exception {
+    void compiledProductionTreeContainsD3APinsButNoD3BP4OrCompositionSurface() throws Exception {
         var productionClasses = productionClassNames();
         var storeTypes = productionClasses.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
@@ -270,17 +271,20 @@ class P3D2ApiGateTest {
                 "RandomUuidSkillIdSource",
                 "SkillSubmissionAuthorizationAdapter",
                 "SkillPin",
-                "SkillRevisionPin",
-                "SkillReclaimResult");
+                "SkillRetentionRootSnapshot",
+                "SkillReclaimFailure",
+                "SkillReclaimResult",
+                "SkillReclaimReport");
 
         assertAll(
+                () -> assertTrue(productionClasses.contains(SkillRevisionPin.class.getName())),
                 () -> assertTrue(forbiddenTopLevelTypes.stream().noneMatch(simpleName ->
                         productionClasses.stream().anyMatch(className ->
                                 simpleTopLevelName(className).equals(simpleName)))),
                 () -> assertTrue(storeTypes.stream()
                         .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                         .noneMatch(method -> Set.of(
-                                        "pin", "unpin", "reclaim", "retire", "save", "load")
+                                        "unpin", "reclaim", "retire", "save", "load")
                                 .contains(method.getName()))),
                 () -> assertTrue(storeTypes.stream().allMatch(P3D2ApiGateTest::hasNoP4Dependency)));
     }

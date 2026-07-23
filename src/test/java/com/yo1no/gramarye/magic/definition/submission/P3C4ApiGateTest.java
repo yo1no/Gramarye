@@ -127,19 +127,25 @@ class P3C4ApiGateTest {
     }
 
     @Test
-    void p3D2PhaseLocalGateRecognizesCommitModelsButStillHasNoCompositionTypes() throws Exception {
-        // P3-D2 phase-local: Store commit models are legal; composition and D3 remain absent.
+    void p3D3APhaseLocalGateRecognizesPinsButStillHasNoD3BOrCompositionTypes() throws Exception {
+        // P3-D3-A phase-local: active pins are legal; roots/reclaim/composition remain absent.
         var productionClasses = productionClassNames();
         var absentSimpleNames = List.of(
                 "SkillDefinitionSubmissionService",
                 "RandomUuidSkillIdSource",
                 "SkillSubmissionAuthorizationAdapter",
-                "SkillQuotaView");
+                "SkillQuotaView",
+                "SkillPin",
+                "SkillRetentionRootSnapshot",
+                "SkillReclaimFailure",
+                "SkillReclaimResult",
+                "SkillReclaimReport");
         var presentSimpleNames = List.of(
                 "SkillDefinitionStore",
                 "SkillStoreCommitResult",
                 "SkillStoreCommitConflict",
-                "SkillQuota");
+                "SkillQuota",
+                "SkillRevisionPin");
 
         assertAll(
                 () -> assertTrue(classExists(STORE_CLASS)),

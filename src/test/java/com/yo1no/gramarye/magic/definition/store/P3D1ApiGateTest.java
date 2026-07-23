@@ -26,7 +26,7 @@ class P3D1ApiGateTest {
             "com.yo1no.gramarye.magic.definition.store.";
 
     @Test
-    void storeIsTheOnlyPublicD1TypeAndHasOnlyTheReviewedReadSurface() throws Exception {
+    void storeAndPinHandleExposeOnlyTheReviewedD3ASurface() throws Exception {
         var publicMethods = Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())
                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                 .map(method -> method.getName())
@@ -39,7 +39,8 @@ class P3D1ApiGateTest {
                 () -> assertTrue(Modifier.isPublic(SkillDefinitionStore.class.getModifiers())),
                 () -> assertTrue(Modifier.isFinal(SkillDefinitionStore.class.getModifiers())),
                 () -> assertEquals(Set.of(
-                                "find", "latestReference", "ownerOf", "committedSkillCount", "commit"),
+                                "find", "latestReference", "ownerOf", "committedSkillCount",
+                                "commit", "pin"),
                         publicMethods),
                 () -> assertEquals(1, publicConstructors.size()),
                 () -> assertEquals(0, publicConstructors.getFirst().getParameterCount()),
@@ -102,14 +103,14 @@ class P3D1ApiGateTest {
     }
 
     @Test
-    void storeAndStoredHistoryContainOnlyOwnerAndHistoryTruth() {
+    void storeAddsOnlyTransientPinCountsBesideOwnerAndHistoryTruth() {
         var storeFields = Arrays.stream(SkillDefinitionStore.class.getDeclaredFields())
                 .filter(field -> !Modifier.isStatic(field.getModifiers()))
                 .toList();
         var historyFields = Arrays.stream(StoredSkillHistory.class.getDeclaredFields())
                 .filter(field -> !Modifier.isStatic(field.getModifiers()))
                 .toList();
-        var forbiddenFieldFragments = List.of(
+        var forbiddenHistoryFieldFragments = List.of(
                 "latest",
                 "highest",
                 "next",
@@ -121,18 +122,19 @@ class P3D1ApiGateTest {
                 "validated");
 
         assertAll(
-                () -> assertEquals(1, storeFields.size()),
-                () -> assertTrue(Map.class.isAssignableFrom(storeFields.getFirst().getType())),
+                () -> assertEquals(2, storeFields.size()),
+                () -> assertEquals(Set.of("histories", "activePinCounts"), storeFields.stream()
+                        .map(field -> field.getName())
+                        .collect(Collectors.toSet())),
+                () -> assertTrue(storeFields.stream()
+                        .allMatch(field -> Map.class.isAssignableFrom(field.getType()))),
                 () -> assertEquals(2, historyFields.size()),
                 () -> assertTrue(historyFields.stream()
                         .anyMatch(field -> field.getType() == SkillOwnerId.class)),
                 () -> assertTrue(historyFields.stream()
                         .anyMatch(field -> NavigableMap.class.isAssignableFrom(field.getType()))),
-                () -> assertTrue(storeFields.stream().noneMatch(field ->
-                        forbiddenFieldFragments.stream().anyMatch(fragment ->
-                                field.getName().toLowerCase().contains(fragment)))),
                 () -> assertTrue(historyFields.stream().noneMatch(field ->
-                        forbiddenFieldFragments.stream().anyMatch(fragment ->
+                        forbiddenHistoryFieldFragments.stream().anyMatch(fragment ->
                                 field.getName().toLowerCase().contains(fragment)))));
     }
 
@@ -166,8 +168,8 @@ class P3D1ApiGateTest {
     }
 
     @Test
-    void phaseLocalFullTreeGateAllowsD2ButStillRejectsD3AndCompositionTypes() throws Exception {
-        // P3-D2 phase-local: D3/composition must flip individual assertions only when reviewed.
+    void phaseLocalFullTreeGateAllowsD3APinsButRejectsD3BAndCompositionTypes() throws Exception {
+        // P3-D3-A phase-local: roots/reclaim/composition remain absent until their reviewed phase.
         var allProduction = productionClassNames();
         var storeTypes = allProduction.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
@@ -180,6 +182,7 @@ class P3D1ApiGateTest {
 
         assertAll(
                 () -> assertTrue(allProduction.contains(SkillDefinitionStore.class.getName())),
+                () -> assertTrue(allProduction.contains(SkillRevisionPin.class.getName())),
                 () -> assertTrue(forbiddenTypeDeclarations.stream().noneMatch(name ->
                         allProduction.stream().anyMatch(className ->
                                 simpleTopLevelName(className).equals(name)))),
@@ -188,7 +191,7 @@ class P3D1ApiGateTest {
                         .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                         .noneMatch(method -> Set.of(
                                         "insert", "put", "remove", "retire",
-                                        "pin", "unpin", "reclaim")
+                                        "unpin", "reclaim")
                                 .contains(method.getName()))),
                 () -> assertTrue(storeTypes.stream()
                         .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))

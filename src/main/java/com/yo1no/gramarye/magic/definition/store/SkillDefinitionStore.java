@@ -24,14 +24,17 @@ import java.util.TreeMap;
  */
 public final class SkillDefinitionStore {
     private final Map<SkillId, StoredSkillHistory> histories;
+    private final Map<SkillReference, Integer> activePinCounts;
 
     /** Creates an empty Store. */
     public SkillDefinitionStore() {
         histories = new HashMap<>();
+        activePinCounts = new HashMap<>();
     }
 
     private SkillDefinitionStore(Map<SkillId, StoredSkillHistory> histories) {
         this.histories = new HashMap<>(Objects.requireNonNull(histories, "histories"));
+        activePinCounts = new HashMap<>();
     }
 
     /** Returns the immutable document at the exact reference, if retained. */
@@ -69,6 +72,52 @@ public final class SkillDefinitionStore {
             }
         }
         return count;
+    }
+
+    /**
+     * Pins an exact retained revision for an active in-memory caller.
+     *
+     * <p>The returned handle belongs to this Store instance and follows the Store's server
+     * logic-thread confinement contract. Pins are transient lifecycle state: they are not
+     * persisted, do not affect quota or latest-revision truth, and are not restored from Store
+     * snapshots.</p>
+     */
+    public Optional<SkillRevisionPin> pin(SkillReference reference) {
+        Objects.requireNonNull(reference, "reference");
+        var history = histories.get(reference.skillId());
+        if (history == null || !history.revisions().containsKey(reference.revision())) {
+            return Optional.empty();
+        }
+
+        var nextCount = checkedIncrementPinCount(activePinCounts.getOrDefault(reference, 0));
+        var handle = new SkillRevisionPin(this, reference);
+        var result = Optional.of(handle);
+
+        activePinCounts.put(reference, nextCount);
+        return result;
+    }
+
+    void releasePin(SkillReference reference) {
+        Objects.requireNonNull(reference, "reference");
+        var current = activePinCounts.get(reference);
+        if (current == null || current <= 0) {
+            throw new IllegalStateException("active pin count is missing or invalid");
+        }
+        if (current == 1) {
+            activePinCounts.remove(reference);
+            return;
+        }
+        activePinCounts.put(reference, current - 1);
+    }
+
+    static int checkedIncrementPinCount(int current) {
+        if (current < 0) {
+            throw new IllegalArgumentException("active pin count must be non-negative");
+        }
+        if (current == Integer.MAX_VALUE) {
+            throw new IllegalStateException("active pin count is exhausted");
+        }
+        return current + 1;
     }
 
     /**
