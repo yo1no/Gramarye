@@ -22,3 +22,4 @@ Implementation guidance is provided by the [Codex implementation contract](../co
 - [P3-B2 definition resolution boundary](P3-B2-definition-resolution.md)
 - [P3-B3 validation and projection decisions](P3-B3-validation.md)
 - [P3-C0 submission preparation and commit boundary](P3-C0-submission-boundary.md)
+- [P3-C skill submission decision ledger](P3-C-skill-submission.md)

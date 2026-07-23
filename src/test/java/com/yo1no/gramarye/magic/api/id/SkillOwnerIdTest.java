@@ -28,7 +28,7 @@ class SkillOwnerIdTest {
     }
 
     @Test
-    void p3C2AndC3PhaseLocalShapeHasNoCodecNetworkOrMinecraftPlayerDependency() {
+    void p3CPhaseLocalShapeHasNoCodecNetworkOrMinecraftPlayerDependency() {
         var fields = Arrays.stream(SkillOwnerId.class.getDeclaredFields()).toList();
         var methods = Arrays.stream(SkillOwnerId.class.getDeclaredMethods()).toList();
 

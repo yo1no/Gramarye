@@ -77,14 +77,14 @@ class P3C3ApiGateTest {
     }
 
     @Test
-    void p3C3PhaseLocalGateStillHasNoC4Types() {
-        // P3-C3 phase-local: flip only when C4/P3-D legitimately introduce these types.
+    void p3C3PhaseLocalGateNowRecognizesTheC4PublicTypes() {
+        // P3-C3 phase-local gate flipped when C4 legitimately introduced these types.
         assertAll(
-                () -> assertFalse(classExists(
+                () -> assertTrue(classExists(
                         "com.yo1no.gramarye.magic.definition.submission.SkillCommitPrecondition")),
-                () -> assertFalse(classExists(
+                () -> assertTrue(classExists(
                         "com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPlan")),
-                () -> assertFalse(classExists(
+                () -> assertTrue(classExists(
                         "com.yo1no.gramarye.magic.definition.submission.SkillSubmissionOutcome")));
     }
 
