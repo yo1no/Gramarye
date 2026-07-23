@@ -1,0 +1,27 @@
+# P3-D0 Store truth and atomic commit boundary
+
+This page indexes the P3-D0 scoped decisions. Architecture authority remains the amended [P3 scoped amendment §§9-B–9-D](../codex-spec/17_P3資料模型修正案.md#9-b-p3-d0-store-truththread-confinement-與-persistence-seam), the [frozen skeleton](../codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md), the [implementation contract](../codex-spec/Codex_實作總規格Prompt.md), and the [detailed phases](../codex-spec/NeoForge1.21.1_詳細實作步驟.md). It is a boundary index, not a second complete Store specification.
+
+## Phase ownership
+
+- P3-C prepares a transient `SkillSubmissionPlan`; it neither writes Store state nor formally allocates a revision.
+- P3-D owns the production pure-Java aggregate, committed owner/history truth, reads, atomic admission／CAS／insert, formal allocation, pin／unpin／reclaim, and a detached persistence snapshot seam. It has no SavedData or Minecraft dependency.
+- P4 owns the sole Overworld SavedData persistence adapter, snapshot Codec／NBT, load/save, dirty marking, quarantine, complete offline roots, and Store／Attachment reconciliation. It delegates rather than reimplements P3-D policy.
+
+## Store and mutation boundary
+
+One active `SkillId` maps to one immutable owner binding plus immutable retained `SkillDocument` entries. Latest, owner counts, and allocation counters are not independent truth. The aggregate is server-logic-thread-confined and does not promise arbitrary-thread linearizability or database transactions.
+
+Final quota admission, owner verification, precondition CAS, technical capacity, and revision insertion share one method. Every typed failure occurs before the first truth mutation; success publishes one fully built replacement history. Exact hard ceilings, CAS precedence, capacity scopes, and result variants are canonical in [the scoped amendment §9-C](../codex-spec/17_P3資料模型修正案.md#9-c-p3-d0-quotacapacitycas-與-commit-result).
+
+## Revision lifecycle
+
+P3-D1 adds the one `SkillRevision.successor()` operation shared by proposal and commit arithmetic. Retained history may be sparse, while its maximum revision is an implicit root and cannot be removed by ordinary reclaim. Normal Store commit results have no `RevisionExhausted`; P3-C preparation keeps that outcome for an authoritative latest at MAX.
+
+P3-D remains split into D1 truth/read/snapshot, D2 atomic admission/CAS/insert, and D3 pin/unpin/reclaim. D3 receives a complete bounded external-root snapshot and fails closed rather than sweeping truncated, incomplete, or over-limit roots.
+
+## Deferred persistence and retirement
+
+Removing a player Attachment reference is not Store retirement and does not release quota. A future retire operation needs a persistent tombstone or equivalent no-reuse truth and a separate scoped amendment. Until then, the default policy quota is Unlimited while all technical ceilings remain mandatory.
+
+Before P4 Java work, P4-0 must fix encoded-byte ceilings and a family-tagged raw storage envelope. Existing Unknown／Unparsed preservation does not promise arbitrary JSON-to-NBT losslessness, so P3-D retains documents without canonicalizing or converting their raw trees.

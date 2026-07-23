@@ -4,7 +4,7 @@
 
 ## 文件真相與身分
 
-- `SkillRevision` 是非負 32-bit `int`，canonical JSON 是數字。P3-C 只提出 revision；達到 `Integer.MAX_VALUE` 後，P3-C precheck 與 P3-D Store allocator 都必須回傳 exhaustion failure，不得 overflow、wrap 或重用。
+- `SkillRevision` 是非負 32-bit `int`，canonical JSON 是數字。P3-C 只提出 revision，latest 達 `Integer.MAX_VALUE` 時形成 preparation `RevisionExhausted`；P3-D1 的 canonical `successor()` 在 MAX 回 empty，合法 P3-D commit vocabulary 不含 exhaustion variant。正式 allocation 只發生於 Store commit 成功，且不得 overflow、wrap 或重用。
 - `SkillDocument` 是固定 revision 的唯一持久化文件真相；只保存 `DefinitionEnvelope`，不保存 descriptor、resolved definition、validation issue、diagnostic 或 runtime cache。
 - `SkillDraft` 是不可施放的 immutable editing snapshot。其 `SkillId` 由呼叫者提供；server-side mint contract 與 authoritative submission precheck 留給 P3-C，ownership persistence 留給後續正確住址。`baseRevision` 只是 optimistic concurrency metadata，不是正式 revision。
 - `nodes` 的 List position 是唯一、零起算 `nodeIndex`。`NodeDocument` 與 `DraftNode` 不保存 index，也沒有 `NodeId`。

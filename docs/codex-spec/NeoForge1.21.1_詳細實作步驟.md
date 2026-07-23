@@ -88,7 +88,7 @@ ScheduleId
 EventId
 ```
 
-`SkillRevision` 固定為 `record SkillRevision(int value)`，合法範圍 `0..Integer.MAX_VALUE`，canonical JSON 為普通整數。配置達上限時必須回傳 exhaustion failure，不得 overflow、wrap 或重用 revision。
+`SkillRevision` 固定為 `record SkillRevision(int value)`，合法範圍 `0..Integer.MAX_VALUE`，canonical JSON 為普通整數。P3-D1 additive建立唯一`successor()`給P3-C3／P3-D2共用：非MAX回下一值，MAX回empty。P3-C preparation保留`RevisionExhausted`；合法Plan的normal P3-D commit result沒有此variant。不得overflow、wrap或重用revision。
 
 ### 測試
 
@@ -219,9 +219,13 @@ P3-B：migration、Envelope resolution、validation、ValidatedSkillDefinition
 P3-C：Draft formalization、server-side SkillId mint contract、authoritative
       submission precheck、optimistic concurrency precheck、proposed revision、
       既有 resolution／validation／projection 與 immutable SkillSubmissionPlan
-P3-D：SkillDefinitionStore domain API、atomic compare-and-insert、正式 revision
-      allocation、commit conflict 與 plan commit boundary
-P4：Overworld SavedData 與玩家 Attachment
+P3-D1：production pure-Java Store aggregate、owner/history truth、read API、
+       sparse retained revisions、hard ceilings、successor與detached snapshot
+P3-D2：quota／owner／CAS／capacity／insert同一atomic mutation、zero-partial
+       typed failure、commit result與正式revision allocation
+P3-D3：active pin handles、complete retention roots、latest implicit root與reclaim
+P4：Overworld SavedData唯一persistence adapter、snapshot Codec／NBT、load／save、
+    setDirty／quarantine、玩家Attachment、complete offline roots與reconciliation
 ```
 
 ## P3-A：SkillDraft／SkillDocument／NodeDocument 與 Appearance storage
@@ -300,43 +304,177 @@ SkillDraft／SkillDraftReadResult
 - Draft 使用 Missing／Present slot；Missing Trigger／Action 形成 bounded validation ERROR，任何 ERROR 都不得建立 partial `SkillDocument`。
 - SkillId 在 Draft 建立時由 server-side mint contract 產生；client 不得鑄造。Transient mint grant 不是 reservation，也不是跨重啟 submission credential，提交授權必須使用當下 authoritative snapshot。
 - authoritative submission precheck input 以純資料 owner／principal 與 new／existing sealed state 表達，不依賴 Minecraft `Player`／`ServerPlayer`，也不建立第二份 ownership Store。
-- P3-C 只提出 revision：new skill 提出 0；existing skill 依 snapshot 中的 Store latest 提出 `latest + 1`。latest 達 `Integer.MAX_VALUE` 時回傳 revision exhaustion，不得 overflow；失敗不消耗或保留 revision。
+- P3-C 只提出 revision：new skill 提出 0；existing skill 依 snapshot 中的 Store latest 使用P3-D1 additive建立的唯一`SkillRevision.successor()`。latest達`Integer.MAX_VALUE`時形成P3-C preparation `RevisionExhausted`，不建立Plan；失敗不消耗或保留revision。P3-C3與P3-D2不得各自保留`latest + 1`實作。
 - optimistic concurrency conflict、identity rejection 與 revision exhaustion 使用獨立 machine-readable outcome，不偽裝成技能內容 `ValidationIssue`。
 - identity rejection 不得透露未授權 SkillId 是否存在、latest revision 或 owner。
 - proposed `SkillDocument` 使用 `SkillDocument.CURRENT_SCHEMA_VERSION`，保持 Draft SkillId、node order、Envelope 與 appearance storage state；不呼叫 Writer、不重新 decode Draft。
 - 既有 `SkillCandidateResolver.resolve(typedDocument, emptyDocumentReadReport)`、`SkillValidationAnalyzer.analyze` 與 `SkillDefinitionProjector.project` 各恰好一次；不走 raw resolution，不重跑 Reader、migration 或 projection validation。
 - `SkillSubmissionPlan` 至少攜帶 owner／principal、compare-and-insert precondition、proposed `SkillDocument` 與 `ValidatedSkillDefinition`。Prepared plan 不等於 committed revision，必須 immutable、transient、短生命週期且不可持久化。
+- `SkillOwnerId` 的no Codec／StreamCodec邊界延伸至P3-D；只有P4 persistence開始時才additive翻轉為唯一canonical UUID Codec。
 
 Submission short-circuit 順序固定為：read warnings → draft schema → authorization → concurrency／exhaustion → completeness → B2／B3 pipeline。Draft read facts、completeness issues 與 B3 report 合併為單一 bounded `ValidationResult`；每個來源 report 都必須先逐項加入 retained issues，再以 `ValidationCollector.inheritReportState` 傳播 `truncated`／`omittedError`。`Prepared`、`Conflict`、`IdentityRejected` 與 `RevisionExhausted` report 必須 warning-only。
 
 ## P3-D：SkillDefinitionStore domain API
 
-API 責任：
+P3-D建立production pure-Java aggregate。它是domain truth與behavior，不是interface-only、test-only Map、static global、singleton或第二個persistent adapter；不依賴SavedData、Minecraft API、Codec、DynamicOps或`setDirty()`。
 
-```java
-Optional<SkillDocument> find(SkillId id, SkillRevision revision);
-SubmitResult submit(...);
-PinHandle pin(...);
-void unpin(PinHandle handle);
-ReclaimReport reclaim();
+Store shape：
+
+```text
+SkillDefinitionStore
+└─ SkillId → active StoredSkillHistory
+
+StoredSkillHistory
+├─ immutable SkillOwnerId owner
+└─ immutable retained SkillRevision → SkillDocument
 ```
 
-- PinHandle 關閉必須 idempotent。
-- 接收 `SkillSubmissionPlan`，以 Store 中該 `SkillId` 已存在的最大 revision 作為唯一 allocator latest truth；玩家 Attachment latest pointer 不參與配置裁決。
-- commit 時重新比較 plan precondition，並在同一 Store domain mutation 中執行 atomic compare-and-insert。成功才正式配置 proposed revision；不符時回傳 machine-readable commit conflict，不覆寫、不猜測、不自動重試。
-- commit 前的 composition boundary 必須重新確認 ownership authorization 與 Store state；P3-D API 本身不依賴 Minecraft player class。
-- 定義 atomic compare-and-insert、pin／unpin 與 mark-and-sweep domain behavior。
-- P3-D 不接 SavedData；production 不建立另一個 persistent store，儲存實作只用於測試。
-- Mark-and-sweep roots 包括玩家 latest/equipped refs、SkillInstance、Marker、Construct 與 Schedule。
+owner binding與retained documents是唯一truth；latest／skillsByOwner／owner count／revision count／allocation counter只能可重建，D1／D2第一版不建立。Committed document不可覆寫，Store不保存Validated definition、Plan、Outcome、ValidationResult或Draft。
 
-P3-D 完成後才建立 composition facade `SkillDefinitionSubmissionService`：取得 authoritative identity／state snapshot → 呼叫 P3-C prepare → commit 前重新確認 authority/state → 呼叫 P3-D commit。Facade 不把 `Player`／`ServerPlayer` 傳入 P3-C 或 P3-D domain API。
+### P3-D共同 hard ceilings
+
+```text
+MAX_COMMITTED_SKILLS_PER_OWNER = 256
+MAX_COMMITTED_SKILLS_GLOBAL = 4096
+MAX_RETAINED_REVISIONS_PER_SKILL = 128
+MAX_RETAINED_REVISIONS_GLOBAL = 32768
+MAX_RETENTION_ROOTS_PER_RECLAIM = 65536
+```
+
+後續Java常數只放`MagicSafetyCeilings`或唯一canonical位置。Count ceilings不取代P4 encoded-byte bounds。
+
+### P3-D thread／atomic contract
+
+- Store由server logic thread confinement使用；不承諾arbitrary-thread linearizability，不加lock／`synchronized`，不依賴Minecraft thread API檢查caller。Misuse是programming-contract violation。
+- Quota admission、owner check、CAS、capacity與insert在單一aggregate method中完成。
+- 全部typed failure checks在第一個truth mutation前完成；failure時state不變。
+- 完整replacement與success result建立後，才單次outer-map insert／replace；mutation後不呼叫provider／Codec／Reader／Writer／validator／external callback。
+- 不承諾OOME或任意`Error` rollback，不宣稱database transaction或Store／Attachment跨位置原子。
+
+### P3-D1：Store truth、read與snapshot
+
+責任：
+
+- 建立production pure-Java `SkillDefinitionStore`與package-private history state。
+- 最小read API：fixed-reference lookup、latest reference、owner lookup與由owner bindings推導的owner skill count；不回傳mutable map。
+- Retained history允許稀疏；gap不等於corruption。Max retained key是latest與implicit retention root，一般reclaim不得移除。
+- 損壞包括empty active history、route/document ID或revision不符、raw duplicate、null owner與超hard ceiling。
+- 建立detached immutable persistence snapshot／validated restore，只含active SkillId、owner與retained documents；無Codec，snapshot不是第二truth。
+- additive建立唯一`SkillRevision.successor()`，建議`Optional<SkillRevision>`；非MAX回下一值，MAX回empty。P3-C3 proposer與P3-D2共同使用，它不表示allocation。
+- `SkillOwnerId`仍無Codec／StreamCodec／String representation。
+
+Tests：empty、owner binding、revision 0、sparse history、max-derived latest、immutable lookup／snapshot、malformed restore、hard boundaries、successor normal／MAX、無mutable exposure。
+
+禁止：commit、quota、pin、reclaim、SavedData。
+
+### P3-D2：Atomic admission、CAS與insert
+
+Quota：
+
+```text
+SkillQuota
+├─ Unlimited
+└─ Limited(maxCommittedSkills: 0..256)
+```
+
+Unlimited只取消額外per-owner policy quota，不能突破hard ceilings。Quota計算per-owner distinct active committed SkillId；New成功+1，Existing／failed commit／old revision reclaim不變。只在確認Absent後檢查；Existing不因policy降低而被拒絕。Composition在fresh authorization後傳入immutable quota snapshot，Store內不重讀provider。Retire完成前預設policy為Unlimited；Limited目前沒有release workflow。
+
+Capacity：
+
+```text
+SkillStoreCapacityScope
+├─ OWNER_SKILL_HISTORIES
+├─ GLOBAL_SKILL_HISTORIES
+├─ SKILL_RETAINED_REVISIONS
+└─ GLOBAL_RETAINED_REVISIONS
+```
+
+`CapacityRejected(scope,current,maximum)`只代表technical ceiling；current／maximum非負且current至少為maximum。Policy使用`QuotaRejected`，兩者不可混用。
+
+Commit input固定為`SkillSubmissionPlan + immutable SkillQuota snapshot`。Plan不是credential；composition仍需fresh reauthorization。每個active SkillId恰有一個immutable owner：New以同一replacement建立owner與revision 0，Existing owner不變且不可藉submission transfer。Mismatch回`OwnerRejected(SkillId)`，不保存actual owner或latest，composition對外opaque-map。
+
+CAS precedence：
+
+```text
+ExpectedAbsent:
+programming invariants
+→ present: ExpectedAbsentButPresent
+→ per-owner history capacity
+→ global history capacity
+→ policy quota
+→ global retained-revision capacity
+→ replacement
+→ one insert
+
+ExpectedLatest:
+programming invariants
+→ absent: ExpectedLatestButAbsent
+→ owner mismatch: OwnerRejected
+→ actual latest mismatch: LatestMismatch(expected, observed)
+→ successor/proposed-revision invariant
+→ per-skill retained-revision capacity
+→ global retained-revision capacity
+→ replacement
+→ one replace
+```
+
+Owner mismatch先於latest mismatch。Normal result：
+
+```text
+SkillStoreCommitResult
+├─ Committed(SkillReference)
+├─ Conflict(SkillStoreCommitConflict)
+├─ QuotaRejected(SkillId, current, maximum)
+├─ CapacityRejected(SkillStoreCapacityScope, current, maximum)
+└─ OwnerRejected(SkillId)
+
+SkillStoreCommitConflict
+├─ ExpectedAbsentButPresent(SkillId)
+├─ ExpectedLatestButAbsent(SkillReference)
+└─ LatestMismatch(expected, observed)
+```
+
+合法Plan不含`ExpectedLatest(MAX)`，normal commit result無`RevisionExhausted`；Plan後actual latest前進MAX形成`LatestMismatch`。非法Plan在successor前fail fast，不為測試放寬Plan construction。Result不保存Plan／document／definition／report／actual owner／arbitrary diagnostic。
+
+相同Plan第二次依branch回`ExpectedAbsentButPresent`或`LatestMismatch`；無AlreadyCommitted、attempt UUID、retry cache、document equality idempotence或automatic retry。Conflict後重新讀state並完整reprepare。
+
+Tests：ExpectedAbsent／ExpectedLatest全部branch、quota exact／over／Unlimited／0、四種capacity、owner privacy、zero-state-diff for every typed failure、single replacement、repeat conflict、no revalidation／Codec call、no normal exhaustion variant。
+
+禁止：pin／reclaim、SavedData、composition、retry。
+
+### P3-D3：Pin、complete roots與reclaim
+
+Mark set：
+
+```text
+每個active history的implicit latest root
+∪ complete external persistent roots
+∪ active in-memory pins
+```
+
+External roots由未來P4 composition提供player latest／equipped、SkillInstance、Marker、Construct與Schedule refs；P3-D不依賴這些runtime classes。Owner不pin全部revisions。只有non-latest、無external root且active pin count為0者可回收。
+
+- pin missing不建立ghost root。
+- multiple handles分別計數；double-close idempotent。
+- active pins不持久化，restart後由authoritative persistent roots重建。
+- root集合超過65536、截斷或不完整時fail closed，整輪不sweep。
+- report只保存bounded counts，不回傳reference list。
+- reclaim後history可稀疏，不移除owner binding或降低quota count。
+
+P3-D1～D3不實作whole SkillId delete／retire／owner removal／tombstone／quota release。移除Attachment latest／equipped不等於Store retire；owner與latest保留，quota不釋放。未來retire需獨立operation、無roots／pins確認及persistent tombstone／等價no-reuse truth，另立scoped amendment。
+
+Tests：missing／multiple pins、double-close、latest root、external root、unreferenced non-latest reclaim、sparse後successor、incomplete／over-limit roots zero sweep、bounded report、無P4/runtime依賴。
+
+禁止：SavedData、Runtime SkillInstance implementation、Attachment、scheduler、automatic root discovery。
+
+P3-D完成後才建立composition facade：fresh authorization → immutable quota snapshot → P3-C prepare → P3-D commit。Facade不把Player／ServerPlayer傳入domain API。
 
 ## P3 Definition of Done
 
 - P3-A 模型與 Codec 的 hard bounds、alias isolation 與跨 Ops 測試通過。
 - P3-B 不持久化 resolved／unknown classification 或 runtime projection。
 - P3-C 可產生 immutable plan 或 typed failure；不寫 Store、不配置正式 revision，revision proposal exhaustion 不 overflow，所有非 Invalid outcome report 都是 warning-only。
-- P3-D atomic compare-and-insert、正式 revision allocation、commit conflict、pin/unpin/reclaim 可測且沒有 production persistent store。
+- P3-D1 production aggregate truth／read／snapshot、P3-D2 atomic quota／owner／CAS／capacity／insert與P3-D3 pin／reclaim皆可測；沒有SavedData或第二個production persistent adapter。
 
 ---
 
@@ -346,12 +484,25 @@ P3-D 完成後才建立 composition facade `SkillDefinitionSubmissionService`：
 
 把資料放到正確住址，沒有雙重真相。
 
+## 工作 P4-0：Store persistence bounds與raw-family envelope
+
+在任何P4 Java前先固定：
+
+- whole Store snapshot hard encoded bytes。
+- per-history hard encoded bytes。
+- load-time raw／quarantine bytes。
+- family-tagged raw storage envelope。
+
+Unknown／Unparsed目前只保證same-family／compatible Ops preservation；不得假設JSON-family raw可直接無損轉成NBT-family。P3-D snapshot中的`SkillDocument`不得被canonicalize或跨family改寫。
+
 ## 工作 0：SkillDefinitionStore SavedData adapter
 
-- 將 P3-D domain API 接入 Overworld SavedData，儲存不可變 `SkillDocument`。
-- Overworld SavedData 是唯一 production world-level persistent store，不與 P3-D 測試實作雙寫。
+- 將P3-D production pure-Java aggregate接入Overworld SavedData，持久化detached snapshot中的immutable owner binding與retained `SkillDocument`。
+- Overworld SavedData是唯一production world-level persistence adapter；它委派同一aggregate，不建立平行Store，也不重寫quota、owner、CAS、capacity、successor或reclaim policy。
+- 定義snapshot Codec／NBT、load／save、restore hard checks、corruption／quarantine及index rebuild。`SkillOwnerId`在此階段additive加入唯一canonical UUID Codec；不建立String／parallel wrapper或StreamCodec。
 - Store compare-and-insert 與玩家 Attachment latest reference 更新不是天然跨位置原子操作；明確定義 ordering、failure recovery 與 reconciliation，避免 orphan revision 或 stale pointer 被誤認為成功提交的唯一真相。
-- 每次 mutation 必須 `setDirty()`。
+- Aggregate commit成功或reclaim實際移除revision後才`setDirty()`；typed commit failure、no-op reclaim與pin/unpin不dirty。
+- 提供complete offline retention roots，涵蓋player latest／equipped、SkillInstance、Marker、Construct與Schedule；load完成且所有root source可證明完整前不得sweep。超過65536、截斷或不完整時fail closed。
 
 ## 工作 1：Player Attachment
 
@@ -395,9 +546,12 @@ EquippedSkillState
 
 ## Definition of Done
 
-- `SkillDefinitionStore` 的 production 持久化真相只在 Overworld SavedData。
+- P4-0 encoded-byte bounds與family-tagged raw envelope已定案並測試JSON／NBT Unknown／Unparsed preservation。
+- `SkillDefinitionStore` aggregate只有一份domain truth，production持久化只經Overworld SavedData adapter。
+- P4 adapter不重寫P3-D quota／owner／CAS／capacity／successor／reclaim rules。
 - 相同 Marker 本體不在 Store 與 Attachment 同時存在。
-- 所有 SavedData mutation 都 setDirty。
+- 成功truth mutation會setDirty；typed failure與pin不dirty。
+- Offline roots完整重建前不reclaim；超限／不完整root input fail closed。
 - 玩家 Attachment 不依靠自動 client sync。
 - dead continuation pointer 可清除。
 
