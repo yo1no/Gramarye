@@ -26,6 +26,7 @@ class SubmissionRevisionProposerTest {
     void existingSkillProposesTheImmediateSuccessor() {
         var zero = existing(0);
         var arbitrary = existing(41);
+        var almostMaximum = existing(Integer.MAX_VALUE - 1);
 
         var afterZero = assertInstanceOf(
                 SubmissionRevisionProposal.Proposed.class,
@@ -33,10 +34,16 @@ class SubmissionRevisionProposerTest {
         var afterArbitrary = assertInstanceOf(
                 SubmissionRevisionProposal.Proposed.class,
                 SubmissionRevisionProposer.propose(arbitrary));
+        var afterAlmostMaximum = assertInstanceOf(
+                SubmissionRevisionProposal.Proposed.class,
+                SubmissionRevisionProposer.propose(almostMaximum));
 
         assertAll(
                 () -> assertEquals(new SkillRevision(1), afterZero.revision()),
-                () -> assertEquals(new SkillRevision(42), afterArbitrary.revision()));
+                () -> assertEquals(new SkillRevision(42), afterArbitrary.revision()),
+                () -> assertEquals(
+                        new SkillRevision(Integer.MAX_VALUE),
+                        afterAlmostMaximum.revision()));
     }
 
     @Test

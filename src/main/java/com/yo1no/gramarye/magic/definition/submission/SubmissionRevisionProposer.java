@@ -20,10 +20,8 @@ final class SubmissionRevisionProposer {
     }
 
     private static SubmissionRevisionProposal proposeAfter(SkillReference latest) {
-        var latestValue = latest.revision().value();
-        if (latestValue == Integer.MAX_VALUE) {
-            return new SubmissionRevisionProposal.Exhausted(latest);
-        }
-        return new SubmissionRevisionProposal.Proposed(new SkillRevision(latestValue + 1));
+        return latest.revision().successor()
+                .<SubmissionRevisionProposal>map(SubmissionRevisionProposal.Proposed::new)
+                .orElseGet(() -> new SubmissionRevisionProposal.Exhausted(latest));
     }
 }

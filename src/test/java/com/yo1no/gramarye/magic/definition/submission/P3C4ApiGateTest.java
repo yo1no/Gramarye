@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -14,8 +16,8 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 class P3C4ApiGateTest {
-    private static final String SUBMISSION_PACKAGE =
-            "com.yo1no.gramarye.magic.definition.submission.";
+    private static final String STORE_CLASS =
+            "com.yo1no.gramarye.magic.definition.store.SkillDefinitionStore";
 
     @Test
     void publicModelsAndInternalConstructionSeamsHaveTheRequiredVisibility() {
@@ -125,18 +127,23 @@ class P3C4ApiGateTest {
     }
 
     @Test
-    void p3C4PhaseLocalGateStillHasNoStoreCommitOrCompositionTypes() {
-        // P3-C4 phase-local: flip when P3-D legitimately introduces a reviewed boundary.
+    void p3D1PhaseLocalGateRecognizesStoreButStillHasNoCommitOrCompositionTypes() throws Exception {
+        // P3-D1 phase-local: Store truth/read is now legal; D2+ types remain absent across production.
+        var productionClasses = productionClassNames();
         var absentSimpleNames = List.of(
-                "SkillDefinitionStore",
                 "SkillStoreCommitResult",
+                "SkillStoreCommitConflict",
+                "SkillQuota",
                 "SkillDefinitionSubmissionService",
                 "RandomUuidSkillIdSource",
                 "SkillSubmissionAuthorizationAdapter",
                 "SkillQuotaView");
 
-        assertTrue(absentSimpleNames.stream()
-                .noneMatch(name -> classExists(SUBMISSION_PACKAGE + name)));
+        assertAll(
+                () -> assertTrue(classExists(STORE_CLASS)),
+                () -> assertTrue(absentSimpleNames.stream().noneMatch(name ->
+                        productionClasses.stream().anyMatch(className ->
+                                simpleTopLevelName(className).equals(name)))));
     }
 
     private static boolean hasPublicMethod(Class<?> type, String name) {
@@ -163,5 +170,25 @@ class P3C4ApiGateTest {
         } catch (ClassNotFoundException expected) {
             return false;
         }
+    }
+
+    private static Set<String> productionClassNames() throws Exception {
+        var storeType = Class.forName(STORE_CLASS, false, P3C4ApiGateTest.class.getClassLoader());
+        var root = Path.of(storeType.getProtectionDomain()
+                .getCodeSource().getLocation().toURI());
+        try (var paths = Files.walk(root)) {
+            return paths.filter(path -> path.toString().endsWith(".class"))
+                    .map(root::relativize)
+                    .map(Path::toString)
+                    .map(name -> name.substring(0, name.length() - ".class".length()))
+                    .map(name -> name.replace(java.io.File.separatorChar, '.'))
+                    .collect(Collectors.toSet());
+        }
+    }
+
+    private static String simpleTopLevelName(String className) {
+        var simpleName = className.substring(className.lastIndexOf('.') + 1);
+        var nestedSeparator = simpleName.indexOf('$');
+        return nestedSeparator < 0 ? simpleName : simpleName.substring(0, nestedSeparator);
     }
 }

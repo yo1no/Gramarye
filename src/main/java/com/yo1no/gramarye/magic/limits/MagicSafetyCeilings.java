@@ -85,6 +85,21 @@ public final class MagicSafetyCeilings {
     /** Provisional server policy default for parsed values in one skill document or draft. */
     public static final int DEFAULT_SKILL_DOCUMENT_TREE_NODES = 16_384;
 
+    /** Technical ceiling for active committed skill histories owned by one principal. */
+    public static final int MAX_COMMITTED_SKILLS_PER_OWNER = 256;
+
+    /** Technical ceiling for active committed skill histories in one Store. */
+    public static final int MAX_COMMITTED_SKILLS_GLOBAL = 4_096;
+
+    /** Technical ceiling for retained revisions in one active skill history. */
+    public static final int MAX_RETAINED_REVISIONS_PER_SKILL = 128;
+
+    /** Technical ceiling for retained revisions across one Store. */
+    public static final int MAX_RETAINED_REVISIONS_GLOBAL = 32_768;
+
+    /** Technical ceiling for external retention roots accepted by one reclaim operation. */
+    public static final int MAX_RETENTION_ROOTS_PER_RECLAIM = 65_536;
+
     private MagicSafetyCeilings() {
     }
 

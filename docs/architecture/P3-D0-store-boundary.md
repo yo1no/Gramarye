@@ -20,6 +20,17 @@ P3-D1 adds the one `SkillRevision.successor()` operation shared by proposal and 
 
 P3-D remains split into D1 truth/read/snapshot, D2 atomic admission/CAS/insert, and D3 pin/unpin/reclaim. D3 receives a complete bounded external-root snapshot and fails closed rather than sweeping truncated, incomplete, or over-limit roots.
 
+### P3-D1 implementation boundary
+
+- D1 accepts only an empty aggregate or a validated detached snapshot; it exposes exact reads and deterministic snapshot output, but no normal mutation entrypoint.
+- Snapshot transport uses ordered immutable lists rather than maps so restore can detect duplicate routed `SkillId` and revision entries before any map construction. Histories are canonically emitted by `SkillId` UUID natural order and revisions by ascending numeric value.
+- Restore returns a package-private typed result for bounded Store-domain corruption. Snapshot／restore DTOs stay package-private; the P4 SavedData adapter is expected to live in the same Store package unless a later integration constraint justifies a reviewed bridge.
+- Snapshot DTO `toString()` output is bounded metadata only; it must never traverse or expose a `SkillDocument`, DefinitionEnvelope, or raw payload／appearance tree.
+- Restore capacity failures and future D2 commit capacity results share the sole `SkillStoreCapacityScope`; restore does not introduce a parallel capacity-scope vocabulary.
+- Stored histories and detached snapshots may share the already-immutable `SkillOwnerId` and `SkillDocument` values. They never canonicalize raw payloads or convert DynamicOps families; only their collection graph is rebuilt and sealed.
+- D2 must preserve snapshot detachment: later successful Store replacement must not mutate any snapshot produced before that commit.
+- `SkillRevision.successor()` computes only a candidate value. P3-C proposal uses it, while formal allocation remains exclusively a successful D2 commit effect.
+
 ## Deferred persistence and retirement
 
 Removing a player Attachment reference is not Store retirement and does not release quota. A future retire operation needs a persistent tombstone or equivalent no-reuse truth and a separate scoped amendment. Until then, the default policy quota is Unlimited while all technical ceilings remain mandatory.
