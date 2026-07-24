@@ -4,7 +4,20 @@ This note records the implemented P3-B2 integration boundary. The authoritative 
 
 ## Orchestration entries
 
-`SkillCandidateResolver.resolve(document, readReport)` accepts an already-read document and never reruns skill migration or the Reader. `resolveFromRaw(raw)` performs raw snapshot capture, P3-B1 skill migration, one tolerant P3-A Reader pass, and then definition resolution. Its typed result distinguishes pre-snapshot rejection, skill-migration failure with the original snapshot, Reader rejection, and success. Reader failures retain only the fixed machine code; DFU diagnostics and raw trees are not copied into the failure.
+`SkillCandidateResolver.resolve(document, readReport)` accepts an already-read document and never
+reruns skill migration or the Reader. `resolveFromRaw(raw)` remains the formal P3-B2 direct-raw
+ingress: it performs raw snapshot capture, P3-B1 skill migration, one tolerant P3-A Reader pass,
+and then definition resolution. Its typed result distinguishes pre-snapshot rejection,
+skill-migration failure with the original snapshot, Reader rejection, and success. Reader failures
+retain only the fixed machine code; DFU diagnostics and raw trees are not copied into the failure.
+
+Official production wiring and the P4 persistence migration facade obtain the same production
+`SkillMigrationPlan`; test-only dependency injection may still supply fixtures. P4 load never calls
+`resolveFromRaw`, because its one-`DynamicOps` input cannot represent a mixed-family persisted
+document. P4 instead presents the P3-B1 migrator with a raw-free logical conformance view, restores
+the exact physical envelopes, and hydrates a typed document. Any later candidate construction uses
+`resolve(document, readReport)` and therefore does not rerun migration or the Reader. P4 does not
+create a second skill migration contract or plan.
 
 The successful candidate preserves the Reader's immutable report and combines facts in deterministic order: all skill-level migration facts first, followed by payload migration facts in node traversal order. Both sources share `MAX_PIPELINE_FACTS`; reaching the cap drops later facts and sets `truncated=true`.
 

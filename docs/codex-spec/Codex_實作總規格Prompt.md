@@ -386,6 +386,20 @@ P4 physical storage 對每個 Trigger／Action payload 與每個 Unparsed appear
 使用 `RawTreeEnvelope`。同一 document／node 可混合 JSON 與 NBT；Unknown preservation 是
 same-family structural guarantee，不得以whole-document family tag或跨family convert取代。
 
+`SkillMigrationPlan` 的權威輸入是 logical `SkillDocument` outer schema，不是
+physical `RawTreeEnvelope` tree。`SkillMigrationStep` 只處理明文屬 skill-level schema
+的 document／node outer fields；不得讀取、遍歷、比較、hash、修改或依賴
+DefinitionEnvelope payload、Unparsed appearance raw slot、raw family／registry context／
+compressed-maps state 或 token sentinel。DefinitionEnvelope `type`、payload `schema_version` 與
+opaque slot 都必須保持不變。
+
+P4 以 logical tokenized conformance view 實現此模型：保留 outer fields 與 envelope
+shell，將 logical payload／raw root 替換為 sentinel，family、context 與 exact bytes 只存
+side table。`resolveFromRaw` 仍是正式 P3-B2 raw-ingress pipeline；P4 因 mixed-family
+表示需求不呼叫它，而是以同一 `SkillMigrationPlans.production()` 運行 conformance
+view。合規 production step 必須對 JSON／NBT／RegistryOps／tokenized representation
+產生相同 outer output 與 facts。
+
 下列 definition union 是 registry resolution 後的 transient classification，不是 `SkillDocument` 的持久化欄位：
 
 ```java
@@ -620,7 +634,7 @@ P4固定拆分為：
   `RawTreeEnvelope`、mixed-family current document bridge、appearance mapping與shared logical
   bounds；無Store schema／migration／carrier／SavedData。
 - P4-A2：`store_schema_version`、Store／History／Revision physical schema與三層byte ceilings、
-  Store physical migration、typed-location opaque-token skill migration、migration before
+  Store physical migration、logical opaque-token conformance migration、migration before
   hydration、current snapshot／P3-D restore、bounded facts與current Store blob encode／load；無
   `saved_data_schema_version`／carrier／journal／commit preflight／heap probe。
 - P4-A3：pure immutable hierarchical Store carrier rebuild／replacement／reclaim filtering、
@@ -646,6 +660,25 @@ probe、唯一production plan orchestration、token reinsertion後才呼叫A1 cu
 current-only decode／hydrate／load／skip-migration、Raw snapshot、`Dynamic`／`Tag`、caller plan或
 第三個document encoder facade。Store current encode的每份document必須委派此facade，不得
 複製A1 mixed-family serializer。
+
+P4 conformance view中每個token必須保持 ID、typed original location、
+`SerializedTreeContext` 與恰好一次 occurrence；raw bytes只能在 migration 完成後exact
+reinsertion。不得relocate／exchange token、修改 envelope type／payload schema version、刪除
+token-bearing slot 或新增 raw slot。
+
+Store／History／Revision exact-field preflight只處理 physical count sanity：non-negative
+count、element type、checked arithmetic、remaining-bytes／minimum-framing 相容性、nested
+byte length 與 trailing input，且不依 untrusted count 預配置大型 collection。它不得使用
+P3-D 的四種 Store domain count ceilings。Physical shape 錯誤是 `Malformed*Envelope`
+且 restore 0 次；physically valid domain overage 必須建立 list-based snapshot、呼叫
+`SkillDefinitionStore.restore` 恰好一次，並映射為
+`StoreRestoreRejected(CapacityExceeded(...))`。不得建立 P4 平行 count-capacity failure。
+
+P4-A2 repository gate 必須確認 production `SkillMigrationStep` 文件明載
+payload／raw／data opaque，migration-visible tree 不含 raw bytes，preflight 不引用 P3-D
+domain ceiling，無 `StoreCountCapacityExceeded` 等平行 failure，無 public current-only
+hydrate 與第二份 `SkillMigrationPlan`。此為 source-review／test consistency gate，不宣稱可
+沙箱化任意惡意 trusted migration code。
 
 P4不得重寫P3-D owner、quota、CAS、revision allocation或reclaim policy。P3-D沒有Store
 Codec、NBT、DynamicOps、SavedData、Minecraft dependency或`setDirty()`。Load固定為migration
@@ -1059,7 +1092,7 @@ P3-D3：active pin handles、complete retention roots、latest implicit root與r
 P4-A1：owner Codec、family/context判定、bounded raw Codec、per-raw-subtree envelope、
        mixed-family current document bridge、appearance mapping與shared logical bounds
 P4-A2：store_schema_version、Store／History／Revision physical schema與三層byte ceilings、
-       Store migration、typed-location opaque-token skill migration、migration-before-hydration、
+       Store migration、logical opaque-token conformance migration、migration-before-hydration、
        snapshot／restore、bounded facts、document persistence facade與current Store blob encode／load
 P4-A3：pure immutable hierarchical carrier rebuild／replacement／reclaim filtering、checked totals
        與64 MiB fixed-heap validation
@@ -1148,13 +1181,23 @@ composition outcome、report identity、journal與recovery以
 - Attachment clone policy。
 - P4-A1 JSON／NBT／mixed-family same-family structural preservation、RegistryOps／compressed
   JsonOps rebind與A1 raw／document bounds。
-- P4-A2 Store／History exact／+1、opaque-token migration與四類獨立migration／restore gates；
+- P4-A2 Store／History exact／+1、logical opaque-token conformance migration與四類
+  獨立migration／restore gates；
   Revision outer exact只驗inclusive admission，outer MAX + 1在parse前拒絕，最大canonical V0
   `1_048_661`（85-byte wrapper）完整round-trip，outer exact但inner document超限回document
   capacity failure。
 - P4-A2 `encodeCurrent` canonical／context-preserving bytes、bounds與alias isolation；current／legacy
   load均經migration seam，production恰好兩個P4-A2 public facade classes，且無public
   current-only decode／hydrate／load bypass、caller plan、mutable tree或Store-side A1 serializer複製。
+- P4-A2 migration representation independence：相同outer shell搭配JSON／NBT／RegistryOps
+  payload或token view必須產生相同output／facts，payload content／family／context
+  不影響branch，opaque slots不變，raw bytes不進migration-visible tree，
+  `resolveFromRaw` 與P4 view對合規shell-only step結果一致。
+- P4-A2 physical count sanity：negative／impossible count、wrong element type、count與remaining
+  bytes不相容均回`Malformed*Envelope`且restore 0次，decoder不依declared count預配
+  大型collection。Domain classification：4,097 valid histories、257 same-owner histories、
+  129 revisions、32,769 global revisions均回`StoreRestoreRejected(CapacityExceeded)`且
+  restore恰好一次，不得是malformed或P4 count failure。
 - P4-A3 immutable carrier builder／replacement／filter tests、checked totals與64 MiB fixed-heap
   validation。
 - P4-B absent file→empty Ready、existing invalid→Quarantined-not-empty、bounded file／carrier、
@@ -1233,6 +1276,11 @@ composition outcome、report identity、journal與recovery以
 - 任一migration／decode／restore failure會安裝partial Store。
 - 無法證明complete offline roots卻需要執行reclaim。
 - SavedData／Attachment組合被要求承諾fsync或資料庫式durable atomic。
+- Production `SkillMigrationStep` 需要觀察或修改 payload／raw／token／
+  DefinitionEnvelope type 或 payload schema version，或 direct-raw 與 P4 tokenized view 無法保持
+  representation-independent 語意。
+- P4 exact-field preflight 需要重寫 P3-D domain count ceilings／precedence、建立平行
+  count-capacity failure，或只能依 untrusted declared count 預配置大型 collection。
 
 ---
 

@@ -92,6 +92,21 @@ DefinitionEnvelope
 - 【三層 migration】P4 Store／storage envelope migration、P3-B1 既有 skill schema
   migration、P3-B2 payload migration 是三個不同邊界。不得建立第二個 skill migration
   plan；P4 load 只執行前兩層，payload migration 留在 resolution。
+- 【Skill migration 權威模型】`SkillMigrationPlan` 的輸入語意是 logical
+  `SkillDocument` outer schema。`SkillMigrationStep` 只處理 skill／document-level schema
+  fields；`DefinitionEnvelope.type`、payload `schema_version`、payload 內容與 Unparsed
+  appearance raw slot 都必須保持不變，不得被讀取、遍歷、比較、hash 或用來
+  決定 migration branch／facts。
+- 【P4 conformance view】P4 不把 physical `RawTreeEnvelope` wrapper 交給 skill
+  migration。Logical view 保留 document／node outer fields 與 DefinitionEnvelope
+  `type + schema_version`，只把 logical payload／raw slot 替換為 opaque token sentinel；
+  family、registry context、compressed-maps flag 與 exact raw bytes 只存在 side table。Token
+  ID、typed location、context 與 occurrence count 都必須保持，且不得改寫
+  envelope type／payload schema version。
+- 【`resolveFromRaw`】它仍是正式 P3-B2 raw-ingress pipeline，不是 legacy 或
+  test-only API。P4 mixed-family load 不呼叫它，而是以 logical tokenized conformance
+  view 調用同一 `SkillMigrationPlans.production()`；合規 step 在 direct-raw 與 tokenized
+  representation 必須產生相同 outer output 與 facts。
 - 【數值範圍】`SkillRevision` 是 `0..Integer.MAX_VALUE` 的非負 `int`，canonical JSON 使用普通整數。P3-C 只提出 revision，latest 為 MAX 時形成既有的 `RevisionExhausted` preparation outcome；P3-D 只有 commit 成功才正式配置。
 - 【共用 successor】P3-D1 additive 建立唯一 `SkillRevision.successor()`，由 P3-C3 與 P3-D2 共用；非 MAX 回 `value + 1`，MAX 回 empty。它不表示 allocation。
 - 【commit exhaustion】合法 Plan 不含 `ExpectedLatest(MAX)`，正常 Store commit result 不含 `RevisionExhausted`；Plan 後 actual latest 前進至 MAX 依 CAS 回 `LatestMismatch`。不得 overflow、wrap 或重用 revision。
@@ -180,6 +195,13 @@ DefinitionEnvelope
 - 【Physical schema與bounds】Store／History／Revision 以 list-based、length-delimited blobs
   保存，duplicate route 保留至 restore。Exact physical schema、RawTreeEnvelope V0 與唯一
   hard byte ceilings以[18號P4修正案](18_P4持久化與組合修正案.md)為準。
+- 【Physical／domain count 分離】Exact-field preflight 只驗證 list count 非負、
+  element type、checked arithmetic、remaining-bytes／minimum-framing 相容性、nested byte
+  length 與 trailing input，不執行 P3-D 的四種 Store domain count ceilings，也不得
+  依 untrusted count 預配置大型 collection。Physical shape 錯誤為
+  `Malformed*Envelope` 且 restore 0 次；physically valid 但 domain count 超限必須建立
+  list-based snapshot、呼叫 `SkillDefinitionStore.restore` 恰好一次，並回
+  `StoreRestoreRejected(CapacityExceeded(...))`，不得建立 P4 平行 count failure。
 - 【Revision ceiling語意】`MAX_STORE_REVISION_ENTRY_ENCODED_BYTES`是inclusive outer-envelope
   admission ceiling，不保證V0 canonical revision可成功產生同長度資料；V0目前最大完整合法
   revision為`1_048_661` bytes，inner document limit仍獨立執行。
@@ -589,12 +611,20 @@ PresentationEvent
 - 分裂／連鎖／重複上限。
 - P4-A1：JSON／NBT／mixed-family same-family structural round-trip、RegistryOps／compressed
   JsonOps rebind、invalid family/context與A1 raw／document bounds。
-- P4-A2：Store／History／Revision physical bounds、opaque-token migration、duplicate route保留至
+- P4-A2：Store／History／Revision physical bounds、logical opaque-token conformance
+  migration、duplicate route保留至
   restore與四組獨立migration／restore gates；Revision outer exact只驗inclusive admission，
   canonical V0最大值與inner document capacity依18號修正案分開測試。
 - P4-A2：`SkillDocumentStorePersistenceFacade.encodeCurrent` canonical／context-preserving
   bytes、bounds與alias isolation；current／legacy public load都經migration seam，API恰好兩個
   P4-A2 public facade classes，且無public current-only decode／hydrate／load bypass。
+- P4-A2：shell-only migration step 對 JSON／NBT／RegistryOps／tokenized view 產生相同
+  outer output 與 facts；payload content／family／context 不影響 branch，opaque slot 不變，
+  raw bytes 不出現在 migration-visible tree，`resolveFromRaw` 與 P4 view 結果一致。
+- P4-A2：negative／impossible count、wrong element type 為 `Malformed*Envelope` 且
+  restore 0 次；4,097 histories、257 same-owner histories、129 per-skill revisions 與
+  32,769 global revisions 均為 `StoreRestoreRejected(CapacityExceeded)` 且 restore 恰好一次，
+  不得分類為 malformed 或 P4 count-capacity failure。
 - P4-A3：immutable carrier builders、checked aggregate totals與64 MiB fixed-heap validation。
 
 ### GameTest
@@ -700,7 +730,7 @@ P4-A1：SkillOwnerId Codec、JSON／NBT／RegistryOps family/context、bounded r
        RawTreeEnvelope、mixed-family current document encode／hydrate、appearance physical mapping
        與shared logical bounds；無Store schema／migration／carrier／SavedData
 P4-A2：store_schema_version、Store／History／Revision physical schema與三層byte ceilings、
-       Store physical migration、typed-location opaque-token skill migration、migration before
+       Store physical migration、logical opaque-token conformance migration、migration before
        hydration、current snapshot／P3-D restore、bounded facts、document persistence facade與
        current Store blob encode／load；
        無saved_data_schema_version／carrier／journal／commit preflight／heap probe
@@ -725,6 +755,12 @@ P4-A2因document／migration package visibility只核准兩個public facade clas
 production plan orchestration。Public current encode合法，但不得公開current-only decode／hydrate／
 load／skip-migration。Store current encode的每份document都必須委派第一個facade，不得複製
 A1 mixed-family serializer。
+
+P4-A2 logical migration view 不含 physical `RawTreeEnvelope` metadata 或 raw bytes；side
+table 獨立綁定 token ID、typed location、`SerializedTreeContext` 與 exact immutable
+bytes。Migration 前後 envelope type／payload schema version、token location／context與恰好一次
+occurrence 均不得改變。`resolveFromRaw` 仍是 P3-B2 正式入口；P4 只因
+mixed-family 表示需求而不呼叫它，不得把它降級為 legacy／test-only。
 
 P3-D 明確建立production pure-Java aggregate；它集中domain truth與行為，但沒有檔案I/O、
 SavedData lifecycle或第二份persistent copy。P4-B的Overworld SavedData adapter是這份P3-D
@@ -817,6 +853,12 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - [ ] P4-A2 document persistence seam只有`encodeCurrent`與always-migrating load；production
       P4-A2 public facade classes恰好兩個，無current-only decode／hydrate／load bypass，Store
       package不複製A1 document encoder。
+- [ ] `SkillMigrationStep` 只依 logical outer schema 運作；payload／raw／data 與 token
+      sentinel 不可觀察或修改，type／payload schema version／location／context 保持不變，
+      production edge 具 representation-independence tests。
+- [ ] P4 exact-field preflight 不引用或重寫 P3-D 四種 domain count ceilings；
+      physically valid domain overage 只經 `StoreRestoreRejected`，不存在 P4 平行 count
+      failure，list decoder 不依 declared count 預配置大型 collection。
 - [ ] JSON、NBT與mixed-family document都能same-family結構保存；任一migration／decode／
       restore failure都不安裝partial或empty Store。
 - [ ] Existing invalid SavedData／Attachment形成Quarantined而非empty；custom loader不經

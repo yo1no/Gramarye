@@ -11,7 +11,7 @@ This page is a compact phase boundary, not a second persistence specification.
   `RawTreeEnvelope`, current mixed-family document bridge, appearance mapping, and shared logical
   document bounds.
 - P4-A2 owns `store_schema_version`, bounded Store／History／Revision blobs, Store physical
-  migration, location-bound opaque-token skill migration, migration-before-hydration, current
+  migration, a location-bound opaque-token logical conformance view, migration-before-hydration, current
   snapshot／restore orchestration, bounded facts, and current Store blob encode／load.
 - P4-A3 owns only immutable hierarchical carrier rebuild／replacement／filter primitives, checked
   totals, and the 64 MiB fixed-heap probe; it owns no lifecycle, publication, dirty state, commit,
@@ -51,8 +51,17 @@ SavedData carrier -> Store blob -> History blobs -> Revision blobs -> document s
 ```
 
 Ordered lists preserve duplicate routes until P3-D restore can reject them. The carrier and journal
-are derived encodings, not domain truth. Exact fields, canonical ordering, count ceilings, encoded
-byte ceilings, and quarantine limits are owned by the P4 amendment and `MagicSafetyCeilings`.
+are derived encodings, not domain truth. Exact fields, canonical ordering, encoded byte ceilings,
+and quarantine limits are owned by the P4 amendment and `MagicSafetyCeilings`.
+
+Physical exact-field preflight validates only count arithmetic and framing: counts must be
+non-negative and compatible with element type, remaining bytes, minimum framing, checked
+arithmetic, nested byte lengths, and trailing-input rules. It must not apply P3-D owner/global skill
+or retained-revision domain ceilings, and it must not allocate a huge collection from an
+untrusted declared count. A physically impossible count is a malformed physical envelope with zero
+restore calls. A physically valid list that exceeds a domain ceiling remains list-based and reaches
+`SkillDefinitionStore.restore` exactly once, where it becomes `StoreRestoreRejected` with the P3-D
+capacity scope rather than a P4 malformed or parallel count-capacity failure.
 
 The Revision hard ceiling of `1_114_112` bytes is an inclusive outer-envelope admission predicate,
 not a promise that V0 can produce a successful canonical revision of exactly that size. V0 uses an
@@ -86,9 +95,26 @@ use this facade for every document and may not copy the A1 mixed-family serializ
 
 `EncodedSkillDocument` is a defensive, bounded, immutable whole-document byte handle and therefore
 contains the persisted raw subtrees, but exposes no per-subtree, physical-field, or mutable-tree
-API. Only the document-to-migration tokenized handle contains no raw subtree bytes; it is a distinct
-nominal type, never the same wrapper or a bare byte array. Tokens bind ID,
-typed original location, and serialized-tree context; V0 rejects relocation and exchange.
+API. The document facade parses that physical representation, extracts every raw envelope's context
+and exact immutable bytes into a side table, and builds an NBT logical conformance view for P3-B1. Its non-opaque fields use the
+logical `SkillDocument` outer schema; a generated sentinel replaces each Trigger/Action payload root
+and each `Unparsed` appearance raw root. Physical `family`, registry-context, map-compression, and raw
+byte fields never enter the migration-visible tree.
+
+The document-to-migration tokenized handle therefore contains no raw subtree bytes and is a distinct
+nominal type, never the same wrapper or a bare byte array. Tokens bind ID, typed original location,
+serialized-tree context, and exact immutable raw bytes in the document-package side table. V0
+requires each token exactly once at its original location and preserves the envelope `type`, payload
+`schema_version`, and context; it rejects relocation, exchange, rewrite, deletion, addition,
+unknown IDs, missing IDs, and duplicates. The migration step cannot inspect or branch on the
+sentinel. After migration, the document facade validates these invariants before exact reinsertion.
+
+`resolveFromRaw` remains the formal P3-B2 direct-raw ingress, but P4 load does not call it because a
+single `DynamicOps` tree cannot carry the mixed-family persisted document. Both paths use the same
+production `SkillMigrationPlan`; P4 invokes it through the raw-free logical conformance view and
+then uses the A1 hydration seam. The P4 view adapts to the P3-B1 contract rather than defining a
+physical migration schema.
+
 Bootstrap audit and load share the sole production `SkillMigrationPlan` provider. Immutable
 `PipelineFactReport` merging is bounded, ordered, and propagates truncation without exposing its
 mutable collector. Minimal handles/results and the P4-D composition facade are outside this
@@ -164,7 +190,7 @@ The authoritative amendment now fixes A1／A2／A3／B／D ownership, separates 
 version axes, distinguishes the inclusive Revision outer ceiling from the V0 canonical maximum,
 approves exactly two P4-A2 opaque cross-package facade classes, including one bidirectional document
 persistence facade with public current encode and always-migrating load, binds migration tokens to
-typed locations, and
-requires one production skill-migration-plan provider, bounded fact merging, and exact-field NBT
-preflight. This ledger records closure only; the exact contracts and A2 phase-local stop conditions
-remain defined by the amendment rather than duplicated here.
+typed locations in a P3-B1 logical conformance view, and separates physical count sanity from P3-D
+domain-capacity enforcement. It also requires one production skill-migration-plan provider, bounded
+fact merging, and exact-field NBT preflight. This ledger records closure only; the exact contracts
+and A2 phase-local stop conditions remain defined by the amendment rather than duplicated here.

@@ -22,7 +22,25 @@ The defensive input copy followed by output re-snapshot intentionally performs t
 
 ## Envelope ownership boundary
 
-Skill-level migration owns the skill-document outer shape. It may restructure an Envelope container only when a skill schema migration explicitly defines that container change. Trigger/action payload subtrees remain data for the later payload-migration component. Only payload migration may transform those payloads and advance their Envelope `schema_version`; it may not alter the registry-routed `type`. This keeps registry identity singular while allowing outer document and payload schemas to evolve independently.
+The authoritative `SkillMigrationStep` input model is the logical `SkillDocument` outer schema, not
+a persistence-specific tree. Skill-level migration may change the root skill schema version and
+only the document/node shell fields explicitly owned by that adjacent skill-schema edge. It does
+not own a second physical representation.
+
+Every Trigger/Action payload and every top-level/node `Unparsed` appearance raw subtree is an opaque
+atom to a step. A step must not traverse, type-test, compare, hash, branch on, relocate, delete,
+add, duplicate, or otherwise depend on an opaque value, its JSON/NBT family, registry context, or
+map compression state. It must preserve each `DefinitionEnvelope.type`, payload `schema_version`, and
+opaque slot. Only payload migration may transform payload data or advance its envelope schema
+version; registry-routed `type` remains unchanged. This keeps registry identity singular while
+allowing outer document and payload schemas to evolve independently.
+
+The opacity rule is representation-independent. For one outer shell, direct JSON, direct NBT,
+`RegistryOps`, and a persistence-generated token sentinel must produce the same outer output and
+the same orchestrator facts while leaving the opaque value unchanged. Java cannot sandbox a
+trusted migration step, so every production edge requires source review and paired
+representation-independence tests. A future edge that needs payload-dependent behavior belongs to
+payload migration or requires an approved architecture change first.
 
 ## Facts and failures
 
@@ -32,4 +50,14 @@ Migration failures are non-persistent and machine-readable. They may retain boun
 
 ## B2 integration point
 
-P3-B1 itself still stops at a current-schema raw snapshot. P3-B2 orchestration now consumes a successful migrated snapshot, invokes the P3-A tolerant reader once, then performs descriptor lookup, payload migration and typed decode. Validation remains outside this boundary.
+P3-B1 itself still stops at a current-schema raw snapshot. P3-B2's formal `resolveFromRaw` entry
+consumes a successful migrated snapshot, invokes the P3-A tolerant reader once, then performs
+descriptor lookup, payload migration, and typed decode. It is not a test-only or deprecated path.
+
+P4 persistence does not call `resolveFromRaw`: one `DynamicOps` tree cannot represent a
+mixed-family persisted document. Instead, the P4 document facade keeps each physical raw envelope
+outside migration and builds an NBT logical conformance view whose non-opaque fields match this
+P3-B1 input model and whose opaque roots contain generated sentinels. It invokes the same production
+plan through the P4 migration facade, validates and reinserts the original envelopes, then hydrates
+the current document. The persistence view is an adapter to this contract, not another migration
+schema. Validation remains outside this boundary.
