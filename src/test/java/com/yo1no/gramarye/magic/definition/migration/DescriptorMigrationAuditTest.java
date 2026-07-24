@@ -25,8 +25,7 @@ class DescriptorMigrationAuditTest {
         assertTrue(action.payloadMigrationPlan().steps().isEmpty());
         assertTrue(DescriptorMigrationAudit.audit(
                         List.of(trigger),
-                        List.of(action),
-                        SkillMigrationPlan.empty())
+                        List.of(action))
                 .isEmpty());
     }
 

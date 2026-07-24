@@ -36,6 +36,12 @@ public final class SkillCandidateResolver {
 
     public SkillCandidateResolver(
             TriggerTypeLookup triggerLookup,
+            ActionTypeLookup actionLookup) {
+        this(triggerLookup, actionLookup, SkillMigrationPlans.production());
+    }
+
+    SkillCandidateResolver(
+            TriggerTypeLookup triggerLookup,
             ActionTypeLookup actionLookup,
             SkillMigrationPlan skillMigrationPlan) {
         this.triggerLookup = Objects.requireNonNull(triggerLookup, "triggerLookup");

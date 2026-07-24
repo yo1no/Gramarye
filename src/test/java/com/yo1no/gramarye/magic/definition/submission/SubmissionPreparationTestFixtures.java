@@ -40,7 +40,6 @@ import com.yo1no.gramarye.magic.definition.lookup.ActionTypeLookup;
 import com.yo1no.gramarye.magic.definition.lookup.TriggerTypeLookup;
 import com.yo1no.gramarye.magic.definition.migration.PayloadMigrationPlan;
 import com.yo1no.gramarye.magic.definition.migration.SkillCandidateResolver;
-import com.yo1no.gramarye.magic.definition.migration.SkillMigrationPlan;
 import com.yo1no.gramarye.magic.definition.resolution.ResolvedSkillCandidate;
 import com.yo1no.gramarye.magic.definition.validation.ProfileAvailabilityView;
 import com.yo1no.gramarye.magic.definition.validation.SkillDefinitionProjector;
@@ -203,8 +202,7 @@ final class SubmissionPreparationTestFixtures {
         final SkillDefinitionProjector projector = new SkillDefinitionProjector();
 
         PipelineComponents(TriggerTypeLookup triggerLookup, ActionTypeLookup actionLookup) {
-            resolver = new SkillCandidateResolver(
-                    triggerLookup, actionLookup, SkillMigrationPlan.empty());
+            resolver = new SkillCandidateResolver(triggerLookup, actionLookup);
         }
 
         SkillSubmissionPreparer productionPreparer() {

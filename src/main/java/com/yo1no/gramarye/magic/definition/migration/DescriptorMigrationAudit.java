@@ -13,7 +13,11 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 public final class DescriptorMigrationAudit {
     private final SkillMigrationPlan skillMigrationPlan;
 
-    public DescriptorMigrationAudit(SkillMigrationPlan skillMigrationPlan) {
+    public DescriptorMigrationAudit() {
+        this(SkillMigrationPlans.production());
+    }
+
+    DescriptorMigrationAudit(SkillMigrationPlan skillMigrationPlan) {
         this.skillMigrationPlan = Objects.requireNonNull(
                 skillMigrationPlan, "skillMigrationPlan");
     }
@@ -40,6 +44,12 @@ public final class DescriptorMigrationAudit {
 
     /** Verifies registered descriptors and the production current skill-document schema. */
     public static Optional<DescriptorMigrationAuditFailure> audit(
+            Iterable<? extends TriggerType<?>> triggerDescriptors,
+            Iterable<? extends ActionType<?>> actionDescriptors) {
+        return audit(triggerDescriptors, actionDescriptors, SkillMigrationPlans.production());
+    }
+
+    static Optional<DescriptorMigrationAuditFailure> audit(
             Iterable<? extends TriggerType<?>> triggerDescriptors,
             Iterable<? extends ActionType<?>> actionDescriptors,
             SkillMigrationPlan skillMigrationPlan) {

@@ -194,3 +194,31 @@ typed locations in a P3-B1 logical conformance view, and separates physical coun
 domain-capacity enforcement. It also requires one production skill-migration-plan provider, bounded
 fact merging, and exact-field NBT preflight. This ledger records closure only; the exact contracts
 and A2 phase-local stop conditions remain defined by the amendment rather than duplicated here.
+
+## P4-A2 implementation ledger
+
+P4-A2 implements its cross-package boundary with exactly the two approved facade classes:
+`SkillDocumentStorePersistenceFacade` owns current document encoding and always-migrating document
+loading, while `OpaqueSkillDocumentMigrationFacade` owns the raw-free logical migration seam. The
+token side table, physical Store DTOs, Store persistence bridge, and both current-only hydration and
+restore seams remain package-internal. `SkillMigrationPlans.production()` and the Store migration
+plan provider are the respective immutable production-plan truths; migration facts are merged in
+bounded left-before-right order and are never persisted.
+
+The V0 Store, History, and Revision envelopes use strict uncompressed arbitrary-NBT framing with
+schema-aware exact-field preflight before nested byte-array materialization. Physical list checks
+cover framing and arithmetic only; owner, history, and retained-revision limits continue to belong
+exclusively to P3-D restore. The measured V0 Revision wrapper is 85 bytes, so a current maximum-size
+document produces a 1,048,661-byte Revision envelope under the inclusive 1,114,112-byte outer
+ceiling.
+
+Document migration receives only the logical outer document and location-bound opaque sentinels.
+Raw family, context, and bytes stay in the document-package side table; token count, location,
+context, definition type, and payload schema are verified before exact reinsertion. Store loading
+therefore remains fail closed in the order Store migration, document migration, current hydration,
+and one P3-D restore call. P4-A2 introduces no carrier, SavedData lifecycle, Attachment, journal,
+dirty state, or commit preflight; those remain later-phase responsibilities.
+
+Only the document package may mint `TokenizedSkillDocumentMigrationInput`; callers cannot wrap
+arbitrary bytes as migration input. Migration returns the distinct nominal
+`MigratedTokenizedDocument`, which cannot be supplied back to the public migration entrypoint.

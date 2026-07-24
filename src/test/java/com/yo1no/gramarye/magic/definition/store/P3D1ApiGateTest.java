@@ -174,6 +174,7 @@ class P3D1ApiGateTest {
         var allProduction = productionClassNames();
         var storeTypes = allProduction.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
+                .filter(name -> !isP4A2StoreType(name))
                 .map(P3D1ApiGateTest::loadWithoutInitialization)
                 .toList();
         var forbiddenTypeDeclarations = List.of(
@@ -255,6 +256,19 @@ class P3D1ApiGateTest {
         var simpleName = className.substring(className.lastIndexOf('.') + 1);
         var nestedSeparator = simpleName.indexOf('$');
         return nestedSeparator < 0 ? simpleName : simpleName.substring(0, nestedSeparator);
+    }
+
+    private static boolean isP4A2StoreType(String className) {
+        var name = simpleTopLevelName(className);
+        return name.startsWith("StorePersistence")
+                || name.equals("StoreNbtFraming")
+                || name.equals("StorePersistentEnvelopeV0")
+                || name.equals("HistoryPersistentEnvelopeV0")
+                || name.equals("RevisionPersistentEnvelopeV0")
+                || name.startsWith("ImmutableStoreBlob")
+                || name.startsWith("ImmutableHistoryBlob")
+                || name.startsWith("ImmutableRevisionBlob")
+                || name.equals("SkillDefinitionStorePersistenceBridge");
     }
 
     private static boolean hasOnlyD1SurfaceTypes(Class<?> type) {

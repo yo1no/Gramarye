@@ -432,6 +432,7 @@ class P3D3ApiGateTest {
     void storePackageContainsNoP4RuntimeDiscoveryOrDestructiveSurface() throws Exception {
         var storeSources = productionSources().stream()
                 .filter(path -> path.toString().contains("/magic/definition/store/"))
+                .filter(P3D3ApiGateTest::isP3dStoreSource)
                 .toList();
         var forbiddenSourceTokens = List.of(
                 "net.minecraft.", "net.neoforged.", "SavedData", "Attachment",
@@ -520,6 +521,7 @@ class P3D3ApiGateTest {
 
         var storePackageText = productionSources().stream()
                 .filter(path -> path.toString().contains("/magic/definition/store/"))
+                .filter(P3D3ApiGateTest::isP3dStoreSource)
                 .map(P3D3ApiGateTest::readSanitized)
                 .collect(Collectors.joining("\n"));
         assertFalse(storePackageText.contains("SkillDocumentMigrator"));
@@ -530,6 +532,15 @@ class P3D3ApiGateTest {
         assertTrue(storeSource.contains(
                 "restore(SkillDefinitionStoreSnapshot snapshot)"));
         assertTrue(storeSource.contains("SkillDocument.CURRENT_SCHEMA_VERSION"));
+    }
+
+    private static boolean isP3dStoreSource(Path path) {
+        var name = path.getFileName().toString();
+        return !name.startsWith("StorePersistence")
+                && !name.equals("StoreNbtFraming.java")
+                && !name.equals("StorePersistentEnvelopeV0.java")
+                && !name.equals("ImmutableStoreBlob.java")
+                && !name.equals("SkillDefinitionStorePersistenceBridge.java");
     }
 
     private static void assertMapField(

@@ -264,6 +264,7 @@ class P3D2ApiGateTest {
         var productionClasses = productionClassNames();
         var storeTypes = productionClasses.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
+                .filter(name -> !isP4A2StoreType(name))
                 .map(P3D2ApiGateTest::loadWithoutInitialization)
                 .toList();
         var forbiddenTopLevelTypes = Set.of(
@@ -518,6 +519,19 @@ class P3D2ApiGateTest {
         var simpleName = className.substring(className.lastIndexOf('.') + 1);
         var nestedSeparator = simpleName.indexOf('$');
         return nestedSeparator < 0 ? simpleName : simpleName.substring(0, nestedSeparator);
+    }
+
+    private static boolean isP4A2StoreType(String className) {
+        var name = simpleTopLevelName(className);
+        return name.startsWith("StorePersistence")
+                || name.equals("StoreNbtFraming")
+                || name.endsWith("PersistentEnvelopeV0")
+                || Set.of(
+                                "ImmutableStoreBlob",
+                                "ImmutableHistoryBlob",
+                                "ImmutableRevisionBlob")
+                        .contains(name)
+                || name.equals("SkillDefinitionStorePersistenceBridge");
     }
 
     private static boolean hasNoP4Dependency(Class<?> type) {

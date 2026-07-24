@@ -106,6 +106,15 @@ public final class MagicSafetyCeilings {
     /** Technical ceiling for external retention roots accepted by one reclaim operation. */
     public static final int MAX_RETENTION_ROOTS_PER_RECLAIM = 65_536;
 
+    /** Inclusive encoded-byte ceiling for one physical Store revision entry. */
+    public static final int MAX_STORE_REVISION_ENTRY_ENCODED_BYTES = 1_114_112;
+
+    /** Inclusive encoded-byte ceiling for one physical retained skill history. */
+    public static final int MAX_SKILL_HISTORY_ENCODED_BYTES = 8_388_608;
+
+    /** Inclusive encoded-byte ceiling for the current uncompressed skill Store blob. */
+    public static final int MAX_SKILL_STORE_ENCODED_BYTES = 67_108_864;
+
     private MagicSafetyCeilings() {
     }
 
