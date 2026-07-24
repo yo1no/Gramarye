@@ -61,7 +61,7 @@ ledger, not a second complete Store specification.
 
 | Aggregate operation/result | P4 dirty decision |
 | --- | --- |
-| commit `Committed` | dirty |
+| P4-D commit `Committed` + prebuilt carrier/journal published | dirty |
 | commit typed failure | not dirty |
 | pin / close | not dirty |
 | reclaim `Rejected` | not dirty |
@@ -71,17 +71,24 @@ ledger, not a second complete Store specification.
 
 ## P4 obligations
 
-P4 owns complete offline root enumeration, including unloaded player, entity, construct, and
-schedule references; Store/Attachment ordering and reconciliation; the SavedData adapter and
-`setDirty()` decisions; `SkillOwnerId` persistence Codec; snapshot Codec/NBT; family-tagged raw
-storage; encoded-byte ceilings; and bounded corruption/quarantine policy.
+The approved [P4 amendment](../codex-spec/18_P4持久化與組合修正案.md) and
+[P4-0 boundary ledger](P4-0-persistence-boundary.md) close the physical-schema, byte-bound,
+lifecycle, composition, and complete-root decisions deferred by P3-D.
+
+P4 owns the completeness gate and bounded offline enumeration for every enabled root source family,
+including player, future SkillInstance, Marker, Construct, and Schedule references; Store/Attachment
+ordering and reconciliation; the SavedData adapter and `setDirty()` decisions; `SkillOwnerId`
+persistence Codec; snapshot Codec/NBT; per-raw-subtree family-tagged storage; encoded-byte ceilings;
+and bounded corruption/quarantine policy.
 
 The fixed P4 rule is **migration before restore**. P3-D restore accepts a typed current-schema
-snapshot and never runs or guesses migration. P4 must preserve these paired tests:
+snapshot and never runs or guesses migration. P4 must preserve these four independent gates:
 
 ```text
 old schema -> migration -> current-schema snapshot -> restore success
-old schema without migration -> UnsupportedDocumentSchema
+same old document without migration -> UnsupportedDocumentSchema
+missing edge / migration exception -> migration failure -> restore invocation count 0
+migration success + current snapshot corruption -> typed restore rejection, not migration failure
 ```
 
 The migrated-success case must verify identity/revision routing and the existing same-family
@@ -99,8 +106,8 @@ Migration failure, restore rejection, and corruption/quarantine are distinct out
 - Canonical save or dirty processing is eligible only after migration, decode, and restore all
   succeed.
 
-P3-D intentionally contains no P4 migration adapter or fixture. The future P4 test suite must own
-both the migrated-success and skipped-migration-rejection cases above.
+P3-D intentionally contains no P4 migration adapter or fixture. The P4 test suite owns all four
+gates above.
 
 ## Deferred retirement
 

@@ -17,4 +17,4 @@ For each source `ValidationResult`, merge retained issues in source order and th
 
 ## Persistence handoff
 
-A transient SkillId mint grant is not a restart-stable credential; authorization always uses the current authoritative snapshot. P3-D rechecks the Store precondition at commit. P4 must separately define ordering, recovery, and reconciliation between Store SavedData and the player Attachment because those locations do not form one native transaction.
+A transient SkillId mint grant is not a restart-stable credential; authorization always uses the current authoritative snapshot. P3-D rechecks the Store precondition at commit. Store SavedData and the player Attachment do not form one native transaction. The approved [P4 amendment](../codex-spec/18_P4持久化與組合修正案.md) now fixes Store-first publication, a bounded generation journal, persisted-readback-confirmed clearing, and fail-closed reconciliation; P3-C0 implements none of them.

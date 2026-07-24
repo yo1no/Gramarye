@@ -25,10 +25,11 @@ Do not use `java.example.gramarye`, `com.example.gramarye`, or another placehold
 
 Read these files before planning or editing architecture:
 
-1. `docs/codex-spec/17_P3資料模型修正案.md`
-2. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
-3. `docs/codex-spec/Codex_實作總規格Prompt.md`
-4. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
+1. `docs/codex-spec/18_P4持久化與組合修正案.md`
+2. `docs/codex-spec/17_P3資料模型修正案.md`
+3. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
+4. `docs/codex-spec/Codex_實作總規格Prompt.md`
+5. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
 
 Priority:
 
@@ -41,11 +42,15 @@ Approved scoped amendment within its stated scope
 > Task-specific prompt
 ```
 
-`17_P3資料模型修正案.md` is the currently approved scoped amendment. It supersedes the
-P3 clauses that it explicitly identifies; outside that scope, the frozen architecture specification remains
-authoritative.
+`18_P4持久化與組合修正案.md` supersedes older rules only within its explicitly stated P4
+persistence, Attachment, and composition scope. `17_P3資料模型修正案.md` retains the same
+scoped precedence for the P3 clauses that it explicitly identifies. All P0-P3 and other rules not
+amended by those documents remain governed by the frozen architecture specification.
 
-If specifications conflict, stop the affected work and report the exact conflict. Do not redesign the frozen architecture.
+If the P4 amendment and another authoritative document have not been synchronized and still
+contain a substantive conflict, stop the affected work and report the exact conflict; do not choose
+one side or redesign the frozen architecture. Apply the same stop rule to other specification
+conflicts.
 
 ## Required workflow
 

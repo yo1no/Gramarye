@@ -2,7 +2,9 @@
 
 本文件把凍結骨架拆成可交給 Codex 逐階段執行的工程工作包。
 
-P3 相關工作包已依 `17_P3資料模型修正案.md` 同步。修正案在其明確範圍內優先，其他架構仍以凍結規格為準。
+P3 相關工作包已依 `17_P3資料模型修正案.md` 同步；P4-A～P4-E 已依
+`18_P4持久化與組合修正案.md` 同步。兩份修正案只在各自明確範圍內優先，其他架構仍以
+凍結規格為準。若P4條文尚未同步而形成實質衝突，停止受影響工作，不自行選邊。
 
 ## 階段名稱映射
 
@@ -224,8 +226,15 @@ P3-D1：production pure-Java Store aggregate、owner/history truth、read API、
 P3-D2：quota／owner／CAS／capacity／insert同一atomic mutation、zero-partial
        typed failure、commit result與正式revision allocation
 P3-D3：active pin handles、complete retention roots、latest implicit root與reclaim
-P4：Overworld SavedData唯一persistence adapter、snapshot Codec／NBT、load／save、
-    setDirty／quarantine、玩家Attachment、complete offline roots與reconciliation
+P4-A：owner Codec、per-raw-subtree envelope、physical schema／exact byte ceilings、
+      storage migration與family-aware persistence bridge
+P4-B：唯一Overworld Skill Store SavedData lifecycle、bounded ingress、
+      Ready／Quarantined、prebuilt carrier與dirty
+P4-C：獨立player skill Attachment、Draft／latest／equipped／editor persistence、
+      total serializer、migration與clone policy
+P4-D：authenticated composition、persistence preflight、P3-D commit、Store-first journal、
+      Attachment transition與crash recovery
+P4-E：offline roots、rebuildable index、reconciliation與reclaim composition
 ```
 
 ## P3-A：SkillDraft／SkillDocument／NodeDocument 與 Appearance storage
@@ -452,7 +461,10 @@ Mark set：
 ∪ active in-memory pins
 ```
 
-External roots由未來P4 composition提供player latest／equipped、SkillInstance、Marker、Construct與Schedule refs；P3-D不依賴這些runtime classes。Owner不pin全部revisions。只有non-latest、無external root且active pin count為0者可回收。
+External roots由P4-E complete offline audit提供player latest／equipped、pending journal與每一個
+已啟用的SkillInstance／Marker／Construct／Schedule persistent source family；P3-D不依賴這些
+runtime classes。Owner不pin全部revisions。只有non-latest、無external root且active pin count
+為0者可回收。
 
 - pin missing不建立ghost root。
 - multiple handles分別計數；double-close idempotent。
@@ -467,7 +479,9 @@ Tests：missing／multiple pins、double-close、latest root、external root、u
 
 禁止：SavedData、Runtime SkillInstance implementation、Attachment、scheduler、automatic root discovery。
 
-P3-D完成後才建立composition facade：fresh authorization → immutable quota snapshot → P3-C prepare → P3-D commit。Facade不把Player／ServerPlayer傳入domain API。
+Composition facade留給P4-D：authenticated principal → fresh authorization → 一份immutable
+quota snapshot → P3-C prepare → persistence／journal preflight → P3-D commit → Attachment
+transition。Facade不把Player／ServerPlayer傳入domain API。
 
 ## P3 Definition of Done
 
@@ -478,82 +492,156 @@ P3-D完成後才建立composition facade：fresh authorization → immutable quo
 
 ---
 
-# 階段 P4：Attachment 與 SavedData 真相
+# 階段 P4：Skill Store persistence、player Attachment 與 composition
 
-## 目標
+P4 由已核准的 [`18_P4持久化與組合修正案.md`](18_P4持久化與組合修正案.md)治理。
+P4-0只修訂權威文件；修正案提交且遠端CI通過前不得開始P4-A。
 
-把資料放到正確住址，沒有雙重真相。
+P4-A～E不得重寫P3-D owner truth、quota counting、CAS、revision allocation或reclaim
+policy，也不得重跑P3-B2／B3 resolution／validation。
 
-## 工作 P4-0：Store persistence bounds與raw-family envelope
+## P4-A：Persistence format 與 migration bridge
 
-在任何P4 Java前先固定：
+### 責任
 
-- whole Store snapshot hard encoded bytes。
-- per-history hard encoded bytes。
-- load-time raw／quarantine bytes。
-- family-tagged raw storage envelope。
+- `SkillOwnerId` additive建立唯一canonical UUID Codec；不建立String owner、平行PlayerId或
+  StreamCodec。
+- 每個Trigger／Action payload、top-level Unparsed appearance與每個Unparsed override個別
+  保存V0 `RawTreeEnvelope`。同一document／node可mixed JSON與NBT；RegistryOps只是可重綁
+  context，不是第三family。
+- 建立list-based、length-delimited Store／History／Revision physical schema與
+  `family_tagged_subtrees_v0` document storage tree；duplicate route保留至P3-D restore。
+- 將全部exact encoded-byte ceilings加入唯一`MagicSafetyCeilings`位置，使用bounded／counting
+  encode，不預配置理論最大buffer。
+- 建立adjacent Store-envelope migration，並把既有唯一P3-B1 skill migration plan接到
+  NBT-family logical outer tree；RawTreeEnvelope bytes保持opaque，payload migration不在load
+  執行。
+- Family-aware hydration後才建立current `SkillDefinitionStoreSnapshot`並呼叫P3-D restore。
+- 建立不含Minecraft lifecycle的Store persistence bridge與preflight能力。
 
-Unknown／Unparsed目前只保證same-family／compatible Ops preservation；不得假設JSON-family raw可直接無損轉成NBT-family。P3-D snapshot中的`SkillDocument`不得被canonicalize或跨family改寫。
+### Gate
 
-## 工作 0：SkillDefinitionStore SavedData adapter
+- JSON、NBT與mixed-family document都能在相同family下結構保存；無跨family conversion。
+- 四類獨立migration／restore測試全部通過：migrated success、same legacy direct restore
+  rejection、migration failure且restore 0 calls、migration success後domain restore rejection。
+- 任一migration／decode／restore failure都不產生partial或empty Store。
+- 每個byte bound的exact合法、+1拒絕；64 MiB Store ceiling通過dedicated-server heap benchmark。
 
-- 將P3-D production pure-Java aggregate接入Overworld SavedData，持久化detached snapshot中的immutable owner binding與retained `SkillDocument`。
-- Overworld SavedData是唯一production world-level persistence adapter；它委派同一aggregate，不建立平行Store，也不重寫quota、owner、CAS、capacity、successor或reclaim policy。
-- 定義snapshot Codec／NBT、load／save、restore hard checks、corruption／quarantine及index rebuild。`SkillOwnerId`在此階段additive加入唯一canonical UUID Codec；不建立String／parallel wrapper或StreamCodec。
-- Store compare-and-insert 與玩家 Attachment latest reference 更新不是天然跨位置原子操作；明確定義 ordering、failure recovery 與 reconciliation，避免 orphan revision 或 stale pointer 被誤認為成功提交的唯一真相。
-- Aggregate commit成功或reclaim實際移除revision後才`setDirty()`；typed commit failure、no-op reclaim與pin/unpin不dirty。
-- 提供complete offline retention roots，涵蓋player latest／equipped、SkillInstance、Marker、Construct與Schedule；load完成且所有root source可證明完整前不得sweep。超過65536、截斷或不完整時fail closed。
+### 禁止
 
-## 工作 1：Player Attachment
+SavedData lifecycle、Attachment、production payload migration、submission facade。
 
-建立不可變／受控 mutation 的：
+## P4-B：Overworld SavedData adapter
 
-```text
-PlayerMagicData
-CooldownState
-ContinuationPointer
-EquippedSkillState
-```
+### 責任
 
-所有 mutation 經 service。
+- Stable name固定`gramarye_skill_definitions`；唯一位置是Overworld data storage，其他維度
+  取得同一adapter，不使用static singleton。
+- 專用one-time loader先區分primary file absent／present，執行compressed-file size bound、
+  bounded NBT decompression與P4-A load pipeline。標準fail-open `computeIfAbsent`不得直接作
+  deserializer入口。
+- Absent file建立empty Ready且不dirty；existing invalid file安裝non-dirty Quarantined，
+  不建立empty Store、不覆寫原檔、不自動提升`.dat_old`。
+- Ready同時持有domain Store、matching immutable encoded carrier、pending journal carrier與
+  rewrite-pending state。Save callback只寫prebuilt carrier。
+- 落實完整dirty matrix與migration成功後canonical rewrite pending。
 
-## 工作 2：Marker Attachment schema
+### Gate
 
-只先建立 schema 與 index hook，不實作完整標記玩法。
+- File／decompressed carrier exact／+1、Overworld singleton、non-Overworld same adapter、
+  absent／invalid分流、dirty matrix、primary invalid不提升`.dat_old`、restart round-trip。
+- Async save語意只承諾in-memory committed + persistence scheduled，不宣稱fsync durable。
 
-## 工作 3：RuntimePersistentStore
+### 禁止
 
-保存最小 SkillInstance 與 Schedule。
+Player Attachment、submission composition、在save callback首次執行一般Codec。
 
-## 工作 4：Index rebuild
+## P4-C：Player Attachment
 
-伺服器啟動／Entity load：
+### 責任
 
-- Store → runtime index。
-- Marker Attachment → marker index。
-- Construct Entity → construct index。
-- dead pointer prune。
+- 建立獨立永久`gramarye:player_skills` Attachment V0，保存bounded Draft、latest state
+  （含mutation generation）、equipped slots與editor metadata；owner由authenticated player
+  UUID導出，不持久化。
+- Disk collection使用List保留duplicate corruption；custom total serializer回
+  Ready／Quarantined。Missing tag才建立empty Ready，existing malformed tag不得視為missing。
+- Draft使用獨立adjacent migration；Attachment總byte ceiling優先於per-Draft ceiling。
+- 使用immutable replacement `setData`；永久資料serialize + `copyOnDeath`，End return不得
+  double-copy；不自動sync。
 
-## 工作 5：Clone policy
+### Gate
 
-測試：
+- Empty default、Draft／latest／equipped／editor round-trip、Draft migration、duplicate／stale／
+  bounds、missing／malformed分流、death／keepInventory／End／logout-login、generation exact／
+  overflow與no auto sync。
 
-- death respawn。
-- keep inventory 開／關。
-- End return。
-- logout/login。
-- dimension change。
+### 禁止
 
-## Definition of Done
+Store commit composition、revision allocation、Store owner/latest覆寫。
 
-- P4-0 encoded-byte bounds與family-tagged raw envelope已定案並測試JSON／NBT Unknown／Unparsed preservation。
-- `SkillDefinitionStore` aggregate只有一份domain truth，production持久化只經Overworld SavedData adapter。
-- P4 adapter不重寫P3-D quota／owner／CAS／capacity／successor／reclaim rules。
-- 相同 Marker 本體不在 Store 與 Attachment 同時存在。
-- 成功truth mutation會setDirty；typed failure與pin不dirty。
-- Offline roots完整重建前不reclaim；超限／不完整root input fail closed。
-- 玩家 Attachment 不依靠自動 client sync。
-- dead continuation pointer 可清除。
+## P4-D：Submission composition
+
+### 責任
+
+- Facade位於submission package，從authenticated server principal導出`SkillOwnerId`，從own
+  Ready Attachment取得Draft，讀current Store owner/latest，只取得一次immutable quota
+  snapshot，再重用package-private C1～C4 preparation。
+- Preparation後fresh owner/state recheck；所有revision／history／Store／journal／carrier
+  encoding與capacity preflight都在live Store mutation前完成。
+- 用同一quota snapshot呼叫P3-D commit。只有`Committed`才發布預建carrier／journal、dirty，
+  再執行Attachment immutable transition。
+- 建立獨立composition outcome；不得把`SkillSubmissionOutcome.Prepared`當Committed。取得
+  preparation report後，後續outcome保留同一warning-only report reference。
+- Store-first bounded generation journal記錄expected／target pointer transition；in-memory
+  `setData`後不立即清除，等startup／login persisted playerdata readback確認後才清除。
+- Crash recovery replay idempotent；pending target是external retention root。
+
+### Gate
+
+- Fresh authorization、quota只取一次、SkillIdSource null fail-fast、preparation／commit conflict
+  分離、preflight failure零Store mutation、opaque owner rejection、success／Attachment failure、
+  journal cap與所有crash windows、readback-confirmed clear、report identity。
+
+### 禁止
+
+Network、接受client owner／authorization／quota／revision／Store state、Attachment-first ordering。
+
+## P4-E：Offline roots 與 reconciliation
+
+### 責任
+
+- Bounded read-only audit涵蓋offline player latest／equipped、pending journal與所有已啟用的
+  future SkillInstance／Marker／Construct／Schedule persistent source family。
+- Rebuildable world-level index不是truth；restart預設Incomplete，只有全部enabled source
+  family audit完成才Complete。Unreadable／truncated／unknown source一律Incomplete。
+- Store owner／documents裁決pointer reconciliation；missing／owner mismatch做opaque prune，
+  無journal舊pointer不自動升latest，orphan revision不自動刪除或釋放quota。
+- Root capture最多MAX+1並與reclaim位於同一logic-thread call chain；Complete不跨tick保存。
+- Reclaim依P3-D既有規則；只改Attachment不dirty Store，改journal或實際reclaim才依matrix
+  dirty。
+
+### Gate
+
+- Offline roots、loaded-only→Incomplete、unreadable／future-source incomplete gate、MAX+1、
+  journal roots、missing Store root reconciliation、no chunk load、reclaim Rejected／0／>0 dirty
+  mapping與Complete不得跨tick重用。
+
+### 禁止
+
+Chunk force、background sweep、Incomplete best-effort reclaim、重寫P3-D reclaim policy。
+
+Marker gameplay Attachment、`RuntimePersistentStore`、SkillInstance、Schedule與Construct lifecycle
+不由P4-A～E提前建立。P4-E只定義這些未來persistent root source的completeness gate；實際
+source implementation仍留各自後續工程階段。
+
+## P4 Definition of Done
+
+- P4-A～E各自gate與[18號修正案required tests](18_P4持久化與組合修正案.md#21-required-tests)
+  通過。
+- `SkillDefinitionStore`只有一份domain truth；Overworld adapter、player Attachment與journal
+  各自遵守其單一真相／derived data邊界。
+- Existing invalid data不silent empty，所有load failure不partial、不dirty、不覆寫原檔。
+- Store-first ordering、readback-confirmed journal clear與offline-root fail-closed均可由測試證明。
 
 ---
 
@@ -1048,7 +1136,9 @@ one controller entity
 
 最後才做完整 Node editor。
 
-編輯器只能產生 draft；P3-D 完成後，提交經 composition facade `SkillDefinitionSubmissionService` 串接 P3-C prepare 與 P3-D commit。
+編輯器只能產生 draft；提交經P4-D composition facade
+`SkillDefinitionSubmissionService`串接authenticated authority、P3-C prepare、persistence
+preflight、P3-D commit與Attachment transition。
 
 ---
 
@@ -1065,6 +1155,13 @@ one controller entity
 - [ ] 新 schema 有 migration／版本決策。
 - [ ] 新 payload 有 bounds、version、rate limit。
 - [ ] 新持久化 mutation 有 dirty handling。
+- [ ] Existing malformed persistence不等同missing；load failure不安裝partial／empty truth。
+- [ ] 一般可失敗encode與byte-capacity checks在truth mutation前完成，save callback只寫
+      prebuilt carrier。
+- [ ] Cross-location update有明確ordering、bounded recovery journal與reconciliation；不宣稱
+      fsync或durable atomic。
+- [ ] Persistent roots只有在offline與所有enabled source family完整時才可Complete；不完整時
+      reclaim fail closed。
 - [ ] 新生命週期有清理與 idempotence。
 - [ ] `/skill trace` 可解釋失敗。
 - [ ] dedicated server 無 client class。

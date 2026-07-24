@@ -1,6 +1,6 @@
 # Architecture index
 
-The primary authoritative architecture specification is the [NeoForge 1.21.1 frozen skeleton](../codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md), as refined within its stated scope by the approved [P3 data-model amendment](../codex-spec/17_P3資料模型修正案.md). This directory records decisions and phase baselines; it does not duplicate or replace either authority.
+The primary authoritative architecture specification is the [NeoForge 1.21.1 frozen skeleton](../codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md), as refined within their stated scopes by the approved [P3 data-model amendment](../codex-spec/17_P3資料模型修正案.md) and [P4 persistence, Attachment, and composition amendment](../codex-spec/18_P4持久化與組合修正案.md). This directory records decisions and phase baselines; it does not duplicate or replace those authorities.
 
 Implementation guidance is provided by the [Codex implementation contract](../codex-spec/Codex_實作總規格Prompt.md) and the [detailed implementation phases](../codex-spec/NeoForge1.21.1_詳細實作步驟.md), in the priority order defined by `AGENTS.md`.
 
@@ -25,3 +25,4 @@ Implementation guidance is provided by the [Codex implementation contract](../co
 - [P3-C skill submission decision ledger](P3-C-skill-submission.md)
 - [P3-D0 Store truth and atomic commit boundary](P3-D0-store-boundary.md)
 - [P3-D skill definition Store decision ledger](P3-D-skill-definition-store.md)
+- [P4-0 persistence, Attachment, and composition boundary](P4-0-persistence-boundary.md)
