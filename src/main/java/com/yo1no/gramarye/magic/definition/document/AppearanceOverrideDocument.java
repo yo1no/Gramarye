@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.definition.document;
 
 import com.mojang.serialization.Dynamic;
+import com.yo1no.gramarye.magic.definition.tree.SerializedTreeFamily;
 import java.util.Objects;
 
 /** Persistent node-level appearance override state. */

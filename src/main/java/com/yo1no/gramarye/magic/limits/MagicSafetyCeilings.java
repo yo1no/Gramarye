@@ -15,6 +15,12 @@ public final class MagicSafetyCeilings {
     /** Technical ceiling that bounds one retained raw definition payload to 256 KiB. */
     public static final int MAX_RAW_PAYLOAD_BYTES = 256 * 1_024;
 
+    /**
+     * Technical ceiling for one retained unparsed appearance subtree. This is intentionally the
+     * same raw-tree byte boundary, not an independent gameplay or persistence policy.
+     */
+    public static final int MAX_UNPARSED_APPEARANCE_BYTES = MAX_RAW_PAYLOAD_BYTES;
+
     /** Technical ceiling that bounds per-effect runtime tag collection growth. */
     public static final int MAX_RUNTIME_TAGS = 64;
 

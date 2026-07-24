@@ -1,38 +1,13 @@
 package com.yo1no.gramarye.magic.definition.document;
 
 import com.google.gson.JsonElement;
-import com.mojang.serialization.DataResult;
 import com.mojang.serialization.Dynamic;
-import com.mojang.serialization.DynamicOps;
 import com.yo1no.gramarye.magic.definition.tree.DynamicTreeBounds;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import net.minecraft.nbt.Tag;
 
 final class DynamicTreeSupport {
     private DynamicTreeSupport() {
-    }
-
-    static DataResult<SerializedTreeFamily> family(Dynamic<?> dynamic) {
-        if (dynamic.getValue() instanceof JsonElement) {
-            return DataResult.success(SerializedTreeFamily.JSON);
-        }
-        if (dynamic.getValue() instanceof Tag) {
-            return DataResult.success(SerializedTreeFamily.NBT);
-        }
-        return DataResult.error(() -> boundedDiagnostic("Unsupported Dynamic value family: "
-                + dynamic.getValue().getClass().getName()));
-    }
-
-    static DataResult<SerializedTreeFamily> family(DynamicOps<?> ops) {
-        var empty = ops.empty();
-        if (empty instanceof JsonElement) {
-            return DataResult.success(SerializedTreeFamily.JSON);
-        }
-        if (empty instanceof Tag) {
-            return DataResult.success(SerializedTreeFamily.NBT);
-        }
-        return DataResult.error(() -> boundedDiagnostic(
-                "Unsupported DynamicOps family: " + ops.getClass().getName()));
     }
 
     static BoundsResult checkBounds(Dynamic<?> dynamic, int maxDepth, long maxNodes) {

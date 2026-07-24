@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.mojang.serialization.Codec;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.api.id.SkillRevision;
 import com.yo1no.gramarye.magic.definition.document.SkillDocument;
@@ -203,14 +204,16 @@ class P3D1ApiGateTest {
     }
 
     @Test
-    void successorAndOwnerIdentityApisStayAtTheirPhaseBoundaries() {
+    void successorAndOwnerIdentityApisStayAtTheirCurrentPhaseBoundaries() throws Exception {
         assertAll(
                 () -> assertTrue(Arrays.stream(SkillRevision.class.getDeclaredMethods())
                         .anyMatch(method -> method.getName().equals("successor")
                                 && method.getReturnType() == Optional.class
                                 && Modifier.isPublic(method.getModifiers()))),
+                () -> assertEquals(Codec.class,
+                        SkillOwnerId.class.getDeclaredField("CODEC").getType()),
                 () -> assertTrue(Arrays.stream(SkillOwnerId.class.getDeclaredFields())
-                        .noneMatch(field -> field.getType().getSimpleName().contains("Codec"))),
+                        .noneMatch(field -> field.getType().getName().contains("StreamCodec"))),
                 () -> assertTrue(Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())
                         .anyMatch(method -> method.getName().equals("commit")
                                 && Modifier.isPublic(method.getModifiers()))));

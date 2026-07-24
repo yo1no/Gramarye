@@ -1,22 +1,21 @@
 package com.yo1no.gramarye.magic.definition.migration;
 
-import com.google.gson.JsonElement;
 import com.mojang.serialization.Dynamic;
-import com.mojang.serialization.DynamicOps;
-import com.mojang.serialization.JsonOps;
 import com.yo1no.gramarye.magic.definition.tree.DynamicTreeBounds;
+import com.yo1no.gramarye.magic.definition.tree.SerializedTreeContext;
+import com.yo1no.gramarye.magic.definition.tree.SerializedTreeFamily;
+import com.yo1no.gramarye.magic.definition.tree.SupportedDynamicTrees;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.util.Objects;
-import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.Tag;
-import net.minecraft.resources.RegistryOps;
 
 /** Immutable, deeply isolated raw skill-document tree retained only by the migration pipeline. */
 final class RawSkillDocumentSnapshot {
-    private final SnapshotTree tree;
+    private final Dynamic<?> tree;
+    private final SerializedTreeContext context;
 
-    private RawSkillDocumentSnapshot(SnapshotTree tree) {
+    private RawSkillDocumentSnapshot(Dynamic<?> tree, SerializedTreeContext context) {
         this.tree = Objects.requireNonNull(tree, "tree");
+        this.context = Objects.requireNonNull(context, "context");
     }
 
     /** Direct Java boundary. Invalid or unsupported input is reported as constructor misuse. */
@@ -44,12 +43,14 @@ final class RawSkillDocumentSnapshot {
             if (boundFailure != null) {
                 return new CaptureResult.Failure(boundFailure);
             }
-            var treeResult = createTree(source);
-            if (treeResult instanceof TreeCapture.Failure failure) {
-                return new CaptureResult.Failure(failure.failure());
+            var copyResult = SupportedDynamicTrees.defensiveCopy(source);
+            if (copyResult.error().isPresent()) {
+                return new CaptureResult.Failure(
+                        SkillMigrationFailure.of(SkillMigrationFailure.Code.UNSUPPORTED_RAW_FAMILY));
             }
-            var tree = ((TreeCapture.Success) treeResult).tree();
-            return new CaptureResult.Success(new RawSkillDocumentSnapshot(tree));
+            var tree = copyResult.result().orElseThrow();
+            var context = SupportedDynamicTrees.contextOf(tree).result().orElseThrow();
+            return new CaptureResult.Success(new RawSkillDocumentSnapshot(tree, context));
         } catch (RuntimeException exception) {
             return new CaptureResult.Failure(SkillMigrationFailure.forSnapshotException(exception));
         }
@@ -71,53 +72,26 @@ final class RawSkillDocumentSnapshot {
 
     /** Returns a new deep tree copy while retaining the exact DynamicOps instance. */
     public Dynamic<?> copyRawDocument() {
-        return tree.copyDynamic();
+        return SupportedDynamicTrees.defensiveCopy(tree).getOrThrow();
     }
 
     @Override
     public boolean equals(Object other) {
         return this == other
-                || other instanceof RawSkillDocumentSnapshot snapshot && tree.structurallyEquals(snapshot.tree);
+                || other instanceof RawSkillDocumentSnapshot snapshot
+                        && context.family() == snapshot.context.family()
+                        && tree.getValue().equals(snapshot.tree.getValue());
     }
 
     @Override
     public int hashCode() {
-        return tree.structuralHashCode();
+        var familySalt = context.family() == SerializedTreeFamily.JSON ? 31 : 37;
+        return familySalt + tree.getValue().hashCode();
     }
 
     @Override
     public String toString() {
-        return "RawSkillDocumentSnapshot[family=" + tree.familyName() + "]";
-    }
-
-    private static TreeCapture createTree(Dynamic<?> source) {
-        var ops = source.getOps();
-        var value = source.getValue();
-        if (value instanceof JsonElement jsonValue) {
-            if (ops instanceof JsonOps jsonOps) {
-                return new TreeCapture.Success(new JsonSnapshotTree(jsonOps, jsonValue));
-            }
-            if (ops instanceof RegistryOps<?> registryOps) {
-                var parent = registryOps.compressMaps() ? JsonOps.COMPRESSED : JsonOps.INSTANCE;
-                var typed = registryOps.withParent(parent);
-                if (registryOps.equals(typed)) {
-                    return new TreeCapture.Success(new JsonSnapshotTree(typed, jsonValue));
-                }
-            }
-        }
-        if (value instanceof Tag nbtValue) {
-            if (ops instanceof NbtOps nbtOps) {
-                return new TreeCapture.Success(new NbtSnapshotTree(nbtOps, nbtValue));
-            }
-            if (ops instanceof RegistryOps<?> registryOps) {
-                var typed = registryOps.withParent(NbtOps.INSTANCE);
-                if (registryOps.equals(typed)) {
-                    return new TreeCapture.Success(new NbtSnapshotTree(typed, nbtValue));
-                }
-            }
-        }
-        return new TreeCapture.Failure(
-                SkillMigrationFailure.of(SkillMigrationFailure.Code.UNSUPPORTED_RAW_FAMILY));
+        return "RawSkillDocumentSnapshot[family=" + context.family().serializedName() + "]";
     }
 
     public sealed interface CaptureResult permits CaptureResult.Success, CaptureResult.Failure {
@@ -132,83 +106,5 @@ final class RawSkillDocumentSnapshot {
                 Objects.requireNonNull(failure, "failure");
             }
         }
-    }
-
-    private sealed interface TreeCapture permits TreeCapture.Success, TreeCapture.Failure {
-        record Success(SnapshotTree tree) implements TreeCapture {
-        }
-
-        record Failure(SkillMigrationFailure failure) implements TreeCapture {
-        }
-    }
-}
-
-sealed interface SnapshotTree permits JsonSnapshotTree, NbtSnapshotTree {
-    Dynamic<?> copyDynamic();
-
-    String familyName();
-
-    boolean structurallyEquals(SnapshotTree other);
-
-    int structuralHashCode();
-}
-
-final class JsonSnapshotTree implements SnapshotTree {
-    private final DynamicOps<JsonElement> ops;
-    private final JsonElement value;
-
-    JsonSnapshotTree(DynamicOps<JsonElement> ops, JsonElement value) {
-        this.ops = Objects.requireNonNull(ops, "ops");
-        this.value = Objects.requireNonNull(value, "value").deepCopy();
-    }
-
-    @Override
-    public Dynamic<JsonElement> copyDynamic() {
-        return new Dynamic<>(ops, value.deepCopy());
-    }
-
-    @Override
-    public String familyName() {
-        return "json";
-    }
-
-    @Override
-    public boolean structurallyEquals(SnapshotTree other) {
-        return other instanceof JsonSnapshotTree json && value.equals(json.value);
-    }
-
-    @Override
-    public int structuralHashCode() {
-        return 31 + value.hashCode();
-    }
-}
-
-final class NbtSnapshotTree implements SnapshotTree {
-    private final DynamicOps<Tag> ops;
-    private final Tag value;
-
-    NbtSnapshotTree(DynamicOps<Tag> ops, Tag value) {
-        this.ops = Objects.requireNonNull(ops, "ops");
-        this.value = Objects.requireNonNull(value, "value").copy();
-    }
-
-    @Override
-    public Dynamic<Tag> copyDynamic() {
-        return new Dynamic<>(ops, value.copy());
-    }
-
-    @Override
-    public String familyName() {
-        return "nbt";
-    }
-
-    @Override
-    public boolean structurallyEquals(SnapshotTree other) {
-        return other instanceof NbtSnapshotTree nbt && value.equals(nbt.value);
-    }
-
-    @Override
-    public int structuralHashCode() {
-        return 37 + value.hashCode();
     }
 }

@@ -93,3 +93,30 @@ without forced chunk loads, background sweeping, or cross-tick reuse of `Complet
 P4-A starts only after the P4 amendment is committed and remote CI passes. Its first gate proves
 same-family structural preservation for JSON, NBT, and mixed-family documents, and proves that every
 migration/decode/restore failure installs neither a partial nor an empty Store.
+
+## P4-A1 implementation ledger
+
+P4-A1 adds only the current-document raw persistence seam. The public tree boundary lives under
+`magic.definition.tree`: `SerializedTreeFamily`, immutable `SerializedTreeContext`, and
+`SupportedDynamicTrees` are the sole family/context classifier and defensive-copy utility. The
+bounded byte encoders, strict JSON/NBT codecs, V0 raw envelope, physical document DTO, typed
+failure/result, and current-only mixed-family bridge remain package-internal under
+`magic.definition.document`; this co-location preserves the existing package-private P3-A
+appearance and canonical-ID seams without widening mutable-tree or byte-array APIs.
+
+JSON uses strict UTF-8 with duplicate-key/trailing-input rejection and deterministic recursive key
+ordering. NBT uses uncompressed arbitrary-tag framing, an encoded-byte bound, and a separate finite
+allocation/tree-complexity accounter. Neither codec converts families. Each raw subtree retains its
+own family, registry-context, and JSON map-compression flags; hydration rebinds registry context to
+the supplied current provider.
+
+The document bridge applies one logical depth/node budget across the outer document and every
+hydrated raw subtree at its logical insertion depth. Physical envelope metadata and byte-array
+storage are excluded from that logical count. Rejected appearance states follow the amendment's
+default/none persistence fallback, and `SkillOwnerId.CODEC` reuses the canonical UUID codec already
+used by `SkillId`.
+
+The hydration shortcut is deliberately non-public and accepts current schema only. P4-A2 remains
+responsible for storage-envelope and skill-document migration before invoking that seam, including
+the still-required opaque-token migration gate; P4-A1 introduces no Store envelope, migration plan,
+carrier, SavedData, Attachment, or world lifecycle.

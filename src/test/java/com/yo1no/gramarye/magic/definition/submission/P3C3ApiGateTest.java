@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.mojang.serialization.Codec;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -58,8 +59,7 @@ class P3C3ApiGateTest {
                 SubmissionPreparationCheck.class,
                 SubmissionPreparationCheck.Prepared.class,
                 SubmissionPreparationCheck.Invalid.class,
-                SubmissionPreparationCheck.RevisionExhausted.class,
-                SkillOwnerId.class);
+                SubmissionPreparationCheck.RevisionExhausted.class);
 
         assertTrue(types.stream().allMatch(type ->
                 Arrays.stream(type.getDeclaredFields()).noneMatch(field ->
@@ -74,6 +74,17 @@ class P3C3ApiGateTest {
                                     || name.contains("commit")
                                     || name.contains("allocate");
                         })));
+    }
+
+    @Test
+    void p4AOwnerIdentityAddsOnlyItsCanonicalCodec() throws Exception {
+        assertAll(
+                () -> assertEquals(Codec.class,
+                        SkillOwnerId.class.getDeclaredField("CODEC").getType()),
+                () -> assertTrue(Arrays.stream(SkillOwnerId.class.getDeclaredFields())
+                        .noneMatch(field -> field.getType().getName().contains("StreamCodec"))),
+                () -> assertTrue(Arrays.stream(SkillOwnerId.class.getDeclaredMethods())
+                        .noneMatch(method -> method.getReturnType().getName().contains("StreamCodec"))));
     }
 
     @Test

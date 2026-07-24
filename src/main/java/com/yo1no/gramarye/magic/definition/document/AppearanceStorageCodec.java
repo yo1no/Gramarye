@@ -7,6 +7,8 @@ import com.mojang.serialization.DataResult;
 import com.mojang.serialization.Dynamic;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.MapLike;
+import com.yo1no.gramarye.magic.definition.tree.SerializedTreeFamily;
+import com.yo1no.gramarye.magic.definition.tree.SupportedDynamicTrees;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -174,7 +176,7 @@ final class AppearanceStorageCodec {
         return encodeRaw(unparsed.rawFamily(), unparsed.copyRawAppearance(), ops).map(Optional::of);
     }
 
-    private static DynamicTreeSupport.BoundsResult relativeBounds(Dynamic<?> dynamic) {
+    static DynamicTreeSupport.BoundsResult relativeBounds(Dynamic<?> dynamic) {
         return DynamicTreeSupport.checkBounds(
                 dynamic,
                 MagicSafetyCeilings.MAX_UNPARSED_APPEARANCE_DEPTH,
@@ -597,11 +599,11 @@ final class AppearanceStorageCodec {
             SerializedTreeFamily rawFamily,
             Dynamic<?> raw,
             DynamicOps<T> targetOps) {
-        var targetFamily = DynamicTreeSupport.family(targetOps);
-        if (targetFamily.error().isPresent()) {
-            return DataResult.error(() -> targetFamily.error().orElseThrow().message());
+        var targetContext = SupportedDynamicTrees.contextOf(targetOps);
+        if (targetContext.error().isPresent()) {
+            return DataResult.error(() -> targetContext.error().orElseThrow().message());
         }
-        if (targetFamily.result().orElseThrow() != rawFamily) {
+        if (targetContext.result().orElseThrow().family() != rawFamily) {
             return DataResult.error(() -> "Unparsed appearance cannot be written across DynamicOps families");
         }
         return Codec.PASSTHROUGH.encodeStart(targetOps, raw);

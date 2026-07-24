@@ -501,7 +501,8 @@ class P3D3ApiGateTest {
         assertTrue(normalized.contains("## d3-a"));
         assertTrue(normalized.contains("## d3-b"));
         assertTrue(normalized.contains("dirty-state matrix"));
-        assertTrue(normalized.contains("commit `committed` | dirty"));
+        assertTrue(normalized.contains(
+                "p4-d commit `committed` + prebuilt carrier/journal published | dirty"));
         assertTrue(normalized.contains("commit typed failure | not dirty"));
         assertTrue(normalized.contains("pin / close | not dirty"));
         assertTrue(normalized.contains("reclaim `rejected` | not dirty"));
@@ -511,7 +512,8 @@ class P3D3ApiGateTest {
         assertTrue(normalized.contains("## p4 obligations"));
         assertTrue(normalized.contains("migration before restore"));
         assertTrue(normalized.contains("old schema -> migration -> current-schema snapshot -> restore success"));
-        assertTrue(normalized.contains("old schema without migration -> unsupporteddocumentschema"));
+        assertTrue(normalized.contains(
+                "same old document without migration -> unsupporteddocumentschema"));
         assertTrue(normalized.contains("migration failure"));
         assertTrue(normalized.contains("restore rejection"));
         assertTrue(normalized.contains("corruption/quarantine"));

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.mojang.serialization.Codec;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -46,9 +47,8 @@ class P3C2ApiGateTest {
     }
 
     @Test
-    void p3C2AndC3PhaseLocalModelsHaveNoCodecStreamCodecOrNetworkSurface() {
+    void p3C2AndC3StageModelsHaveNoCodecStreamCodecOrNetworkSurface() {
         var types = List.of(
-                SkillOwnerId.class,
                 AuthorizedSkillState.class,
                 AuthorizedSkillState.New.class,
                 AuthorizedSkillState.Existing.class,
@@ -69,5 +69,16 @@ class P3C2ApiGateTest {
                                 method.getReturnType().getName().contains("Codec")
                                         || method.getName().toLowerCase().contains("encode")
                                         || method.getName().toLowerCase().contains("decode"))));
+    }
+
+    @Test
+    void p4AOwnerIdentityAddsOnlyItsCanonicalCodec() throws Exception {
+        assertAll(
+                () -> assertEquals(Codec.class,
+                        SkillOwnerId.class.getDeclaredField("CODEC").getType()),
+                () -> assertTrue(Arrays.stream(SkillOwnerId.class.getDeclaredFields())
+                        .noneMatch(field -> field.getType().getName().contains("StreamCodec"))),
+                () -> assertTrue(Arrays.stream(SkillOwnerId.class.getDeclaredMethods())
+                        .noneMatch(method -> method.getReturnType().getName().contains("StreamCodec"))));
     }
 }
