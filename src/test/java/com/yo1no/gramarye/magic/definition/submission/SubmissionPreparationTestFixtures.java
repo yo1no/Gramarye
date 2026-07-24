@@ -334,6 +334,26 @@ final class SubmissionPreparationTestFixtures {
         return draft(skillId, baseRevision, nodes, appearance);
     }
 
+    static SkillDraft completeDraftWithPayloadPadding(
+            SkillId skillId,
+            Optional<SkillRevision> baseRevision,
+            int nodeCount,
+            int payloadPaddingBytes) {
+        if (nodeCount <= 0 || payloadPaddingBytes <= 0) {
+            throw new IllegalArgumentException("padded draft dimensions must be positive");
+        }
+        var nodes = java.util.stream.IntStream.range(0, nodeCount)
+                .mapToObj(index -> completeNode(
+                        paddedEnvelope(TRIGGER_ID, index, payloadPaddingBytes),
+                        paddedEnvelope(ACTION_ID, index, payloadPaddingBytes)))
+                .toList();
+        return draft(
+                skillId,
+                baseRevision,
+                nodes,
+                AppearanceDocument.defaultAppearance());
+    }
+
     static SkillDraft emptyDraft(SkillId skillId, Optional<SkillRevision> baseRevision) {
         return draft(
                 skillId,
@@ -367,6 +387,16 @@ final class SubmissionPreparationTestFixtures {
         payload.addProperty("value", value);
         return new DefinitionEnvelope(
                 typeId, schemaVersion, new Dynamic<>(JsonOps.INSTANCE, payload));
+    }
+
+    private static DefinitionEnvelope paddedEnvelope(
+            ResourceLocation typeId,
+            int value,
+            int payloadPaddingBytes) {
+        var payload = new JsonObject();
+        payload.addProperty("value", value);
+        payload.addProperty("padding", "x".repeat(payloadPaddingBytes));
+        return new DefinitionEnvelope(typeId, 0, new Dynamic<>(JsonOps.INSTANCE, payload));
     }
 
     static SubmissionAuthorityCheck.Passed passedNew(SkillSubmissionInput input) {

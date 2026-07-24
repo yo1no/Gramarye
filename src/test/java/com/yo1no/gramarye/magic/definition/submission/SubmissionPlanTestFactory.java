@@ -3,6 +3,7 @@ package com.yo1no.gramarye.magic.definition.submission;
 import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.api.id.SkillRevision;
+import com.yo1no.gramarye.magic.definition.document.SkillDraft;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import java.util.Objects;
 import java.util.Optional;
@@ -20,6 +21,23 @@ public final class SubmissionPlanTestFactory {
                 Optional.empty(),
                 new AuthorizedSkillState.New(skillId),
                 owner);
+    }
+
+    /**
+     * Builds a legal plan whose persisted raw payloads intentionally make the whole document
+     * exceed its encoded-byte ceiling. This test-only seam exercises downstream persistence
+     * rejection without manufacturing an invalid production plan.
+     */
+    public static SkillSubmissionPlan oversizedDocumentPlan(
+            SkillId skillId,
+            SkillOwnerId owner,
+            int nodeCount,
+            int payloadPaddingBytes) {
+        Objects.requireNonNull(skillId, "skillId");
+        Objects.requireNonNull(owner, "owner");
+        var draft = SubmissionPreparationTestFixtures.completeDraftWithPayloadPadding(
+                skillId, Optional.empty(), nodeCount, payloadPaddingBytes);
+        return prepare(draft, new AuthorizedSkillState.New(skillId), owner);
     }
 
     public static SkillSubmissionPlan existingPlan(
@@ -43,6 +61,13 @@ public final class SubmissionPlanTestFactory {
             AuthorizedSkillState state,
             SkillOwnerId owner) {
         var draft = SubmissionPreparationTestFixtures.completeDraft(skillId, baseRevision);
+        return prepare(draft, state, owner);
+    }
+
+    private static SkillSubmissionPlan prepare(
+            SkillDraft draft,
+            AuthorizedSkillState state,
+            SkillOwnerId owner) {
         var input = SkillSubmissionInput.direct(draft);
         var authority = SubmissionPreparationTestFixtures.passed(
                 input,

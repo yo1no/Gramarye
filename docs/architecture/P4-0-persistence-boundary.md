@@ -222,3 +222,30 @@ dirty state, or commit preflight; those remain later-phase responsibilities.
 Only the document package may mint `TokenizedSkillDocumentMigrationInput`; callers cannot wrap
 arbitrary bytes as migration input. Migration returns the distinct nominal
 `MigratedTokenizedDocument`, which cannot be supplied back to the public migration entrypoint.
+
+## P4-A3-A implementation ledger
+
+P4-A3-A represents the derived persistence carrier as one immutable root Store blob plus checked,
+immutable History／Revision route and range indexes. Slices refer only to verified ranges of that
+root; the stable carrier does not retain duplicate nested byte arrays, domain documents, validation
+projections, or a Store snapshot. It remains package-internal, provides no gameplay or authority
+lookup, and never acts as owner, latest-revision, quota, CAS, or commit truth.
+
+Layout construction is bound to sealed writer-produced frames: the document/Store bridge and pure
+carrier builder are the only production index-composition call sites, and each index range must
+match the corresponding range emitted by that same framing operation. Route identity is carried
+from the same snapshot, plan, or already-verified carrier slice; no second schema parser derives
+layout after encoding.
+
+Full rebuild consumes a detached current Store snapshot and delegates canonical bytes and layout to
+the P4-A2 persistence seam. New／Existing prospective builders produce complete immutable,
+base-identity-bound replacements before a future commit; they neither invoke nor prove a Store
+commit and own no publication or dirty state. Reclaim filtering consumes the post-reclaim snapshot,
+reuses verified existing Revision slices, and rebuilds only enclosing History／Store framing without
+re-encoding documents or duplicating P3-D retention policy. All byte totals reuse the P4-A2
+Revision／History／Store ceilings and checked framing arithmetic.
+
+The future P4-B save path may consume the carrier's package-private immutable root/copy seam without
+re-encoding. SavedData lifecycle, live carrier publication, dirty mapping, journal, Attachment, and
+composition remain outside A3-A. The fixed-heap and dedicated-server validation workloads are the
+separate P4-A3-B gate and are not implemented by this ledger entry.

@@ -174,7 +174,7 @@ class P3D1ApiGateTest {
         var allProduction = productionClassNames();
         var storeTypes = allProduction.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
-                .filter(name -> !isP4A2StoreType(name))
+                .filter(name -> !isReviewedPostP3DStoreType(name))
                 .map(P3D1ApiGateTest::loadWithoutInitialization)
                 .toList();
         var forbiddenTypeDeclarations = List.of(
@@ -258,7 +258,7 @@ class P3D1ApiGateTest {
         return nestedSeparator < 0 ? simpleName : simpleName.substring(0, nestedSeparator);
     }
 
-    private static boolean isP4A2StoreType(String className) {
+    private static boolean isReviewedPostP3DStoreType(String className) {
         var name = simpleTopLevelName(className);
         return name.startsWith("StorePersistence")
                 || name.equals("StoreNbtFraming")
@@ -268,7 +268,24 @@ class P3D1ApiGateTest {
                 || name.startsWith("ImmutableStoreBlob")
                 || name.startsWith("ImmutableHistoryBlob")
                 || name.startsWith("ImmutableRevisionBlob")
-                || name.equals("SkillDefinitionStorePersistenceBridge");
+                || name.equals("SkillDefinitionStorePersistenceBridge")
+                || Set.of(
+                                "StoreEncodingLayout",
+                                "StoreLayoutEncodeResult",
+                                "EncodedSkillStoreCarrier",
+                                "EncodedHistoryIndex",
+                                "EncodedRevisionIndex",
+                                "PreparedCarrierUpdate",
+                                "CarrierUpdateKind",
+                                "SkillStoreCarrierBuilder",
+                                "CarrierBuildResult",
+                                "CarrierUpdateResult",
+                                "CarrierInvariantException",
+                                "HistoryBlobSource",
+                                "RevisionBlobSource",
+                                "StoreHistoryBlobSlice",
+                                "StoreRevisionBlobSlice")
+                        .contains(name);
     }
 
     private static boolean hasOnlyD1SurfaceTypes(Class<?> type) {

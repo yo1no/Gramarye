@@ -1,5 +1,6 @@
 package com.yo1no.gramarye.magic.definition.store;
 
+import com.yo1no.gramarye.magic.definition.document.SkillDocument;
 import com.yo1no.gramarye.magic.definition.document.SkillDocumentStorePersistenceFacade;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.migration.PipelineFactReport;
@@ -16,44 +17,80 @@ final class SkillDefinitionStorePersistenceBridge {
 
     static StorePersistenceEncodeResult encodeCurrentStoreBlob(SkillDefinitionStore store) {
         Objects.requireNonNull(store, "store");
+        var encoded = encodeCurrentStoreLayout(store.snapshot());
+        return switch (encoded) {
+            case StoreLayoutEncodeResult.Success success ->
+                    new StorePersistenceEncodeResult.Success(success.layout().blob());
+            case StoreLayoutEncodeResult.Failure failure ->
+                    encodeFailure(failure.failure());
+        };
+    }
+
+    static StoreLayoutEncodeResult encodeCurrentStoreLayout(
+            SkillDefinitionStoreSnapshot snapshot) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        var histories = new ArrayList<StoreNbtFraming.EncodedHistoryFrame>();
+        for (var history : snapshot.histories()) {
+            var revisions = new ArrayList<StoreNbtFraming.EncodedRevisionFrame>();
+            for (var revision : history.revisions()) {
+                var document = revision.document();
+                if (!history.skillId().equals(document.skillId())
+                        || !revision.revision().equals(document.revision())) {
+                    throw new IllegalStateException(
+                            "Store snapshot route does not match its document route");
+                }
+                var encodedRevision = encodeCurrentRevision(document);
+                if (encodedRevision.failureValue().isPresent()) {
+                    return layoutEncodeFailure(encodedRevision.failureValue().orElseThrow());
+                }
+                revisions.add(encodedRevision.successValue().orElseThrow());
+            }
+
+            var historyFrame = StoreNbtFraming.encodeHistoryWithLayout(
+                    history.skillId(), history.owner(), revisions);
+            if (historyFrame.failureValue().isPresent()) {
+                return layoutEncodeFailure(historyFrame.failureValue().orElseThrow());
+            }
+            histories.add(historyFrame.successValue().orElseThrow());
+        }
+
+        var storeFrame = StoreNbtFraming.encodeStoreWithLayout(
+                StorePersistenceSchema.CURRENT_SCHEMA_VERSION, histories);
+        if (storeFrame.failureValue().isPresent()) {
+            return layoutEncodeFailure(storeFrame.failureValue().orElseThrow());
+        }
+        var frame = storeFrame.successValue().orElseThrow();
+        return new StoreLayoutEncodeResult.Success(
+                StoreEncodingLayout.fromWriterFrame(frame));
+    }
+
+    static StoreNbtFraming.FramingResult<StoreNbtFraming.EncodedRevisionFrame>
+            encodeCurrentRevision(
+            SkillDocument document) {
+        Objects.requireNonNull(document, "document");
         try {
-            var histories = new ArrayList<ImmutableHistoryBlob>();
-            for (var history : store.snapshot().histories()) {
-                var revisions = new ArrayList<ImmutableRevisionBlob>();
-                for (var revision : history.revisions()) {
-                    var encoded = SkillDocumentStorePersistenceFacade.encodeCurrent(
-                            revision.document());
-                    if (encoded instanceof SkillDocumentStorePersistenceFacade.EncodeRejected rejected) {
-                        return encodeFailure(mapEncodeFailure(rejected.failure()));
-                    }
-                    var document = ((SkillDocumentStorePersistenceFacade.Encoded) encoded).document();
-                    var revisionEnvelope = new RevisionPersistentEnvelopeV0(
-                            revision.revision(), StorePersistenceSchema.DOCUMENT_ENCODING, document);
-                    var revisionBlob = StoreNbtFraming.encodeRevision(revisionEnvelope);
-                    if (revisionBlob.failureValue().isPresent()) {
-                        return encodeFailure(revisionBlob.failureValue().orElseThrow());
-                    }
-                    revisions.add(revisionBlob.successValue().orElseThrow());
-                }
-
-                var historyEnvelope = new HistoryPersistentEnvelopeV0(
-                        history.skillId(), history.owner(), revisions);
-                var historyBlob = StoreNbtFraming.encodeHistory(historyEnvelope);
-                if (historyBlob.failureValue().isPresent()) {
-                    return encodeFailure(historyBlob.failureValue().orElseThrow());
-                }
-                histories.add(historyBlob.successValue().orElseThrow());
+            var encoded = SkillDocumentStorePersistenceFacade.encodeCurrent(document);
+            if (encoded instanceof SkillDocumentStorePersistenceFacade.EncodeRejected rejected) {
+                return new StoreNbtFraming.FramingResult.Failure<>(
+                        mapEncodeFailure(rejected.failure()));
             }
-
-            var storeEnvelope = new StorePersistentEnvelopeV0(
-                    StorePersistenceSchema.CURRENT_SCHEMA_VERSION, histories);
-            var encoded = StoreNbtFraming.encodeStore(storeEnvelope);
-            if (encoded.failureValue().isPresent()) {
-                return encodeFailure(encoded.failureValue().orElseThrow());
+            var encodedDocument = ((SkillDocumentStorePersistenceFacade.Encoded) encoded).document();
+            var revisionEnvelope = new RevisionPersistentEnvelopeV0(
+                    document.revision(),
+                    StorePersistenceSchema.DOCUMENT_ENCODING,
+                    encodedDocument);
+            var revisionBlob = StoreNbtFraming.encodeRevisionWithRoute(
+                    new SkillReference(document.skillId(), document.revision()),
+                    revisionEnvelope);
+            if (revisionBlob.failureValue().isPresent()) {
+                return new StoreNbtFraming.FramingResult.Failure<>(
+                        revisionBlob.failureValue().orElseThrow());
             }
-            return new StorePersistenceEncodeResult.Success(encoded.successValue().orElseThrow());
+            return new StoreNbtFraming.FramingResult.Success<>(
+                    revisionBlob.successValue().orElseThrow());
         } catch (RuntimeException exception) {
-            return encodeFailure(StorePersistenceFailure.EncodeFailed.INSTANCE);
+            return new StoreNbtFraming.FramingResult.Failure<>(
+                    StorePersistenceFailure.EncodeFailed.INSTANCE);
         }
     }
 
@@ -197,6 +234,11 @@ final class SkillDefinitionStorePersistenceBridge {
         return new StorePersistenceEncodeResult.Failure(failure);
     }
 
+    private static StoreLayoutEncodeResult.Failure layoutEncodeFailure(
+            StorePersistenceFailure failure) {
+        return new StoreLayoutEncodeResult.Failure(failure);
+    }
+
     private static StorePersistenceLoadResult.Failure loadFailure(
             StorePersistenceFailure failure,
             PipelineFactReport facts) {
@@ -214,4 +256,5 @@ final class SkillDefinitionStorePersistenceBridge {
                 com.yo1no.gramarye.magic.definition.document.EncodedSkillDocument document,
                 Optional<HolderLookup.Provider> provider);
     }
+
 }

@@ -540,7 +540,24 @@ class P3D3ApiGateTest {
                 && !name.equals("StoreNbtFraming.java")
                 && !name.equals("StorePersistentEnvelopeV0.java")
                 && !name.equals("ImmutableStoreBlob.java")
-                && !name.equals("SkillDefinitionStorePersistenceBridge.java");
+                && !name.equals("SkillDefinitionStorePersistenceBridge.java")
+                && !Set.of(
+                                "StoreEncodingLayout.java",
+                                "StoreLayoutEncodeResult.java",
+                                "EncodedSkillStoreCarrier.java",
+                                "EncodedHistoryIndex.java",
+                                "EncodedRevisionIndex.java",
+                                "PreparedCarrierUpdate.java",
+                                "CarrierUpdateKind.java",
+                                "SkillStoreCarrierBuilder.java",
+                                "CarrierBuildResult.java",
+                                "CarrierUpdateResult.java",
+                                "CarrierInvariantException.java",
+                                "HistoryBlobSource.java",
+                                "RevisionBlobSource.java",
+                                "StoreHistoryBlobSlice.java",
+                                "StoreRevisionBlobSlice.java")
+                        .contains(name);
     }
 
     private static void assertMapField(

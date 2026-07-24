@@ -45,8 +45,74 @@ final class StoreNbtFraming {
 
     static FramingResult<ImmutableStoreBlob> encodeStore(StorePersistentEnvelopeV0 envelope) {
         Objects.requireNonNull(envelope, "envelope");
+        var framed = encodeStoreBytes(envelope.schemaVersion(), envelope.historyEntries());
+        if (framed.failureValue().isPresent()) {
+            return failure(framed.failureValue().orElseThrow());
+        }
+        return success(framed.successValue().orElseThrow().blob());
+    }
+
+    static FramingResult<EncodedStoreFrame> encodeStoreWithLayout(
+            int schemaVersion,
+            List<? extends RoutedHistorySource> historyEntries) {
+        Objects.requireNonNull(historyEntries, "historyEntries");
+        SkillId previousSkillId = null;
+        var sources = new ArrayList<HistoryBlobSource>(historyEntries.size());
+        for (var history : historyEntries) {
+            Objects.requireNonNull(history, "history");
+            if (previousSkillId != null
+                    && previousSkillId.value().compareTo(history.skillId().value()) >= 0) {
+                throw new IllegalArgumentException(
+                        "routed histories must be in strict canonical SkillId order");
+            }
+            previousSkillId = history.skillId();
+            sources.add(history.blobSource());
+        }
+        var framed = encodeStoreBytes(schemaVersion, sources);
+        if (framed.failureValue().isPresent()) {
+            return failure(framed.failureValue().orElseThrow());
+        }
+        var raw = framed.successValue().orElseThrow();
+        if (raw.historyRanges().size() != historyEntries.size()) {
+            throw new IllegalStateException("Store writer returned a mismatched history layout");
+        }
+
+        var indexes = new ArrayList<EncodedHistoryIndex>(historyEntries.size());
+        for (var historyIndex = 0; historyIndex < historyEntries.size(); historyIndex++) {
+            var history = historyEntries.get(historyIndex);
+            var historyRange = raw.historyRanges().get(historyIndex);
+            var references = history.references();
+            var relativeRanges = history.revisionRanges();
+            if (references.size() != relativeRanges.size()) {
+                throw new IllegalArgumentException(
+                        "routed revision references and ranges must have equal size");
+            }
+            var revisions = new ArrayList<EncodedRevisionIndex>(references.size());
+            for (var revisionIndex = 0; revisionIndex < references.size(); revisionIndex++) {
+                var relative = relativeRanges.get(revisionIndex);
+                var absoluteOffset = Math.addExact(
+                        (long) historyRange.offset(), relative.offset());
+                revisions.add(new EncodedRevisionIndex(
+                        references.get(revisionIndex), absoluteOffset, relative.length()));
+            }
+            indexes.add(new EncodedHistoryIndex(
+                    history.skillId(),
+                    history.owner(),
+                    historyRange,
+                    revisions));
+        }
+        return success(new WrittenStoreFrame(raw.blob(), raw.historyRanges(), indexes));
+    }
+
+    private static FramingResult<RawStoreFrame> encodeStoreBytes(
+            int schemaVersion,
+            List<? extends HistoryBlobSource> historyEntries) {
+        Objects.requireNonNull(historyEntries, "historyEntries");
         try {
-            var size = historyEnvelopeSize(envelope.historyEntries());
+            if (schemaVersion < 0) {
+                return failure(StorePersistenceFailure.EncodeFailed.INSTANCE);
+            }
+            var size = historyEnvelopeSize(historyEntries);
             if (size > MagicSafetyCeilings.MAX_SKILL_STORE_ENCODED_BYTES) {
                 return failure(new StorePersistenceFailure.StoreBlobEncodedCapacityExceeded(
                         MagicSafetyCeilings.MAX_SKILL_STORE_ENCODED_BYTES + 1L,
@@ -54,10 +120,11 @@ final class StoreNbtFraming {
             }
             var output = new FramingOutput(toIntSize(size));
             output.writeByte(TAG_COMPOUND);
-            output.writeNamedInt("store_schema_version", envelope.schemaVersion());
-            output.writeNamedHistoryBlobList("history_entries", envelope.historyEntries());
+            output.writeNamedInt("store_schema_version", schemaVersion);
+            var ranges = output.writeNamedHistoryBlobList("history_entries", historyEntries);
             output.writeByte(TAG_END);
-            return success(ImmutableStoreBlob.takeOwnership(output.finish()));
+            var blob = ImmutableStoreBlob.takeOwnership(output.finish());
+            return success(new RawStoreFrame(blob, ranges));
         } catch (RuntimeException exception) {
             return failure(StorePersistenceFailure.EncodeFailed.INSTANCE);
         }
@@ -65,29 +132,110 @@ final class StoreNbtFraming {
 
     static FramingResult<ImmutableHistoryBlob> encodeHistory(HistoryPersistentEnvelopeV0 envelope) {
         Objects.requireNonNull(envelope, "envelope");
+        var framed = encodeHistoryBytes(
+                envelope.skillId(), envelope.owner(), envelope.revisionEntries());
+        if (framed.failureValue().isPresent()) {
+            return failure(framed.failureValue().orElseThrow());
+        }
+        return success(framed.successValue().orElseThrow().blob());
+    }
+
+    static FramingResult<EncodedHistoryFrame> encodeHistoryWithLayout(
+            SkillId skillId,
+            SkillOwnerId owner,
+            List<? extends RoutedRevisionSource> revisionEntries) {
+        Objects.requireNonNull(skillId, "skillId");
+        Objects.requireNonNull(owner, "owner");
+        Objects.requireNonNull(revisionEntries, "revisionEntries");
+        var references = new ArrayList<SkillReference>(revisionEntries.size());
+        var sources = new ArrayList<RevisionBlobSource>(revisionEntries.size());
+        SkillRevision previousRevision = null;
+        for (var revision : revisionEntries) {
+            Objects.requireNonNull(revision, "revision");
+            var reference = Objects.requireNonNull(revision.reference(), "revision.reference");
+            if (!skillId.equals(reference.skillId())
+                    || previousRevision != null
+                    && previousRevision.value() >= reference.revision().value()) {
+                throw new IllegalArgumentException(
+                        "routed revisions must match their history and be canonically ordered");
+            }
+            previousRevision = reference.revision();
+            references.add(reference);
+            sources.add(Objects.requireNonNull(revision.blobSource(), "revision.blobSource"));
+        }
+        var framed = encodeHistoryBytes(skillId, owner, sources);
+        if (framed.failureValue().isPresent()) {
+            return failure(framed.failureValue().orElseThrow());
+        }
+        var raw = framed.successValue().orElseThrow();
+        return success(new WrittenHistoryFrame(
+                skillId, owner, raw.blob(), references, raw.revisionRanges()));
+    }
+
+    private static FramingResult<RawHistoryFrame> encodeHistoryBytes(
+            SkillId skillId,
+            SkillOwnerId owner,
+            List<? extends RevisionBlobSource> revisionEntries) {
+        Objects.requireNonNull(skillId, "skillId");
+        Objects.requireNonNull(owner, "owner");
+        Objects.requireNonNull(revisionEntries, "revisionEntries");
         try {
-            var size = revisionEnvelopeSize(envelope.revisionEntries());
+            var size = revisionEnvelopeSize(revisionEntries);
             if (size > MagicSafetyCeilings.MAX_SKILL_HISTORY_ENCODED_BYTES) {
                 return failure(new StorePersistenceFailure.HistoryBlobEncodedCapacityExceeded(
                         MagicSafetyCeilings.MAX_SKILL_HISTORY_ENCODED_BYTES + 1L,
                         MagicSafetyCeilings.MAX_SKILL_HISTORY_ENCODED_BYTES));
             }
-            var skillId = encodeUuid(SkillId.CODEC.encodeStart(NbtOps.INSTANCE, envelope.skillId()));
-            var owner = encodeUuid(SkillOwnerId.CODEC.encodeStart(NbtOps.INSTANCE, envelope.owner()));
-            if (skillId == null || owner == null) {
+            var encodedSkillId = encodeUuid(SkillId.CODEC.encodeStart(NbtOps.INSTANCE, skillId));
+            var encodedOwner = encodeUuid(SkillOwnerId.CODEC.encodeStart(NbtOps.INSTANCE, owner));
+            if (encodedSkillId == null || encodedOwner == null) {
                 return failure(StorePersistenceFailure.EncodeFailed.INSTANCE);
             }
 
             var output = new FramingOutput(toIntSize(size));
             output.writeByte(TAG_COMPOUND);
-            output.writeNamedIntArray("skill_id", skillId);
-            output.writeNamedIntArray("owner", owner);
-            output.writeNamedRevisionBlobList("revision_entries", envelope.revisionEntries());
+            output.writeNamedIntArray("skill_id", encodedSkillId);
+            output.writeNamedIntArray("owner", encodedOwner);
+            var ranges = output.writeNamedRevisionBlobList("revision_entries", revisionEntries);
             output.writeByte(TAG_END);
-            return success(ImmutableHistoryBlob.takeOwnership(output.finish()));
+            var blob = ImmutableHistoryBlob.takeOwnership(output.finish());
+            return success(new RawHistoryFrame(blob, ranges));
         } catch (RuntimeException exception) {
             return failure(StorePersistenceFailure.EncodeFailed.INSTANCE);
         }
+    }
+
+    static FramingResult<EncodedRevisionFrame> encodeRevisionWithRoute(
+            SkillReference reference,
+            RevisionPersistentEnvelopeV0 envelope) {
+        Objects.requireNonNull(reference, "reference");
+        Objects.requireNonNull(envelope, "envelope");
+        if (!reference.revision().equals(envelope.revision())) {
+            throw new IllegalArgumentException(
+                    "revision route must match the encoded Revision envelope");
+        }
+        var encoded = encodeRevision(envelope);
+        if (encoded.failureValue().isPresent()) {
+            return failure(encoded.failureValue().orElseThrow());
+        }
+        return success(new WrittenRevisionFrame(
+                reference, encoded.successValue().orElseThrow()));
+    }
+
+    static RoutedRevisionSource bindVerifiedRevisionSource(
+            SkillReference reference,
+            RevisionBlobSource blobSource) {
+        return new BoundRevisionSource(reference, blobSource);
+    }
+
+    static RoutedHistorySource bindVerifiedHistorySource(
+            SkillId skillId,
+            SkillOwnerId owner,
+            HistoryBlobSource blobSource,
+            List<SkillReference> references,
+            List<BlobRange> revisionRanges) {
+        return new BoundHistorySource(
+                skillId, owner, blobSource, references, revisionRanges);
     }
 
     static FramingResult<ImmutableRevisionBlob> encodeRevision(
@@ -357,7 +505,7 @@ final class StoreNbtFraming {
                         QUOTA_NODE_BYTES, MagicSafetyCeilings.MAX_SKILL_DOCUMENT_TREE_NODES));
     }
 
-    private static long historyEnvelopeSize(List<ImmutableHistoryBlob> entries) {
+    private static long historyEnvelopeSize(List<? extends HistoryBlobSource> entries) {
         var result = (long) STORE_WRAPPER_BYTES;
         for (var entry : entries) {
             result = Math.addExact(result, Math.addExact(4L, entry.byteCount()));
@@ -365,7 +513,7 @@ final class StoreNbtFraming {
         return result;
     }
 
-    private static long revisionEnvelopeSize(List<ImmutableRevisionBlob> entries) {
+    private static long revisionEnvelopeSize(List<? extends RevisionBlobSource> entries) {
         var result = (long) HISTORY_WRAPPER_BYTES;
         for (var entry : entries) {
             result = Math.addExact(result, Math.addExact(4L, entry.byteCount()));
@@ -404,6 +552,202 @@ final class StoreNbtFraming {
     @FunctionalInterface
     private interface NestedCapacityFactory {
         StorePersistenceFailure create(long observedAtLeast);
+    }
+
+    record BlobRange(int offset, int length) {
+        BlobRange {
+            if (offset < 0 || length <= 0) {
+                throw new IllegalArgumentException("blob range must be positive and non-negative");
+            }
+            Math.addExact(offset, length);
+        }
+
+        static BlobRange fromLong(long offset, long length) {
+            if (offset < 0 || length <= 0) {
+                throw new IllegalArgumentException("blob range must be positive and non-negative");
+            }
+            Math.addExact(offset, length);
+            return new BlobRange(Math.toIntExact(offset), Math.toIntExact(length));
+        }
+
+        long endExclusive() {
+            return Math.addExact((long) offset, length);
+        }
+
+        void requireWithin(long parentLength) {
+            if (parentLength < 0 || endExclusive() > parentLength) {
+                throw new IllegalArgumentException("blob range is outside its encoded root");
+            }
+        }
+    }
+
+    sealed interface RoutedRevisionSource
+            permits EncodedRevisionFrame, BoundRevisionSource {
+        SkillReference reference();
+
+        RevisionBlobSource blobSource();
+    }
+
+    sealed interface RoutedHistorySource
+            permits EncodedHistoryFrame, BoundHistorySource {
+        SkillId skillId();
+
+        SkillOwnerId owner();
+
+        HistoryBlobSource blobSource();
+
+        List<SkillReference> references();
+
+        List<BlobRange> revisionRanges();
+    }
+
+    sealed interface EncodedRevisionFrame extends RoutedRevisionSource
+            permits WrittenRevisionFrame {
+        ImmutableRevisionBlob blob();
+
+        @Override
+        default RevisionBlobSource blobSource() {
+            return blob();
+        }
+    }
+
+    sealed interface EncodedStoreFrame permits WrittenStoreFrame {
+        ImmutableStoreBlob blob();
+
+        List<BlobRange> historyRanges();
+
+        List<EncodedHistoryIndex> histories();
+    }
+
+    sealed interface EncodedHistoryFrame extends RoutedHistorySource
+            permits WrittenHistoryFrame {
+        ImmutableHistoryBlob blob();
+
+        @Override
+        default HistoryBlobSource blobSource() {
+            return blob();
+        }
+    }
+
+    private record WrittenStoreFrame(
+            ImmutableStoreBlob blob,
+            List<BlobRange> historyRanges,
+            List<EncodedHistoryIndex> histories) implements EncodedStoreFrame {
+        private WrittenStoreFrame {
+            Objects.requireNonNull(blob, "blob");
+            historyRanges = checkedRanges(blob.byteCount(), historyRanges);
+            histories = List.copyOf(Objects.requireNonNull(histories, "histories"));
+            if (historyRanges.size() != histories.size()) {
+                throw new IllegalArgumentException(
+                        "Store writer ranges and routed histories must have equal size");
+            }
+        }
+    }
+
+    private record WrittenHistoryFrame(
+            SkillId skillId,
+            SkillOwnerId owner,
+            ImmutableHistoryBlob blob,
+            List<SkillReference> references,
+            List<BlobRange> revisionRanges) implements EncodedHistoryFrame {
+        private WrittenHistoryFrame {
+            Objects.requireNonNull(skillId, "skillId");
+            Objects.requireNonNull(owner, "owner");
+            Objects.requireNonNull(blob, "blob");
+            references = List.copyOf(Objects.requireNonNull(references, "references"));
+            revisionRanges = checkedRanges(blob.byteCount(), revisionRanges);
+            requireRoutedRevisionLayout(
+                    skillId, blob.byteCount(), references, revisionRanges);
+        }
+    }
+
+    private record WrittenRevisionFrame(
+            SkillReference reference,
+            ImmutableRevisionBlob blob) implements EncodedRevisionFrame {
+        private WrittenRevisionFrame {
+            Objects.requireNonNull(reference, "reference");
+            Objects.requireNonNull(blob, "blob");
+        }
+    }
+
+    private record BoundRevisionSource(
+            SkillReference reference,
+            RevisionBlobSource blobSource) implements RoutedRevisionSource {
+        private BoundRevisionSource {
+            Objects.requireNonNull(reference, "reference");
+            Objects.requireNonNull(blobSource, "blobSource");
+        }
+    }
+
+    private record BoundHistorySource(
+            SkillId skillId,
+            SkillOwnerId owner,
+            HistoryBlobSource blobSource,
+            List<SkillReference> references,
+            List<BlobRange> revisionRanges) implements RoutedHistorySource {
+        private BoundHistorySource {
+            Objects.requireNonNull(skillId, "skillId");
+            Objects.requireNonNull(owner, "owner");
+            Objects.requireNonNull(blobSource, "blobSource");
+            references = List.copyOf(Objects.requireNonNull(references, "references"));
+            revisionRanges = List.copyOf(
+                    Objects.requireNonNull(revisionRanges, "revisionRanges"));
+            requireRoutedRevisionLayout(
+                    skillId, blobSource.byteCount(), references, revisionRanges);
+        }
+    }
+
+    private record RawStoreFrame(
+            ImmutableStoreBlob blob,
+            List<BlobRange> historyRanges) {
+        private RawStoreFrame {
+            Objects.requireNonNull(blob, "blob");
+            historyRanges = checkedRanges(blob.byteCount(), historyRanges);
+        }
+    }
+
+    private record RawHistoryFrame(
+            ImmutableHistoryBlob blob,
+            List<BlobRange> revisionRanges) {
+        private RawHistoryFrame {
+            Objects.requireNonNull(blob, "blob");
+            revisionRanges = checkedRanges(blob.byteCount(), revisionRanges);
+        }
+    }
+
+    private static List<BlobRange> checkedRanges(long blobLength, List<BlobRange> ranges) {
+        var copy = List.copyOf(Objects.requireNonNull(ranges, "ranges"));
+        for (var range : copy) {
+            range.requireWithin(blobLength);
+        }
+        return copy;
+    }
+
+    private static void requireRoutedRevisionLayout(
+            SkillId skillId,
+            long historyLength,
+            List<SkillReference> references,
+            List<BlobRange> ranges) {
+        if (references.size() != ranges.size()) {
+            throw new IllegalArgumentException(
+                    "routed revision references and ranges must have equal size");
+        }
+        SkillRevision previousRevision = null;
+        long previousEnd = 0;
+        for (var index = 0; index < references.size(); index++) {
+            var reference = Objects.requireNonNull(references.get(index), "reference");
+            var range = Objects.requireNonNull(ranges.get(index), "range");
+            if (!skillId.equals(reference.skillId())
+                    || previousRevision != null
+                    && previousRevision.value() >= reference.revision().value()
+                    || range.offset() < previousEnd) {
+                throw new IllegalArgumentException(
+                        "routed revision layout must match its history and be canonical");
+            }
+            range.requireWithin(historyLength);
+            previousRevision = reference.revision();
+            previousEnd = range.endExclusive();
+        }
     }
 
     private record NamedField(int type, String name) {
@@ -694,26 +1038,38 @@ final class StoreNbtFraming {
             }
         }
 
-        void writeNamedHistoryBlobList(String name, List<ImmutableHistoryBlob> values) {
+        List<BlobRange> writeNamedHistoryBlobList(
+                String name,
+                List<? extends HistoryBlobSource> values) {
             writeByte(TAG_LIST);
             writeUtf(name);
             writeByte(TAG_BYTE_ARRAY);
             writeInt(values.size());
+            var ranges = new ArrayList<BlobRange>(values.size());
             for (var value : values) {
                 writeInt(value.byteCount());
+                var offset = (long) position;
                 writeBytes(value);
+                ranges.add(BlobRange.fromLong(offset, value.byteCount()));
             }
+            return List.copyOf(ranges);
         }
 
-        void writeNamedRevisionBlobList(String name, List<ImmutableRevisionBlob> values) {
+        List<BlobRange> writeNamedRevisionBlobList(
+                String name,
+                List<? extends RevisionBlobSource> values) {
             writeByte(TAG_LIST);
             writeUtf(name);
             writeByte(TAG_BYTE_ARRAY);
             writeInt(values.size());
+            var ranges = new ArrayList<BlobRange>(values.size());
             for (var value : values) {
                 writeInt(value.byteCount());
+                var offset = (long) position;
                 writeBytes(value);
+                ranges.add(BlobRange.fromLong(offset, value.byteCount()));
             }
+            return List.copyOf(ranges);
         }
 
         void writeUtf(String value) {
@@ -757,13 +1113,13 @@ final class StoreNbtFraming {
             position += value.length;
         }
 
-        private void writeBytes(ImmutableHistoryBlob value) {
+        private void writeBytes(HistoryBlobSource value) {
             requireRemaining(value.byteCount());
             value.copyInto(bytes, position);
             position += value.byteCount();
         }
 
-        private void writeBytes(ImmutableRevisionBlob value) {
+        private void writeBytes(RevisionBlobSource value) {
             requireRemaining(value.byteCount());
             value.copyInto(bytes, position);
             position += value.byteCount();

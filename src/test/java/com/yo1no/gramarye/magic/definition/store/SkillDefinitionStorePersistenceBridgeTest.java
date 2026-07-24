@@ -1,8 +1,10 @@
 package com.yo1no.gramarye.magic.definition.store;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
@@ -49,6 +51,67 @@ class SkillDefinitionStorePersistenceBridgeTest {
         assertTrue(loaded.store().snapshot().histories().isEmpty());
         assertTrue(loaded.factReport().facts().isEmpty());
         assertFalse(loaded.rewritePending());
+    }
+
+    @Test
+    void currentStoreLayoutMatchesLegacyBlobAndUsesStoreRootAbsoluteRanges() {
+        var store = StoreTestFixtures.restore(StoreTestFixtures.snapshot(
+                StoreTestFixtures.history(
+                        StoreTestFixtures.skillId(12), StoreTestFixtures.ownerId(2), 0, 3),
+                StoreTestFixtures.history(
+                        StoreTestFixtures.skillId(4), StoreTestFixtures.ownerId(1), 2)));
+
+        var result = assertInstanceOf(StoreLayoutEncodeResult.Success.class,
+                SkillDefinitionStorePersistenceBridge.encodeCurrentStoreLayout(store.snapshot()));
+        var layout = result.layout();
+        var legacy = assertInstanceOf(StorePersistenceEncodeResult.Success.class,
+                SkillDefinitionStorePersistenceBridge.encodeCurrentStoreBlob(store));
+
+        assertArrayEquals(legacy.blob().copyBytes(), layout.blob().copyBytes());
+        assertEquals(List.of(StoreTestFixtures.skillId(4), StoreTestFixtures.skillId(12)),
+                layout.histories().stream().map(EncodedHistoryIndex::skillId).toList());
+        assertThrows(UnsupportedOperationException.class, () -> layout.histories().clear());
+
+        for (var historyIndex : layout.histories()) {
+            var historyBytes = new byte[historyIndex.byteLength()];
+            layout.blob().historySlice(
+                            historyIndex.payloadOffset(), historyIndex.byteLength())
+                    .copyInto(historyBytes, 0);
+            var decodedHistory = StoreNbtFraming.decodeHistory(
+                            ImmutableHistoryBlob.takeOwnership(historyBytes))
+                    .successValue().orElseThrow();
+            assertEquals(historyIndex.skillId(), decodedHistory.skillId());
+            assertEquals(historyIndex.owner(), decodedHistory.owner());
+
+            for (var revisionIndex : historyIndex.revisions()) {
+                var revisionBytes = new byte[revisionIndex.byteLength()];
+                layout.blob().revisionSlice(
+                                revisionIndex.payloadOffset(), revisionIndex.byteLength())
+                        .copyInto(revisionBytes, 0);
+                var decodedRevision = StoreNbtFraming.decodeRevision(
+                                ImmutableRevisionBlob.takeOwnership(revisionBytes))
+                        .successValue().orElseThrow();
+                assertEquals(
+                        revisionIndex.reference().revision(), decodedRevision.revision());
+            }
+        }
+    }
+
+    @Test
+    void currentRevisionSeamDelegatesDocumentEncodingAndKeepsRouteRevision() {
+        var document = StoreTestFixtures.document(StoreTestFixtures.skillId(91), 7);
+
+        var encoded = SkillDefinitionStorePersistenceBridge.encodeCurrentRevision(document)
+                .successValue().orElseThrow();
+        var decoded = StoreNbtFraming.decodeRevision(encoded.blob())
+                .successValue().orElseThrow();
+        var facadeDocument = assertInstanceOf(
+                SkillDocumentStorePersistenceFacade.Encoded.class,
+                SkillDocumentStorePersistenceFacade.encodeCurrent(document)).document();
+
+        assertEquals(document.revision(), decoded.revision());
+        assertEquals(StorePersistenceSchema.DOCUMENT_ENCODING, decoded.documentEncoding());
+        assertArrayEquals(facadeDocument.copyBytes(), decoded.document().copyBytes());
     }
 
     @Test

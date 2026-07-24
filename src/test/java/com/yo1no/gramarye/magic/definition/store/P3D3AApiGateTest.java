@@ -276,7 +276,7 @@ class P3D3AApiGateTest {
                 "RootProvider");
         var storeTypes = productionClasses.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
-                .filter(name -> !isP4A2StoreType(name))
+                .filter(name -> !isReviewedPostP3DStoreType(name))
                 .map(P3D3AApiGateTest::loadWithoutInitialization)
                 .toList();
 
@@ -470,7 +470,7 @@ class P3D3AApiGateTest {
         return nestedSeparator < 0 ? simpleName : simpleName.substring(0, nestedSeparator);
     }
 
-    private static boolean isP4A2StoreType(String className) {
+    private static boolean isReviewedPostP3DStoreType(String className) {
         var name = simpleTopLevelName(className);
         return name.startsWith("StorePersistence")
                 || name.equals("StoreNbtFraming")
@@ -480,7 +480,24 @@ class P3D3AApiGateTest {
                                 "ImmutableHistoryBlob",
                                 "ImmutableRevisionBlob")
                         .contains(name)
-                || name.equals("SkillDefinitionStorePersistenceBridge");
+                || name.equals("SkillDefinitionStorePersistenceBridge")
+                || Set.of(
+                                "StoreEncodingLayout",
+                                "StoreLayoutEncodeResult",
+                                "EncodedSkillStoreCarrier",
+                                "EncodedHistoryIndex",
+                                "EncodedRevisionIndex",
+                                "PreparedCarrierUpdate",
+                                "CarrierUpdateKind",
+                                "SkillStoreCarrierBuilder",
+                                "CarrierBuildResult",
+                                "CarrierUpdateResult",
+                                "CarrierInvariantException",
+                                "HistoryBlobSource",
+                                "RevisionBlobSource",
+                                "StoreHistoryBlobSlice",
+                                "StoreRevisionBlobSlice")
+                        .contains(name);
     }
 
     private static boolean hasNoP4Dependency(Class<?> type) {

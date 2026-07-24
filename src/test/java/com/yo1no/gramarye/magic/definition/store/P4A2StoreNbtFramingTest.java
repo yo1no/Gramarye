@@ -3,6 +3,7 @@ package com.yo1no.gramarye.magic.definition.store;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.definition.document.EncodedSkillDocument;
@@ -151,6 +152,94 @@ class P4A2StoreNbtFramingTest {
         assertEquals(2, decodedStore.historyEntries().size());
         assertEquals(StoreTestFixtures.skillId(10), decodedHistory.skillId());
         assertEquals(StoreTestFixtures.ownerId(11), decodedHistory.owner());
+    }
+
+    @Test
+    void writerLayoutRangesMatchNestedPayloadsAndLegacyEncodersDelegate() {
+        var skillId = StoreTestFixtures.skillId(81);
+        var owner = StoreTestFixtures.ownerId(82);
+        var firstReference = new com.yo1no.gramarye.magic.definition.document.SkillReference(
+                skillId, StoreTestFixtures.revision(1));
+        var secondReference = new com.yo1no.gramarye.magic.definition.document.SkillReference(
+                skillId, StoreTestFixtures.revision(4));
+        var firstRevision = StoreNbtFraming.encodeRevisionWithRoute(
+                        firstReference,
+                        new RevisionPersistentEnvelopeV0(
+                                firstReference.revision(),
+                                StorePersistenceSchema.DOCUMENT_ENCODING,
+                                EncodedSkillDocument.copyOf(new byte[] {10, 11})))
+                .successValue().orElseThrow();
+        var secondRevision = StoreNbtFraming.encodeRevisionWithRoute(
+                        secondReference,
+                        new RevisionPersistentEnvelopeV0(
+                                secondReference.revision(),
+                                StorePersistenceSchema.DOCUMENT_ENCODING,
+                                EncodedSkillDocument.copyOf(new byte[] {20, 21, 22})))
+                .successValue().orElseThrow();
+        var routedRevisions = List.of(firstRevision, secondRevision);
+        var revisionBlobs = routedRevisions.stream()
+                .map(StoreNbtFraming.EncodedRevisionFrame::blob)
+                .toList();
+
+        var historyFrame = StoreNbtFraming.encodeHistoryWithLayout(
+                        skillId, owner, routedRevisions)
+                .successValue().orElseThrow();
+        var legacyHistory = StoreNbtFraming.encodeHistory(
+                        new HistoryPersistentEnvelopeV0(skillId, owner, revisionBlobs))
+                .successValue().orElseThrow();
+
+        assertEquals(legacyHistory.copyBytes().length, historyFrame.blob().copyBytes().length);
+        assertArrayEquals(legacyHistory.copyBytes(), historyFrame.blob().copyBytes());
+        assertEquals(2, historyFrame.revisionRanges().size());
+        assertThrows(UnsupportedOperationException.class,
+                () -> historyFrame.revisionRanges().clear());
+        assertArrayEquals(firstRevision.blob().copyBytes(), copyRange(
+                historyFrame.blob().copyBytes(), historyFrame.revisionRanges().get(0)));
+        assertArrayEquals(secondRevision.blob().copyBytes(), copyRange(
+                historyFrame.blob().copyBytes(), historyFrame.revisionRanges().get(1)));
+
+        var routedHistories = List.of(historyFrame);
+        var historyBlobs = routedHistories.stream()
+                .map(StoreNbtFraming.EncodedHistoryFrame::blob)
+                .toList();
+        var storeFrame = StoreNbtFraming.encodeStoreWithLayout(0, routedHistories)
+                .successValue().orElseThrow();
+        var legacyStore = StoreNbtFraming.encodeStore(
+                        new StorePersistentEnvelopeV0(0, historyBlobs))
+                .successValue().orElseThrow();
+        var historyRange = storeFrame.historyRanges().getFirst();
+
+        assertArrayEquals(legacyStore.copyBytes(), storeFrame.blob().copyBytes());
+        assertThrows(UnsupportedOperationException.class,
+                () -> storeFrame.historyRanges().clear());
+        assertArrayEquals(historyFrame.blob().copyBytes(),
+                copyRange(storeFrame.blob().copyBytes(), historyRange));
+
+        var copiedHistory = new byte[historyRange.length()];
+        storeFrame.blob().historySlice(historyRange.offset(), historyRange.length())
+                .copyInto(copiedHistory, 0);
+        assertArrayEquals(historyFrame.blob().copyBytes(), copiedHistory);
+
+        var localRevisionRange = historyFrame.revisionRanges().getFirst();
+        var absoluteRevisionRange = StoreNbtFraming.BlobRange.fromLong(
+                Math.addExact((long) historyRange.offset(), localRevisionRange.offset()),
+                localRevisionRange.length());
+        var copiedRevision = new byte[absoluteRevisionRange.length()];
+        storeFrame.blob().revisionSlice(
+                        absoluteRevisionRange.offset(), absoluteRevisionRange.length())
+                .copyInto(copiedRevision, 0);
+        assertArrayEquals(firstRevision.blob().copyBytes(), copiedRevision);
+    }
+
+    @Test
+    void rootBackedSlicesRejectEmptyAndOutOfBoundsRanges() {
+        var blob = ImmutableStoreBlob.copyOf(new byte[] {1, 2, 3, 4});
+
+        assertThrows(IllegalArgumentException.class, () -> blob.historySlice(0, 0));
+        assertThrows(IndexOutOfBoundsException.class, () -> blob.historySlice(-1, 1));
+        assertThrows(IndexOutOfBoundsException.class, () -> blob.revisionSlice(3, 2));
+        assertThrows(IndexOutOfBoundsException.class,
+                () -> blob.copyRangeInto(0, 4, new byte[3], 0));
     }
 
     @Test
@@ -627,5 +716,12 @@ class P4A2StoreNbtFramingTest {
                 .successValue().orElseThrow();
         assertEquals(encodedLength, encoded.byteCount());
         return encoded;
+    }
+
+    private static byte[] copyRange(
+            byte[] bytes,
+            StoreNbtFraming.BlobRange range) {
+        return java.util.Arrays.copyOfRange(
+                bytes, range.offset(), Math.toIntExact(range.endExclusive()));
     }
 }

@@ -264,7 +264,7 @@ class P3D2ApiGateTest {
         var productionClasses = productionClassNames();
         var storeTypes = productionClasses.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
-                .filter(name -> !isP4A2StoreType(name))
+                .filter(name -> !isReviewedPostP3DStoreType(name))
                 .map(P3D2ApiGateTest::loadWithoutInitialization)
                 .toList();
         var forbiddenTopLevelTypes = Set.of(
@@ -303,7 +303,7 @@ class P3D2ApiGateTest {
                         projectRoot.resolve("src/main/java").resolve(relativeFactoryPath))),
                 () -> assertTrue(Files.isRegularFile(
                         projectRoot.resolve("src/test/java").resolve(relativeFactoryPath))),
-                () -> assertEquals(Set.of("newPlan", "existingPlan"),
+                () -> assertEquals(Set.of("newPlan", "existingPlan", "oversizedDocumentPlan"),
                         Arrays.stream(SubmissionPlanTestFactory.class.getDeclaredMethods())
                                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                                 .map(method -> method.getName())
@@ -521,7 +521,7 @@ class P3D2ApiGateTest {
         return nestedSeparator < 0 ? simpleName : simpleName.substring(0, nestedSeparator);
     }
 
-    private static boolean isP4A2StoreType(String className) {
+    private static boolean isReviewedPostP3DStoreType(String className) {
         var name = simpleTopLevelName(className);
         return name.startsWith("StorePersistence")
                 || name.equals("StoreNbtFraming")
@@ -531,7 +531,24 @@ class P3D2ApiGateTest {
                                 "ImmutableHistoryBlob",
                                 "ImmutableRevisionBlob")
                         .contains(name)
-                || name.equals("SkillDefinitionStorePersistenceBridge");
+                || name.equals("SkillDefinitionStorePersistenceBridge")
+                || Set.of(
+                                "StoreEncodingLayout",
+                                "StoreLayoutEncodeResult",
+                                "EncodedSkillStoreCarrier",
+                                "EncodedHistoryIndex",
+                                "EncodedRevisionIndex",
+                                "PreparedCarrierUpdate",
+                                "CarrierUpdateKind",
+                                "SkillStoreCarrierBuilder",
+                                "CarrierBuildResult",
+                                "CarrierUpdateResult",
+                                "CarrierInvariantException",
+                                "HistoryBlobSource",
+                                "RevisionBlobSource",
+                                "StoreHistoryBlobSlice",
+                                "StoreRevisionBlobSlice")
+                        .contains(name);
     }
 
     private static boolean hasNoP4Dependency(Class<?> type) {

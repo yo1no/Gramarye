@@ -169,7 +169,7 @@ class P4A2ApiGateTest {
     }
 
     @Test
-    void productionStoreMigrationPlanHasOneProviderAndNoA3Types() throws Exception {
+    void productionStoreMigrationPlanHasOneProviderAndNoPostA3ATypes() throws Exception {
         var planSource = read(STORE_ROOT.resolve("StorePersistenceMigrationPlan.java"));
         var allSource = productionSources(MAIN_JAVA).stream()
                 .map(P4A2ApiGateTest::read)
@@ -181,7 +181,7 @@ class P4A2ApiGateTest {
                 () -> assertEquals(1, occurrences(planSource,
                         "private static final StorePersistenceMigrationPlan PRODUCTION")),
                 () -> assertTrue(List.of(
-                                "EncodedSkillStoreCarrier", "SkillSavedData", "PlayerSkillAttachment",
+                                "SkillSavedData", "PlayerSkillAttachment",
                                 "PendingAttachmentJournal")
                         .stream().noneMatch(allSource::contains)));
     }
