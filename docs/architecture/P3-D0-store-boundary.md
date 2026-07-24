@@ -48,3 +48,6 @@ P3-D remains split into D1 truth/read/snapshot, D2 atomic admission/CAS/insert, 
 Removing a player Attachment reference is not Store retirement and does not release quota. A future retire operation needs a persistent tombstone or equivalent no-reuse truth and a separate scoped amendment. Until then, the default policy quota is Unlimited while all technical ceilings remain mandatory.
 
 Before P4 Java work, P4-0 must fix encoded-byte ceilings and a family-tagged raw storage envelope. Existing Unknown／Unparsed preservation does not promise arbitrary JSON-to-NBT losslessness, so P3-D retains documents without canonicalizing or converting their raw trees.
+
+The completed D0–D3 phase seams, reclaim dirty matrix, and migration-before-restore obligations are
+recorded in the [P3-D skill definition Store decision ledger](P3-D-skill-definition-store.md).

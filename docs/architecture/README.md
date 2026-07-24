@@ -24,3 +24,4 @@ Implementation guidance is provided by the [Codex implementation contract](../co
 - [P3-C0 submission preparation and commit boundary](P3-C0-submission-boundary.md)
 - [P3-C skill submission decision ledger](P3-C-skill-submission.md)
 - [P3-D0 Store truth and atomic commit boundary](P3-D0-store-boundary.md)
+- [P3-D skill definition Store decision ledger](P3-D-skill-definition-store.md)

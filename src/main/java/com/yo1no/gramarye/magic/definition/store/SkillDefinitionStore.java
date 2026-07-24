@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -97,6 +98,74 @@ public final class SkillDefinitionStore {
         return result;
     }
 
+    /**
+     * Reclaims every retained revision that is neither a history's latest revision, an exact
+     * external root, nor protected by an active pin.
+     *
+     * <p>{@code externalRoots} must be captured by authoritative server composition and used
+     * immediately in the same Store, world, and logic-thread call chain. A complete snapshot must
+     * include offline and unloaded persistent roots; incomplete, truncated, over-limit, or stale
+     * capture must be rejected or withheld by the caller. This method never discovers runtime or
+     * persistence roots itself.</p>
+     *
+     * <p>Every typed rejection occurs before either histories or pin counts are modified. On
+     * success, all replacement histories and the count-only result are prepared before the first
+     * history replacement is published. The operation does not remove owner bindings, histories,
+     * latest revisions, or quota identities.</p>
+     */
+    public SkillReclaimResult reclaim(SkillRetentionRootSnapshot externalRoots) {
+        Objects.requireNonNull(externalRoots, "externalRoots");
+        if (externalRoots == SkillRetentionRootSnapshot.Incomplete.INSTANCE) {
+            return reclaimRejected(SkillReclaimFailure.IncompleteRootSnapshot.INSTANCE);
+        }
+        if (externalRoots == SkillRetentionRootSnapshot.Truncated.INSTANCE) {
+            return reclaimRejected(SkillReclaimFailure.TruncatedRootSnapshot.INSTANCE);
+        }
+        if (externalRoots instanceof SkillRetentionRootSnapshot.OverLimit overLimit) {
+            return reclaimRejected(new SkillReclaimFailure.RootCapacityExceeded(
+                    overLimit.observedAtLeast(), overLimit.maximum()));
+        }
+
+        var complete = (SkillRetentionRootSnapshot.Complete) externalRoots;
+        for (var root : complete.roots()) {
+            if (!containsReference(root)) {
+                return reclaimRejected(new SkillReclaimFailure.MissingExternalRoot(root));
+            }
+        }
+
+        var distinctExternalRoots = new HashSet<>(complete.roots());
+        requireActivePinInvariants();
+
+        var replacements = new HashMap<SkillId, StoredSkillHistory>();
+        var historiesScanned = histories.size();
+        var revisionsScanned = 0;
+        var revisionsReclaimed = 0;
+        for (var entry : histories.entrySet()) {
+            var history = entry.getValue();
+            revisionsScanned += history.revisions().size();
+            var retainedRevisions = retainedRevisions(
+                    entry.getKey(), history, distinctExternalRoots);
+            var replacement = history.retainRevisions(retainedRevisions);
+            if (replacement != history) {
+                replacements.put(entry.getKey(), replacement);
+                revisionsReclaimed += history.revisions().size()
+                        - replacement.revisions().size();
+            }
+        }
+
+        var report = new SkillReclaimReport(
+                historiesScanned,
+                revisionsScanned,
+                replacements.size(),
+                revisionsReclaimed);
+        var completed = new SkillReclaimResult.Completed(report);
+
+        for (var replacement : replacements.entrySet()) {
+            histories.put(replacement.getKey(), replacement.getValue());
+        }
+        return completed;
+    }
+
     void releasePin(SkillReference reference) {
         Objects.requireNonNull(reference, "reference");
         var current = activePinCounts.get(reference);
@@ -118,6 +187,45 @@ public final class SkillDefinitionStore {
             throw new IllegalStateException("active pin count is exhausted");
         }
         return current + 1;
+    }
+
+    private boolean containsReference(SkillReference reference) {
+        var history = histories.get(reference.skillId());
+        return history != null && history.revisions().containsKey(reference.revision());
+    }
+
+    private void requireActivePinInvariants() {
+        for (var entry : activePinCounts.entrySet()) {
+            var reference = Objects.requireNonNull(entry.getKey(), "active pin reference");
+            var count = Objects.requireNonNull(entry.getValue(), "active pin count");
+            if (count <= 0) {
+                throw new IllegalStateException("active pin count must be positive");
+            }
+            if (!containsReference(reference)) {
+                throw new IllegalStateException("active pin must reference a retained revision");
+            }
+        }
+    }
+
+    private Set<SkillRevision> retainedRevisions(
+            SkillId skillId,
+            StoredSkillHistory history,
+            Set<SkillReference> externalRoots) {
+        var latest = history.revisions().lastKey();
+        var retained = new HashSet<SkillRevision>();
+        for (var revision : history.revisions().keySet()) {
+            var reference = new SkillReference(skillId, revision);
+            if (revision.equals(latest)
+                    || externalRoots.contains(reference)
+                    || activePinCounts.containsKey(reference)) {
+                retained.add(revision);
+            }
+        }
+        return retained;
+    }
+
+    private static SkillReclaimResult reclaimRejected(SkillReclaimFailure failure) {
+        return new SkillReclaimResult.Rejected(failure);
     }
 
     /**

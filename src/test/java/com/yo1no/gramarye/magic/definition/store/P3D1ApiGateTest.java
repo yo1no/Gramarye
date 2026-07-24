@@ -26,7 +26,7 @@ class P3D1ApiGateTest {
             "com.yo1no.gramarye.magic.definition.store.";
 
     @Test
-    void storeAndPinHandleExposeOnlyTheReviewedD3ASurface() throws Exception {
+    void storeAndPinHandleExposeOnlyTheReviewedFinalD3Surface() throws Exception {
         var publicMethods = Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())
                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                 .map(method -> method.getName())
@@ -40,7 +40,7 @@ class P3D1ApiGateTest {
                 () -> assertTrue(Modifier.isFinal(SkillDefinitionStore.class.getModifiers())),
                 () -> assertEquals(Set.of(
                                 "find", "latestReference", "ownerOf", "committedSkillCount",
-                                "commit", "pin"),
+                                "commit", "pin", "reclaim"),
                         publicMethods),
                 () -> assertEquals(1, publicConstructors.size()),
                 () -> assertEquals(0, publicConstructors.getFirst().getParameterCount()),
@@ -168,8 +168,8 @@ class P3D1ApiGateTest {
     }
 
     @Test
-    void phaseLocalFullTreeGateAllowsD3APinsButRejectsD3BAndCompositionTypes() throws Exception {
-        // P3-D3-A phase-local: roots/reclaim/composition remain absent until their reviewed phase.
+    void phaseLocalFullTreeGateAllowsFinalD3ButRejectsP4AndCompositionTypes() throws Exception {
+        // Final P3-D3: pins and bounded reclaim are present; P4/composition remain absent.
         var allProduction = productionClassNames();
         var storeTypes = allProduction.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
@@ -183,6 +183,10 @@ class P3D1ApiGateTest {
         assertAll(
                 () -> assertTrue(allProduction.contains(SkillDefinitionStore.class.getName())),
                 () -> assertTrue(allProduction.contains(SkillRevisionPin.class.getName())),
+                () -> assertTrue(allProduction.contains(SkillRetentionRootSnapshot.class.getName())),
+                () -> assertTrue(allProduction.contains(SkillReclaimFailure.class.getName())),
+                () -> assertTrue(allProduction.contains(SkillReclaimReport.class.getName())),
+                () -> assertTrue(allProduction.contains(SkillReclaimResult.class.getName())),
                 () -> assertTrue(forbiddenTypeDeclarations.stream().noneMatch(name ->
                         allProduction.stream().anyMatch(className ->
                                 simpleTopLevelName(className).equals(name)))),
@@ -190,8 +194,8 @@ class P3D1ApiGateTest {
                 () -> assertTrue(storeTypes.stream()
                         .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                         .noneMatch(method -> Set.of(
-                                        "insert", "put", "remove", "retire",
-                                        "unpin", "reclaim")
+                                "insert", "put", "remove", "retire",
+                                        "unpin")
                                 .contains(method.getName()))),
                 () -> assertTrue(storeTypes.stream()
                         .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))

@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 
 final class StoredSkillHistory {
@@ -48,6 +49,34 @@ final class StoredSkillHistory {
                 Comparator.comparingInt(SkillRevision::value));
         replacement.putAll(revisions);
         replacement.put(document.revision(), document);
+        return new StoredSkillHistory(owner, replacement);
+    }
+
+    StoredSkillHistory retainRevisions(Set<SkillRevision> retainedRevisions) {
+        Objects.requireNonNull(retainedRevisions, "retainedRevisions");
+        if (retainedRevisions.isEmpty()) {
+            throw new IllegalArgumentException("retained revisions must not be empty");
+        }
+        for (var revision : retainedRevisions) {
+            Objects.requireNonNull(revision, "retained revision");
+            if (!revisions.containsKey(revision)) {
+                throw new IllegalArgumentException("retained revision is not in this history");
+            }
+        }
+        if (!retainedRevisions.contains(revisions.lastKey())) {
+            throw new IllegalArgumentException("retained revisions must include the latest");
+        }
+        if (retainedRevisions.size() == revisions.size()) {
+            return this;
+        }
+
+        var replacement = new TreeMap<SkillRevision, SkillDocument>(
+                Comparator.comparingInt(SkillRevision::value));
+        revisions.forEach((revision, document) -> {
+            if (retainedRevisions.contains(revision)) {
+                replacement.put(revision, document);
+            }
+        });
         return new StoredSkillHistory(owner, replacement);
     }
 

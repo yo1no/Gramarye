@@ -36,7 +36,7 @@ class P3D3AApiGateTest {
             "com.yo1no.gramarye.magic.definition.store.";
 
     @Test
-    void storeHasExactlyTheReviewedD3AFieldsAndPublicMethods() throws Exception {
+    void storeHasExactlyTheReviewedFinalD3FieldsAndPublicMethods() throws Exception {
         var histories = SkillDefinitionStore.class.getDeclaredField("histories");
         var activePinCounts = SkillDefinitionStore.class.getDeclaredField("activePinCounts");
         var instanceFields = Arrays.stream(SkillDefinitionStore.class.getDeclaredFields())
@@ -46,6 +46,8 @@ class P3D3AApiGateTest {
                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                 .toList();
         var pin = SkillDefinitionStore.class.getDeclaredMethod("pin", SkillReference.class);
+        var reclaim = SkillDefinitionStore.class.getDeclaredMethod(
+                "reclaim", SkillRetentionRootSnapshot.class);
         var pinReturn = assertInstanceOf(ParameterizedType.class, pin.getGenericReturnType());
 
         assertAll(
@@ -53,10 +55,10 @@ class P3D3AApiGateTest {
                 () -> assertMapField(histories, SkillId.class, StoredSkillHistory.class),
                 () -> assertMapField(activePinCounts, SkillReference.class, Integer.class),
                 () -> assertFalse(Modifier.isVolatile(activePinCounts.getModifiers())),
-                () -> assertEquals(6, publicMethods.size()),
+                () -> assertEquals(7, publicMethods.size()),
                 () -> assertEquals(Set.of(
                                 "find", "latestReference", "ownerOf", "committedSkillCount",
-                                "commit", "pin"),
+                                "commit", "pin", "reclaim"),
                         publicMethods.stream()
                                 .map(method -> method.getName())
                                 .collect(Collectors.toSet())),
@@ -65,6 +67,9 @@ class P3D3AApiGateTest {
                 () -> assertEquals(Optional.class, pinReturn.getRawType()),
                 () -> assertEquals(List.of(SkillRevisionPin.class),
                         Arrays.asList(pinReturn.getActualTypeArguments())),
+                () -> assertTrue(Modifier.isPublic(reclaim.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(reclaim.getModifiers())),
+                () -> assertEquals(SkillReclaimResult.class, reclaim.getReturnType()),
                 () -> assertEquals(Optional.class,
                         SkillDefinitionStore.class.getMethod("find", SkillReference.class)
                                 .getReturnType()),
@@ -159,7 +164,7 @@ class P3D3AApiGateTest {
                 () -> assertEquals(int.class, checkedIncrement.getReturnType()),
                 () -> assertTrue(Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())
                         .noneMatch(method -> Modifier.isPublic(method.getModifiers())
-                                && Set.of("unpin", "releasePin", "reclaim", "retire", "delete")
+                                && Set.of("unpin", "releasePin", "retire", "delete")
                                         .contains(method.getName()))));
     }
 
@@ -201,8 +206,11 @@ class P3D3AApiGateTest {
                 () -> assertTrue(historyFields.stream()
                         .anyMatch(field -> field.getType() == SkillOwnerId.class)),
                 () -> assertTrue(Arrays.stream(StoredSkillHistory.class.getDeclaredMethods())
-                        .noneMatch(method -> Set.of("retainRevisions", "reclaim")
-                                .contains(method.getName()))));
+                        .noneMatch(method -> method.getName().equals("reclaim"))),
+                () -> assertTrue(Arrays.stream(StoredSkillHistory.class.getDeclaredMethods())
+                        .anyMatch(method -> method.getName().equals("retainRevisions")
+                                && method.getReturnType() == StoredSkillHistory.class
+                                && !Modifier.isPublic(method.getModifiers()))));
     }
 
     @Test
@@ -232,11 +240,14 @@ class P3D3AApiGateTest {
         var source = Files.readString(projectRoot().resolve(
                 "src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStore.java"));
         var pinStart = source.indexOf("public Optional<SkillRevisionPin> pin");
-        var releaseStart = source.indexOf("void releasePin", pinStart);
-        var pinSource = source.substring(pinStart, releaseStart);
+        var pinEnd = source.indexOf("public SkillReclaimResult reclaim", pinStart);
+        var pinSource = source.substring(pinStart, pinEnd);
         var commitStart = source.indexOf("public SkillStoreCommitResult commit");
-        var commitEnd = source.indexOf("private int globalRetainedRevisionCount", commitStart);
-        var commitSource = source.substring(commitStart, commitEnd);
+        var commitEnd = source.indexOf("SkillDefinitionStoreSnapshot snapshot()", commitStart);
+        var helperStart = source.indexOf("private SkillStoreCommitResult commitExpectedAbsent");
+        var helperEnd = source.indexOf("private int globalRetainedRevisionCount", helperStart);
+        var commitSource = source.substring(commitStart, commitEnd)
+                + source.substring(helperStart, helperEnd);
         var existence = pinSource.indexOf("history.revisions().containsKey");
         var checked = pinSource.indexOf("checkedIncrementPinCount");
         var handle = pinSource.indexOf("new SkillRevisionPin");
@@ -258,13 +269,9 @@ class P3D3AApiGateTest {
     }
 
     @Test
-    void phaseLocalProductionTreeContainsNoD3BOrP4Surface() throws Exception {
+    void phaseLocalProductionTreeContainsFinalD3ButNoP4Surface() throws Exception {
         var productionClasses = productionClasses();
         var forbiddenTopLevelTypes = Set.of(
-                "SkillRetentionRootSnapshot",
-                "SkillReclaimFailure",
-                "SkillReclaimResult",
-                "SkillReclaimReport",
                 "SkillDefinitionSubmissionService",
                 "RootProvider");
         var storeTypes = productionClasses.stream()
@@ -273,6 +280,14 @@ class P3D3AApiGateTest {
                 .toList();
 
         assertAll(
+                () -> assertTrue(Set.of(
+                                "SkillRetentionRootSnapshot",
+                                "SkillReclaimFailure",
+                                "SkillReclaimResult",
+                                "SkillReclaimReport")
+                        .stream()
+                        .allMatch(simpleName -> productionClasses.stream().anyMatch(className ->
+                                simpleTopLevelName(className).equals(simpleName)))),
                 () -> assertTrue(forbiddenTopLevelTypes.stream().noneMatch(simpleName ->
                         productionClasses.stream().anyMatch(className ->
                                 simpleTopLevelName(className).equals(simpleName)))),
@@ -284,7 +299,7 @@ class P3D3AApiGateTest {
                 () -> assertTrue(storeTypes.stream()
                         .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                         .noneMatch(method -> Set.of(
-                                        "reclaim", "retire", "delete", "save", "load", "setDirty")
+                                        "retire", "delete", "save", "load", "setDirty")
                                 .contains(method.getName()))),
                 () -> assertTrue(storeTypes.stream().allMatch(P3D3AApiGateTest::hasNoP4Dependency)));
     }

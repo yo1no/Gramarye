@@ -127,25 +127,25 @@ class P3C4ApiGateTest {
     }
 
     @Test
-    void p3D3APhaseLocalGateRecognizesPinsButStillHasNoD3BOrCompositionTypes() throws Exception {
-        // P3-D3-A phase-local: active pins are legal; roots/reclaim/composition remain absent.
+    void finalP3D3GateRecognizesPinsAndReclaimButStillHasNoCompositionTypes() throws Exception {
+        // Final P3-D3: active pins and bounded reclaim are legal; composition remains absent.
         var productionClasses = productionClassNames();
         var absentSimpleNames = List.of(
                 "SkillDefinitionSubmissionService",
                 "RandomUuidSkillIdSource",
                 "SkillSubmissionAuthorizationAdapter",
                 "SkillQuotaView",
-                "SkillPin",
-                "SkillRetentionRootSnapshot",
-                "SkillReclaimFailure",
-                "SkillReclaimResult",
-                "SkillReclaimReport");
+                "SkillPin");
         var presentSimpleNames = List.of(
                 "SkillDefinitionStore",
                 "SkillStoreCommitResult",
                 "SkillStoreCommitConflict",
                 "SkillQuota",
-                "SkillRevisionPin");
+                "SkillRevisionPin",
+                "SkillRetentionRootSnapshot",
+                "SkillReclaimFailure",
+                "SkillReclaimResult",
+                "SkillReclaimReport");
 
         assertAll(
                 () -> assertTrue(classExists(STORE_CLASS)),
