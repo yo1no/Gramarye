@@ -7,15 +7,23 @@ This page is a compact phase boundary, not a second persistence specification.
 
 ## Phase split
 
-- P4-A owns the canonical owner Codec, family-tagged storage envelopes, bounded physical Store
-  format, storage migration, family-aware hydration, and the reviewed Store persistence bridge. It
-  contains no SavedData or Attachment lifecycle.
-- P4-B owns the sole Overworld SavedData lifecycle, bounded one-time load path,
-  Ready／Quarantined states, prebuilt carrier publication, and dirty decisions.
+- P4-A1 owns the canonical owner Codec, family/context boundary, bounded raw codecs,
+  `RawTreeEnvelope`, current mixed-family document bridge, appearance mapping, and shared logical
+  document bounds.
+- P4-A2 owns `store_schema_version`, bounded Store／History／Revision blobs, Store physical
+  migration, location-bound opaque-token skill migration, migration-before-hydration, current
+  snapshot／restore orchestration, bounded facts, and current Store blob encode／load.
+- P4-A3 owns only immutable hierarchical carrier rebuild／replacement／filter primitives, checked
+  totals, and the 64 MiB fixed-heap probe; it owns no lifecycle, publication, dirty state, commit,
+  journal, Attachment, or composition.
+- P4-B owns `saved_data_schema_version`, the outer SavedData carrier, sole Overworld SavedData
+  lifecycle, bounded one-time load path, Ready／Quarantined states, live carrier publication, save
+  callback, and dirty decisions. It reuses A3 and does not reimplement Store encoding.
 - P4-C owns the permanent player skill Attachment, Draft/reference/editor persistence, total
   serializer, Attachment migration, and clone policy.
-- P4-D owns authenticated submission composition, persistence preflight, Store commit, pending
-  Attachment-update journal, typed outcome, and crash recovery.
+- P4-D owns authenticated submission composition, invocation of A3 prospective Store builders,
+  prospective journal replacement, commit-oriented persistence preflight, Store commit, carrier／
+  journal publication, Attachment transition, typed outcome, and crash recovery.
 - P4-E owns complete offline root audit, rebuildable root indexing, reconciliation, reclaim
   composition, and its dirty decisions.
 - P4 delegates Store owner, quota, CAS, allocation, validation, and reclaim policy to P3. The
@@ -46,18 +54,45 @@ Ordered lists preserve duplicate routes until P3-D restore can reject them. The 
 are derived encodings, not domain truth. Exact fields, canonical ordering, count ceilings, encoded
 byte ceilings, and quarantine limits are owned by the P4 amendment and `MagicSafetyCeilings`.
 
-Before a live commit, P4 builds and bounds the prospective revision/history/Store/journal/carrier
-delta. Only `Committed` publishes that prebuilt carrier and marks dirty. Reclaim rebuilds its carrier
-by filtering already encoded retained entries and never cross-family re-encodes raw trees.
+The Revision hard ceiling of `1_114_112` bytes is an inclusive outer-envelope admission predicate,
+not a promise that V0 can produce a successful canonical revision of exactly that size. V0 uses an
+85-byte wrapper; with the `1_048_576`-byte document ceiling, its largest complete canonical revision
+is `1_048_661` bytes. Exact-field Store／History／Revision NBT preflight rejects duplicate, unknown,
+missing, or wrong-type fields and oversized nested byte arrays before full Compound materialization;
+list duplicate routes remain intact for restore.
+
+P4-A3 performs only pure carrier calculations. Before a live commit, P4-D uses those primitives to
+build and bound the prospective Store and journal replacements. Only `Committed` lets the P4-B
+lifecycle publish the prebuilt carrier／journal and mark dirty. Reclaim uses A3 filtering of already
+encoded retained entries and never cross-family re-encodes raw trees.
 
 ## Migration and load boundary
 
-The only valid load order is:
+The version axes and load order are distinct:
 
 ```text
-bounded raw ingress -> storage migration -> per-document P3-B1 migration
--> family-aware hydration -> current Store snapshot -> P3-D restore
+P4-B bounded raw ingress -> saved_data_schema_version outer migration -> store_blob
+-> P4-A2 store_schema_version physical migration -> per-document P3-B1 migration
+-> exact raw reinsertion -> P4-A1 family-aware hydration -> current Store snapshot -> P3-D restore
 ```
+
+P4-A2 uses exactly two narrow public cross-package facade classes for document/migration package
+visibility: `SkillDocumentStorePersistenceFacade` and `OpaqueSkillDocumentMigrationFacade`. The
+first is the sole Store-to-document persistence seam: public `encodeCurrent` delegates to the A1
+package-private current encoder, while public load always probes and runs the production migration
+orchestration before it delegates to the A1 hydrate seam. Public current encode is therefore valid;
+public current-only decode, hydrate, load, or skip-migration remains forbidden. Store encoding must
+use this facade for every document and may not copy the A1 mixed-family serializer.
+
+`EncodedSkillDocument` is a defensive, bounded, immutable whole-document byte handle and therefore
+contains the persisted raw subtrees, but exposes no per-subtree, physical-field, or mutable-tree
+API. Only the document-to-migration tokenized handle contains no raw subtree bytes; it is a distinct
+nominal type, never the same wrapper or a bare byte array. Tokens bind ID,
+typed original location, and serialized-tree context; V0 rejects relocation and exchange.
+Bootstrap audit and load share the sole production `SkillMigrationPlan` provider. Immutable
+`PipelineFactReport` merging is bounded, ordered, and propagates truncation without exposing its
+mutable collector. Minimal handles/results and the P4-D composition facade are outside this
+phase-local two-facade count.
 
 P4 introduces no second skill migration plan and does not run payload migration during load. Any
 migration, decode, or restore failure installs neither a partial nor an empty Store. The custom
@@ -90,7 +125,8 @@ without forced chunk loads, background sweeping, or cross-tick reuse of `Complet
 
 ## Implementation gate
 
-P4-A starts only after the P4 amendment is committed and remote CI passes. Its first gate proves
+P4-A1 starts only after the P4 amendment is committed and remote CI passes. P4-A2 starts only after
+the P4-A2.0 clarification is committed and remote CI passes. The P4-A1 gate proves
 same-family structural preservation for JSON, NBT, and mixed-family documents, and proves that every
 migration/decode/restore failure installs neither a partial nor an empty Store.
 
@@ -100,7 +136,7 @@ P4-A1 adds only the current-document raw persistence seam. The public tree bound
 `magic.definition.tree`: `SerializedTreeFamily`, immutable `SerializedTreeContext`, and
 `SupportedDynamicTrees` are the sole family/context classifier and defensive-copy utility. The
 bounded byte encoders, strict JSON/NBT codecs, V0 raw envelope, physical document DTO, typed
-failure/result, and current-only mixed-family bridge remain package-internal under
+failure/result, and current encode/hydrate mixed-family bridge remain package-internal under
 `magic.definition.document`; this co-location preserves the existing package-private P3-A
 appearance and canonical-ID seams without widening mutable-tree or byte-array APIs.
 
@@ -116,7 +152,19 @@ storage are excluded from that logical count. Rejected appearance states follow 
 default/none persistence fallback, and `SkillOwnerId.CODEC` reuses the canonical UUID codec already
 used by `SkillId`.
 
-The hydration shortcut is deliberately non-public and accepts current schema only. P4-A2 remains
-responsible for storage-envelope and skill-document migration before invoking that seam, including
-the still-required opaque-token migration gate; P4-A1 introduces no Store envelope, migration plan,
-carrier, SavedData, Attachment, or world lifecycle.
+The current encoder and hydration shortcut remain deliberately package-private. The public P4-A2
+document persistence facade may delegate to the current encoder for typed current-domain output;
+its load path may invoke current hydration only after schema probe, migration orchestration, token
+validation, and exact reinsertion. P4-A1 introduces no Store envelope, migration plan, carrier,
+SavedData, Attachment, or world lifecycle.
+
+## P4-A2.0 clarification ledger
+
+The authoritative amendment now fixes A1／A2／A3／B／D ownership, separates SavedData and Store
+version axes, distinguishes the inclusive Revision outer ceiling from the V0 canonical maximum,
+approves exactly two P4-A2 opaque cross-package facade classes, including one bidirectional document
+persistence facade with public current encode and always-migrating load, binds migration tokens to
+typed locations, and
+requires one production skill-migration-plan provider, bounded fact merging, and exact-field NBT
+preflight. This ledger records closure only; the exact contracts and A2 phase-local stop conditions
+remain defined by the amendment rather than duplicated here.

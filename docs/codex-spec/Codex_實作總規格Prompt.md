@@ -616,17 +616,36 @@ Attachment、journal、reconciliation及offline-root contract以
 
 P4固定拆分為：
 
-- P4-A：`SkillOwnerId` canonical UUID Codec、physical persistence format、Store/storage
-  migration、既有skill migration bridge、family-aware hydration與persistence bridge；無
-  SavedData lifecycle、無Attachment。
-- P4-B：唯一Overworld `gramarye_skill_definitions` SavedData lifecycle、bounded one-time
-  ingress、Ready／Quarantined、prebuilt carrier與dirty；無Player Attachment。
+- P4-A1：`SkillOwnerId` canonical UUID Codec、family/context判定、bounded raw Codec、
+  `RawTreeEnvelope`、mixed-family current document bridge、appearance mapping與shared logical
+  bounds；無Store schema／migration／carrier／SavedData。
+- P4-A2：`store_schema_version`、Store／History／Revision physical schema與三層byte ceilings、
+  Store physical migration、typed-location opaque-token skill migration、migration before
+  hydration、current snapshot／P3-D restore、bounded facts與current Store blob encode／load；無
+  `saved_data_schema_version`／carrier／journal／commit preflight／heap probe。
+- P4-A3：pure immutable hierarchical Store carrier rebuild／replacement／reclaim filtering、
+  checked totals與64 MiB fixed-heap validation；無lifecycle／publication／dirty／commit／journal／
+  Attachment／composition。
+- P4-B：`saved_data_schema_version`、唯一Overworld `gramarye_skill_definitions` SavedData outer
+  carrier／lifecycle、bounded one-time ingress、Ready／Quarantined、使用A3 primitives的live
+  carrier publication、save callback與dirty；不重寫Store encoding，無Player Attachment。
 - P4-C：獨立永久`gramarye:player_skills` Attachment、Draft／reference／editor persistence、
   total serializer、migration與clone policy；無Store commit composition。
-- P4-D：authenticated submission composition、persistence preflight、P3-D commit、Store-first
-  bounded generation journal、Attachment transition與crash recovery；無network。
+- P4-D：authenticated submission composition、調用A3 prospective Store builder、prospective
+  journal、commit-oriented persistence preflight、P3-D commit、carrier／journal publication、
+  Attachment transition與crash recovery；無network。
 - P4-E：complete offline roots、rebuildable root index、reconciliation與reclaim composition；
   無chunk force、無background sweep。
+
+P4-A2因document／migration package visibility恰好核准兩個public facade classes。
+`SkillDocumentStorePersistenceFacade` 是`definition.store ↔ definition.document`的唯一
+document persistence seam：`encodeCurrent` 只委派A1 package-private current encoder並回
+defensive immutable `EncodedSkillDocument`；public load對current／legacy都必須經schema
+probe、唯一production plan orchestration、token reinsertion後才呼叫A1 current hydrate。第二個是
+`OpaqueSkillDocumentMigrationFacade`。Public current encode不是load bypass；不得公開
+current-only decode／hydrate／load／skip-migration、Raw snapshot、`Dynamic`／`Tag`、caller plan或
+第三個document encoder facade。Store current encode的每份document必須委派此facade，不得
+複製A1 mixed-family serializer。
 
 P4不得重寫P3-D owner、quota、CAS、revision allocation或reclaim policy。P3-D沒有Store
 Codec、NBT、DynamicOps、SavedData、Minecraft dependency或`setDirty()`。Load固定為migration
@@ -1037,14 +1056,21 @@ P3-D1：production pure-Java Store aggregate、owner/history truth、read API、
 P3-D2：quota／owner／CAS／capacity／insert同一atomic mutation、zero-partial
        typed failure、commit result與正式revision allocation
 P3-D3：active pin handles、complete retention roots、latest implicit root與reclaim
-P4-A：owner Codec、per-raw-subtree envelope、physical schema／exact byte ceilings、
-      storage migration、skill migration bridge、family-aware hydration與persistence bridge
-P4-B：唯一Overworld Skill Store SavedData lifecycle、bounded ingress、
-      non-fail-open load、Ready／Quarantined、prebuilt carrier與dirty
+P4-A1：owner Codec、family/context判定、bounded raw Codec、per-raw-subtree envelope、
+       mixed-family current document bridge、appearance mapping與shared logical bounds
+P4-A2：store_schema_version、Store／History／Revision physical schema與三層byte ceilings、
+       Store migration、typed-location opaque-token skill migration、migration-before-hydration、
+       snapshot／restore、bounded facts、document persistence facade與current Store blob encode／load
+P4-A3：pure immutable hierarchical carrier rebuild／replacement／reclaim filtering、checked totals
+       與64 MiB fixed-heap validation
+P4-B：saved_data_schema_version、唯一Overworld Skill Store SavedData outer carrier／lifecycle、
+      bounded ingress、non-fail-open load、Ready／Quarantined、使用A3 primitives的live carrier
+      publication、save callback與dirty
 P4-C：獨立player skill Attachment、Draft／latest／equipped／editor persistence、
       total serializer、migration與clone policy
-P4-D：authenticated composition、fresh authority／quota、P3-C prepare、preflight、
-      P3-D commit、Store-first journal、Attachment transition與crash recovery
+P4-D：authenticated composition、fresh authority／quota、P3-C prepare、調用A3 prospective
+      Store builder、prospective journal與commit-oriented preflight、P3-D commit、carrier／journal
+      publication、Attachment transition與crash recovery
 P4-E：offline roots、rebuildable index、reconciliation與reclaim composition
 ```
 
@@ -1120,9 +1146,17 @@ composition outcome、report identity、journal與recovery以
 - P3-D3 pin/unpin/latest-root/complete-root fail-closed/non-latest reclaim。
 - P4 SavedData adapter successful truth mutation calls dirty；typed failure與pin不dirty。
 - Attachment clone policy。
-- P4-A JSON／NBT／mixed-family same-family structural preservation、all exact／+1 byte bounds，
-  以及 migration-success、skipped-migration、migration-failure-zero-restore、migrated-domain-
-  corruption 四類獨立 gates。
+- P4-A1 JSON／NBT／mixed-family same-family structural preservation、RegistryOps／compressed
+  JsonOps rebind與A1 raw／document bounds。
+- P4-A2 Store／History exact／+1、opaque-token migration與四類獨立migration／restore gates；
+  Revision outer exact只驗inclusive admission，outer MAX + 1在parse前拒絕，最大canonical V0
+  `1_048_661`（85-byte wrapper）完整round-trip，outer exact但inner document超限回document
+  capacity failure。
+- P4-A2 `encodeCurrent` canonical／context-preserving bytes、bounds與alias isolation；current／legacy
+  load均經migration seam，production恰好兩個P4-A2 public facade classes，且無public
+  current-only decode／hydrate／load bypass、caller plan、mutable tree或Store-side A1 serializer複製。
+- P4-A3 immutable carrier builder／replacement／filter tests、checked totals與64 MiB fixed-heap
+  validation。
 - P4-B absent file→empty Ready、existing invalid→Quarantined-not-empty、bounded file／carrier、
   prebuilt save callback、dirty matrix與restart round-trip。
 - P4-C Draft／latest／equipped／editor round-trip、total serializer、mutation generation與

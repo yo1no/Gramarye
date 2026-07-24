@@ -2,7 +2,7 @@
 
 本文件把凍結骨架拆成可交給 Codex 逐階段執行的工程工作包。
 
-P3 相關工作包已依 `17_P3資料模型修正案.md` 同步；P4-A～P4-E 已依
+P3 相關工作包已依 `17_P3資料模型修正案.md` 同步；P4-A1～A3與P4-B～P4-E 已依
 `18_P4持久化與組合修正案.md` 同步。兩份修正案只在各自明確範圍內優先，其他架構仍以
 凍結規格為準。若P4條文尚未同步而形成實質衝突，停止受影響工作，不自行選邊。
 
@@ -226,14 +226,21 @@ P3-D1：production pure-Java Store aggregate、owner/history truth、read API、
 P3-D2：quota／owner／CAS／capacity／insert同一atomic mutation、zero-partial
        typed failure、commit result與正式revision allocation
 P3-D3：active pin handles、complete retention roots、latest implicit root與reclaim
-P4-A：owner Codec、per-raw-subtree envelope、physical schema／exact byte ceilings、
-      storage migration與family-aware persistence bridge
-P4-B：唯一Overworld Skill Store SavedData lifecycle、bounded ingress、
-      Ready／Quarantined、prebuilt carrier與dirty
+P4-A1：owner Codec、family/context判定、bounded raw Codec、per-raw-subtree envelope、
+       mixed-family current document bridge、appearance mapping與shared logical bounds
+P4-A2：store_schema_version、Store／History／Revision physical schema與三層byte ceilings、
+       Store migration、typed-location opaque-token skill migration、migration-before-hydration、
+       snapshot／restore、bounded facts與current Store blob encode／load
+P4-A3：pure immutable hierarchical carrier rebuild／replacement／reclaim filtering、checked totals
+       與64 MiB fixed-heap validation
+P4-B：saved_data_schema_version、唯一Overworld Skill Store SavedData outer carrier／lifecycle、
+      bounded ingress、Ready／Quarantined、使用A3 primitives的live carrier publication、save
+      callback與dirty
 P4-C：獨立player skill Attachment、Draft／latest／equipped／editor persistence、
       total serializer、migration與clone policy
-P4-D：authenticated composition、persistence preflight、P3-D commit、Store-first journal、
-      Attachment transition與crash recovery
+P4-D：authenticated composition、調用A3 prospective Store builder、prospective journal、
+      commit-oriented preflight、P3-D commit、carrier／journal publication、Attachment transition
+      與crash recovery
 P4-E：offline roots、rebuildable index、reconciliation與reclaim composition
 ```
 
@@ -495,55 +502,162 @@ transition。Facade不把Player／ServerPlayer傳入domain API。
 # 階段 P4：Skill Store persistence、player Attachment 與 composition
 
 P4 由已核准的 [`18_P4持久化與組合修正案.md`](18_P4持久化與組合修正案.md)治理。
-P4-0只修訂權威文件；修正案提交且遠端CI通過前不得開始P4-A。
+P4-0只修訂權威文件；修正案提交且遠端CI通過前不得開始P4-A1。P4-A2.0只明確化
+P4-A子階段契約；該文件變更提交且遠端CI通過前不得開始P4-A2 implementation。
 
-P4-A～E不得重寫P3-D owner truth、quota counting、CAS、revision allocation或reclaim
+P4-A1～A3與P4-B～E不得重寫P3-D owner truth、quota counting、CAS、revision allocation或reclaim
 policy，也不得重跑P3-B2／B3 resolution／validation。
 
-## P4-A：Persistence format 與 migration bridge
+## P4-A1：Raw tree／mixed-family document bridge
 
 ### 責任
 
 - `SkillOwnerId` additive建立唯一canonical UUID Codec；不建立String owner、平行PlayerId或
   StreamCodec。
+- 建立JSON／NBT／RegistryOps family／context唯一判定、bounded raw bytes與strict raw Codec。
 - 每個Trigger／Action payload、top-level Unparsed appearance與每個Unparsed override個別
   保存V0 `RawTreeEnvelope`。同一document／node可mixed JSON與NBT；RegistryOps只是可重綁
   context，不是第三family。
-- 建立list-based、length-delimited Store／History／Revision physical schema與
-  `family_tagged_subtrees_v0` document storage tree；duplicate route保留至P3-D restore。
-- 將全部exact encoded-byte ceilings加入唯一`MagicSafetyCeilings`位置，使用bounded／counting
-  encode，不預配置理論最大buffer。
-- 建立adjacent Store-envelope migration，並把既有唯一P3-B1 skill migration plan接到
-  NBT-family logical outer tree；RawTreeEnvelope bytes保持opaque，payload migration不在load
-  執行。
-- Family-aware hydration後才建立current `SkillDefinitionStoreSnapshot`並呼叫P3-D restore。
-- 建立不含Minecraft lifecycle的Store persistence bridge與preflight能力。
+- 建立mixed-family current document encode／hydrate、appearance physical mapping與shared
+  logical document bounds。
 
 ### Gate
 
 - JSON、NBT與mixed-family document都能在相同family下結構保存；無跨family conversion。
-- 四類獨立migration／restore測試全部通過：migrated success、same legacy direct restore
-  rejection、migration failure且restore 0 calls、migration success後domain restore rejection。
-- 任一migration／decode／restore failure都不產生partial或empty Store。
-- 每個byte bound的exact合法、+1拒絕；64 MiB Store ceiling通過dedicated-server heap benchmark。
+- Plain／RegistryOps／compressed JsonOps rebind、invalid family／context、appearance fallback與
+  A1 raw／document bounds通過。
 
 ### 禁止
 
-SavedData lifecycle、Attachment、production payload migration、submission facade。
+Store physical schema、migration、carrier、SavedData、Attachment、production payload migration、
+submission facade。
+
+## P4-A2：Store blob format 與 migration-before-restore
+
+### 責任
+
+- 建立`store_schema_version`、list-based length-delimited Store／History／Revision physical
+  schema與`family_tagged_subtrees_v0`；duplicate route保留至P3-D restore。
+- 只新增並消費revision／history／Store三個nested encoded-byte ceilings，使用bounded／counting
+  encode、checked totals且不按theoretical maximum預配置。
+- 建立唯一`StorePersistenceMigrationPlan`；不建立History／Revision平行plan。SavedData outer
+  migration屬P4-B，payload migration不在load執行。
+- P4-A2 document／migration package visibility恰好核准兩個窄public facade classes：
+  document package的`SkillDocumentStorePersistenceFacade`與migration package的
+  `OpaqueSkillDocumentMigrationFacade`；最小handle／result與P4-D composition facade不計入此
+  phase-local數量。
+- `SkillDocumentStorePersistenceFacade.encodeCurrent(...)`只接受current-schema immutable
+  `SkillDocument`，委派A1 package-private current encoder，執行logical／document byte bounds，
+  並回defensive immutable `EncodedSkillDocument`／typed failure；legacy／future不得成功encode。
+- 同一facade的public `load(...)`是唯一decode入口：current schema也要probe並經唯一
+  production plan的0-step orchestration，legacy經adjacent steps，future拒絕；token驗證／
+  reinsertion後才呼叫A1 package-private current hydrate。
+- `EncodedSkillDocument`只是有界、defensive immutable whole-document bytes carrier，不公開
+  per-subtree／physical field／mutable tree，`toString()`只顯示byte count。Document／migration
+  facade之間的tokenized handle則完全不含raw payload bytes，也不公開physical DTO、
+  `RawSkillDocumentSnapshot`、`Dynamic`或`Tag`。兩者必須是不同nominal types，不得共用
+  裸`byte[]`或同一wrapper。
+- 建立typed-location-bound opaque token table；token依node index的trigger／action／unparsed
+  override、最後top appearance配置，最大數由`3 × MAX_NODES + 1 = 769`推導。Transient sentinel
+  固定為`data: {"__gramarye_opaque_raw_token_v0": IntTag(tokenId)}`。
+- Token ID、location、context必須exactly-once保持；拒絕relocation／exchange／unknown／missing／
+  duplicate／mutation。Raw bytes從migration-visible tree抽離，reinsertion後由A1重驗完整logical
+  bounds。
+- 新增唯一immutable production plan provider `SkillMigrationPlans.production()`或等價API，
+  bootstrap audit與opaque facade共用；public caller不得注入plan。
+- `PipelineFactReport` additive提供immutable bounded append／merge，保持left-before-right、
+  source truncation OR、no dedup與共用cap；不公開mutable collector。
+- Store／History／Revision使用schema-aware exact-field NBT preflight，在完整Compound
+  materialization前拒絕duplicate／unknown／missing／wrong-type field，驗證list type／count、
+  nested byte length與trailing input；不得使用last-write-wins或`unlimitedHeap()`。
+- 固定load順序為Store migration → tokenized skill migration → exact reinsertion → A1 hydrate →
+  current Store snapshot → P3-D restore exactly once；所有failure total且no-partial。
+- Current Store blob encode固定從`SkillDefinitionStore.snapshot()`取canonical histories／
+  revisions，每份document只呼叫`SkillDocumentStorePersistenceFacade.encodeCurrent(...)`，
+  再組成Revision → History → Store envelopes與bounded blob。Store package不直接呼叫
+  `SkillDocumentPersistenceBridge`，不複製document encoder，不使用`SkillDocumentWriter`、
+  `Codec.PASSTHROUGH`或單一`DynamicOps` writer重建mixed-family document。
+- 提供current Store blob encode／always-migrating load與bounded migration facts，不安裝live
+  world state。
+
+### Revision outer ceiling
+
+- `MAX_STORE_REVISION_ENTRY_ENCODED_BYTES = 1_114_112`只表示inclusive outer admission。
+- V0 framing為`85 + document_bytes.length`；最大合法document導出的canonical V0 revision為
+  `1_048_661` bytes並須完整round-trip。
+- Outer exact不得誤報revision capacity；outer MAX + 1須在parse前拒絕；outer exact但inner
+  document超限須回document capacity failure且不得hydrate。
+- 實作若得到非85-byte wrapper，停止並回報，不得修改數值或期待。
+
+### Gate
+
+- 四類獨立migration／restore測試通過：migrated success、same legacy direct restore rejection、
+  migration failure且hydrate／restore 0 calls、migration success後domain restore rejection。
+- `encodeCurrent` 可由Store package合法呼叫，與A1 internal encoder產生結構等價、
+  context相同的bytes，且`EncodedSkillDocument` defensive copy／bounds／bounded
+  `toString()`通過。
+- Store current encode的document call sites只經document persistence facade；Store package不引用
+  `SkillDocumentPersistenceBridge`、`RawTreeEnvelope`、physical document DTO或
+  `AppearanceStorageCodec` internal
+  persistence methods，也不呼叫`SkillDocumentWriter`／`Codec.PASSTHROUGH`／單一
+  `DynamicOps` mixed-family writer。
+- Public load對current／legacy都執行schema probe與migration facade；production只有上述
+  兩個P4-A2 public facades，不存在public current-only decode／hydrate／load bypass、caller plan或
+  mutable tree API，bootstrap audit與load共用同一production plan。
+- Token location/context/exactly-once、same-context exchange拒絕、raw exact reinsertion與
+  tokenized／hydrated雙層bounds通過。
+- Fact merge順序／cap／truncation／immutability與exact-field NBT duplicate／type／length tests通過。
+- Revision四項size semantics與History／Store exact／+1通過；任一failure不產生partial／empty
+  Store。
+
+### 禁止
+
+`saved_data_schema_version`、SavedData outer carrier、hierarchical live carrier、journal、commit
+preflight、heap probe、dirty、world I/O、Attachment、submission facade、public current-only
+decode／hydrate／load／skip-migration bypass、public Raw snapshot／`Dynamic`／`Tag`、caller-supplied
+migration plan。Public current document encode只允許經`SkillDocumentStorePersistenceFacade`。
+
+若單一document persistence facade無法同時提供current encode與always-migrating load，
+而不公開physical DTO、current-only decode／hydrate或P3 internals；或transport仍含不該出現的
+raw、typed-location不能驗證、exact-field preflight不能在materialization前完成、
+outer／inner capacity無法分離、唯一plan provider或bounded fact merge無法維持封裝，或
+A2需要A3／B／D責任，必須停止並回報；不得新增第三個facade或複製A1 encoding。
+
+## P4-A3：Derived Store carrier primitives 與 heap validation
+
+### 責任
+
+- 建立pure immutable hierarchical encoded Store carrier、從current Store snapshot full rebuild、
+  New／Existing history／revision replacement builders、reclaim filtering與checked aggregate totals。
+- 提供prospective Store-only carrier calculations；old carrier保持immutable。
+- 以fixed-heap dedicated server驗證64 MiB Store ceiling。
+
+### Gate
+
+- Full rebuild、replacement、filtering、checked totals、old-carrier isolation與fixed-heap probe通過。
+
+### 禁止
+
+SavedData lifecycle／publication、dirty、Store commit、journal domain／publication、Attachment與
+composition。P4-A3不建立任何persistent schema version。
 
 ## P4-B：Overworld SavedData adapter
 
 ### 責任
 
+- 建立`saved_data_schema_version`與SavedData outer carrier；outer migration完成後將
+  `store_blob`委派給P4-A2 load，不重寫Store／History／Revision encoding。
 - Stable name固定`gramarye_skill_definitions`；唯一位置是Overworld data storage，其他維度
   取得同一adapter，不使用static singleton。
 - 專用one-time loader先區分primary file absent／present，執行compressed-file size bound、
-  bounded NBT decompression與P4-A load pipeline。標準fail-open `computeIfAbsent`不得直接作
+  bounded NBT decompression、SavedData outer migration與P4-A2 load pipeline。標準fail-open
+  `computeIfAbsent`不得直接作
   deserializer入口。
 - Absent file建立empty Ready且不dirty；existing invalid file安裝non-dirty Quarantined，
   不建立empty Store、不覆寫原檔、不自動提升`.dat_old`。
 - Ready同時持有domain Store、matching immutable encoded carrier、pending journal carrier與
-  rewrite-pending state。Save callback只寫prebuilt carrier。
+  rewrite-pending state。Live carrier ownership／publication與save callback屬P4-B；使用P4-A3
+  pure primitives，且save callback只寫prebuilt carrier。
 - 落實完整dirty matrix與migration成功後canonical rewrite pending。
 
 ### Gate
@@ -554,7 +668,8 @@ SavedData lifecycle、Attachment、production payload migration、submission fac
 
 ### 禁止
 
-Player Attachment、submission composition、在save callback首次執行一般Codec。
+Player Attachment、submission composition、重寫Store／History／Revision encoding、在save
+callback首次執行一般Codec。
 
 ## P4-C：Player Attachment
 
@@ -586,8 +701,9 @@ Store commit composition、revision allocation、Store owner/latest覆寫。
 - Facade位於submission package，從authenticated server principal導出`SkillOwnerId`，從own
   Ready Attachment取得Draft，讀current Store owner/latest，只取得一次immutable quota
   snapshot，再重用package-private C1～C4 preparation。
-- Preparation後fresh owner/state recheck；所有revision／history／Store／journal／carrier
-  encoding與capacity preflight都在live Store mutation前完成。
+- Preparation後fresh owner/state recheck；調用P4-A3 pure prospective Store carrier builder，
+  建立prospective journal replacement，並在live Store mutation前完成全部revision／history／
+  Store／journal／carrier capacity preflight。
 - 用同一quota snapshot呼叫P3-D commit。只有`Committed`才發布預建carrier／journal、dirty，
   再執行Attachment immutable transition。
 - 建立獨立composition outcome；不得把`SkillSubmissionOutcome.Prepared`當Committed。取得
@@ -604,7 +720,8 @@ Store commit composition、revision allocation、Store owner/latest覆寫。
 
 ### 禁止
 
-Network、接受client owner／authorization／quota／revision／Store state、Attachment-first ordering。
+Network、接受client owner／authorization／quota／revision／Store state、Attachment-first ordering、
+重寫P4-A2 Store／History／Revision encoding。
 
 ## P4-E：Offline roots 與 reconciliation
 
@@ -636,8 +753,8 @@ source implementation仍留各自後續工程階段。
 
 ## P4 Definition of Done
 
-- P4-A～E各自gate與[18號修正案required tests](18_P4持久化與組合修正案.md#21-required-tests)
-  通過。
+- P4-A1～A3與P4-B～E各自gate及
+  [18號修正案required tests](18_P4持久化與組合修正案.md#21-required-tests)通過。
 - `SkillDefinitionStore`只有一份domain truth；Overworld adapter、player Attachment與journal
   各自遵守其單一真相／derived data邊界。
 - Existing invalid data不silent empty，所有load failure不partial、不dirty、不覆寫原檔。
