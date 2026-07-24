@@ -3,7 +3,6 @@ package com.yo1no.gramarye;
 import com.mojang.logging.LogUtils;
 import com.yo1no.gramarye.magic.api.registry.MagicRegistries;
 import com.yo1no.gramarye.magic.definition.migration.DescriptorMigrationAudit;
-import com.yo1no.gramarye.magic.definition.migration.SkillMigrationPlan;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import org.slf4j.Logger;
@@ -16,6 +15,6 @@ public final class Gramarye {
 
     public Gramarye(IEventBus modBus) {
         MagicRegistries.register(modBus);
-        new DescriptorMigrationAudit(SkillMigrationPlan.empty()).register(modBus);
+        new DescriptorMigrationAudit().register(modBus);
     }
 }

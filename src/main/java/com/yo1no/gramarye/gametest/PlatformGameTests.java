@@ -13,7 +13,6 @@ import com.yo1no.gramarye.magic.definition.envelope.DefinitionFailure;
 import com.yo1no.gramarye.magic.definition.lookup.RegistryActionTypeLookup;
 import com.yo1no.gramarye.magic.definition.lookup.RegistryTriggerTypeLookup;
 import com.yo1no.gramarye.magic.definition.migration.DescriptorMigrationAudit;
-import com.yo1no.gramarye.magic.definition.migration.SkillMigrationPlan;
 import com.yo1no.gramarye.magic.definition.trigger.UnknownTriggerDefinition;
 import net.minecraft.core.DefaultedRegistry;
 import net.minecraft.core.Registry;
@@ -84,8 +83,7 @@ public final class PlatformGameTests {
     public static void descriptorMigrationCoverageAuditPassesAfterRegistryFreeze(GameTestHelper helper) {
         var failure = DescriptorMigrationAudit.audit(
                 MagicRegistries.triggerTypeRegistry(),
-                MagicRegistries.actionTypeRegistry(),
-                SkillMigrationPlan.empty());
+                MagicRegistries.actionTypeRegistry());
         helper.assertTrue(
                 failure.isEmpty(),
                 "Production descriptor and skill migration plans must cover their current schemas");
