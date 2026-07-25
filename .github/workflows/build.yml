@@ -41,3 +41,36 @@ jobs:
         env:
           GRAMARYE_SERVER_SMOKE_TIMEOUT_SECONDS: '180'
         run: ./scripts/run-dedicated-server-smoke.sh
+
+  p4-a3-memory-gates:
+    name: P4-A3 memory gates
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify P4-A3 task and isolation contracts
+        timeout-minutes: 2
+        run: ./gradlew --no-daemon --console=plain verifyP4A3BConfiguration
+
+      - name: Run plain fixed-heap carrier probes
+        timeout-minutes: 5
+        run: ./gradlew --no-daemon --console=plain p4A3HeapProbe
+
+      - name: Run dedicated fixed-heap RegistryOps probe
+        timeout-minutes: 6
+        run: ./gradlew --no-daemon --console=plain runP4A3HeapProbeServer

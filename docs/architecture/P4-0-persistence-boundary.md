@@ -247,5 +247,40 @@ Revision／History／Store ceilings and checked framing arithmetic.
 
 The future P4-B save path may consume the carrier's package-private immutable root/copy seam without
 re-encoding. SavedData lifecycle, live carrier publication, dirty mapping, journal, Attachment, and
-composition remain outside A3-A. The fixed-heap and dedicated-server validation workloads are the
-separate P4-A3-B gate and are not implemented by this ledger entry.
+composition remain outside A3-A. Fixed-heap and dedicated-server validation are the separate
+P4-A3-B gate recorded below.
+
+## P4-A3-B implementation ledger
+
+P4-A3-B keeps deterministic builders and assertions in the isolated `p4A3Probe` source set and its
+single GameTest holder in `p4A3GameTest`; neither output enters the production JAR. The dedicated
+run uses a generated test-only `gramarye_p4_a3` structure namespace, so normal GameTest remains four
+tests and the full-size dedicated run executes exactly one probe. All probe JVMs use Java 21,
+`-Xms512m -Xmx1024m -XX:+ExitOnOutOfMemoryError`; plain task timeouts are 180 seconds and the
+dedicated task timeout is 300 seconds.
+
+The local fixed-heap Gate on 2026-07-24 produced these bounded summaries. `heap_peak` is the maximum
+aggregate heap usage sampled at major full-operation boundaries. `heap_pool_peak_sum` is separately
+reported as the sum of each pool's independently recorded peak and may exceed the process heap
+maximum because those pool peaks need not be simultaneous.
+
+| workload / task | Store bytes | histories / revisions | elapsed | heap peak | pool peak sum |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `many-small` / `p4A3HeapProbeManySmall` | 66,062,342 | 4,095 / 32,767 | 4,872 ms | 1,040,711,680 | 1,257,208,272 |
+| `near-entry` / `p4A3HeapProbeNearEntry` | 66,367,484 | 8 / 64 | 2,006 ms | 843,464,896 | 1,096,171,712 |
+| `mixed` / `p4A3HeapProbeMixed` | 66,060,348 | 8 / 64 | 1,941 ms | 915,401,008 | 1,047,843,456 |
+| `dedicated-mixed` / `runP4A3HeapProbeServer` | 66,060,348 | 8 / 64 | 2,338 ms | 829,332,128 | 1,365,517,280 |
+
+Each workload performed a full carrier rebuild, A2 encode/load/hydrate/restore, prospective update
+with base and prospective carriers simultaneously live, comparison with a committed Store full
+rebuild, reclaim filtering compared byte-for-byte with a post-reclaim full rebuild, and a complete
+save-shaped copy/checksum. The dedicated workload obtained its provider from the real server level
+and preserved plain and RegistryOps JSON (normal and compressed) plus NBT contexts in mixed-family
+documents.
+
+The aggregate plain task is `p4A3HeapProbe`; the dedicated task is
+`runP4A3HeapProbeServer`. CI defines the stable `P4-A3 memory gates` job, dependent on the normal
+build, with five-minute plain and six-minute dedicated step timeouts. This worktree was not pushed,
+so the new remote job has not run and branch protection cannot yet require its check; both remain
+external release gates. Local P4-A3-B gates pass, but P4-A3 is not remotely complete until that job
+passes and the required-check policy is configured. P4-B has not started.

@@ -229,23 +229,17 @@ class P4A3AApiGateTest {
     }
 
     @Test
-    void a3bAndP4BLaterInfrastructureRemainAbsent() throws Exception {
+    void a3bRemainsTestOnlyAndP4BLaterInfrastructureRemainsAbsent() throws Exception {
         var production = productionSources(PROJECT_ROOT.resolve("src/main/java")).stream()
                 .map(P4A3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
-        var build = read(PROJECT_ROOT.resolve("build.gradle"));
-        var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
 
         assertAll(
                 () -> assertFalse(production.contains("P4A3HeapProbe")),
                 () -> assertFalse(production.contains("P4A3CarrierGameTests")),
                 () -> assertFalse(production.contains("SkillSavedData")),
                 () -> assertFalse(production.contains("PlayerSkillAttachment")),
-                () -> assertFalse(production.contains("PendingAttachmentJournal")),
-                () -> assertFalse(build.contains("p4A3HeapProbe")),
-                () -> assertFalse(build.contains("p4A3GameTest")),
-                () -> assertFalse(workflow.contains("p4-a3-heap")),
-                () -> assertFalse(workflow.contains("p4A3HeapProbe")));
+                () -> assertFalse(production.contains("PendingAttachmentJournal")));
     }
 
     private static List<Path> reviewedSources() throws Exception {

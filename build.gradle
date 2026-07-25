@@ -26,6 +26,23 @@ sourceSets.main.resources {
     exclude("src/generated/**/.cache") // datagen cache files
 }
 
+// P4-A3-B probe code is compiled separately from production and is never packaged by jar.
+def p4A3ProbeSourceSet = sourceSets.create('p4A3Probe')
+def p4A3GameTestSourceSet = sourceSets.create('p4A3GameTest')
+def p4A3GameTestResources = tasks.register('generateP4A3GameTestResources', Sync) {
+    dependsOn('createMinecraftArtifacts')
+    from(zipTree(layout.buildDirectory.file(
+            "moddev/artifacts/neoforge-${neo_version}-client-extra-aka-minecraft-resources.jar"))) {
+        include 'data/minecraft/structure/bastion/blocks/air.nbt'
+        eachFile { details ->
+            details.path = 'data/gramarye_p4_a3/structure/p4_a3_probe.nbt'
+        }
+        includeEmptyDirs = false
+    }
+    into(layout.buildDirectory.dir('generated/p4A3GameTestResources'))
+}
+p4A3GameTestSourceSet.resources.srcDir(p4A3GameTestResources)
+
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
 }
@@ -42,6 +59,37 @@ def serverGameDirectory = providers.environmentVariable('GRAMARYE_SERVER_GAME_DI
 neoForge {
     // Specify the version of NeoForge to use.
     version = project.neo_version
+
+    // These isolated source sets still need the locked Minecraft/NeoForge compile surface.
+    addModdingDependenciesTo(p4A3ProbeSourceSet)
+    addModdingDependenciesTo(p4A3GameTestSourceSet)
+
+    mods {
+        // Production runs and the published JAR contain only main.
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+
+        // Normal JUnit regression tests can exercise lightweight probe helpers without making
+        // those helpers part of production runs or the production JAR.
+        p4A3ProbeTestSupport {
+            sourceSet(sourceSets.main)
+            sourceSet(p4A3ProbeSourceSet)
+        }
+
+        // Userdev treats this name only as a source-folder group. The main resources in this
+        // group retain gramarye as the sole mod identity while making probe classes visible only
+        // to the dedicated P4-A3 run.
+        p4A3HeapProbe {
+            sourceSet(sourceSets.main)
+            sourceSet(p4A3ProbeSourceSet)
+            sourceSet(p4A3GameTestSourceSet)
+        }
+    }
+
+    def productionMod = mods.named(project.mod_id).get()
+    def p4A3ProbeTestMod = mods.named('p4A3ProbeTestSupport').get()
+    def p4A3ProbeMod = mods.named('p4A3HeapProbe').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -73,6 +121,19 @@ neoForge {
             systemProperty 'neoforge.enabledGameTestNamespaces', "${project.mod_id},minecraft"
         }
 
+        p4A3HeapProbeServer {
+            type = 'gameTestServer'
+            sourceSet = p4A3GameTestSourceSet
+            gameDirectory = project.file('run/p4-a3-heap-probe')
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_a3'
+            jvmArguments.addAll(
+                    '-Xms512m',
+                    '-Xmx1024m',
+                    '-XX:+ExitOnOutOfMemoryError')
+            disableIdeRun()
+            taskBefore(tasks.named(p4A3GameTestSourceSet.classesTaskName))
+        }
+
         data {
             data()
 
@@ -85,6 +146,10 @@ neoForge {
 
         // applies to all the run configs above
         configureEach {
+            loadedMods.set([name == 'p4A3HeapProbeServer'
+                    ? p4A3ProbeMod
+                    : productionMod])
+
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
             // "SCAN": For mods scan.
@@ -99,18 +164,10 @@ neoForge {
         }
     }
 
-    mods {
-        // define mod <-> source bindings
-        // these are used to tell the game which sources are for which mod
-        // multi mod projects should define one per mod
-        "${mod_id}" {
-            sourceSet(sourceSets.main)
-        }
-    }
-
     unitTest {
         enable()
-        testedMod = mods."${mod_id}"
+        testedMod = p4A3ProbeTestMod
+        loadedMods.set([p4A3ProbeTestMod])
     }
 }
 
@@ -128,6 +185,11 @@ configurations {
 }
 
 dependencies {
+    add(p4A3ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4A3GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4A3GameTestSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
+    testImplementation p4A3ProbeSourceSet.output
+
     testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.4'
 
@@ -152,6 +214,69 @@ dependencies {
     // For more info:
     // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
+}
+
+def p4A3JavaLauncher = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(21)
+}
+def p4A3FixedHeapJvmArgs = [
+        '-Xms512m',
+        '-Xmx1024m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
+def registerP4A3HeapProbe = { String taskName, String workload ->
+    tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        description = "Runs the P4-A3 ${workload} Store carrier probe in a fixed-heap JVM."
+        dependsOn(tasks.named(p4A3ProbeSourceSet.classesTaskName))
+        javaLauncher.set(p4A3JavaLauncher)
+        classpath = p4A3ProbeSourceSet.runtimeClasspath
+        mainClass.set('com.yo1no.gramarye.magic.definition.store.P4A3HeapProbeMain')
+        args(workload)
+        jvmArgs(p4A3FixedHeapJvmArgs)
+        timeout.set(java.time.Duration.ofSeconds(180))
+        inputs.property('p4A3Workload', workload)
+    }
+}
+def p4A3ManySmallTask = registerP4A3HeapProbe(
+        'p4A3HeapProbeManySmall', 'many-small')
+def p4A3NearEntryTask = registerP4A3HeapProbe(
+        'p4A3HeapProbeNearEntry', 'near-entry')
+def p4A3MixedTask = registerP4A3HeapProbe(
+        'p4A3HeapProbeMixed', 'mixed')
+p4A3NearEntryTask.configure { mustRunAfter(p4A3ManySmallTask) }
+p4A3MixedTask.configure { mustRunAfter(p4A3NearEntryTask) }
+
+tasks.register('p4A3HeapProbe') {
+    group = 'verification'
+    description = 'Runs every plain P4-A3 fixed-heap Store carrier probe.'
+    dependsOn(p4A3ManySmallTask, p4A3NearEntryTask, p4A3MixedTask)
+}
+
+tasks.named('runP4A3HeapProbeServer', JavaExec).configure {
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(300))
+}
+
+def verifyP4A3BConfiguration = tasks.register(
+        'verifyP4A3BConfiguration', Exec) {
+    group = 'verification'
+    description = 'Verifies P4-A3 probe task, source-set, CI, and production-JAR isolation.'
+    dependsOn(
+            tasks.named('jar'),
+            tasks.named(p4A3ProbeSourceSet.classesTaskName),
+            tasks.named(p4A3GameTestSourceSet.classesTaskName))
+
+    inputs.file(layout.projectDirectory.file('build.gradle'))
+    inputs.file(layout.projectDirectory.file('.github/workflows/build.yml'))
+    inputs.files(fileTree('src/main/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4A3Probe/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4A3GameTest/java') { include '**/*.java' })
+    workingDir(layout.projectDirectory)
+    commandLine(
+            'bash',
+            layout.projectDirectory.file(
+                    'scripts/verify-p4-a3-b-configuration.sh').asFile.absolutePath)
 }
 
 tasks.named('test', Test).configure {
@@ -203,6 +328,12 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.named('compileJava', JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4A3ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4A3GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 
@@ -379,4 +510,5 @@ tasks.register('verifyPlatformBaseline') {
 
 tasks.named('check').configure {
     dependsOn tasks.named('verifyPlatformBaseline')
+    dependsOn verifyP4A3BConfiguration
 }
