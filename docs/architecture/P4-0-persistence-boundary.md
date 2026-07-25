@@ -16,16 +16,23 @@ This page is a compact phase boundary, not a second persistence specification.
 - P4-A3 owns only immutable hierarchical carrier rebuild／replacement／filter primitives, checked
   totals, and the 64 MiB fixed-heap probe; it owns no lifecycle, publication, dirty state, commit,
   journal, Attachment, or composition.
-- P4-B owns `saved_data_schema_version`, the outer SavedData carrier, sole Overworld SavedData
-  lifecycle, bounded one-time load path, Ready／Quarantined states, live carrier publication, save
-  callback, and dirty decisions. It reuses A3 and does not reimplement Store encoding.
+- P4-B1 owns `saved_data_schema_version`, strict whole-root／inner-carrier framing, the canonical
+  zero-length no-journal sentinel, bounded opaque pending bytes, outer migration, A2 Store loading,
+  A3 carrier rebuild, and a matching Ready candidate. It has no world, filesystem, cache, or dirty
+  lifecycle.
+- P4-B2 owns primary-file ingress, strict single-member gzip, the one-time Overworld cache install,
+  Ready／Quarantined／Unavailable SavedData lifecycle, live Store／carrier publication, save callback,
+  controlled read／pin／reclaim, dirty decisions, restart coverage, and the fixed-heap load/save gate.
+  It does not parse the journal or reimplement Store encoding. P4-B is complete only when both B1
+  and B2 are complete.
 - P4-C owns the permanent player skill Attachment, Draft/reference/editor persistence, total
   serializer, Attachment migration, and clone policy.
 - P4-D owns authenticated submission composition, invocation of A3 prospective Store builders,
   prospective journal replacement, commit-oriented persistence preflight, Store commit, carrier／
   journal publication, Attachment transition, typed outcome, and crash recovery.
-- P4-E owns complete offline root audit, rebuildable root indexing, reconciliation, reclaim
-  composition, and its dirty decisions.
+- P4-E owns complete offline root audit, rebuildable root indexing, reconciliation, and reclaim
+  composition. It supplies the complete root snapshot; P4-B2 owns the resulting carrier publication
+  and Store SavedData dirty decision.
 - P4 delegates Store owner, quota, CAS, allocation, validation, and reclaim policy to P3. The
   `gramarye_skill_definitions` carrier does not absorb RuntimePersistentStore or Marker schemas.
 
@@ -80,9 +87,11 @@ encoded retained entries and never cross-family re-encodes raw trees.
 The version axes and load order are distinct:
 
 ```text
-P4-B bounded raw ingress -> saved_data_schema_version outer migration -> store_blob
--> P4-A2 store_schema_version physical migration -> per-document P3-B1 migration
--> exact raw reinsertion -> P4-A1 family-aware hydration -> current Store snapshot -> P3-D restore
+P4-B2 bounded compressed-file ingress -> P4-B1 strict whole-root/inner-carrier decode
+-> saved_data_schema_version outer migration -> P4-A2 Store load
+-> per-document P3-B1 migration -> exact raw reinsertion -> P4-A1 family-aware hydration
+-> current Store snapshot -> P3-D restore -> P4-A3 full carrier rebuild
+-> Store/carrier match -> Ready publication
 ```
 
 P4-A2 uses exactly two narrow public cross-package facade classes for document/migration package
@@ -123,8 +132,9 @@ phase-local two-facade count.
 P4 introduces no second skill migration plan and does not run payload migration during load. Any
 migration, decode, or restore failure installs neither a partial nor an empty Store. The custom
 one-time loader distinguishes an absent file from an invalid existing file; the latter becomes
-non-dirty `Quarantined` state and retains the original file. The SavedData save callback writes only
-a prebuilt immutable carrier and provides no fsync or cross-location durability promise.
+non-dirty `Quarantined` state and retains the original file. Runtime Store/carrier pairing failure
+instead becomes non-saving `Unavailable`; it is not load corruption. The SavedData save callback
+writes only a prebuilt immutable carrier and provides no fsync or cross-location durability promise.
 
 ## Attachment and composition boundary
 
@@ -155,6 +165,35 @@ P4-A1 starts only after the P4 amendment is committed and remote CI passes. P4-A
 the P4-A2.0 clarification is committed and remote CI passes. The P4-A1 gate proves
 same-family structural preservation for JSON, NBT, and mixed-family documents, and proves that every
 migration/decode/restore failure installs neither a partial nor an empty Store.
+
+## P4-B0 clarification ledger
+
+The amendment now closes the three P4-B implementation stop gates without adding another
+amendment. The SavedData file has one strict unnamed whole-root Compound containing only `data` and
+platform-owned `DataVersion`; the inner `data` Compound has exactly the three Gramarye carrier
+fields. A zero-length `pending_attachment_updates_blob` payload is the sole canonical no-journal
+sentinel. Non-zero pending bytes remain bounded, defensive, and opaque to P4-B; Journal V0 remains
+owned by P4-D.
+
+The amendment is the sole source for byte coordinates and derivations: the carrier ceiling measures
+the complete unnamed uncompressed encoding of the inner `data` Compound, the whole V0 root adds 26
+bytes, and the approved finite allocation quota is separately golden-tested. The primary file must
+contain exactly one gzip member and one decompressed unnamed root, with compressed and decompressed
+EOF immediately afterward.
+
+P4-B is split into pure B1 framing/load-state work and B2 platform lifecycle work. B2 installs the
+custom-loaded exact instance into the Overworld cache during `ServerStartingEvent`; no cache miss may
+fall through to fail-open `computeIfAbsent`. Ready contains the complete Store, its matching A3
+carrier, opaque pending bytes, and an explicit rewrite flag. That flag covers outer migration, A2
+migration, and a current but noncanonical source Store blob. A package-private comparison seam may
+compare the source blob to the rebuilt carrier without exposing bytes or retaining another Store-size
+copy; this seam was not part of P4-A3 and remains B implementation work.
+
+P4-B2 owns controlled reclaim publication and dirty mapping, while P4-E owns root collection and
+completeness. A post-mutation carrier invariant failure transitions to non-saving `Unavailable` and
+never saves the stale carrier. Quarantined does not retain raw fragments, so the quarantine byte
+ceilings have no P4-B consumer and do not authorize a raw-copy store. P4-B1／B2 implementation has not
+started.
 
 ## P4-A1 implementation ledger
 
@@ -279,8 +318,9 @@ and preserved plain and RegistryOps JSON (normal and compressed) plus NBT contex
 documents.
 
 The aggregate plain task is `p4A3HeapProbe`; the dedicated task is
-`runP4A3HeapProbeServer`. CI defines the stable `P4-A3 memory gates` job, dependent on the normal
-build, with five-minute plain and six-minute dedicated step timeouts. This worktree was not pushed,
-so the new remote job has not run and branch protection cannot yet require its check; both remain
-external release gates. Local P4-A3-B gates pass, but P4-A3 is not remotely complete until that job
-passes and the required-check policy is configured. P4-B has not started.
+`runP4A3HeapProbeServer`, and the configuration/isolation gate is
+`verifyP4A3BConfiguration`. CI defines the stable `P4-A3 memory gates` job, dependent on the normal
+`build` job, with five-minute plain and six-minute dedicated step timeouts. After the portable
+verifier hotfix, the remote normal build and `P4-A3 memory gates` both passed; P4-A3 is complete.
+Whether the memory job is configured as a branch-protection required check is external governance
+state and is not proven by this repository.

@@ -234,9 +234,12 @@ P4-A2：store_schema_version、Store／History／Revision physical schema與三�
        snapshot／restore、bounded facts與current Store blob encode／load
 P4-A3：pure immutable hierarchical carrier rebuild／replacement／reclaim filtering、checked totals
        與64 MiB fixed-heap validation
-P4-B：saved_data_schema_version、唯一Overworld Skill Store SavedData outer carrier／lifecycle、
-      bounded ingress、Ready／Quarantined、使用A3 primitives的live carrier publication、save
-      callback與dirty
+P4-B1：saved_data_schema_version、whole-root／inner exact framing、zero-length no-journal sentinel、
+       bounded opaque pending blob、outer migration、bounded decompressed carrier、A2 load＋A3 rebuild、
+       Ready candidate；無world／filesystem／cache lifecycle
+P4-B2：primary file ingress、strict single-member gzip、custom one-time load、
+       Ready／Quarantined／Unavailable SavedData adapter、Overworld cache install、live Store／carrier
+       ownership、save callback、controlled read／pin／reclaim、dirty與fixed-heap load／save Gate
 P4-C：獨立player skill Attachment、Draft／latest／equipped／editor persistence、
       total serializer、migration與clone policy
 P4-D：authenticated composition、調用A3 prospective Store builder、prospective journal、
@@ -505,8 +508,10 @@ transition。Facade不把Player／ServerPlayer傳入domain API。
 P4 由已核准的 [`18_P4持久化與組合修正案.md`](18_P4持久化與組合修正案.md)治理。
 P4-0只修訂權威文件；修正案提交且遠端CI通過前不得開始P4-A1。P4-A2.0只明確化
 P4-A子階段契約；該文件變更提交且遠端CI通過前不得開始P4-A2 implementation。
+P4-B0只明確化SavedData outer framing、no-journal sentinel、strict gzip與lifecycle；該文件
+變更提交且遠端CI通過前不得開始P4-B1 implementation。
 
-P4-A1～A3與P4-B～E不得重寫P3-D owner truth、quota counting、CAS、revision allocation或reclaim
+P4-A1～A3、P4-B1／B2與P4-C～E不得重寫P3-D owner truth、quota counting、CAS、revision allocation或reclaim
 policy，也不得重跑P3-B2／B3 resolution／validation。
 
 ## P4-A1：Raw tree／mixed-family document bridge
@@ -740,35 +745,99 @@ capacity無法分離、唯一plan provider或bounded fact merge無法維持封�
 SavedData lifecycle／publication、dirty、Store commit、journal domain／publication、Attachment與
 composition。P4-A3不建立任何persistent schema version。
 
-## P4-B：Overworld SavedData adapter
+## P4-B1：Pure outer carrier／load state
 
 ### 責任
 
-- 建立`saved_data_schema_version`與SavedData outer carrier；outer migration完成後將
-  `store_blob`委派給P4-A2 load，不重寫Store／History／Revision encoding。
-- Stable name固定`gramarye_skill_definitions`；唯一位置是Overworld data storage，其他維度
-  取得同一adapter，不使用static singleton。
-- 專用one-time loader先區分primary file absent／present，執行compressed-file size bound、
-  bounded NBT decompression、SavedData outer migration與P4-A2 load pipeline。標準fail-open
-  `computeIfAbsent`不得直接作
-  deserializer入口。
-- Absent file建立empty Ready且不dirty；existing invalid file安裝non-dirty Quarantined，
-  不建立empty Store、不覆寫原檔、不自動提升`.dat_old`。
-- Ready同時持有domain Store、matching immutable encoded carrier、pending journal carrier與
-  rewrite-pending state。Live carrier ownership／publication與save callback屬P4-B；使用P4-A3
-  pure primitives，且save callback只寫prebuilt carrier。
-- 落實完整dirty matrix與migration成功後canonical rewrite pending。
+- 建立`saved_data_schema_version`與SavedData outer migration。Production current schema為0，
+  production plan為immutable empty adjacent plan；outer migration只處理inner carrier layout，
+  `store_blob`交P4-A2，pending blob保持opaque。
+- Whole root固定為unnamed Compound，exact fields只有`data` Compound與`DataVersion` Int；inner
+  `data` exact fields只有`saved_data_schema_version` Int、`store_blob` ByteArray與
+  `pending_attachment_updates_blob` ByteArray。Field order無語意，但duplicate／unknown／missing／
+  wrong type與decompressed trailing input全部拒絕；`DataVersion`不作Gramarye migration axis。
+- `pending_attachment_updates_blob`欄位必須存在，zero-length ByteArray payload是唯一canonical
+  no-journal sentinel。Non-zero blob只做byte bound、defensive immutable copy與byte-exact opaque
+  preservation；不解析journal schema／entries／generation／pointer。
+- `MAX_PENDING_ATTACHMENT_JOURNAL_ENCODED_BYTES`只計pending ByteArray raw payload；
+  `MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES`計完整unnamed inner Compound encoding；V0 whole root
+  固定比inner encoding增加26 bytes。Finite `NbtAccounter` quota固定`69_206_405`；golden fixture不符
+  即停止，不自行修改數值。完整推導以18號P4修正案
+  [§5](18_P4持久化與組合修正案.md#5-persistent-store-physical-schema)與
+  [§7](18_P4持久化與組合修正案.md#7-exact-hard-byte-ceilings)為準。
+- 使用schema-aware strict reader，在完整`CompoundTag` materialization與ByteArray allocation前驗證
+  exact fields、length與layered bounds；不得使用`unlimitedHeap()`。
+- Outer migration完成後將`store_blob`委派P4-A2 complete load／restore，再由P4-A3 full rebuild
+  matching carrier。只有全部成功才產生Ready candidate；任一失敗不得產生partial／empty Ready。
 
 ### Gate
 
-- File／decompressed carrier exact／+1、Overworld singleton、non-Overworld same adapter、
-  absent／invalid分流、dirty matrix、primary invalid不提升`.dat_old`、restart round-trip。
-- Async save語意只承諾in-memory committed + persistence scheduled，不宣稱fsync durable。
+- Whole-root／inner exact fields、duplicate／unknown／missing／wrong type、field-order independence、
+  root trailing input、zero sentinel與non-zero opaque byte-exact preservation通過。
+- Pending raw exact／+1、inner carrier exact／+1、whole-root +26 golden、finite quota exact fixture與
+  nested Store failure classification通過；outer failure時P4-A2 invocation為0。
+- Current／legacy／future／missing-edge／partial／RuntimeException／Error migration policies、opaque
+  store／pending blobs、A2 success＋A3 rebuild、canonicality／rewrite flag與no-partial result通過。
 
 ### 禁止
 
-Player Attachment、submission composition、重寫Store／History／Revision encoding、在save
-callback首次執行一般Codec。
+SavedData subclass、world／filesystem／`DimensionDataStorage`、dirty、Attachment、journal domain、
+composition、Store／History／Revision encoding重寫、`unlimitedHeap()`與raw quarantine copy。
+
+若whole-root +26 golden不成立、finite quota拒絕合法exact fixture、strict preflight無法在
+materialization／ByteArray allocation前完成，或B1需要world lifecycle／journal parsing，停止並回報。
+
+## P4-B2：Overworld platform lifecycle
+
+### 責任
+
+- Stable name固定`gramarye_skill_definitions`；唯一位置是Overworld data storage，Nether／End caller
+  取得同一Overworld adapter，不使用static cross-server singleton。
+- `ServerStartingEvent`時由`server.overworld()`執行一次custom bounded primary load，再把exact
+  Ready／Quarantined SavedData instance安裝到`DimensionDataStorage` cache。安裝前不得有Gramarye
+  accessor；安裝後不得以cache-miss `computeIfAbsent`或平台loader重讀disk。
+- Primary固定`<world>/data/gramarye_skill_definitions.dat`。先以`NOFOLLOW_LINKS`驗regular
+  non-symlink與compressed-file size，開啟同一channel後再驗size；不用`Files.readAllBytes`。
+- Compressed input只接受exactly one gzip member與compressed EOF；解壓後只接受exactly one
+  unnamed whole root與EOF。第二member／root、任意trailing garbage與zero padding全部拒絕。
+- Absent primary建立matching empty Ready且不dirty；existing unreadable／invalid primary安裝
+  Quarantined，不建立empty Store、不dirty、不覆寫。`.dat_old`不自動讀取、提升或刪除。
+- State固定為Ready／Quarantined／Unavailable。Ready持有domain Store、matching immutable A3
+  carrier、immutable opaque pending bytes與rewrite-required；Quarantined只表示load-time failure，
+  Unavailable只表示runtime Store／carrier pairing invariant failure。後兩者不保存empty Store或
+  stale carrier、不dirty、不save；save callback只接受Ready，其他state在修改output前fail fast。
+- Save callback只由Ready的prebuilt logical state建立固定三欄inner Compound，不執行Store snapshot、
+  A2／A3 encoding、migration、reclaim、journal parse或首次capacity check。只承諾in-memory committed
+  + persistence scheduled，不承諾disk success、fsync或cross-location durable atomicity。
+- Controlled API只提供typed find／latestReference／ownerOf／committedSkillCount／pin／reclaim，
+  不公開裸Store、carrier或state。P4-E提供complete roots；B2執行reclaim與publication：Rejected／
+  reclaimed=0不變且不dirty，reclaimed>0先發布matching carrier再dirty，filter invariant failure轉
+  Unavailable、清除未排程dirty／non-saving且不使用舊carrier。
+- `rewriteRequired`由outer migration、P4-A2 migration或source Store blob與A3 canonical bytes不相等
+  決定，不由可能truncated的facts推導。Ready publication後才為canonical rewrite dirty。
+- 建立`-Xms512m -Xmx1024m -XX:+ExitOnOutOfMemoryError` dedicated-server Gate，使用至少63 MiB
+  actual Store carrier覆蓋strict gzip ingress、B1／A2／A3 load、Ready install、save callback、平台
+  whole-root deep copy、dirty scheduling與restart round-trip。
+
+### Gate
+
+- Absent／unreadable／invalid／symlink／nonregular／replacement race、compressed exact／+1、single
+  member／second member／trailing bytes、`.dat_old`三種組合與primary不變性通過。
+- One-time `ServerStartingEvent` install、cache exact instance、Overworld／Nether／End同adapter、不同
+  server不共享、無`computeIfAbsent` disk reread與repeated install rejection通過。
+- Ready／Quarantined／Unavailable、non-saving defensive callback、full dirty／reclaim matrix、
+  publication-before-dirty、canonical rewrite與current／empty／invalid restart round-trip通過。
+- Full-size fixed-1 GiB dedicated-server load／save／restart Gate通過，且沒有OOME／timeout。
+
+### 禁止
+
+Player Attachment、journal DTO／schema／generation／entry parsing、Store commit composition、submission
+facade、offline root collection、network、直接公開Store／carrier、在callback首次encode或自行加入lock。
+
+若strict gzip API無法證明first member結束及underlying compressed EOF、bounded custom instance無法
+一次安裝cache、必須讓`computeIfAbsent`重讀、Quarantined無法阻止empty fallback／覆寫、Unavailable
+無法阻止stale-carrier save、callback必須首次encode、需要未核准thread／lock模型、reclaim filter仍有
+normal typed failure、只能公開裸Store／carrier接合，或1 GiB Gate失敗，停止P4-B2並回報。
 
 ## P4-C：Player Attachment
 
@@ -833,8 +902,9 @@ Network、接受client owner／authorization／quota／revision／Store state、
 - Store owner／documents裁決pointer reconciliation；missing／owner mismatch做opaque prune，
   無journal舊pointer不自動升latest，orphan revision不自動刪除或釋放quota。
 - Root capture最多MAX+1並與reclaim位於同一logic-thread call chain；Complete不跨tick保存。
-- Reclaim依P3-D既有規則；只改Attachment不dirty Store，改journal或實際reclaim才依matrix
-  dirty。
+- Reclaim依P3-D既有規則；P4-E只建立complete roots並組合呼叫P4-B2 controlled reclaim，
+  matching carrier publication與dirty由P4-B2負責。只改Attachment不dirty Store，改journal或
+  實際reclaim才依matrix dirty。
 
 ### Gate
 
@@ -852,7 +922,7 @@ source implementation仍留各自後續工程階段。
 
 ## P4 Definition of Done
 
-- P4-A1～A3與P4-B～E各自gate及
+- P4-A1～A3、P4-B1／B2與P4-C～E各自gate及
   [18號修正案required tests](18_P4持久化與組合修正案.md#21-required-tests)通過。
 - `SkillDefinitionStore`只有一份domain truth；Overworld adapter、player Attachment與journal
   各自遵守其單一真相／derived data邊界。
