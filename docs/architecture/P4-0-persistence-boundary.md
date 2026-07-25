@@ -324,3 +324,35 @@ The aggregate plain task is `p4A3HeapProbe`; the dedicated task is
 verifier hotfix, the remote normal build and `P4-A3 memory gates` both passed; P4-A3 is complete.
 Whether the memory job is configured as a branch-protection required check is external governance
 state and is not proven by this repository.
+
+## P4-B1 implementation ledger
+
+P4-B1 remains package-internal under `com.yo1no.gramarye.magic.definition.store`. Its boundary is
+formed by `SkillSavedDataPersistenceSchema`, shared `StrictNbtFramingInput`,
+`SkillSavedDataNbtFraming`, `OpaquePendingAttachmentUpdatesBlob`, `SkillSavedDataInnerCarrier`,
+`SkillSavedDataCarrierMigrationStep`, `SkillSavedDataCarrierMigrationPlan`,
+`SkillSavedDataCarrierMigrator`, their typed migration result／failure, the sole production-plan
+provider, `OpaqueSavedDataBlobTokens`, `SkillSavedDataCarrierPersistenceBridge`,
+`SkillSavedDataCarrierLoadResult`, `SkillSavedDataCarrierFailure`, and
+`SkillSavedDataReadyCandidate`; none of these widens the public Store or carrier API.
+
+The golden framing Gate confirms that the complete unnamed whole root is exactly 26 bytes larger
+than the standalone unnamed inner `data` Compound. The approved inner ceiling of 69,206,016 bytes
+therefore yields a 69,206,042-byte whole-root ceiling, and the finite NBT quota of 69,206,405 accepts
+the exact legal fixture. The strict whole-root reader shares the low-level framing primitive with
+P4-A2, enforces exact root／inner fields and trailing EOF before general Compound materialization,
+and treats a zero-length `pending_attachment_updates_blob` as the sole canonical no-journal
+sentinel. Non-zero pending bytes remain bounded, immutable, defensive, and opaque.
+
+SavedData outer migration exposes only deterministic Store／pending sentinels while their exact
+bytes remain in a typed side table; reinsertion validates location, identity, and exactly-once use.
+The load bridge runs this outer migration before delegating Store loading to P4-A2, then performs a
+full P4-A3 carrier rebuild. `EncodedSkillStoreCarrier.matchesStoreBlob` compares the complete bytes
+without exposing or copying a raw Store-sized array, so the immutable Ready candidate contains a
+domain Store, matching inner carrier, bounded facts, and the explicit
+`outerMigrationApplied || a2RewritePending || !sourceMatchesRebuiltCarrier` rewrite decision.
+
+P4-B1 owns only decompressed strict framing and this fail-closed candidate construction. P4-B2
+still exclusively owns gzip and filesystem ingress, the SavedData subclass and Overworld cache
+lifecycle, Ready／Quarantined／Unavailable installation, save callbacks, publication, and dirty
+state.

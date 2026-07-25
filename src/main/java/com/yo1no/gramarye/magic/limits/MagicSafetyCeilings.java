@@ -115,6 +115,12 @@ public final class MagicSafetyCeilings {
     /** Inclusive encoded-byte ceiling for the current uncompressed skill Store blob. */
     public static final int MAX_SKILL_STORE_ENCODED_BYTES = 67_108_864;
 
+    /** Inclusive raw-byte ceiling for the opaque pending Attachment-update journal blob. */
+    public static final int MAX_PENDING_ATTACHMENT_JOURNAL_ENCODED_BYTES = 1_048_576;
+
+    /** Inclusive encoded-byte ceiling for the unnamed SavedData inner carrier Compound. */
+    public static final int MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES = 69_206_016;
+
     private MagicSafetyCeilings() {
     }
 

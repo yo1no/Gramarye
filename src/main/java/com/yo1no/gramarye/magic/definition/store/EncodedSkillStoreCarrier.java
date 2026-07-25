@@ -87,6 +87,11 @@ final class EncodedSkillStoreCarrier {
         storeBlob.copyInto(destination, offset);
     }
 
+    /** Compares the complete encoded Store payload without exposing or copying its bytes. */
+    boolean matchesStoreBlob(ImmutableStoreBlob source) {
+        return storeBlob.equals(Objects.requireNonNull(source, "source"));
+    }
+
     HistoryBlobSource historySlice(EncodedHistoryIndex history) {
         requireHistoryIdentity(history);
         return storeBlob.historySlice(history.payloadOffset(), history.byteLength());

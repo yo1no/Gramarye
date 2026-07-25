@@ -18,7 +18,6 @@ import net.minecraft.nbt.ByteArrayTag;
 import net.minecraft.nbt.IntArrayTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 
@@ -35,8 +34,6 @@ final class StoreNbtFraming {
     private static final int STORE_WRAPPER_BYTES = 52;
     private static final int HISTORY_WRAPPER_BYTES = 85;
     private static final int REVISION_WRAPPER_BYTES = 85;
-    private static final long QUOTA_WIRE_MULTIPLIER = 2;
-    private static final long QUOTA_NODE_BYTES = 65;
     private static final MaterializationObserver NO_MATERIALIZATION_OBSERVER = () -> {
     };
 
@@ -274,10 +271,10 @@ final class StoreNbtFraming {
                     blob.byteCount(), MagicSafetyCeilings.MAX_SKILL_STORE_ENCODED_BYTES));
         }
         try {
-            var input = new FramingInput(blob.copyBytes());
-            input.requireRootCompound();
+            var input = new StrictNbtFramingInput(blob.copyBytes());
+            input.requireAnyRootCompound();
             Integer version = null;
-            BlobListPreflight historyPreflight = null;
+            StrictNbtFramingInput.BlobListPreflight historyPreflight = null;
             var fields = new HashSet<String>();
             while (!input.atCompoundEnd()) {
                 var field = input.readNamedField();
@@ -311,7 +308,8 @@ final class StoreNbtFraming {
                 histories.add(ImmutableHistoryBlob.takeOwnership(input.copySlice(slice)));
             }
             return success(new StorePersistentEnvelopeV0(version, histories));
-        } catch (MalformedEnvelope | RuntimeException exception) {
+        } catch (MalformedEnvelope | StrictNbtFramingInput.MalformedNbtException
+                | RuntimeException exception) {
             return failure(StorePersistenceFailure.MalformedStoreEnvelope.INSTANCE);
         }
     }
@@ -330,11 +328,11 @@ final class StoreNbtFraming {
                     blob.byteCount(), MagicSafetyCeilings.MAX_SKILL_HISTORY_ENCODED_BYTES));
         }
         try {
-            var input = new FramingInput(blob.copyBytes());
-            input.requireRootCompound();
+            var input = new StrictNbtFramingInput(blob.copyBytes());
+            input.requireAnyRootCompound();
             SkillId skillId = null;
             SkillOwnerId owner = null;
-            BlobListPreflight revisionPreflight = null;
+            StrictNbtFramingInput.BlobListPreflight revisionPreflight = null;
             var fields = new HashSet<String>();
             while (!input.atCompoundEnd()) {
                 var field = input.readNamedField();
@@ -375,7 +373,8 @@ final class StoreNbtFraming {
                 revisions.add(ImmutableRevisionBlob.takeOwnership(input.copySlice(slice)));
             }
             return success(new HistoryPersistentEnvelopeV0(skillId, owner, revisions));
-        } catch (MalformedEnvelope | RuntimeException exception) {
+        } catch (MalformedEnvelope | StrictNbtFramingInput.MalformedNbtException
+                | RuntimeException exception) {
             return failure(StorePersistenceFailure.MalformedHistoryEnvelope.INSTANCE);
         }
     }
@@ -403,11 +402,11 @@ final class StoreNbtFraming {
                     blob.byteCount(), MagicSafetyCeilings.MAX_STORE_REVISION_ENTRY_ENCODED_BYTES));
         }
         try {
-            var input = new FramingInput(blob.copyBytes());
-            input.requireRootCompound();
+            var input = new StrictNbtFramingInput(blob.copyBytes());
+            input.requireAnyRootCompound();
             Integer revision = null;
             String encoding = null;
-            ByteSlice documentSlice = null;
+            StrictNbtFramingInput.ByteSlice documentSlice = null;
             var fields = new HashSet<String>();
             while (!input.atCompoundEnd()) {
                 var field = input.readNamedField();
@@ -447,7 +446,8 @@ final class StoreNbtFraming {
             var document = input.copySlice(documentSlice);
             return success(new RevisionPersistentEnvelopeV0(
                     typedRevision, encoding, EncodedSkillDocument.copyOf(document)));
-        } catch (MalformedEnvelope | RuntimeException exception) {
+        } catch (MalformedEnvelope | StrictNbtFramingInput.MalformedNbtException
+                | RuntimeException exception) {
             return failure(StorePersistenceFailure.MalformedRevisionEnvelope.INSTANCE);
         }
     }
@@ -496,13 +496,7 @@ final class StoreNbtFraming {
     }
 
     static long accounterQuota(long encodedLength) {
-        if (encodedLength <= 0) {
-            throw new IllegalArgumentException("encodedLength must be positive");
-        }
-        return Math.addExact(
-                Math.multiplyExact(QUOTA_WIRE_MULTIPLIER, encodedLength),
-                Math.multiplyExact(
-                        QUOTA_NODE_BYTES, MagicSafetyCeilings.MAX_SKILL_DOCUMENT_TREE_NODES));
+        return StrictNbtFramingInput.accounterQuota(encodedLength);
     }
 
     private static long historyEnvelopeSize(List<? extends HistoryBlobSource> entries) {
@@ -547,11 +541,6 @@ final class StoreNbtFraming {
     @FunctionalInterface
     interface MaterializationObserver {
         void onMaterialization();
-    }
-
-    @FunctionalInterface
-    private interface NestedCapacityFactory {
-        StorePersistenceFailure create(long observedAtLeast);
     }
 
     record BlobRange(int offset, int length) {
@@ -750,29 +739,6 @@ final class StoreNbtFraming {
         }
     }
 
-    private record NamedField(int type, String name) {
-        private NamedField {
-            Objects.requireNonNull(name, "name");
-        }
-    }
-
-    private record ByteSlice(int offset, int length) {
-        private ByteSlice {
-            if (offset < 0 || length < 0) {
-                throw new IllegalArgumentException("slice bounds must be non-negative");
-            }
-        }
-    }
-
-    private record BlobListPreflight(
-            List<ByteSlice> slices,
-            java.util.Optional<StorePersistenceFailure> deferredCapacity) {
-        private BlobListPreflight {
-            slices = List.copyOf(Objects.requireNonNull(slices, "slices"));
-            Objects.requireNonNull(deferredCapacity, "deferredCapacity");
-        }
-    }
-
     private static void requireNewField(Set<String> fields, String name)
             throws MalformedEnvelope {
         if (!fields.add(name)) {
@@ -829,176 +795,6 @@ final class StoreNbtFraming {
             public java.util.Optional<StorePersistenceFailure> failureValue() {
                 return java.util.Optional.of(failure);
             }
-        }
-    }
-
-    private static final class FramingInput {
-        private final byte[] bytes;
-        private final NbtAccounter accounter;
-        private int position;
-        private int physicalNodeCount;
-
-        FramingInput(byte[] bytes) {
-            this.bytes = Objects.requireNonNull(bytes, "bytes");
-            if (bytes.length == 0) {
-                throw new IllegalArgumentException("encoded NBT must not be empty");
-            }
-            this.accounter = new NbtAccounter(
-                    accounterQuota(bytes.length), MagicSafetyCeilings.MAX_SKILL_DOCUMENT_DEPTH);
-        }
-
-        void requireRootCompound() throws MalformedEnvelope {
-            if (readUnsignedByte() != TAG_COMPOUND) {
-                throw new MalformedEnvelope();
-            }
-            accountNode();
-        }
-
-        boolean atCompoundEnd() throws MalformedEnvelope {
-            requireRemaining(1);
-            if (Byte.toUnsignedInt(bytes[position]) != TAG_END) {
-                return false;
-            }
-            consume(1);
-            return true;
-        }
-
-        int readUnsignedByte() throws MalformedEnvelope {
-            requireRemaining(1);
-            var value = Byte.toUnsignedInt(bytes[position]);
-            consume(1);
-            return value;
-        }
-
-        NamedField readNamedField() throws MalformedEnvelope {
-            var field = new NamedField(readUnsignedByte(), readUtf());
-            accountNode();
-            return field;
-        }
-
-        int readInt() throws MalformedEnvelope {
-            requireRemaining(4);
-            var value = (Byte.toUnsignedInt(bytes[position]) << 24)
-                    | (Byte.toUnsignedInt(bytes[position + 1]) << 16)
-                    | (Byte.toUnsignedInt(bytes[position + 2]) << 8)
-                    | Byte.toUnsignedInt(bytes[position + 3]);
-            consume(4);
-            return value;
-        }
-
-        int readLength() throws MalformedEnvelope {
-            var length = readInt();
-            if (length < 0) {
-                throw new MalformedEnvelope();
-            }
-            return length;
-        }
-
-        String readUtf() throws MalformedEnvelope {
-            requireRemaining(2);
-            var length = (Byte.toUnsignedInt(bytes[position]) << 8)
-                    | Byte.toUnsignedInt(bytes[position + 1]);
-            consume(2);
-            if (length > MagicSafetyCeilings.MAX_STRING_LENGTH) {
-                throw new MalformedEnvelope();
-            }
-            return new String(readBytes(length), StandardCharsets.UTF_8);
-        }
-
-        int[] readUuidArray() throws MalformedEnvelope {
-            if (readLength() != 4) {
-                throw new MalformedEnvelope();
-            }
-            return new int[] {readInt(), readInt(), readInt(), readInt()};
-        }
-
-        BlobListPreflight preflightBlobList(
-                int nestedMaximum,
-                NestedCapacityFactory capacityFactory) throws MalformedEnvelope {
-            Objects.requireNonNull(capacityFactory, "capacityFactory");
-            if (nestedMaximum <= 0) {
-                throw new IllegalArgumentException("nestedMaximum must be positive");
-            }
-            requireByteArrayListHeader();
-            var count = readPhysicalCount();
-            var slices = new ArrayList<ByteSlice>();
-            StorePersistenceFailure deferredCapacity = null;
-            for (var index = 0; index < count; index++) {
-                accountNode();
-                var length = readLength();
-                if (length > nestedMaximum && deferredCapacity == null) {
-                    deferredCapacity = capacityFactory.create(length);
-                }
-                slices.add(preflightSlice(length));
-            }
-            return new BlobListPreflight(slices, java.util.Optional.ofNullable(deferredCapacity));
-        }
-
-        ByteSlice preflightSlice(int length) throws MalformedEnvelope {
-            requireRemaining(length);
-            var slice = new ByteSlice(position, length);
-            consume(length);
-            return slice;
-        }
-
-        byte[] copySlice(ByteSlice slice) throws MalformedEnvelope {
-            Objects.requireNonNull(slice, "slice");
-            if (slice.offset() > bytes.length
-                    || slice.length() > bytes.length - slice.offset()) {
-                throw new MalformedEnvelope();
-            }
-            return java.util.Arrays.copyOfRange(
-                    bytes, slice.offset(), slice.offset() + slice.length());
-        }
-
-        byte[] readBytes(int length) throws MalformedEnvelope {
-            requireRemaining(length);
-            var result = java.util.Arrays.copyOfRange(bytes, position, position + length);
-            consume(length);
-            return result;
-        }
-
-        void requireFinished() throws MalformedEnvelope {
-            if (position != bytes.length) {
-                throw new MalformedEnvelope();
-            }
-        }
-
-        private void requireByteArrayListHeader() throws MalformedEnvelope {
-            if (readUnsignedByte() != TAG_BYTE_ARRAY) {
-                throw new MalformedEnvelope();
-            }
-        }
-
-        private int readPhysicalCount() throws MalformedEnvelope {
-            var count = readInt();
-            if (count < 0 || count > remaining() / 4) {
-                throw new MalformedEnvelope();
-            }
-            return count;
-        }
-
-        private int remaining() {
-            return bytes.length - position;
-        }
-
-        private void requireRemaining(int length) throws MalformedEnvelope {
-            if (length < 0 || length > remaining()) {
-                throw new MalformedEnvelope();
-            }
-        }
-
-        private void consume(int length) {
-            accounter.accountBytes(length);
-            position += length;
-        }
-
-        private void accountNode() throws MalformedEnvelope {
-            if (physicalNodeCount >= MagicSafetyCeilings.MAX_SKILL_DOCUMENT_TREE_NODES) {
-                throw new MalformedEnvelope();
-            }
-            physicalNodeCount++;
-            accounter.accountBytes(QUOTA_NODE_BYTES);
         }
     }
 

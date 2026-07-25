@@ -481,6 +481,7 @@ class P3D3AApiGateTest {
                                 "ImmutableRevisionBlob")
                         .contains(name)
                 || name.equals("SkillDefinitionStorePersistenceBridge")
+                || P4B1PhaseTypes.containsTopLevelName(name)
                 || Set.of(
                                 "StoreEncodingLayout",
                                 "StoreLayoutEncodeResult",

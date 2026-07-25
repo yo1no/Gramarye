@@ -541,6 +541,7 @@ class P3D3ApiGateTest {
                 && !name.equals("StorePersistentEnvelopeV0.java")
                 && !name.equals("ImmutableStoreBlob.java")
                 && !name.equals("SkillDefinitionStorePersistenceBridge.java")
+                && !P4B1PhaseTypes.containsSourceFileName(name)
                 && !Set.of(
                                 "StoreEncodingLayout.java",
                                 "StoreLayoutEncodeResult.java",

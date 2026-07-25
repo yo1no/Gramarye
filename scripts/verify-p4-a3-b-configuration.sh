@@ -295,11 +295,22 @@ main() {
             "${literal}" \
             'P4-A3-B probe code leaked into production Java sources'
     done
-    for literal in 'SkillSavedData' 'PlayerSkillAttachment' 'PendingAttachmentJournal'; do
+    # P4-B1 package-internal carrier types are now legitimate production code. Keep this
+    # phase-local verifier focused on B2 lifecycle and later domains.
+    for literal in \
+        'net.minecraft.world.level.saveddata.SavedData' \
+        'extends SavedData' \
+        'DimensionDataStorage' \
+        'ServerStartingEvent' \
+        'GZIPInputStream' \
+        'GZIPOutputStream' \
+        'MAX_SKILL_SAVED_DATA_FILE_BYTES' \
+        'PlayerSkillAttachment' \
+        'PendingAttachmentJournal'; do
         forbid_fixed_in_file_list \
             "${SOURCE_FILE_LIST}" \
             "${literal}" \
-            'P4-B or later lifecycle types appeared during P4-A3-B'
+            'P4-B2 or later lifecycle types appeared before their phase'
     done
 
     test -f build/classes/java/p4A3Probe/com/yo1no/gramarye/magic/definition/store/P4A3HeapProbeMain.class
@@ -333,6 +344,10 @@ main() {
             "${literal}" \
             'P4-A3-B probe classes or resources leaked into the production JAR'
     done
+    forbid_ere \
+        "${JAR_LISTING}" \
+        '(^|/)com/yo1no/gramarye/magic/definition/store/[^/]*(Test|Fixture|Fake|Dummy|Noop|Stub)[^/]*\.class$' \
+        'P4-B1 test fixtures leaked into the production JAR'
 
     printf 'Verified P4-A3-B task, source-set, CI, and JAR isolation contracts.\n'
 }

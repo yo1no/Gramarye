@@ -269,6 +269,7 @@ class P3D1ApiGateTest {
                 || name.startsWith("ImmutableHistoryBlob")
                 || name.startsWith("ImmutableRevisionBlob")
                 || name.equals("SkillDefinitionStorePersistenceBridge")
+                || P4B1PhaseTypes.containsTopLevelName(name)
                 || Set.of(
                                 "StoreEncodingLayout",
                                 "StoreLayoutEncodeResult",

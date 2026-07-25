@@ -229,7 +229,7 @@ class P4A3AApiGateTest {
     }
 
     @Test
-    void a3bRemainsTestOnlyAndP4BLaterInfrastructureRemainsAbsent() throws Exception {
+    void a3bRemainsTestOnlyAndP4B2LifecycleRemainsAbsent() throws Exception {
         var production = productionSources(PROJECT_ROOT.resolve("src/main/java")).stream()
                 .map(P4A3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
@@ -237,7 +237,6 @@ class P4A3AApiGateTest {
         assertAll(
                 () -> assertFalse(production.contains("P4A3HeapProbe")),
                 () -> assertFalse(production.contains("P4A3CarrierGameTests")),
-                () -> assertFalse(production.contains("SkillSavedData")),
                 () -> assertFalse(production.contains("PlayerSkillAttachment")),
                 () -> assertFalse(production.contains("PendingAttachmentJournal")));
     }

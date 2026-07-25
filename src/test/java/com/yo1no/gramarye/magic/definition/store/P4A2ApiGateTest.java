@@ -182,7 +182,7 @@ class P4A2ApiGateTest {
                 () -> assertEquals(1, occurrences(planSource,
                         "private static final StorePersistenceMigrationPlan PRODUCTION")),
                 () -> assertTrue(List.of(
-                                "SkillSavedData", "PlayerSkillAttachment",
+                                "PlayerSkillAttachment",
                                 "PendingAttachmentJournal", "P4A3HeapProbeMain",
                                 "P4A3CarrierGameTests")
                         .stream().noneMatch(allSource::contains)));
