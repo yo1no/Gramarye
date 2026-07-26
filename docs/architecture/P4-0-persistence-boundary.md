@@ -24,9 +24,10 @@ This page is a compact phase boundary, not a second persistence specification.
   Ready／Quarantined／Unavailable SavedData lifecycle, live Store／carrier publication, save callback,
   controlled read／pin／reclaim, dirty decisions, and the normal unit／GameTest／dedicated-smoke gates.
   It does not parse the journal or reimplement Store encoding.
-- P4-B2-B owns the isolated full-size fixed-heap load／save／restart probes, invalid-file restart
-  preservation, Gradle task isolation, and its required CI gate. P4-B is complete only when B1,
-  B2-A, and B2-B are all complete.
+- P4-B2-B owns the isolated full-size fixed-heap load／save／restart probes, the exact-maximum legal
+  hostile-FNAME first／restart pair, invalid-file restart preservation, Gradle task isolation, and
+  its required CI gate. P4-B is complete only when B1, B2-A, and every required B2-B local and
+  remote gate are complete.
 - P4-C owns the permanent player skill Attachment, Draft/reference/editor persistence, total
   serializer, Attachment migration, and clone policy.
 - P4-D owns authenticated submission composition, invocation of A3 prospective Store builders,
@@ -194,8 +195,10 @@ copy; this seam was not part of P4-A3 and remains B implementation work.
 P4-B2 owns controlled reclaim publication and dirty mapping, while P4-E owns root collection and
 completeness. A post-mutation carrier invariant failure transitions to non-saving `Unavailable` and
 never saves the stale carrier. Quarantined does not retain raw fragments, so the quarantine byte
-ceilings have no P4-B consumer and do not authorize a raw-copy store. P4-B1 is complete; P4-B2-A is
-the current implementation unit, and P4-B2-B remains pending.
+ceilings have no P4-B consumer and do not authorize a raw-copy store. P4-B1 and P4-B2-A are
+complete. P4-B2-B, and therefore P4-B, remain incomplete until the required exact-maximum legal
+hostile-FNAME fixed-heap pair passes locally and in the remote P4-B memory gates. P4-C remains
+unstarted.
 
 ## P4-A1 implementation ledger
 
@@ -383,7 +386,7 @@ claimed as supported.
 
 Compressed ingress is exactly `FileChannel` → max+1 `BoundedChannelInputStream` → pass-through
 `GzipHeaderVerifier`／per-load bounded failure recorder → caller-owned 8192-byte
-`BufferedInputStream` → Commons Compress 1.26 in non-concatenating mode → the P4-B1-derived
+`BufferedInputStream` → Commons Compress 1.26.0 in non-concatenating mode → the P4-B1-derived
 decompressed max+1 stream → P4-B1. The verifier validates magic, method, reserved flags, optional
 field framing and streaming FHCRC without retaining filename, comment, header bytes, exceptions, or
 messages. Commons owns deflate plus mandatory trailer CRC／ISIZE. Only a fully consumed B1 Ready
@@ -422,6 +425,97 @@ Quarantined observations. The fresh-world dedicated smoke proves absent empty Re
 through shutdown and creates no primary `.dat`.
 
 An already deep-copied and enqueued old save tag cannot be cancelled by a later Unavailable
-transition. P4-B2-B fixed-heap／full-size save and restart workloads, invalid-file full restart Gate,
-dedicated source sets, Gradle tasks, and CI work have not started; P4-B and engineering P4 remain
-incomplete.
+transition.
+
+## P4-B2-B implementation ledger
+
+P4-B2-B adds only the isolated `p4B2Probe` and `p4B2GameTest` source sets. The former contains the
+deterministic fixture, manifest, hashing, file-verification, bounded-summary, command-line, and
+packaging-verification helpers; the latter contains one property-dispatched GameTest and its
+test-only lifecycle sampler. Each of the ten server modes runs exactly one required GameTest from
+the generated `gramarye_p4_b2` structure. Neither source set, that structure, nor a fixture manifest
+is present in the production JAR.
+
+The P4-B2-R packaging repair makes `commons_compress_version=1.26.0` the sole dependency-version
+truth. The official `jarJar(implementation(...))` seam negotiates exact range `[1.26.0]`, while the
+global `additionalRuntimeClasspath` seam supplies every NeoForge 1.21.1 ModDev run. The locked
+Minecraft／NeoForge runtime already provides Commons IO 2.15.1 and Commons Lang 3.14.0 under their
+distinct module names, so they are not duplicated; Commons Compress optional zstd, xz, brotli,
+codec, and ASM paths are not packaged. This repair changes no strict-gzip, SavedData, carrier,
+failure-taxonomy, or ceiling semantics.
+
+`jarJar` produces the embedded-input directory consumed by `jar`; the sole deployable artifact is
+`build/libs/gramarye-1.0.0.jar`, also selected by `assemble`, `build`, and the Java component
+publication. Its parsed `META-INF/jarjar/metadata.json` names exactly
+`org.apache.commons:commons-compress:1.26.0`, range `[1.26.0]`, and nested path
+`META-INF/jarjar/commons-compress-1.26.0.jar`. The nested original contains
+`GzipCompressorInputStream`, `LICENSE`, and `NOTICE`; no Commons Compress class is unpacked or
+relocated into the Gramarye JAR root. A real NeoForge 21.1.241 installed-server smoke, with only the
+Gramarye artifact in `mods`, loaded that class from the nested JAR, consumed a present legal primary,
+reached ready, rewrote it to canonical Ready, and stopped cleanly. That small primary changed from
+SHA-256 `1fd1de176cc3d92ec351a010520afc8862b9e64f94e2e2613c00491f80b5b296` to
+`5316aac4a2b0f06b22bcb1241186f43a3930fd258d2e6bd90c02adfe76eb5c61`; its canonical Store is
+2,486 bytes with two histories and four revisions.
+
+The full fixture is a domain-valid P4-A3 mixed Store whose exact carrier is 66,060,348 bytes, with
+eight histories and 64 revisions. Its current-schema source Store differs only in legal Compound
+field order: source Store SHA-256
+`b5575f0a2341bbac4bbf60b9a10161b4cc10e9ee134414a3c013a821d8919dd8` rebuilds to canonical
+`2fc9d556e5189b2b6087feb4287cf7fc781a11d810939a62450511829de4b30a`. The first process loaded
+Ready with rewrite required and dirty, retained the old whole root while the platform made its
+Store-sized callback/deep copy, waited through `IOUtilities.waitUntilIOWorkerComplete()`, and wrote
+the canonical primary. Its 131,814-byte source SHA-256
+`b506a64a25aea0e7e589331ee810cd006f97e13d2c9d24187d65d69bdc7da012` became the 131,816-byte
+canonical SHA-256 `1f0bb87944bc48667b8b11acb6f8937459882b5b8aa2f220f9c60b98f7880421`.
+The separate restart process loaded that same domain and carrier as clean Ready with no rewrite and
+performed no unnecessary write.
+
+The hostile-FNAME pair reuses that exact 66,060,348-byte Store carrier and its 131,814-byte legal
+noncanonical gzip member. Its test-only builder sets only the gzip FNAME flag, streams 73,268,505
+non-NUL ISO-8859-1 `0xE9` bytes followed by the required single NUL terminator, and copies the
+original deflate payload and trailer unchanged. The resulting single-member primary is exactly the
+inclusive 73,400,320-byte file ceiling, with source SHA-256
+`837beda80b72e0cc9baa0a72d2609ec61676c4ae886fecace30b230bd2b84664`; it has no second member or
+trailing bytes. Under the fixed 1 GiB heap, the first process installed dirty Ready with rewrite
+required and completed the actual platform save. That save produced the same 131,816-byte canonical
+SHA-256 `1f0bb87944bc48667b8b11acb6f8937459882b5b8aa2f220f9c60b98f7880421` with exact gzip flags zero.
+The separate restart installed clean Ready, performed no unnecessary write, and preserved that
+canonical no-FNAME file.
+
+Every full-size and invalid-pair B2-B GameTest child used Java 21 with `-Xms512m`, `-Xmx1024m`, and
+`-XX:+ExitOnOutOfMemoryError`. `heap peak` is the sampled used-heap high-water mark. `pool peak sum`
+adds independently observed pool peaks that need not be simultaneous and therefore is not compared
+directly with Xmx.
+
+| phase | Store bytes | compressed bytes | heap peak | pool peak sum | elapsed ms | checksum witness |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| full first/save | 66,060,348 | 131,816 | 935,887,480 | 1,312,216,992 | 2,476 | `2fc9d556e5189b2b` |
+| full restart | 66,060,348 | 131,816 | 872,604,696 | 1,340,080,128 | 2,151 | `2fc9d556e5189b2b` |
+| hostile-FNAME first/save | 66,060,348 | 131,816 | 620,570,928 | 1,394,480,776 | 5,211 | `2fc9d556e5189b2b` |
+| hostile-FNAME restart | 66,060,348 | 131,816 | 877,744,320 | 1,343,121,696 | 2,294 | `2fc9d556e5189b2b` |
+| malformed first | 0 | 138 | 459,015,176 | 492,451,016 | 787 | `c5d53c3d5f24f753` |
+| malformed restart | 0 | 138 | 447,540,776 | 497,348,136 | 736 | `c5d53c3d5f24f753` |
+| trailing first | 0 | 139 | 452,742,920 | 501,397,712 | 804 | `7c69902157328295` |
+| trailing restart | 0 | 139 | 460,125,864 | 494,139,184 | 738 | `7c69902157328295` |
+| second-member first | 0 | 276 | 466,505,760 | 495,341,600 | 927 | `bb2fdd957ad9d82d` |
+| second-member restart | 0 | 276 | 463,270,336 | 494,203,328 | 754 | `bb2fdd957ad9d82d` |
+
+All ten processes reported heap maximum 1,073,741,824 bytes and initial committed heap
+536,870,912 bytes. The three Quarantined pairs preserved primary size, mtime, and complete SHA-256
+across first run and restart: malformed
+`c5d53c3d5f24f7530f1647392d2069083233747f3e35f008c75901641119847d`, trailing
+`7c69902157328295c60d31370731b80b134cd1ebddb6d6c86052f61090546f4a`, and second member
+`bb2fdd957ad9d82d80089896cad5bca076dde5829a40b6d92091e96040df99c3`. Their 138-byte canonical
+`.dat_old` fixtures also remained unchanged at
+`3e54170fefff7267ebbd9ad73d264c1989a8de7d2543eeb7efdc71d609ad4ae6` and were never promoted.
+
+`verifyP4B2Configuration`, `p4B2RuntimePackagingGate`, `p4B2InvalidRestartGate`, and
+`p4B2FixedHeapGate` lock the portable configuration, packaged present-primary server, ordinary and
+exact-maximum hostile-FNAME valid first／restart pairs, and three invalid paired restarts. The
+local aggregate on 2026-07-26 passed 70 tasks in 2m44s without OOME or timeout. The
+required-on-failure `P4-B memory gates` CI job
+depends on `build` and `P4-A3 memory gates`, has no conditional or allow-failure escape, and runs the
+configuration and aggregate fixed-heap gates. Whether repository branch protection requires that
+job is external governance and is not asserted here. Until that remote job passes with the
+exact-maximum hostile-FNAME pair, P4-B2-B and P4-B remain incomplete. P4-C, P4-D, and P4-E have not
+started.

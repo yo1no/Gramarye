@@ -2,7 +2,10 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import java.util.Set;
 
-/** Exact P4-B2-A top-level allowlist shared by its API gate and legacy P3-D gates. */
+/**
+ * Exact P4-B2 production allowlist shared by its API gate and legacy P3-D gates.
+ * P4-B2-B types are deliberately absent because both B2-B source sets are test-only.
+ */
 final class P4B2PhaseTypes {
     static final Set<String> TOP_LEVEL_TYPE_NAMES = Set.of(
             "BoundedChannelInputStream",

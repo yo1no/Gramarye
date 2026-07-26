@@ -523,6 +523,9 @@ class P3D2ApiGateTest {
 
     private static boolean isReviewedPostP3DStoreType(String className) {
         var name = simpleTopLevelName(className);
+        if (name.startsWith("P4B2Probe") || name.startsWith("P4B2Memory")) {
+            return false;
+        }
         return name.startsWith("StorePersistence")
                 || name.equals("StoreNbtFraming")
                 || name.endsWith("PersistentEnvelopeV0")

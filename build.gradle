@@ -29,6 +29,13 @@ sourceSets.main.resources {
 // P4-A3-B probe code is compiled separately from production and is never packaged by jar.
 def p4A3ProbeSourceSet = sourceSets.create('p4A3Probe')
 def p4A3GameTestSourceSet = sourceSets.create('p4A3GameTest')
+def p4B2ProbeSourceSet = sourceSets.create('p4B2Probe')
+def p4B2GameTestSourceSet = sourceSets.create('p4B2GameTest')
+def p4B2FixedHeapJvmArgs = [
+        '-Xms512m',
+        '-Xmx1024m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
 def p4A3GameTestResources = tasks.register('generateP4A3GameTestResources', Sync) {
     dependsOn('createMinecraftArtifacts')
     from(zipTree(layout.buildDirectory.file(
@@ -42,6 +49,19 @@ def p4A3GameTestResources = tasks.register('generateP4A3GameTestResources', Sync
     into(layout.buildDirectory.dir('generated/p4A3GameTestResources'))
 }
 p4A3GameTestSourceSet.resources.srcDir(p4A3GameTestResources)
+def p4B2GameTestResources = tasks.register('generateP4B2GameTestResources', Sync) {
+    dependsOn('createMinecraftArtifacts')
+    from(zipTree(layout.buildDirectory.file(
+            "moddev/artifacts/neoforge-${neo_version}-client-extra-aka-minecraft-resources.jar"))) {
+        include 'data/minecraft/structure/bastion/blocks/air.nbt'
+        eachFile { details ->
+            details.path = 'data/gramarye_p4_b2/structure/p4_b2_probe.nbt'
+        }
+        includeEmptyDirs = false
+    }
+    into(layout.buildDirectory.dir('generated/p4B2GameTestResources'))
+}
+p4B2GameTestSourceSet.resources.srcDir(p4B2GameTestResources)
 
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
@@ -55,6 +75,9 @@ base {
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 def serverGameDirectory = providers.environmentVariable('GRAMARYE_SERVER_GAME_DIR').orElse('run/server')
+def commonsCompressVersion = providers.gradleProperty('commons_compress_version').get()
+def commonsCompressCoordinate =
+        "org.apache.commons:commons-compress:${commonsCompressVersion}"
 
 neoForge {
     // Specify the version of NeoForge to use.
@@ -63,6 +86,8 @@ neoForge {
     // These isolated source sets still need the locked Minecraft/NeoForge compile surface.
     addModdingDependenciesTo(p4A3ProbeSourceSet)
     addModdingDependenciesTo(p4A3GameTestSourceSet)
+    addModdingDependenciesTo(p4B2ProbeSourceSet)
+    addModdingDependenciesTo(p4B2GameTestSourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -75,6 +100,7 @@ neoForge {
         p4A3ProbeTestSupport {
             sourceSet(sourceSets.main)
             sourceSet(p4A3ProbeSourceSet)
+            sourceSet(p4B2ProbeSourceSet)
         }
 
         // Userdev treats this name only as a source-folder group. The main resources in this
@@ -85,11 +111,19 @@ neoForge {
             sourceSet(p4A3ProbeSourceSet)
             sourceSet(p4A3GameTestSourceSet)
         }
+
+        p4B2HeapProbe {
+            sourceSet(sourceSets.main)
+            sourceSet(p4A3ProbeSourceSet)
+            sourceSet(p4B2ProbeSourceSet)
+            sourceSet(p4B2GameTestSourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
     def p4A3ProbeTestMod = mods.named('p4A3ProbeTestSupport').get()
     def p4A3ProbeMod = mods.named('p4A3HeapProbe').get()
+    def p4B2ProbeMod = mods.named('p4B2HeapProbe').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -134,6 +168,116 @@ neoForge {
             taskBefore(tasks.named(p4A3GameTestSourceSet.classesTaskName))
         }
 
+        p4B2HeapLoadSaveServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/full-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'full-first-load-save'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
+        p4B2HeapRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/full-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'full-restart'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
+        p4B2HostileFnameServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/full-hostile-fname').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'hostile-fname-first'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
+        p4B2HostileFnameRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/full-hostile-fname').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'hostile-fname-restart'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
+        p4B2MalformedServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/invalid-malformed').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'malformed-first'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
+        p4B2MalformedRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/invalid-malformed').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'malformed-restart'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
+        p4B2TrailingServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/invalid-trailing').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'trailing-first'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
+        p4B2TrailingRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/invalid-trailing').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'trailing-restart'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
+        p4B2SecondMemberServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/invalid-second-member').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'second-member-first'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
+        p4B2SecondMemberRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4B2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-b2/invalid-second-member').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_b2'
+            systemProperty 'gramarye.p4b2.runMode', 'second-member-restart'
+            jvmArguments.addAll(p4B2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
+        }
+
         data {
             data()
 
@@ -148,7 +292,7 @@ neoForge {
         configureEach {
             loadedMods.set([name == 'p4A3HeapProbeServer'
                     ? p4A3ProbeMod
-                    : productionMod])
+                    : name.startsWith('p4B2') ? p4B2ProbeMod : productionMod])
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -182,13 +326,38 @@ tasks.named('runServer', JavaExec).configure {
 // "optional", meaning it will not be pulled by dependents of this mod.
 configurations {
     runtimeClasspath.extendsFrom localRuntime
+    p4B2PackagedServerInstaller {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
 }
 
+def p4B2PackagedServerInstallerConfiguration =
+        configurations.named('p4B2PackagedServerInstaller')
+
 dependencies {
+    jarJar(implementation(commonsCompressCoordinate)) {
+        version {
+            strictly "[${commonsCompressVersion}]"
+            prefer commonsCompressVersion
+        }
+    }
+    additionalRuntimeClasspath commonsCompressCoordinate
+    add(
+            'p4B2PackagedServerInstaller',
+            "net.neoforged:neoforge:${neo_version}:installer")
+
     add(p4A3ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p4A3GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p4A3GameTestSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
+    add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
+    add(p4B2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4B2GameTestSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
+    add(p4B2GameTestSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
     testImplementation p4A3ProbeSourceSet.output
+    testImplementation p4B2ProbeSourceSet.output
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.4'
@@ -279,6 +448,401 @@ def verifyP4A3BConfiguration = tasks.register(
                     'scripts/verify-p4-a3-b-configuration.sh').asFile.absolutePath)
 }
 
+def p4B2FullGameDirectory = layout.buildDirectory.dir('p4-b2/full-world')
+def p4B2HostileFnameGameDirectory =
+        layout.buildDirectory.dir('p4-b2/full-hostile-fname')
+def p4B2MalformedGameDirectory = layout.buildDirectory.dir('p4-b2/invalid-malformed')
+def p4B2TrailingGameDirectory = layout.buildDirectory.dir('p4-b2/invalid-trailing')
+def p4B2SecondMemberGameDirectory =
+        layout.buildDirectory.dir('p4-b2/invalid-second-member')
+def p4B2PackagedFixtureGameDirectory =
+        layout.buildDirectory.dir('p4-b2/packaged-fixture')
+def p4B2PackagedInputDirectory =
+        layout.buildDirectory.dir('p4-b2/packaged-input')
+def p4B2PackagedServerDirectory =
+        layout.buildDirectory.dir('p4-b2/packaged-server')
+
+def resetP4B2HeapWorld = tasks.register('resetP4B2HeapWorld', Delete) {
+    delete(p4B2FullGameDirectory)
+}
+def resetP4B2HostileFnameWorld = tasks.register('resetP4B2HostileFnameWorld', Delete) {
+    delete(p4B2HostileFnameGameDirectory)
+}
+def resetP4B2InvalidWorlds = tasks.register('resetP4B2InvalidWorlds', Delete) {
+    delete(
+            p4B2MalformedGameDirectory,
+            p4B2TrailingGameDirectory,
+            p4B2SecondMemberGameDirectory)
+}
+def resetP4B2PackagedFixture = tasks.register('resetP4B2PackagedFixture', Delete) {
+    delete(p4B2PackagedFixtureGameDirectory)
+}
+def resetP4B2PackagedServer = tasks.register('resetP4B2PackagedServer', Delete) {
+    delete(p4B2PackagedServerDirectory)
+}
+
+def prepareP4B2HeapWorld = tasks.register('prepareP4B2HeapWorld', JavaExec) {
+    group = 'verification'
+    description = 'Rebuilds the deterministic full-size noncanonical P4-B2 primary world.'
+    dependsOn(resetP4B2HeapWorld, tasks.named(p4B2ProbeSourceSet.classesTaskName))
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4B2ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    args('prepare-full', p4B2FullGameDirectory.get().asFile.absolutePath)
+    jvmArgs(p4B2FixedHeapJvmArgs)
+    timeout.set(java.time.Duration.ofSeconds(300))
+    outputs.upToDateWhen { false }
+}
+
+def prepareP4B2HostileFnameWorld =
+        tasks.register('prepareP4B2HostileFnameWorld', JavaExec) {
+    group = 'verification'
+    description = 'Rebuilds the exact-maximum legal hostile-FNAME P4-B2 primary world.'
+    dependsOn(
+            resetP4B2HostileFnameWorld,
+            tasks.named(p4B2ProbeSourceSet.classesTaskName))
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4B2ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    args(
+            'prepare-hostile-fname',
+            p4B2HostileFnameGameDirectory.get().asFile.absolutePath)
+    jvmArgs(p4B2FixedHeapJvmArgs)
+    timeout.set(java.time.Duration.ofSeconds(300))
+    outputs.upToDateWhen { false }
+}
+
+def prepareP4B2InvalidWorlds = tasks.register('prepareP4B2InvalidWorlds', JavaExec) {
+    group = 'verification'
+    description = 'Rebuilds the three isolated deterministic invalid P4-B2 primary worlds.'
+    dependsOn(resetP4B2InvalidWorlds, tasks.named(p4B2ProbeSourceSet.classesTaskName))
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4B2ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    args(
+            'prepare-invalid',
+            p4B2MalformedGameDirectory.get().asFile.absolutePath,
+            p4B2TrailingGameDirectory.get().asFile.absolutePath,
+            p4B2SecondMemberGameDirectory.get().asFile.absolutePath)
+    jvmArgs(p4B2FixedHeapJvmArgs)
+    timeout.set(java.time.Duration.ofSeconds(120))
+    outputs.upToDateWhen { false }
+}
+
+def prepareP4B2PackagedRuntimeFixture =
+        tasks.register('prepareP4B2PackagedRuntimeFixture', JavaExec) {
+    group = 'verification'
+    description = 'Builds a small legal noncanonical primary for the packaged-runtime smoke.'
+    dependsOn(
+            resetP4B2PackagedFixture,
+            tasks.named(p4B2ProbeSourceSet.classesTaskName))
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4B2ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    args(
+            'prepare-packaged-runtime',
+            p4B2PackagedFixtureGameDirectory.get().asFile.absolutePath)
+    jvmArgs('-Xms256m', '-Xmx512m', '-XX:+ExitOnOutOfMemoryError')
+    timeout.set(java.time.Duration.ofSeconds(120))
+    outputs.upToDateWhen { false }
+}
+
+def deployableModArtifact = tasks.named('jar', Jar).flatMap { it.archiveFile }
+def verifyP4B2PackagedArtifact =
+        tasks.register('verifyP4B2PackagedArtifact', JavaExec) {
+    group = 'verification'
+    description = 'Parses the deployable Jar-in-Jar metadata and nested Commons Compress jar.'
+    dependsOn(
+            tasks.named('jar'),
+            tasks.named(p4B2ProbeSourceSet.classesTaskName))
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4B2ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    args(
+            'verify-packaged-artifact',
+            deployableModArtifact.get().asFile.absolutePath,
+            commonsCompressVersion)
+    inputs.file(deployableModArtifact)
+}
+
+def stageP4B2PackagedRuntime = tasks.register('stageP4B2PackagedRuntime', Sync) {
+    dependsOn(
+            prepareP4B2PackagedRuntimeFixture,
+            tasks.named('jar'))
+    from(p4B2PackagedServerInstallerConfiguration) {
+        rename { 'neoforge-installer.jar' }
+    }
+    from(deployableModArtifact) {
+        rename { 'gramarye.jar' }
+    }
+    from(p4B2PackagedFixtureGameDirectory) {
+        into('fixture')
+    }
+    into(p4B2PackagedInputDirectory)
+}
+
+def runP4B2PackagedRuntimeSmoke =
+        tasks.register('runP4B2PackagedRuntimeSmoke', Exec) {
+    group = 'verification'
+    description = 'Runs a present-primary smoke using only the deployable mod Jar-in-Jar artifact.'
+    dependsOn(
+            resetP4B2PackagedServer,
+            stageP4B2PackagedRuntime,
+            verifyP4B2PackagedArtifact)
+    workingDir(layout.projectDirectory)
+    commandLine(
+            'bash',
+            layout.projectDirectory.file(
+                    'scripts/run-p4-b2-packaged-runtime-smoke.sh').asFile.absolutePath,
+            p4B2PackagedInputDirectory.get().asFile.absolutePath,
+            p4B2PackagedServerDirectory.get().asFile.absolutePath,
+            neo_version,
+            commonsCompressVersion,
+            p4A3JavaLauncher.get().executablePath.asFile.absolutePath)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    outputs.upToDateWhen { false }
+}
+
+def verifyP4B2PackagedRuntimeOutput =
+        tasks.register('verifyP4B2PackagedRuntimeOutput', JavaExec) {
+    group = 'verification'
+    description = 'Strictly verifies the canonical primary written by the packaged server.'
+    dependsOn(
+            runP4B2PackagedRuntimeSmoke,
+            tasks.named(p4B2ProbeSourceSet.classesTaskName))
+    mustRunAfter(runP4B2PackagedRuntimeSmoke)
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4B2ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    args(
+            'verify-packaged-runtime',
+            p4B2PackagedServerDirectory.get().asFile.absolutePath)
+    timeout.set(java.time.Duration.ofSeconds(120))
+    outputs.upToDateWhen { false }
+}
+
+def p4B2RuntimePackagingGate = tasks.register('p4B2RuntimePackagingGate') {
+    group = 'verification'
+    description = 'Verifies ModDev/Jar-in-Jar packaging with a real present-primary server.'
+    dependsOn(verifyP4B2PackagedRuntimeOutput)
+}
+
+def registerP4B2FileVerifier = {
+        String taskName, String command, Provider<Directory> gameDirectory ->
+    tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        description = "Verifies P4-B2 post-run file state for ${command}."
+        dependsOn(tasks.named(p4B2ProbeSourceSet.classesTaskName))
+        javaLauncher.set(p4A3JavaLauncher)
+        classpath = p4B2ProbeSourceSet.runtimeClasspath
+        mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+        args(command, gameDirectory.get().asFile.absolutePath)
+        jvmArgs(p4B2FixedHeapJvmArgs)
+        timeout.set(java.time.Duration.ofSeconds(180))
+        outputs.upToDateWhen { false }
+    }
+}
+
+def verifyP4B2HeapLoadSaveOutput = registerP4B2FileVerifier(
+        'verifyP4B2HeapLoadSaveOutput', 'verify-full-first', p4B2FullGameDirectory)
+def verifyP4B2HeapRestartOutput = registerP4B2FileVerifier(
+        'verifyP4B2HeapRestartOutput', 'verify-full-restart', p4B2FullGameDirectory)
+def verifyP4B2HostileFnameOutput = registerP4B2FileVerifier(
+        'verifyP4B2HostileFnameOutput',
+        'verify-hostile-fname-first',
+        p4B2HostileFnameGameDirectory)
+def verifyP4B2HostileFnameRestartOutput = registerP4B2FileVerifier(
+        'verifyP4B2HostileFnameRestartOutput',
+        'verify-hostile-fname-restart',
+        p4B2HostileFnameGameDirectory)
+def verifyP4B2MalformedOutput = registerP4B2FileVerifier(
+        'verifyP4B2MalformedOutput', 'verify-malformed-first', p4B2MalformedGameDirectory)
+def verifyP4B2MalformedRestartOutput = registerP4B2FileVerifier(
+        'verifyP4B2MalformedRestartOutput',
+        'verify-malformed-restart',
+        p4B2MalformedGameDirectory)
+def verifyP4B2TrailingOutput = registerP4B2FileVerifier(
+        'verifyP4B2TrailingOutput', 'verify-trailing-first', p4B2TrailingGameDirectory)
+def verifyP4B2TrailingRestartOutput = registerP4B2FileVerifier(
+        'verifyP4B2TrailingRestartOutput',
+        'verify-trailing-restart',
+        p4B2TrailingGameDirectory)
+def verifyP4B2SecondMemberOutput = registerP4B2FileVerifier(
+        'verifyP4B2SecondMemberOutput',
+        'verify-second-member-first',
+        p4B2SecondMemberGameDirectory)
+def verifyP4B2SecondMemberRestartOutput = registerP4B2FileVerifier(
+        'verifyP4B2SecondMemberRestartOutput',
+        'verify-second-member-restart',
+        p4B2SecondMemberGameDirectory)
+
+def runP4B2HeapLoadSaveServer = tasks.named('runP4B2HeapLoadSaveServer', JavaExec)
+def runP4B2HeapRestartServer = tasks.named('runP4B2HeapRestartServer', JavaExec)
+runP4B2HeapLoadSaveServer.configure {
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    dependsOn(prepareP4B2HeapWorld)
+    finalizedBy(verifyP4B2HeapLoadSaveOutput)
+    mustRunAfter(verifyP4B2PackagedRuntimeOutput)
+}
+verifyP4B2HeapLoadSaveOutput.configure {
+    mustRunAfter(runP4B2HeapLoadSaveServer)
+}
+runP4B2HeapRestartServer.configure {
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    dependsOn(runP4B2HeapLoadSaveServer, verifyP4B2HeapLoadSaveOutput)
+    mustRunAfter(verifyP4B2HeapLoadSaveOutput)
+    finalizedBy(verifyP4B2HeapRestartOutput)
+}
+verifyP4B2HeapRestartOutput.configure {
+    mustRunAfter(runP4B2HeapRestartServer)
+}
+
+def runP4B2HostileFnameServer = tasks.named('runP4B2HostileFnameServer', JavaExec)
+def runP4B2HostileFnameRestartServer =
+        tasks.named('runP4B2HostileFnameRestartServer', JavaExec)
+runP4B2HostileFnameServer.configure {
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    dependsOn(prepareP4B2HostileFnameWorld)
+    mustRunAfter(verifyP4B2HeapRestartOutput)
+    finalizedBy(verifyP4B2HostileFnameOutput)
+}
+verifyP4B2HostileFnameOutput.configure {
+    mustRunAfter(runP4B2HostileFnameServer)
+}
+runP4B2HostileFnameRestartServer.configure {
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    dependsOn(runP4B2HostileFnameServer, verifyP4B2HostileFnameOutput)
+    mustRunAfter(verifyP4B2HostileFnameOutput)
+    finalizedBy(verifyP4B2HostileFnameRestartOutput)
+}
+verifyP4B2HostileFnameRestartOutput.configure {
+    mustRunAfter(runP4B2HostileFnameRestartServer)
+}
+
+def runP4B2MalformedServer = tasks.named('runP4B2MalformedServer', JavaExec)
+def runP4B2MalformedRestartServer = tasks.named('runP4B2MalformedRestartServer', JavaExec)
+def runP4B2TrailingServer = tasks.named('runP4B2TrailingServer', JavaExec)
+def runP4B2TrailingRestartServer = tasks.named('runP4B2TrailingRestartServer', JavaExec)
+def runP4B2SecondMemberServer = tasks.named('runP4B2SecondMemberServer', JavaExec)
+def runP4B2SecondMemberRestartServer =
+        tasks.named('runP4B2SecondMemberRestartServer', JavaExec)
+
+[
+        runP4B2MalformedServer,
+        runP4B2MalformedRestartServer,
+        runP4B2TrailingServer,
+        runP4B2TrailingRestartServer,
+        runP4B2SecondMemberServer,
+        runP4B2SecondMemberRestartServer,
+].each { taskProvider ->
+    taskProvider.configure {
+        javaLauncher.set(p4A3JavaLauncher)
+        timeout.set(java.time.Duration.ofSeconds(300))
+    }
+}
+
+runP4B2MalformedServer.configure {
+    dependsOn(prepareP4B2InvalidWorlds)
+    mustRunAfter(verifyP4B2HostileFnameRestartOutput)
+    finalizedBy(verifyP4B2MalformedOutput)
+}
+verifyP4B2MalformedOutput.configure {
+    mustRunAfter(runP4B2MalformedServer)
+}
+runP4B2MalformedRestartServer.configure {
+    dependsOn(runP4B2MalformedServer, verifyP4B2MalformedOutput)
+    mustRunAfter(verifyP4B2MalformedOutput)
+    finalizedBy(verifyP4B2MalformedRestartOutput)
+}
+verifyP4B2MalformedRestartOutput.configure {
+    mustRunAfter(runP4B2MalformedRestartServer)
+}
+
+runP4B2TrailingServer.configure {
+    dependsOn(prepareP4B2InvalidWorlds)
+    mustRunAfter(verifyP4B2MalformedRestartOutput)
+    finalizedBy(verifyP4B2TrailingOutput)
+}
+verifyP4B2TrailingOutput.configure {
+    mustRunAfter(runP4B2TrailingServer)
+}
+runP4B2TrailingRestartServer.configure {
+    dependsOn(runP4B2TrailingServer, verifyP4B2TrailingOutput)
+    mustRunAfter(verifyP4B2TrailingOutput)
+    finalizedBy(verifyP4B2TrailingRestartOutput)
+}
+verifyP4B2TrailingRestartOutput.configure {
+    mustRunAfter(runP4B2TrailingRestartServer)
+}
+
+runP4B2SecondMemberServer.configure {
+    dependsOn(prepareP4B2InvalidWorlds)
+    mustRunAfter(verifyP4B2TrailingRestartOutput)
+    finalizedBy(verifyP4B2SecondMemberOutput)
+}
+verifyP4B2SecondMemberOutput.configure {
+    mustRunAfter(runP4B2SecondMemberServer)
+}
+runP4B2SecondMemberRestartServer.configure {
+    dependsOn(runP4B2SecondMemberServer, verifyP4B2SecondMemberOutput)
+    mustRunAfter(verifyP4B2SecondMemberOutput)
+    finalizedBy(verifyP4B2SecondMemberRestartOutput)
+}
+verifyP4B2SecondMemberRestartOutput.configure {
+    mustRunAfter(runP4B2SecondMemberRestartServer)
+}
+
+def p4B2InvalidRestartGate = tasks.register('p4B2InvalidRestartGate') {
+    group = 'verification'
+    description = 'Runs all three P4-B2 invalid first/restart preservation pairs.'
+    dependsOn(
+            runP4B2MalformedRestartServer,
+            verifyP4B2MalformedRestartOutput,
+            runP4B2TrailingRestartServer,
+            verifyP4B2TrailingRestartOutput,
+            runP4B2SecondMemberRestartServer,
+            verifyP4B2SecondMemberRestartOutput)
+}
+
+def verifyP4B2Configuration = tasks.register('verifyP4B2Configuration', Exec) {
+    group = 'verification'
+    description = 'Verifies P4-B2-B tasks, fixed heap, CI, source sets, and JAR isolation.'
+    dependsOn(
+            verifyP4A3BConfiguration,
+            verifyP4B2PackagedArtifact,
+            tasks.named('jar'),
+            tasks.named(p4B2ProbeSourceSet.classesTaskName),
+            tasks.named(p4B2GameTestSourceSet.classesTaskName))
+    inputs.file(layout.projectDirectory.file('build.gradle'))
+    inputs.file(layout.projectDirectory.file('.github/workflows/build.yml'))
+    inputs.file(layout.projectDirectory.file('scripts/verify-p4-b2-b-configuration.sh'))
+    inputs.files(fileTree('src/main/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4B2Probe/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4B2GameTest/java') { include '**/*.java' })
+    workingDir(layout.projectDirectory)
+    commandLine(
+            'bash',
+            layout.projectDirectory.file(
+                    'scripts/verify-p4-b2-b-configuration.sh').asFile.absolutePath)
+}
+
+tasks.register('p4B2FixedHeapGate') {
+    group = 'verification'
+    description = 'Runs the complete P4-B2-B valid, hostile-FNAME, and quarantine fixed-heap restart Gate.'
+    dependsOn(
+            verifyP4B2Configuration,
+            p4B2RuntimePackagingGate,
+            runP4B2HeapRestartServer,
+            verifyP4B2HeapRestartOutput,
+            runP4B2HostileFnameRestartServer,
+            verifyP4B2HostileFnameRestartOutput,
+            p4B2InvalidRestartGate)
+}
+
 tasks.named('test', Test).configure {
     useJUnitPlatform()
 }
@@ -334,6 +898,12 @@ tasks.named(p4A3ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4A3GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4B2ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4B2GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 
@@ -511,4 +1081,5 @@ tasks.register('verifyPlatformBaseline') {
 tasks.named('check').configure {
     dependsOn tasks.named('verifyPlatformBaseline')
     dependsOn verifyP4A3BConfiguration
+    dependsOn verifyP4B2Configuration
 }

@@ -289,11 +289,16 @@ main() {
         || fail 'P4-A3-B configuration verifier could not create its source-file list'
     collect_regular_files src/main/java "${SOURCE_FILE_LIST}"
 
-    for literal in 'P4A3HeapProbe' 'P4A3CarrierGameTests'; do
+    for literal in \
+        'P4A3HeapProbe' \
+        'P4A3CarrierGameTests' \
+        'P4B2ProbeMain' \
+        'P4B2MemoryGameTests' \
+        'gramarye_p4_b2'; do
         forbid_fixed_in_file_list \
             "${SOURCE_FILE_LIST}" \
             "${literal}" \
-            'P4-A3-B probe code leaked into production Java sources'
+            'P4-A3-B or reviewed P4-B2-B probe code leaked into production Java sources'
     done
     # P4-B2-A now legitimately owns the SavedData/cache lifecycle and compressed-file ceiling.
     # Keep rejecting the JDK gzip path and any custom production gzip writer: B2-A must use the
@@ -342,11 +347,18 @@ main() {
     if [[ "${status}" -ne 0 ]]; then
         fail "jar failed while checking ${jar_path} (exit ${status})"
     fi
-    for literal in 'P4A3' 'p4A3Probe' 'p4A3GameTest'; do
+    for literal in \
+        'P4A3' \
+        'p4A3Probe' \
+        'p4A3GameTest' \
+        'P4B2' \
+        'p4B2Probe' \
+        'p4B2GameTest' \
+        'gramarye_p4_b2'; do
         forbid_fixed \
             "${JAR_LISTING}" \
             "${literal}" \
-            'P4-A3-B probe classes or resources leaked into the production JAR'
+            'P4-A3-B or reviewed P4-B2-B probe classes/resources leaked into the production JAR'
     done
     while IFS= read -r jar_entry; do
         if [[ "${jar_entry}" == \

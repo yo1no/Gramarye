@@ -1,5 +1,6 @@
 package com.yo1no.gramarye.magic.definition.store;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -384,7 +385,7 @@ class P4B2AApiGateTest {
     }
 
     @Test
-    void normalGameTestCountIsFiveAndB2BConfigurationRemainsAbsent() throws Exception {
+    void normalGameTestCountIsFiveAndB2BConfigurationIsStrictlyIsolated() throws Exception {
         var production = productionSources(MAIN_JAVA);
         var allMain = production.stream().map(P4B2AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
@@ -405,13 +406,20 @@ class P4B2AApiGateTest {
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml")).toLowerCase();
         assertTrue(build.contains("gametestserver {"));
         assertTrue(workflow.contains("./gradlew rungametestserver"));
-        for (var marker : List.of(
-                "p4b2", "p4-b2", "p4_b2", "p4-b-memory", "p4-b memory", "p4bmemory")) {
-            assertFalse(build.contains(marker), () -> "B2-B marker in build.gradle: " + marker);
-            assertFalse(workflow.contains(marker), () -> "B2-B marker in workflow: " + marker);
-        }
-        assertFalse(Files.exists(PROJECT_ROOT.resolve("src/p4B2Probe")));
-        assertFalse(Files.exists(PROJECT_ROOT.resolve("src/p4B2GameTest")));
+        assertAll(
+                () -> assertTrue(build.contains("sourcesets.create('p4b2probe')")),
+                () -> assertTrue(build.contains("sourcesets.create('p4b2gametest')")),
+                () -> assertTrue(build.contains("p4b2fixedheapgate")),
+                () -> assertTrue(build.contains("verifyp4b2configuration")),
+                () -> assertTrue(workflow.contains("p4-b-memory-gates:")),
+                () -> assertTrue(workflow.contains("name: p4-b memory gates")),
+                () -> assertTrue(Files.isDirectory(
+                        PROJECT_ROOT.resolve("src/p4B2Probe/java"))),
+                () -> assertTrue(Files.isDirectory(
+                        PROJECT_ROOT.resolve("src/p4B2GameTest/java"))),
+                () -> assertFalse(allMain.contains("P4B2ProbeMain")),
+                () -> assertFalse(allMain.contains("P4B2MemoryGameTests")),
+                () -> assertFalse(allMain.contains("gramarye_p4_b2")));
     }
 
     private static Set<String> publicDeclaredMethodNames(Class<?> type) {

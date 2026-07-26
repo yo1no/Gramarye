@@ -229,7 +229,7 @@ class P4A3AApiGateTest {
     }
 
     @Test
-    void a3bRemainsTestOnlyAndLaterAttachmentLifecycleRemainsAbsent() throws Exception {
+    void a3bAndB2bRemainTestOnlyAndLaterAttachmentLifecycleRemainsAbsent() throws Exception {
         var production = productionSources(PROJECT_ROOT.resolve("src/main/java")).stream()
                 .map(P4A3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
@@ -237,6 +237,9 @@ class P4A3AApiGateTest {
         assertAll(
                 () -> assertFalse(production.contains("P4A3HeapProbe")),
                 () -> assertFalse(production.contains("P4A3CarrierGameTests")),
+                () -> assertFalse(production.contains("P4B2ProbeMain")),
+                () -> assertFalse(production.contains("P4B2MemoryGameTests")),
+                () -> assertFalse(production.contains("gramarye_p4_b2")),
                 () -> assertFalse(production.contains("PlayerSkillAttachment")),
                 () -> assertFalse(production.contains("PendingAttachmentJournal")));
     }

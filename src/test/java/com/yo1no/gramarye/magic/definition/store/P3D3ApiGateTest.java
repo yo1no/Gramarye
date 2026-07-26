@@ -528,6 +528,8 @@ class P3D3ApiGateTest {
         assertFalse(storePackageText.contains("SkillMigrationPlan"));
         assertFalse(storePackageText.contains("RawSkillDocumentSnapshot"));
         assertFalse(storePackageText.contains("magic.definition.migration"));
+        assertFalse(storePackageText.contains("P4B2Probe"));
+        assertFalse(storePackageText.contains("P4B2Memory"));
         var storeSource = readSanitized(STORE_SOURCE);
         assertTrue(storeSource.contains(
                 "restore(SkillDefinitionStoreSnapshot snapshot)"));
