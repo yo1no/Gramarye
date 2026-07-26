@@ -229,7 +229,7 @@ class P4A3AApiGateTest {
     }
 
     @Test
-    void a3bRemainsTestOnlyAndP4B2LifecycleRemainsAbsent() throws Exception {
+    void a3bRemainsTestOnlyAndLaterAttachmentLifecycleRemainsAbsent() throws Exception {
         var production = productionSources(PROJECT_ROOT.resolve("src/main/java")).stream()
                 .map(P4A3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));

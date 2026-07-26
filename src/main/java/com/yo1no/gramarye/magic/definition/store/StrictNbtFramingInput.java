@@ -60,6 +60,9 @@ final class StrictNbtFramingInput {
 
     void requireUnnamedRootCompound() throws MalformedNbtException {
         requireCompoundType();
+        if (readUnsignedByte() != 0 || readUnsignedByte() != 0) {
+            throw new MalformedNbtException();
+        }
     }
 
     private void requireCompoundType() throws MalformedNbtException {
@@ -180,7 +183,7 @@ final class StrictNbtFramingInput {
             throw new IllegalStateException("no finite materialization quota was configured");
         }
         try (var input = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            NbtIo.readAnyTag(
+            NbtIo.read(
                     input,
                     new NbtAccounter(
                             materializationQuota,

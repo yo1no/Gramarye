@@ -18,6 +18,7 @@ smoke_root="$(mktemp -d "${TMPDIR:-/tmp}/gramarye-server-smoke.XXXXXX")"
 game_dir="$smoke_root/game"
 server_log="$smoke_root/server.log"
 stdin_fifo="$smoke_root/server.stdin"
+primary_saved_data="$game_dir/smoke-world/data/gramarye_skill_definitions.dat"
 server_pid=""
 
 terminate_process_tree() {
@@ -110,4 +111,10 @@ if ! grep -Fq "$STOPPING_SIGNAL" "$server_log"; then
     exit 1
 fi
 
-echo "Dedicated server reached the ready signal and stopped cleanly."
+if [[ -e "$primary_saved_data" || -L "$primary_saved_data" ]]; then
+    echo "Absent Gramarye SavedData became dirty and created a primary .dat file." >&2
+    show_failure_log
+    exit 1
+fi
+
+echo "Dedicated server reached the ready signal, kept absent SavedData clean, and stopped cleanly."

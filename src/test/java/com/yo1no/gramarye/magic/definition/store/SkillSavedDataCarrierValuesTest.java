@@ -227,7 +227,7 @@ class SkillSavedDataCarrierValuesTest {
                 pending.copyBytes());
         var bytes = new ByteArrayOutputStream();
         try (var output = new DataOutputStream(bytes)) {
-            NbtIo.writeAnyTag(tag, output);
+            NbtIo.writeUnnamedTag(tag, output);
         }
         return bytes.size();
     }

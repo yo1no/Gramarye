@@ -173,7 +173,7 @@ final class SkillSavedDataNbtFraming {
                 || pendingSlice == null || fields.size() != 3) {
             throw new StrictNbtFramingInput.MalformedNbtException();
         }
-        var encodedByteCount = Math.addExact(1, input.position() - payloadStart);
+        var encodedByteCount = Math.addExact(3, input.position() - payloadStart);
         return new ParsedInner(schemaVersion, storeSlice, pendingSlice, encodedByteCount);
     }
 

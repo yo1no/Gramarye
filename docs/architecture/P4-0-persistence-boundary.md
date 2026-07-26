@@ -20,11 +20,13 @@ This page is a compact phase boundary, not a second persistence specification.
   zero-length no-journal sentinel, bounded opaque pending bytes, outer migration, A2 Store loading,
   A3 carrier rebuild, and a matching Ready candidate. It has no world, filesystem, cache, or dirty
   lifecycle.
-- P4-B2 owns primary-file ingress, strict single-member gzip, the one-time Overworld cache install,
+- P4-B2-A owns primary-file ingress, strict single-member gzip, the one-time Overworld cache install,
   Ready／Quarantined／Unavailable SavedData lifecycle, live Store／carrier publication, save callback,
-  controlled read／pin／reclaim, dirty decisions, restart coverage, and the fixed-heap load/save gate.
-  It does not parse the journal or reimplement Store encoding. P4-B is complete only when both B1
-  and B2 are complete.
+  controlled read／pin／reclaim, dirty decisions, and the normal unit／GameTest／dedicated-smoke gates.
+  It does not parse the journal or reimplement Store encoding.
+- P4-B2-B owns the isolated full-size fixed-heap load／save／restart probes, invalid-file restart
+  preservation, Gradle task isolation, and its required CI gate. P4-B is complete only when B1,
+  B2-A, and B2-B are all complete.
 - P4-C owns the permanent player skill Attachment, Draft/reference/editor persistence, total
   serializer, Attachment migration, and clone policy.
 - P4-D owns authenticated submission composition, invocation of A3 prospective Store builders,
@@ -192,8 +194,8 @@ copy; this seam was not part of P4-A3 and remains B implementation work.
 P4-B2 owns controlled reclaim publication and dirty mapping, while P4-E owns root collection and
 completeness. A post-mutation carrier invariant failure transitions to non-saving `Unavailable` and
 never saves the stale carrier. Quarantined does not retain raw fragments, so the quarantine byte
-ceilings have no P4-B consumer and do not authorize a raw-copy store. P4-B1／B2 implementation has not
-started.
+ceilings have no P4-B consumer and do not authorize a raw-copy store. P4-B1 is complete; P4-B2-A is
+the current implementation unit, and P4-B2-B remains pending.
 
 ## P4-A1 implementation ledger
 
@@ -293,8 +295,8 @@ P4-A3-B gate recorded below.
 
 P4-A3-B keeps deterministic builders and assertions in the isolated `p4A3Probe` source set and its
 single GameTest holder in `p4A3GameTest`; neither output enters the production JAR. The dedicated
-run uses a generated test-only `gramarye_p4_a3` structure namespace, so normal GameTest remains four
-tests and the full-size dedicated run executes exactly one probe. All probe JVMs use Java 21,
+run uses a generated test-only `gramarye_p4_a3` structure namespace, so the P4-A3 probe remains
+absent from normal GameTest while the full-size dedicated run executes exactly one probe. All probe JVMs use Java 21,
 `-Xms512m -Xmx1024m -XX:+ExitOnOutOfMemoryError`; plain task timeouts are 180 seconds and the
 dedicated task timeout is 300 seconds.
 
@@ -356,3 +358,70 @@ P4-B1 owns only decompressed strict framing and this fail-closed candidate const
 still exclusively owns gzip and filesystem ingress, the SavedData subclass and Overworld cache
 lifecycle, Ready／Quarantined／Unavailable installation, save callbacks, publication, and dirty
 state.
+
+## P4-B2-A implementation ledger
+
+All P4-B2-A integration types live in
+`com.yo1no.gramarye.magic.definition.store`. The package-private boundary consists of
+`SkillSavedDataPrimaryIngress`, its bounded metadata／result／failure types, the strict gzip stream
+helpers, and `GramaryeSkillSavedData` with its Ready／Quarantined／Unavailable state. The narrow
+public port is `SkillDefinitionStoreService` together with `SkillSubsystemResult`,
+`SkillSubsystemUnavailableReason`, and `ControlledSkillPin`; none exposes the Store, carrier,
+SavedData adapter, filesystem path, NBT, or gzip internals.
+
+The sole primary resolver is
+`server.getWorldPath(LevelResource.ROOT)/data/gramarye_skill_definitions.dat`, for stable storage
+name `gramarye_skill_definitions`; all cache access delegates through `server.overworld()`. The
+world root and its `data` directory are a trusted server-owned directory boundary. P4-B2-A rejects
+symlinks and non-regular files, requires a non-null platform `fileKey`, and compares path fileKey,
+size, mtime, and file kind before open, after open, and after parse while also checking the same
+channel size. Portable Java exposes no opened-channel fileKey, so this boundary does not claim to
+defeat a hostile trusted-directory writer performing an undetectable ABA or same-inode mutation
+with restored metadata. Detected replacement／growth／shrink races fail closed; a null fileKey is
+quarantined rather than falling back to size／mtime identity, and no untested Windows filesystem is
+claimed as supported.
+
+Compressed ingress is exactly `FileChannel` → max+1 `BoundedChannelInputStream` → pass-through
+`GzipHeaderVerifier`／per-load bounded failure recorder → caller-owned 8192-byte
+`BufferedInputStream` → Commons Compress 1.26 in non-concatenating mode → the P4-B1-derived
+decompressed max+1 stream → P4-B1. The verifier validates magic, method, reserved flags, optional
+field framing and streaming FHCRC without retaining filename, comment, header bytes, exceptions, or
+messages. Commons owns deflate plus mandatory trailer CRC／ISIZE. Only a fully consumed B1 Ready
+root may continue to member EOF and then prove compressed EOF from that same buffered stream; a
+second-member marker, arbitrary trailing byte, or zero padding is rejected.
+
+The locked platform-writer golden confirms that each standalone unnamed NBT root contains the
+two-byte zero-length UTF root name after its type byte. The V0 standalone inner fixed framing is
+therefore 91 bytes; because the platform whole root and standalone inner both contain that root-name
+framing, the authoritative whole-root delta remains exactly +26 and every approved ceiling remains
+unchanged. A platform `DimensionDataStorage.save()` fixture round-trips through the strict ingress.
+
+`GramaryeSkillSavedData` is the sole SavedData subclass for this cache entry.
+`ServerStartingEvent` performs the custom bounded load once, calls `DimensionDataStorage.set`,
+proves an exact cache hit with a constructor／deserializer-throwing `SavedData.Factory`, marks an
+already-published rewrite candidate dirty when required, and only then installs the server-identity
+marker. `ServerStoppedEvent` removes that exact marker. The service instance is held by the
+Gramarye composition root; no static Store, carrier, or adapter truth exists, and reload does not
+reinstall.
+
+Ready alone retains the live P3-D Store, matching immutable inner carrier, and rewrite flag.
+Quarantined retains only a bounded primary-load failure and remains clean. If Store reclaim has
+already mutated and carrier filtering or replacement construction throws a runtime invariant
+failure, Unavailable replaces the whole Ready state before dirty is cleared; neither Quarantined
+nor Unavailable may save. Controlled reads and pins never affect dirty state. Rejected and zero-row
+reclaim preserve both state identity and prior dirty state; positive reclaim snapshots immediately,
+filters the existing carrier, publishes the matching replacement with the same opaque pending bytes,
+then marks dirty. The save callback reads state once and returns a fresh exact three-field tag from
+the prebuilt inner carrier without Store access, encoding, rebuild, reclaim, or migration.
+
+Production never resolves, reads, opens, promotes, deletes, or renames `.dat_old`: absent primary
+means empty clean Ready even when old exists, invalid primary remains Quarantined even when old is
+valid, and valid primary always wins. The normal GameTest infrastructure now runs five required
+tests total and covers startup installation, exact Overworld cache identity, Ready and controlled
+Quarantined observations. The fresh-world dedicated smoke proves absent empty Ready stays clean
+through shutdown and creates no primary `.dat`.
+
+An already deep-copied and enqueued old save tag cannot be cancelled by a later Unavailable
+transition. P4-B2-B fixed-heap／full-size save and restart workloads, invalid-file full restart Gate,
+dedicated source sets, Gradle tasks, and CI work have not started; P4-B and engineering P4 remain
+incomplete.

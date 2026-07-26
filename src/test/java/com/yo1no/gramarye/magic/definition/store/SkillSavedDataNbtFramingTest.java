@@ -24,6 +24,11 @@ class SkillSavedDataNbtFramingTest {
 
         var parsed = success(whole);
 
+        assertEquals(91, SkillSavedDataPersistenceSchema.INNER_CARRIER_V0_FRAMING_BYTES);
+        assertArrayEquals(new byte[] {Tag.TAG_COMPOUND, 0, 0},
+                Arrays.copyOf(inner, 3));
+        assertArrayEquals(new byte[] {Tag.TAG_COMPOUND, 0, 0},
+                Arrays.copyOf(whole, 3));
         assertEquals(
                 SkillSavedDataPersistenceSchema.WHOLE_ROOT_V0_FRAMING_OVERHEAD,
                 whole.length - inner.length);
@@ -54,12 +59,15 @@ class SkillSavedDataNbtFramingTest {
     }
 
     @Test
-    void conventionalNamedRootAndEveryTrailingByteAreRejected() {
+    void nonEmptyNamedRootAndEveryTrailingByteAreRejected() {
         var canonical = SkillSavedDataTestSupport.canonicalWholeRoot(
                 SkillSavedDataTestSupport.canonicalEmptyStoreBlob(), new byte[0]);
-        var named = new byte[canonical.length + 2];
+        var named = new byte[canonical.length + 1];
         named[0] = canonical[0];
-        System.arraycopy(canonical, 1, named, 3, canonical.length - 1);
+        named[1] = 0;
+        named[2] = 1;
+        named[3] = 'x';
+        System.arraycopy(canonical, 3, named, 4, canonical.length - 3);
         var trailing = Arrays.copyOf(canonical, canonical.length + 1);
         trailing[trailing.length - 1] = 0;
 
@@ -124,17 +132,19 @@ class SkillSavedDataNbtFramingTest {
                 - SkillSavedDataPersistenceSchema.INNER_CARRIER_V0_FRAMING_BYTES;
         var exactWhole = SkillSavedDataTestSupport.canonicalWholeRootWithZeroPayloads(
                 0, exactStoreLength, 0);
-        var innerOffset = 1 + 1 + 2
+        var innerOffset = 3 + 1 + 2
                 + SkillSavedDataPersistenceSchema.DATA_FIELD.length();
         var exactInner = new byte[
                 MagicSafetyCeilings.MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES];
         exactInner[0] = Tag.TAG_COMPOUND;
+        exactInner[1] = 0;
+        exactInner[2] = 0;
         System.arraycopy(
                 exactWhole,
                 innerOffset,
                 exactInner,
-                1,
-                exactInner.length - 1);
+                3,
+                exactInner.length - 3);
         var plusOne = Arrays.copyOf(exactInner, exactInner.length + 1);
 
         assertInstanceOf(
@@ -188,6 +198,7 @@ class SkillSavedDataNbtFramingTest {
         var bytes = new ByteArrayOutputStream();
         try (var output = new DataOutputStream(bytes)) {
             output.writeByte(Tag.TAG_COMPOUND);
+            output.writeUTF("");
             if (mutation == Mutation.REORDER_BOTH) {
                 writeDataVersion(output, Tag.TAG_INT);
             }

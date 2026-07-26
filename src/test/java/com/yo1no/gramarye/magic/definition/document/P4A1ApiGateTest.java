@@ -97,13 +97,12 @@ class P4A1ApiGateTest {
     private static final Pattern UNCHECKED_STYLE_CAST = Pattern.compile(
             "\\(\\s*(?:Class|Codec|Collection|DataResult|Dynamic|DynamicOps|Iterable|List|Map|"
                     + "Optional|RegistryOps|Set|Stream)\\s*\\)");
-    /** Phase-local: P4-B1 internals are allowed; B2 lifecycle and later domains remain absent. */
-    private static final Pattern FORBIDDEN_POST_B1_TYPE = Pattern.compile(
+    /** Phase-local: P4-B2-A lifecycle is allowed; later composition domains remain absent. */
+    private static final Pattern FORBIDDEN_POST_B2_A_TYPE = Pattern.compile(
             "\\b(?:class|record|interface|enum)\\s+"
                     + "(?:[A-Za-z0-9_]*CarrierDelta[A-Za-z0-9_]*|"
                     + "PlayerSkillAttachment[A-Za-z0-9_]*|"
-                    + "PendingAttachmentJournal[A-Za-z0-9_]*|"
-                    + "SkillSavedData(?:SavedData|Adapter|Lifecycle|Cache)[A-Za-z0-9_]*)\\b");
+                    + "PendingAttachmentJournal[A-Za-z0-9_]*)\\b");
     private static final Pattern PRODUCTION_FIXTURE_TYPE = Pattern.compile(
             "\\b(?:class|record|interface|enum)\\s+[A-Za-z0-9_]*(?:Test|Fixture|Fake|Dummy|Noop|Stub)\\b");
 
@@ -270,10 +269,10 @@ class P4A1ApiGateTest {
     }
 
     @Test
-    void postB1LifecycleAndCompositionTypesRemainAbsent() throws Exception {
+    void postB2ALaterCompositionTypesRemainAbsent() throws Exception {
         var sources = productionSources();
         var laterPhaseDeclarations = sources.stream()
-                .filter(source -> FORBIDDEN_POST_B1_TYPE.matcher(source.contents()).find())
+                .filter(source -> FORBIDDEN_POST_B2_A_TYPE.matcher(source.contents()).find())
                 .map(SourceFile::path)
                 .toList();
         var forbiddenA1References = Pattern.compile(

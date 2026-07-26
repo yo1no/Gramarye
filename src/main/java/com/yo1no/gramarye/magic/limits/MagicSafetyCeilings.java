@@ -121,6 +121,9 @@ public final class MagicSafetyCeilings {
     /** Inclusive encoded-byte ceiling for the unnamed SavedData inner carrier Compound. */
     public static final int MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES = 69_206_016;
 
+    /** Inclusive byte ceiling for the complete compressed primary skill SavedData file. */
+    public static final int MAX_SKILL_SAVED_DATA_FILE_BYTES = 73_400_320;
+
     private MagicSafetyCeilings() {
     }
 

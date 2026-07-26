@@ -82,7 +82,6 @@ class P4B1ApiGateTest {
                         "MAX_PENDING_ATTACHMENT_JOURNAL_ENCODED_BYTES",
                         "MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES"))),
                 () -> assertTrue(Set.of(
-                                "MAX_SKILL_SAVED_DATA_FILE_BYTES",
                                 "MAX_PENDING_ATTACHMENT_UPDATES",
                                 "MAX_STORE_QUARANTINE_ENTRY_BYTES",
                                 "MAX_STORE_QUARANTINE_TOTAL_BYTES",
@@ -169,6 +168,7 @@ class P4B1ApiGateTest {
                 () -> assertEquals(
                         Set.of(
                                 "SkillSavedDataInnerCarrier.java",
+                                "GramaryeSkillSavedData.java",
                                 "SkillSavedDataCarrierPersistenceBridge.java"),
                         filesContaining(production, "fromPrevalidatedFraming(")),
                 () -> assertEquals(

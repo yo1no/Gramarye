@@ -12,8 +12,8 @@ final class SkillSavedDataPersistenceSchema {
     static final String STORE_BLOB_FIELD = "store_blob";
     static final String PENDING_UPDATES_BLOB_FIELD = "pending_attachment_updates_blob";
 
-    /** Arbitrary-tag root plus the three fixed V0 field headers and Compound end marker. */
-    static final int INNER_CARRIER_V0_FRAMING_BYTES = 89;
+    /** Unnamed root type/name plus the three fixed V0 field headers and Compound end marker. */
+    static final int INNER_CARRIER_V0_FRAMING_BYTES = 91;
     static final int WHOLE_ROOT_V0_FRAMING_OVERHEAD = 26;
     static final int MAX_WHOLE_DECOMPRESSED_ROOT_BYTES = Math.addExact(
             MagicSafetyCeilings.MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES,

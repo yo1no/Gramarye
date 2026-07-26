@@ -295,22 +295,26 @@ main() {
             "${literal}" \
             'P4-A3-B probe code leaked into production Java sources'
     done
-    # P4-B1 package-internal carrier types are now legitimate production code. Keep this
-    # phase-local verifier focused on B2 lifecycle and later domains.
+    # P4-B2-A now legitimately owns the SavedData/cache lifecycle and compressed-file ceiling.
+    # Keep rejecting the JDK gzip path and any custom production gzip writer: B2-A must use the
+    # reviewed non-concatenating Commons Compress reader and the platform-owned writer.
     for literal in \
-        'net.minecraft.world.level.saveddata.SavedData' \
-        'extends SavedData' \
-        'DimensionDataStorage' \
-        'ServerStartingEvent' \
         'GZIPInputStream' \
-        'GZIPOutputStream' \
-        'MAX_SKILL_SAVED_DATA_FILE_BYTES' \
+        'GZIPOutputStream'; do
+        forbid_fixed_in_file_list \
+            "${SOURCE_FILE_LIST}" \
+            "${literal}" \
+            'P4-B2-A production code bypassed the reviewed strict gzip boundary'
+    done
+
+    # Attachment and journal lifecycle remain later-phase production domains.
+    for literal in \
         'PlayerSkillAttachment' \
         'PendingAttachmentJournal'; do
         forbid_fixed_in_file_list \
             "${SOURCE_FILE_LIST}" \
             "${literal}" \
-            'P4-B2 or later lifecycle types appeared before their phase'
+            'P4-C or later lifecycle types appeared before their phase'
     done
 
     test -f build/classes/java/p4A3Probe/com/yo1no/gramarye/magic/definition/store/P4A3HeapProbeMain.class
@@ -344,10 +348,15 @@ main() {
             "${literal}" \
             'P4-A3-B probe classes or resources leaked into the production JAR'
     done
-    forbid_ere \
-        "${JAR_LISTING}" \
-        '(^|/)com/yo1no/gramarye/magic/definition/store/[^/]*(Test|Fixture|Fake|Dummy|Noop|Stub)[^/]*\.class$' \
-        'P4-B1 test fixtures leaked into the production JAR'
+    while IFS= read -r jar_entry; do
+        if [[ "${jar_entry}" == \
+            'com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.class' ]]; then
+            continue
+        fi
+        if [[ "${jar_entry}" =~ (^|/)com/yo1no/gramarye/magic/definition/store/[^/]*(Test|Fixture|Fake|Dummy|Noop|Stub)[^/]*\.class$ ]]; then
+            fail 'P4-B1/P4-B2-A test fixtures leaked into the production JAR'
+        fi
+    done < "${JAR_LISTING}"
 
     printf 'Verified P4-A3-B task, source-set, CI, and JAR isolation contracts.\n'
 }

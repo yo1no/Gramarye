@@ -12,6 +12,27 @@ final class SkillSavedDataCarrierPersistenceBridge {
     private SkillSavedDataCarrierPersistenceBridge() {
     }
 
+    /** Builds the sole legal empty Ready candidate for a twice-confirmed absent primary. */
+    static SkillSavedDataReadyCandidate createEmptyCurrent() {
+        var store = new SkillDefinitionStore();
+        var rebuilt = SkillStoreCarrierBuilder.rebuild(store);
+        if (!(rebuilt instanceof CarrierBuildResult.Success success)) {
+            throw new IllegalStateException("empty current Store carrier rebuild failed");
+        }
+        var pending = OpaquePendingAttachmentUpdatesBlob.empty();
+        var storeCarrier = success.carrier();
+        var encodedByteCount = Math.addExact(
+                SkillSavedDataPersistenceSchema.INNER_CARRIER_V0_FRAMING_BYTES,
+                storeCarrier.storeByteCount());
+        var inner = SkillSavedDataInnerCarrier.fromPrevalidatedFraming(
+                storeCarrier, pending, encodedByteCount);
+        return SkillSavedDataReadyCandidate.afterCarrierRebuild(
+                store,
+                inner,
+                new PipelineFactReport(List.of(), false),
+                false);
+    }
+
     static SkillSavedDataCarrierLoadResult loadDecompressed(
             InputStream decompressed,
             Optional<HolderLookup.Provider> provider) {

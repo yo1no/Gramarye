@@ -20,6 +20,8 @@ final class SkillSavedDataTestSupport {
                 SkillSavedDataPersistenceSchema.WHOLE_ROOT_V0_FRAMING_OVERHEAD)];
         var cursor = 0;
         whole[cursor++] = net.minecraft.nbt.Tag.TAG_COMPOUND;
+        whole[cursor++] = 0;
+        whole[cursor++] = 0;
         cursor = writeHeader(
                 whole,
                 cursor,
@@ -54,6 +56,8 @@ final class SkillSavedDataTestSupport {
                 SkillSavedDataPersistenceSchema.WHOLE_ROOT_V0_FRAMING_OVERHEAD)];
         var cursor = 0;
         whole[cursor++] = net.minecraft.nbt.Tag.TAG_COMPOUND;
+        whole[cursor++] = 0;
+        whole[cursor++] = 0;
         cursor = writeHeader(
                 whole,
                 cursor,
@@ -98,7 +102,9 @@ final class SkillSavedDataTestSupport {
                 SkillSavedDataPersistenceSchema.INNER_CARRIER_V0_FRAMING_BYTES,
                 Math.addExact(store.length, pending.length))];
         inner[0] = net.minecraft.nbt.Tag.TAG_COMPOUND;
-        var cursor = writeInnerPayload(inner, 1, 0, store, pending);
+        inner[1] = 0;
+        inner[2] = 0;
+        var cursor = writeInnerPayload(inner, 3, 0, store, pending);
         if (cursor != inner.length) {
             throw new AssertionError("inner-carrier fixture size mismatch");
         }

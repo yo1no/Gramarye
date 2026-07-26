@@ -533,6 +533,7 @@ class P3D2ApiGateTest {
                         .contains(name)
                 || name.equals("SkillDefinitionStorePersistenceBridge")
                 || P4B1PhaseTypes.containsTopLevelName(name)
+                || P4B2PhaseTypes.containsTopLevelName(name)
                 || Set.of(
                                 "StoreEncodingLayout",
                                 "StoreLayoutEncodeResult",
