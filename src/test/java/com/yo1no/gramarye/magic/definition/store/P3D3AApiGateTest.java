@@ -279,6 +279,11 @@ class P3D3AApiGateTest {
                 .filter(name -> !isReviewedPostP3DStoreType(name))
                 .map(P3D3AApiGateTest::loadWithoutInitialization)
                 .toList();
+        var misplacedP4C1Types = productionClasses.stream()
+                .filter(name -> name.startsWith(STORE_PACKAGE))
+                .map(P3D3AApiGateTest::simpleTopLevelName)
+                .filter(P4C1PhaseTypes::containsTopLevelName)
+                .collect(Collectors.toSet());
 
         assertAll(
                 () -> assertTrue(Set.of(
@@ -292,6 +297,9 @@ class P3D3AApiGateTest {
                 () -> assertTrue(forbiddenTopLevelTypes.stream().noneMatch(simpleName ->
                         productionClasses.stream().anyMatch(className ->
                                 simpleTopLevelName(className).equals(simpleName)))),
+                // P4-C1 phase-local: its exact physical allowlist stays outside Store.
+                () -> assertTrue(misplacedP4C1Types.isEmpty(),
+                        () -> "P4-C1 types in Store package: " + misplacedP4C1Types),
                 () -> assertTrue(productionClasses.stream()
                         .map(P3D3AApiGateTest::simpleTopLevelName)
                         .map(String::toLowerCase)

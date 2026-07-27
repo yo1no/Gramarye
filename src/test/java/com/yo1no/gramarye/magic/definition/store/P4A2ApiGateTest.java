@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.definition.document.EncodedSkillDocument;
+import com.yo1no.gramarye.magic.definition.document.SkillDraftPersistenceFacade;
 import com.yo1no.gramarye.magic.definition.document.SkillDocumentStorePersistenceFacade;
 import com.yo1no.gramarye.magic.definition.migration.OpaqueSkillDocumentMigrationFacade;
 import java.lang.reflect.Modifier;
@@ -26,7 +27,8 @@ class P4A2ApiGateTest {
     private static final Path STORE_ROOT = DEFINITION_ROOT.resolve("store");
 
     @Test
-    void exactlyTwoPublicDocumentMigrationFacadesOwnTheCrossPackageSeams() throws Exception {
+    void exactlyThreePublicDocumentMigrationFacadesOwnTheReviewedCrossPackageSeams()
+            throws Exception {
         var facadeDeclaration = Pattern.compile(
                 "\\bpublic\\s+final\\s+class\\s+([A-Za-z0-9_]*Facade)\\b");
         var publicFacades = productionSources(DEFINITION_ROOT).stream()
@@ -42,6 +44,7 @@ class P4A2ApiGateTest {
         assertAll(
                 () -> assertEquals(Set.of(
                                 "SkillDocumentStorePersistenceFacade",
+                                "SkillDraftPersistenceFacade",
                                 "OpaqueSkillDocumentMigrationFacade"),
                         publicFacades),
                 () -> assertEquals(Set.of("encodeCurrent", "load"), documentMethods),
@@ -49,6 +52,14 @@ class P4A2ApiGateTest {
                         SkillDocumentStorePersistenceFacade.class.getModifiers())),
                 () -> assertTrue(Modifier.isPublic(
                         OpaqueSkillDocumentMigrationFacade.class.getModifiers())),
+                () -> assertTrue(Modifier.isPublic(
+                        SkillDraftPersistenceFacade.class.getModifiers())),
+                () -> assertEquals(
+                        Set.of("encodeCurrent", "loadAlwaysMigrating"),
+                        Arrays.stream(SkillDraftPersistenceFacade.class.getDeclaredMethods())
+                                .filter(method -> Modifier.isPublic(method.getModifiers()))
+                                .map(method -> method.getName())
+                                .collect(Collectors.toSet())),
                 () -> assertTrue(Modifier.isPublic(EncodedSkillDocument.class.getModifiers())),
                 () -> assertTrue(Arrays.stream(
                                 SkillDocumentStorePersistenceFacade.class.getDeclaredMethods())
@@ -169,7 +180,7 @@ class P4A2ApiGateTest {
     }
 
     @Test
-    void productionStoreMigrationPlanHasOneProviderAndNoLaterLifecycleOrProbeTypes()
+    void productionStoreMigrationPlanHasOneProviderAndNoC2LifecycleOrProbeTypes()
             throws Exception {
         var planSource = read(STORE_ROOT.resolve("StorePersistenceMigrationPlan.java"));
         var allSource = productionSources(MAIN_JAVA).stream()
@@ -181,8 +192,12 @@ class P4A2ApiGateTest {
                         "static StorePersistenceMigrationPlan production()")),
                 () -> assertEquals(1, occurrences(planSource,
                         "private static final StorePersistenceMigrationPlan PRODUCTION")),
+                // P4-C1 phase-local: its physical state/serializer and sole Draft facade are
+                // reviewed production. Registration, lifecycle, and composition remain absent.
                 () -> assertTrue(List.of(
-                                "PlayerSkillAttachment",
+                                "PlayerSkillAttachmentRegistration",
+                                "PlayerSkillAttachmentService",
+                                "PreparedPlayerSkillTransition",
                                 "PendingAttachmentJournal", "P4A3HeapProbeMain",
                                 "P4A3CarrierGameTests")
                         .stream().noneMatch(allSource::contains)));

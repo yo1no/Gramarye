@@ -267,6 +267,11 @@ class P3D2ApiGateTest {
                 .filter(name -> !isReviewedPostP3DStoreType(name))
                 .map(P3D2ApiGateTest::loadWithoutInitialization)
                 .toList();
+        var misplacedP4C1Types = productionClasses.stream()
+                .filter(name -> name.startsWith(STORE_PACKAGE))
+                .map(P3D2ApiGateTest::simpleTopLevelName)
+                .filter(P4C1PhaseTypes::containsTopLevelName)
+                .collect(Collectors.toSet());
         var forbiddenTopLevelTypes = Set.of(
                 "SkillDefinitionSubmissionService",
                 "RandomUuidSkillIdSource",
@@ -282,6 +287,9 @@ class P3D2ApiGateTest {
                 () -> assertTrue(forbiddenTopLevelTypes.stream().noneMatch(simpleName ->
                         productionClasses.stream().anyMatch(className ->
                                 simpleTopLevelName(className).equals(simpleName)))),
+                // P4-C1 phase-local: its exact allowlist is outside the Store package.
+                () -> assertTrue(misplacedP4C1Types.isEmpty(),
+                        () -> "P4-C1 types in Store package: " + misplacedP4C1Types),
                 () -> assertTrue(storeTypes.stream()
                         .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                         .noneMatch(method -> Set.of(

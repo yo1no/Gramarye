@@ -81,12 +81,12 @@ class P4B1ApiGateTest {
                 () -> assertTrue(ceilingNames.containsAll(Set.of(
                         "MAX_PENDING_ATTACHMENT_JOURNAL_ENCODED_BYTES",
                         "MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES"))),
+                // P4-C1 phase-local: its five player Attachment ceilings are now reviewed
+                // production constants and are asserted by P4C1ApiGateTest.
                 () -> assertTrue(Set.of(
                                 "MAX_PENDING_ATTACHMENT_UPDATES",
                                 "MAX_STORE_QUARANTINE_ENTRY_BYTES",
-                                "MAX_STORE_QUARANTINE_TOTAL_BYTES",
-                                "MAX_PLAYER_DRAFTS",
-                                "MAX_PLAYER_SKILL_ATTACHMENT_ENCODED_BYTES")
+                                "MAX_STORE_QUARANTINE_TOTAL_BYTES")
                         .stream().noneMatch(ceilingNames::contains)),
                 () -> assertEquals(Set.of(
                                 "STEP_APPLIED",

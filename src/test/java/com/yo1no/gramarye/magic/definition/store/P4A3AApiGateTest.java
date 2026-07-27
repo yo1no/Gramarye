@@ -229,7 +229,7 @@ class P4A3AApiGateTest {
     }
 
     @Test
-    void a3bAndB2bRemainTestOnlyAndLaterAttachmentLifecycleRemainsAbsent() throws Exception {
+    void probesRemainTestOnlyAndP4C1PhysicalTypesDoNotOpenC2Lifecycle() throws Exception {
         var production = productionSources(PROJECT_ROOT.resolve("src/main/java")).stream()
                 .map(P4A3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
@@ -240,8 +240,17 @@ class P4A3AApiGateTest {
                 () -> assertFalse(production.contains("P4B2ProbeMain")),
                 () -> assertFalse(production.contains("P4B2MemoryGameTests")),
                 () -> assertFalse(production.contains("gramarye_p4_b2")),
-                () -> assertFalse(production.contains("PlayerSkillAttachment")),
-                () -> assertFalse(production.contains("PendingAttachmentJournal")));
+                // P4-C1 phase-local: the physical state and total serializer are now present.
+                () -> assertTrue(production.contains("PlayerSkillAttachmentState")),
+                () -> assertTrue(production.contains("PlayerSkillAttachmentSerializer")),
+                () -> assertTrue(production.contains("SkillDraftPersistenceFacade")),
+                () -> assertFalse(production.contains("AttachmentType")),
+                () -> assertFalse(production.contains(".copyOnDeath()")),
+                () -> assertFalse(production.contains("ServerPlayer")),
+                () -> assertFalse(production.contains(".setData(")),
+                () -> assertFalse(production.contains("PreparedPlayerSkillTransition")),
+                () -> assertFalse(production.contains("PendingAttachmentJournal")),
+                () -> assertFalse(production.contains("PlayerSkillRootProjection")));
     }
 
     private static List<Path> reviewedSources() throws Exception {

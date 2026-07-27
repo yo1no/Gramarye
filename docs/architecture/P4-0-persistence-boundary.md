@@ -604,3 +604,47 @@ identity or an empty List's pre-count declared element-type byte, or bound the p
 whole-playerdata materialization. Rejecting the destructive
 oversize tradeoff keeps the implementation gate closed and requires separately approved file-level
 quarantine or sidecar authority.
+
+## P4-C1 implementation ledger
+
+P4-C1 is confined to `com.yo1no.gramarye.magic.definition.player` plus one narrow public document
+seam, `SkillDraftPersistenceFacade`. The player package owns the count-only
+`BoundedCountingDataOutput`／`AttachmentTagSize` boundary, immutable
+`PlayerSkillAttachmentReady`, `PlayerSkillAttachmentPreservedRaw`, and
+`PlayerSkillAttachmentOversizeMarker` states, the exact marker, current physical schema, outer
+migration, total `IAttachmentSerializer<Tag, PlayerSkillAttachmentState>`, typed Draft／latest／
+equipped／editor records, and the matching prebuilt `EncodedPlayerSkillAttachment`. Every player
+top-level type remains package-private; C1 adds no public player service.
+
+The locked `NbtIo.writeAnyTag` golden counts are: End `1`, Byte `2`, Int `5`, empty List `6`, empty
+Compound `2`, one nested empty Compound field `7`, and the canonical oversize marker `142` bytes.
+The inclusive `16_777_216` boundary succeeds, and the count-only output reports
+`observedAtLeast = 16_777_217` without retaining output bytes. The non-End
+`writeUnnamedTag` negative control is exactly two bytes larger and remains absent from production.
+
+The serializer admits every Tag delivered to its body by counting first. Oversize input becomes
+the bounded marker state without a raw copy; the exact marker is recognized before Ready decoding;
+an in-bound expected failure becomes PreservedRaw only after counting and with a defensive deep
+copy. Ready owns immutable canonical typed lists and a matching prebuilt carrier, so serializer
+write only returns a fresh carrier／raw／marker copy and performs no first-time migration, Draft
+encode, or capacity admission.
+
+`SkillDraftPersistenceFacade` is the sole new public top-level type. Its opaque
+`EncodedSkillDraft` and typed nested results route current encode and always-migrating load through
+package-private Draft physical code. Attachment outer `attachment_schema_version`, Draft physical
+`draft_encoding`, and logical `draft_schema_version` remain independent axes. Outer migration sees
+at most 32 location-bound sentinels and never Draft bytes; logical Draft migration sees sentinels
+and never family-tagged raw payloads; hydration rebinds the existing JSON／NBT context without
+SkillDocument migration, payload migration, registry resolution, Store access, or validation.
+
+The five C1 ceilings retain their distinct admission owners: complete Attachment `writeAnyTag`
+count, Draft-entry byte capture, Draft route count, latest-state count, and equipped count／slot
+range. Generation remains `int`／`IntTag`; `MutationGeneration` is the sole successor arithmetic
+owner and returns exhausted at `Integer.MAX_VALUE`. Hard-invalid editor indexes reject Ready,
+while structurally valid stale selections are preserved.
+
+P4-C2 remains unstarted: there is no `AttachmentType` registration, `copyOnDeath`, Player／
+ServerPlayer mutation, `getData`／`setData`, lifecycle event, latest transition publication,
+P4-D journal／commit composition, P4-E root projection, offline enumeration, reconciliation,
+networking, Gradle source set, fixed-heap job, or CI change. P4-C is not complete until C2 and its
+required fixed-1-GiB quarantine lifecycle gate pass; this C1 ledger makes no remote C1 gate claim.

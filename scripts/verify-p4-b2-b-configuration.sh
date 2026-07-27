@@ -901,6 +901,29 @@ verify_b2_sources_and_outputs() {
             "P4-B2-B probe code leaked into production Java sources (${literal})"
     done
 
+    # P4-C1 phase-local: its bounded physical model and total serializer may be present in main.
+    # Registration, player lifecycle mutation, composition, roots, and networking remain absent.
+    for literal in \
+        'AttachmentType' \
+        '.copyOnDeath()' \
+        'ServerPlayer' \
+        'PlayerEvent' \
+        '.getData(' \
+        '.setData(' \
+        'PreparedPlayerSkillTransition' \
+        'PendingAttachmentJournal' \
+        'SkillDefinitionSubmissionService' \
+        'RootProjection' \
+        'OfflineRoot' \
+        'CustomPacketPayload' \
+        'PayloadRegistrar' \
+        'PacketDistributor'; do
+        forbid_fixed_in_file_list \
+            "${PRODUCTION_SOURCE_LIST}" \
+            "${literal}" \
+            "P4-C2 or later production surface appeared during P4-C1 (${literal})"
+    done
+
     for literal in NoClassDefFoundError LinkageError Error; do
         forbid_ere_in_file_list \
             "${PRODUCTION_SOURCE_LIST}" \

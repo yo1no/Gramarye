@@ -312,14 +312,28 @@ main() {
             'P4-B2-A production code bypassed the reviewed strict gzip boundary'
     done
 
-    # Attachment and journal lifecycle remain later-phase production domains.
+    # P4-C1 phase-local: the bounded player Attachment physical model and total serializer are
+    # reviewed production. Registration, player mutation, lifecycle, composition, roots, and
+    # network surfaces remain later-phase domains.
     for literal in \
-        'PlayerSkillAttachment' \
-        'PendingAttachmentJournal'; do
+        'AttachmentType' \
+        '.copyOnDeath()' \
+        'ServerPlayer' \
+        'PlayerEvent' \
+        '.getData(' \
+        '.setData(' \
+        'PreparedPlayerSkillTransition' \
+        'PendingAttachmentJournal' \
+        'SkillDefinitionSubmissionService' \
+        'RootProjection' \
+        'OfflineRoot' \
+        'CustomPacketPayload' \
+        'PayloadRegistrar' \
+        'PacketDistributor'; do
         forbid_fixed_in_file_list \
             "${SOURCE_FILE_LIST}" \
             "${literal}" \
-            'P4-C or later lifecycle types appeared before their phase'
+            'P4-C2 or later lifecycle/composition types appeared before their phase'
     done
 
     test -f build/classes/java/p4A3Probe/com/yo1no/gramarye/magic/definition/store/P4A3HeapProbeMain.class

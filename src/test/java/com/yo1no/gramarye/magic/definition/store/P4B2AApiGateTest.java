@@ -218,6 +218,8 @@ class P4B2AApiGateTest {
                 .collect(Collectors.joining("\n"));
         var raw = sources.stream().map(P4B2AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
+        // P4-C1 phase-local: player Attachment physical types are allowed elsewhere in main,
+        // but the reviewed B2-A source set remains isolated from every Attachment concern.
         var forbiddenFragments = List.of(
                 "computeIfAbsent",
                 "readTagFromDisk",

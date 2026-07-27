@@ -124,6 +124,21 @@ public final class MagicSafetyCeilings {
     /** Inclusive byte ceiling for the complete compressed primary skill SavedData file. */
     public static final int MAX_SKILL_SAVED_DATA_FILE_BYTES = 73_400_320;
 
+    /** Technical ceiling for persisted Draft routes in one player skill Attachment. */
+    public static final int MAX_PLAYER_DRAFTS = 32;
+
+    /** Technical ceiling for persisted latest-reference routes in one player skill Attachment. */
+    public static final int MAX_PLAYER_LATEST_STATES = 256;
+
+    /** Technical ceiling for persisted equipped references in one player skill Attachment. */
+    public static final int MAX_PLAYER_EQUIPPED_REFERENCES = 64;
+
+    /** Inclusive raw-payload ceiling for one encoded player Draft entry. */
+    public static final int MAX_PLAYER_DRAFT_ENTRY_ENCODED_BYTES = 1_114_112;
+
+    /** Inclusive writeAnyTag byte ceiling for the complete player skill Attachment value. */
+    public static final int MAX_PLAYER_SKILL_ATTACHMENT_ENCODED_BYTES = 16_777_216;
+
     private MagicSafetyCeilings() {
     }
 
