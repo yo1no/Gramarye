@@ -240,8 +240,11 @@ P4-B1：saved_data_schema_version、whole-root／inner exact framing、zero-leng
 P4-B2：primary file ingress、strict single-member gzip、custom one-time load、
        Ready／Quarantined／Unavailable SavedData adapter、Overworld cache install、live Store／carrier
        ownership、save callback、controlled read／pin／reclaim、dirty與fixed-heap load／save Gate
-P4-C：獨立player skill Attachment、Draft／latest／equipped／editor persistence、
-      total serializer、migration與clone policy
+P4-C0：只修訂player Attachment totality、bounded raw與destructive oversize quarantine權威政策
+P4-C1：physical V0、total serializer、bounded counting、Ready／PreservedRaw／OversizeMarker、
+       Draft persistence／三軸migration、exact bounds與prebuilt Ready carrier；無registration／lifecycle service
+P4-C2：Attachment registration、immutable `setData` service、唯一int generation transition、death／End、
+       P4-D transition seam、P4-E bounded per-player root projection、GameTests／fixed-heap／phase gates
 P4-D：authenticated composition、調用A3 prospective Store builder、prospective journal、
       commit-oriented preflight、P3-D commit、carrier／journal publication、Attachment transition
       與crash recovery
@@ -510,6 +513,9 @@ P4-0只修訂權威文件；修正案提交且遠端CI通過前不得開始P4-A1
 P4-A子階段契約；該文件變更提交且遠端CI通過前不得開始P4-A2 implementation。
 P4-B0只明確化SavedData outer framing、no-journal sentinel、strict gzip與lifecycle；該文件
 變更提交且遠端CI通過前不得開始P4-B1 implementation。
+P4-C0只修訂player Attachment quarantine authority；整份文件變更提交且遠端CI通過前不得開始
+P4-C1。P4-C1完成physical／serializer Gate後才可開始P4-C2 registration／lifecycle；C1、C2與
+required remote fixed-heap Gate全部通過前，P4-C不得標記完成。
 
 P4-A1～A3、P4-B1／B2與P4-C～E不得重寫P3-D owner truth、quota counting、CAS、revision allocation或reclaim
 policy，也不得重跑P3-B2／B3 resolution／validation。
@@ -839,28 +845,76 @@ facade、offline root collection、network、直接公開Store／carrier、在ca
 無法阻止stale-carrier save、callback必須首次encode、需要未核准thread／lock模型、reclaim filter仍有
 normal typed failure、只能公開裸Store／carrier接合，或1 GiB Gate失敗，停止P4-B2並回報。
 
-## P4-C：Player Attachment
+## P4-C0：Player Attachment quarantine authority
+
+只固定第18號修正案的totality、`NbtIo.writeAnyTag` coordinate、PreservedRaw／OversizeMarker、
+logical-structural／destructive政策、List duplicate能力邊界、int／same-pointer-no-op、editor、
+三軸migration與C1／C2 Gate；不寫Java。
+
+Attachment total coordinate固定為canonical arbitrary-Tag counting：one Tag type byte + complete Tag
+payload，不含root name、attachment key、outer playerdata或gzip framing。`writeUnnamedTag`禁止。
+此為post-materialization bound；它不限制Minecraft首次playerdata allocation／OOM。
+
+## P4-C1：Physical V0與total serializer
 
 ### 責任
 
-- 建立獨立永久`gramarye:player_skills` Attachment V0，保存bounded Draft、latest state
-  （含mutation generation）、equipped slots與editor metadata；owner由authenticated player
-  UUID導出，不持久化。
-- Disk collection使用List保留duplicate corruption；custom total serializer回
-  Ready／Quarantined。Missing tag才建立empty Ready，existing malformed tag不得視為missing。
-- Draft使用獨立adjacent migration；Attachment總byte ceiling優先於per-Draft ceiling。
-- 使用immutable replacement `setData`；永久資料serialize + `copyOnDeath`，End return不得
-  double-copy；不自動sync。
+- 建立Ready V0與alternative exact quarantine marker；`IAttachmentSerializer<Tag, ...>`只在平台已
+  materialize、outer attachments為Compound且per-attachment non-null Tag進body後保證total。
+  Custom read總回non-null Ready或Quarantined；expected data failure只回PreservedRaw或
+  OversizeMarker，missing key才empty Ready。
+- 使用只保存`long` count／maximum的bounded counting `DataOutput`委派`writeAnyTag`語意；exact
+  16,777,216合法，觀察16,777,217立即停止。不得先copy、配置等長second byte array、使用
+  `writeUnnamedTag`、SNBT length或whole-playerdata encode。Draft entry ceiling仍只計
+  `draft_bytes` ByteArray raw payload，不套用Attachment total coordinate。
+- In-bound malformed量後才deep-copy為PreservedRaw，write回fresh`raw.copy()`並只保證materialized
+  logical NBT structural equality。Oversize不保存raw，write第18號fixed marker；此為明示destructive
+  quarantine，restart仍是OversizeMarker，不得變missing／empty或稱lossless；raw與marker都使用
+  同一`writeAnyTag` coordinate。
+- Draft physical、Draft logical與Attachment outer migrations分離；建立prebuilt matching Ready
+  carrier與五個exact bounds。Route collections使用List並拒絕route duplicate；不得宣稱偵測平台
+  materialization前已last-write-wins的Compound duplicate names。
+- Latest generation physical type固定`IntTag`且拒絕negative／`LongTag`；absent route是implicit
+  `(empty, 0)`，explicit empty generation > 0保留。Editor hard-invalid形成Quarantined，
+  structurally valid stale metadata原樣保留。
 
 ### Gate
 
-- Empty default、Draft／latest／equipped／editor round-trip、Draft migration、duplicate／stale／
-  bounds、missing／malformed分流、death／keepInventory／End／logout-login、generation exact／
-  overflow與no auto sync。
+- `writeAnyTag` type-byte＋payload/no-root-name golden、wrong-root進body、exact／+1、raw structural／
+  alias／restart、marker exact／restart、Draft mixed-family／三軸migration、latest／equipped／editor
+  physical round-trip、generation`IntTag` 0／N／MAX與`LongTag`／negative rejection、implicit／explicit
+  empty state、hard-invalid／stale editor及no partial／default通過。
 
 ### 禁止
 
-Store commit composition、revision allocation、Store owner/latest覆寫。
+Attachment registration、player lifecycle mutation service、sidecar、whole-playerdata save blocking、
+Store commit、journal、offline enumeration、reconciliation與network。
+
+## P4-C2：Registration與immutable lifecycle
+
+### 責任
+
+- 註冊唯一`gramarye:player_skills`、custom serialize＋`copyOnDeath`、no sync；所有mutation使用
+  server-thread immutable replacement `setData`。
+- Same pointer是no-op；changed successor只由唯一P4-C checked helper計算。Generation mismatch、
+  pointer mismatch與MAX changed transition均不呼叫`setData`。
+- 提供P4-D controlled transition與P4-E bounded per-player root projection，不做commit、journal或
+  offline enumeration／root completeness。
+- Ready／PreservedRaw／OversizeMarker經death／End serializer write／read重建，不manual clone copy。
+
+### Gate
+
+- Missing default、immutable replacement、successful `setData` exactly once、same-pointer／MAX／mismatch
+  no publication、P4-D seam identity checks與P4-E immutable bounded projection通過。
+- Death／keepInventory on／off、respawn、End、dimension transfer、logout-login、Quarantined variants、
+  no manual double-copy與no sync通過。
+- GameTests與`-Xms512m -Xmx1024m -XX:+ExitOnOutOfMemoryError`專用Gate覆蓋exact 16 MiB raw
+  load／save／restart／death／End及maximum + 1 marker。失敗即停止，不縮fixture或提高heap規避。
+
+### 禁止
+
+Store commit composition、journal domain／generation chain、revision allocation、Store owner／latest
+覆寫、offline root completeness、Network／client sync。
 
 ## P4-D：Submission composition
 
@@ -876,7 +930,8 @@ Store commit composition、revision allocation、Store owner/latest覆寫。
   再執行Attachment immutable transition。
 - 建立獨立composition outcome；不得把`SkillSubmissionOutcome.Prepared`當Committed。取得
   preparation report後，後續outcome保留同一warning-only report reference。
-- Store-first bounded generation journal記錄expected／target pointer transition；in-memory
+- Store-first bounded `int` expected／target generation journal記錄changed pointer transition；target
+  successor只由P4-C checked helper提供。In-memory
   `setData`後不立即清除，等startup／login persisted playerdata readback確認後才清除。
 - Crash recovery replay idempotent；pending target是external retention root。
 
@@ -926,7 +981,9 @@ source implementation仍留各自後續工程階段。
   [18號修正案required tests](18_P4持久化與組合修正案.md#21-required-tests)通過。
 - `SkillDefinitionStore`只有一份domain truth；Overworld adapter、player Attachment與journal
   各自遵守其單一真相／derived data邊界。
-- Existing invalid data不silent empty，所有load failure不partial、不dirty、不覆寫原檔。
+- Existing invalid data不silent empty；SavedData load failure不覆寫primary。Player Attachment
+  in-bound malformed保留materialized logical tree；oversize只有第18號核准的canonical marker可
+  破壞性取代原representation，restart仍必須Quarantined。
 - Store-first ordering、readback-confirmed journal clear與offline-root fail-closed均可由測試證明。
 
 ---
@@ -1441,7 +1498,9 @@ preflight、P3-D commit與Attachment transition。
 - [ ] 新 schema 有 migration／版本決策。
 - [ ] 新 payload 有 bounds、version、rate limit。
 - [ ] 新持久化 mutation 有 dirty handling。
-- [ ] Existing malformed persistence不等同missing；load failure不安裝partial／empty truth。
+- [ ] Existing malformed persistence不等同missing；在第18號totality boundary內已交付serializer
+      body的player Attachment Tag形成PreservedRaw／OversizeMarker，其他load failure不安裝
+      partial／empty truth。
 - [ ] 一般可失敗encode與byte-capacity checks在truth mutation前完成，save callback只寫
       prebuilt carrier。
 - [ ] Cross-location update有明確ordering、bounded recovery journal與reconciliation；不宣稱

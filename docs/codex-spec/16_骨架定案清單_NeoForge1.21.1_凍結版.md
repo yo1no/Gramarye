@@ -148,9 +148,28 @@ DefinitionEnvelope
 
 - 【永久技能 Attachment】Draft、latest、equipped 與 editor metadata 使用獨立
   `gramarye:player_skills` Attachment，不與 mana／cooldown 等不同死亡政策資料混用。
-- 【缺失與損壞】Missing tag 建立 empty Ready；existing malformed tag 建立 Quarantined，
-  不得等同 missing。使用 total custom serializer，不使用把 decode failure log-and-skip 成
-  missing 的 partial serializer。
+- 【Totality 邊界】Total custom serializer 的承諾只從 NeoForge 已成功 materialize playerdata、
+  outer `neoforge:attachments` 是 `CompoundTag`，且 non-null `gramarye:player_skills` `Tag`
+  已進入 `IAttachmentSerializer<Tag, ...>` body 後開始；whole-playerdata／outer-container failure
+  與平台已消解的 duplicate fields 不在此承諾內。
+- 【缺失與損壞】只有 missing key 建立 empty Ready。Existing malformed input 必須建立
+  `PreservedRaw` 或 `OversizeMarker` Quarantined，不得回 `null`、empty／partial Ready或讓預期
+  data failure逃出serializer。PreservedRaw在核准上限內保存materialized Tag deep copy並以
+  `raw.copy()`重寫，只承諾logical NBT tree structural preservation；OversizeMarker以第18號
+  修正案的reserved bounded marker明示取代原oversize representation，restart仍是Quarantined，
+  不宣稱lossless。
+- 【Attachment byte座標】`MAX_PLAYER_SKILL_ATTACHMENT_ENCODED_BYTES`計量
+  `NbtIo.writeAnyTag` 的one Tag type byte＋complete Tag payload，不含root name、attachment key或
+  outer playerdata framing；PreservedRaw與marker使用同一座標。使用`long`
+  bounded-counting `DataOutput`，exact合法，觀察maximum + 1立即停止，不先copy或配置等長second
+  array。不得使用`writeUnnamedTag`；這是post-materialization bound，不是playerdata ingress／OOM防線。
+  `MAX_PLAYER_DRAFT_ENTRY_ENCODED_BYTES`只計`draft_bytes` ByteArray raw payload，不使用此座標。
+- 【Duplicate邊界】Draft／latest／equipped route-bearing collections維持List並拒絕route／slot
+  duplicate；materialized Compound的wire-level同名field已由平台last-write-wins，不得宣稱可偵測。
+- 【Reference state】Mutation generation固定Java `int`／NBT `IntTag`；absent route是
+  empty pointer＋generation 0，same-pointer是no-op，changed transition才由P4-C唯一helper計算
+  successor。Editor hard-invalid使Attachment Quarantined；structurally valid stale editor metadata
+  原樣保留。Attachment outer、Draft physical encoding與Draft logical schema是三個獨立migration軸。
 - 【決定】玩家魔力、技能槽引用、冷卻索引與接續實例引用使用 NeoForge Attachment。
 - 【決定】生物／造物錨上的標記本體使用 Attachment，與錨點同生死；中央只保存可重建索引。
 - 【決定】Attachment 是否持久化必須由是否提供 serializer 明確決定。
@@ -160,8 +179,8 @@ DefinitionEnvelope
   - 冷卻／接續狀態：預設複製或明確清除，不可依 NeoForge 預設碰運氣。
 - 【注意】Attachment 不會自動同步到客戶端，所有同步由本模組 payload 完成。
 - 【注意】若未來在 chunk／block entity 上保存可變 Attachment，直接修改 `getData()` 回傳內容後必須正確標記 dirty；優先使用不可變 record + `setData()`。
-- 【複製】永久 player skill Attachment 使用 serialize + `copyOnDeath`；End return 不得
-  再做手動 double-copy。Attachment 不自動同步。
+- 【複製】永久 player skill Attachment 使用 serialize + `copyOnDeath`；Ready、PreservedRaw與
+  OversizeMarker都經serializer write／read重建，End return不得再做手動double-copy，P4-C不sync。
 
 ## 8. 全域資料使用 Overworld SavedData
 
@@ -664,8 +683,9 @@ PresentationEvent
   accounter、outer migration、A2 load＋A3 rebuild與no-partial Ready candidate。
 - P4-B2：strict single-member gzip／compressed與decompressed EOF、one-time Overworld cache install、
   Ready／Quarantined／Unavailable、prebuilt save callback、完整dirty matrix、restart round-trip與
-  1 GiB fixed-heap full-size load／save Gate。P4-C～E另驗證player skill Attachment clone／migration、
-  Store-first journal crash windows、persisted-readback clear、offline roots fail-closed與no chunk load；
+  1 GiB fixed-heap full-size load／save Gate。P4-C另以固定1 GiB heap驗證exact 16 MiB
+  PreservedRaw load／save／restart／death／End與maximum + 1 marker lifecycle；P4-D～E另驗證
+  Store-first journal crash windows、persisted-readback clear、offline roots fail-closed與no chunk load。
   完整逐項矩陣以
   [18號P4修正案 §21](18_P4持久化與組合修正案.md#21-required-tests)為準。
 
@@ -689,12 +709,14 @@ PresentationEvent
 - Mixed-family document 被拒絕，或任一 raw subtree 被跨 JSON／NBT family 轉換。
 - 任一 encoded-byte ceiling 的 maximum + 1 仍可載入／保存，或 Unlimited quota 可突破
   technical byte ceiling。
-- Existing invalid SavedData／Attachment 被當成 missing 而建立 empty truth，或任一
-  migration／decode／restore failure 安裝 partial Store。
+- Existing invalid SavedData被當成missing而建立empty Store，或在第18號totality boundary內已交付
+  serializer body的existing per-attachment Tag未區分in-bound PreservedRaw與oversize OversizeMarker，
+  或任一migration／decode／restore failure安裝partial Store。
 - SavedData接受第二gzip member、compressed／decompressed trailing bytes，或missing pending blob被
   當成empty journal。
-- Quarantined／Unavailable仍可dirty或save、save callback可輸出empty／stale carrier，或1 GiB
-  full-size P4-B load／save Gate失敗。
+- SavedData `Quarantined`／`Unavailable`仍可dirty或save、save callback可輸出empty／stale carrier，
+  或P4-B 1 GiB Gate失敗；player Attachment的in-bound raw structural round-trip、marker restart或
+  P4-C 1 GiB exact-limit lifecycle Gate任一失敗亦阻擋發布。
 - Store commit 後才首次執行一般 Codec／capacity check，或 Attachment-first ordering 繞過
   Store-first journal。
 - Journal 在 persisted playerdata readback 前清除，或 generation overflow 未 fail closed。
@@ -770,8 +792,11 @@ P4-B2：primary file ingress、strict single-member gzip、custom one-time load�
        Ready／Quarantined／Unavailable SavedData adapter、Overworld cache install、live Store／carrier
        ownership、save callback、controlled read／pin／reclaim、dirty與fixed-heap load／save Gate；
        無Player Attachment、journal domain、submission composition或offline root collection
-P4-C：獨立player skill Attachment、Draft／latest／equipped／editor persistence、
-      total serializer、migration與clone policy；無Store commit composition
+P4-C0：只修訂player Attachment totality、bounded raw與destructive oversize quarantine權威政策
+P4-C1：physical V0、total serializer、bounded counting、Ready／PreservedRaw／OversizeMarker、
+       Draft persistence／三軸migration、exact bounds與prebuilt Ready carrier；無registration／lifecycle service
+P4-C2：Attachment registration、immutable `setData` service、唯一int generation transition、death／End、
+       P4-D transition seam、P4-E bounded per-player root projection、GameTests／fixed-heap／phase gates
 P4-D：authenticated submission composition、fresh authority／quota、P3-C prepare、調用A3
       prospective Store builder與prospective journal、commit-oriented preflight、P3-D commit、
       carrier／journal publication、Attachment transition與recovery；無network
@@ -876,7 +901,7 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - [ ] Attachment 死亡複製與 End 返回政策已有測試。
 - [ ] 每次需要持久化且成功發布matching carrier／journal的SavedData mutation都依dirty matrix
       `setDirty()`；typed failure、pin／close、reclaim 0與Quarantined／Unavailable不dirty。
-- [ ] 18號P4修正案及P4-A2.0／P4-B0明確化已提交且遠端CI通過；P4-A1～A3、P4-B1／B2、P4-C～E責任、
+- [ ] 18號P4修正案及P4-A2.0／P4-B0／P4-C0明確化已提交且遠端CI通過；P4-A1～A3、P4-B1／B2、P4-C～E責任、
       per-raw-subtree envelope與exact
       encoded-byte ceilings已固定。
 - [ ] Revision exact outer ceiling只表示該層inclusive admission；V0最大完整合法revision、
@@ -892,8 +917,10 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
       failure，list decoder 不依 declared count 預配置大型 collection。
 - [ ] JSON、NBT與mixed-family document都能same-family結構保存；任一migration／decode／
       restore failure都不安裝partial或empty Store。
-- [ ] Existing invalid SavedData／Attachment形成Quarantined而非empty；custom loader不經
-      fail-open deserializer，save callback只寫prebuilt carrier。
+- [ ] Existing invalid SavedData不安裝empty Store；在第18號totality boundary內已交付serializer body的
+      existing per-attachment Tag不等同missing，in-bound malformed形成PreservedRaw，oversize形成
+      canonical OversizeMarker，restart都不得變empty Ready；
+      custom loader不經fail-open deserializer，SavedData save callback只寫prebuilt carrier。
 - [ ] SavedData exact root／inner framing、zero-length no-journal sentinel、strict single-member gzip、
       Ready／Quarantined／Unavailable non-saving邊界與1 GiB full-size load／save Gate已有測試。
 - [ ] Store-first journal使用bounded generation且只在persisted readback確認後清除；

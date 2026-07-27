@@ -28,8 +28,15 @@ This page is a compact phase boundary, not a second persistence specification.
   hostile-FNAME first／restart pair, invalid-file restart preservation, Gradle task isolation, and
   its required CI gate. P4-B is complete only when B1, B2-A, and every required B2-B local and
   remote gate are complete.
-- P4-C owns the permanent player skill Attachment, Draft/reference/editor persistence, total
-  serializer, Attachment migration, and clone policy.
+- P4-C0 owns the documentation-only Attachment totality, quarantine-preservation,
+  destructive-oversize-marker, byte-coordinate, duplicate-capability, generation／no-op, editor,
+  and implementation-gate decisions.
+- P4-C1 owns physical V0, the bounded total serializer, Ready／PreservedRaw／OversizeMarker, Draft
+  persistence／migration, exact bounds, and the prebuilt Ready carrier; it owns no registration or
+  player mutation lifecycle.
+- P4-C2 owns Attachment registration, the immutable `setData` service, generation transition,
+  death／End lifecycle, the controlled P4-D transition seam, bounded per-player P4-E root projection,
+  GameTests, the fixed-heap gate, and phase gates.
 - P4-D owns authenticated submission composition, invocation of A3 prospective Store builders,
   prospective journal replacement, commit-oriented persistence preflight, Store commit, carrier／
   journal publication, Attachment transition, typed outcome, and crash recovery.
@@ -143,7 +150,10 @@ writes only a prebuilt immutable carrier and provides no fsync or cross-location
 
 The permanent `gramarye:player_skills` Attachment stores bounded Draft, latest, equipped, and editor
 state. Owner identity is derived from the authenticated player rather than duplicated in the
-Attachment. Existing malformed data is Quarantined, not treated as missing.
+Attachment. Missing alone creates empty Ready. An in-bound malformed value is Quarantined as
+PreservedRaw with a defensive logical-tree snapshot; an oversize value is Quarantined as
+OversizeMarker and is explicitly replaced by the bounded reserved marker on a later normal save.
+Neither variant is treated as missing or empty Ready.
 
 Submission derives a fresh server principal, reads current Store authority, obtains one immutable
 quota snapshot, delegates preparation to P3-C, rechecks authority, performs persistence preflight,
@@ -168,6 +178,10 @@ P4-A1 starts only after the P4 amendment is committed and remote CI passes. P4-A
 the P4-A2.0 clarification is committed and remote CI passes. The P4-A1 gate proves
 same-family structural preservation for JSON, NBT, and mixed-family documents, and proves that every
 migration/decode/restore failure installs neither a partial nor an empty Store.
+
+P4-C1 starts only after the complete P4-C0 authority patch is committed and remote CI passes. P4-C2
+starts only after P4-C1's physical／serializer Gate passes. P4-C completes only after C1, C2, and the
+required fixed-1-GiB exact-limit quarantine lifecycle job pass locally and remotely.
 
 ## P4-B0 clarification ledger
 
@@ -195,10 +209,21 @@ copy; this seam was not part of P4-A3 and remains B implementation work.
 P4-B2 owns controlled reclaim publication and dirty mapping, while P4-E owns root collection and
 completeness. A post-mutation carrier invariant failure transitions to non-saving `Unavailable` and
 never saves the stale carrier. Quarantined does not retain raw fragments, so the quarantine byte
-ceilings have no P4-B consumer and do not authorize a raw-copy store. P4-B1 and P4-B2-A are
-complete. P4-B2-B, and therefore P4-B, remain incomplete until the required exact-maximum legal
-hostile-FNAME fixed-heap pair passes locally and in the remote P4-B memory gates. P4-C remains
-unstarted.
+ceilings have no P4-B consumer and do not authorize a raw-copy store.
+
+```text
+P4-B1   = COMPLETE
+P4-B2-A = COMPLETE
+P4-B2-B = COMPLETE
+P4-B    = COMPLETE
+```
+
+The recorded external results are PASS for `build`, `P4-A3 memory gates`, and `P4-B memory gates`,
+including the exact-maximum hostile-FNAME first／restart pair and packaged runtime smoke. The P4-C
+read-only design review is complete. The P4-C0 framing conflict is resolved by the
+`NbtIo.writeAnyTag` byte-coordinate decision, and the explicit destructive-oversize quarantine
+policy closes the preservation-policy stop gate; P4-C1／C2 remain unstarted and gated until the
+complete P4-C0 authority patch is committed and remote CI passes.
 
 ## P4-A1 implementation ledger
 
@@ -515,7 +540,67 @@ exact-maximum hostile-FNAME valid first／restart pairs, and three invalid paire
 local aggregate on 2026-07-26 passed 70 tasks in 2m44s without OOME or timeout. The
 required-on-failure `P4-B memory gates` CI job
 depends on `build` and `P4-A3 memory gates`, has no conditional or allow-failure escape, and runs the
-configuration and aggregate fixed-heap gates. Whether repository branch protection requires that
-job is external governance and is not asserted here. Until that remote job passes with the
-exact-maximum hostile-FNAME pair, P4-B2-B and P4-B remain incomplete. P4-C, P4-D, and P4-E have not
-started.
+configuration and aggregate fixed-heap gates. The remote `build`, `P4-A3 memory gates`, and
+`P4-B memory gates` passed for this closure, including the exact-maximum hostile-FNAME pair.
+Repository contents prove those job definitions and dependencies, but whether branch protection
+configures any of them as required checks remains external governance unknown／pending.
+
+## P4-C0 quarantine authority ledger
+
+P4-C totality begins only after NeoForge has materialized playerdata, the outer
+`neoforge:attachments` value is a `CompoundTag`, and the `gramarye:player_skills` value has reached
+the custom `IAttachmentSerializer<Tag, ...>` body. Every non-null Tag delivered at that boundary must
+return a non-null Ready or Quarantined state. Whole-playerdata decode failure, a wrong-type outer
+attachments value, and information erased or ignored before that call are outside this guarantee.
+
+`MAX_PLAYER_SKILL_ATTACHMENT_ENCODED_BYTES` measures the **canonical arbitrary-Tag counting
+coordinate** produced by `NbtIo.writeAnyTag` for the complete Attachment value: one Tag type byte
+followed directly by the complete Tag payload, with no root-name, Attachment key, enclosing
+attachments Compound, whole-playerdata, or gzip framing. `NbtIo.writeUnnamedTag` is prohibited for
+P4-C admission because it adds two empty UTF root-name bytes to every non-End Tag. A bounded
+long-counting `DataOutput` stops at maximum + 1 before any raw copy and never materializes an
+equal-sized byte array. This is a post-materialization bound and does not limit Minecraft's initial
+playerdata allocation. It is deliberately distinct from P4-B SavedData unnamed-root framing.
+`MAX_PLAYER_DRAFT_ENTRY_ENCODED_BYTES` continues to measure only the raw `draft_bytes` ByteArray
+payload and does not use this Attachment-total coordinate.
+
+An in-bound malformed value becomes PreservedRaw with a bounded machine failure and an immutable
+deep copy of the materialized Tag; future writes return `raw.copy()` and guarantee logical NBT-tree
+structural preservation only. An oversize value becomes OversizeMarker without retaining raw data
+and writes the exact reserved `__gramarye_attachment_quarantine_v0` marker with
+`encoded_capacity_exceeded`, observed-at-least maximum + 1, and maximum metadata. The marker itself
+is measured with the same `writeAnyTag` coordinate. This is an explicit destructive quarantine: a
+subsequent normal player save may replace the original oversize representation, but restart must
+remain `Quarantined.OversizeMarker` rather than missing or empty Ready. V0 creates no sidecar, save blocker,
+export directory, retry queue, login-denial protocol, mixin, or access transformer.
+
+`CompoundTag` materialization uses last-write-wins map insertion, so P4-C does not claim to detect
+duplicate materialized Compound field names. Route-bearing `drafts`, `latest_states`, and
+`equipped_slots` remain Lists so their duplicate routes survive until typed validation; duplicate
+fields inside `draft_bytes` remain visible to the strict byte parser.
+
+Locked `ListTag.write` canonicalizes an empty list to element type End and count zero while counting.
+That inert pre-count element-type byte is outside logical-tree structural preservation; canonical
+empty Ready uses End／zero, non-empty route lists require Compound elements, and tests compare logical
+structure rather than physical bytes or `getElementType()` for an empty list.
+
+The fixed Ready V0 outer schema remains
+`attachment_schema_version`／`drafts`／`latest_states`／`equipped_slots`／`editor`; the quarantine
+marker is an alternative representation, not an additional Ready field. Generation remains an
+`int`／`IntTag` in `0..Integer.MAX_VALUE`; an absent latest route means empty pointer at generation
+zero, an explicit empty pointer with positive generation is retained, and a same-pointer target is a
+no-op with no increment, `setData` call, or P4-D journal. Hard-invalid editor indexes quarantine the
+whole value, while structurally valid stale editor selections are retained unchanged. Attachment
+outer schema, Draft physical encoding, and logical SkillDraft schema remain separate migration axes.
+
+Missing remains default empty Ready. Ready, PreservedRaw, and OversizeMarker cross death and End
+clone only through serialize-then-read under `copyOnDeath`; no manual clone copy or sync is added.
+The required fixed-heap gate uses `-Xms512m -Xmx1024m -XX:+ExitOnOutOfMemoryError` and covers the
+exact-16-MiB PreservedRaw load／save／restart／death／End lifecycle plus the maximum + 1 marker path.
+
+Known limits are explicit: P4-C cannot preserve an oversize original representation, detect
+duplicate Compound fields already erased by platform materialization, guarantee physical byte
+identity or an empty List's pre-count declared element-type byte, or bound the platform's initial
+whole-playerdata materialization. Rejecting the destructive
+oversize tradeoff keeps the implementation gate closed and requires separately approved file-level
+quarantine or sidecar authority.
