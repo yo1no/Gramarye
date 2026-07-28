@@ -81,8 +81,8 @@ class P4B1ApiGateTest {
                 () -> assertTrue(ceilingNames.containsAll(Set.of(
                         "MAX_PENDING_ATTACHMENT_JOURNAL_ENCODED_BYTES",
                         "MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES"))),
-                // P4-C1 phase-local: its five player Attachment ceilings are now reviewed
-                // production constants and are asserted by P4C1ApiGateTest.
+                // P4-C2-A phase-local: its service reuses the five reviewed C1 ceilings through
+                // the universal bridge; the constants remain asserted by P4C1ApiGateTest.
                 () -> assertTrue(Set.of(
                                 "MAX_PENDING_ATTACHMENT_UPDATES",
                                 "MAX_STORE_QUARANTINE_ENTRY_BYTES",

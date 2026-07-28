@@ -2,6 +2,7 @@ package com.yo1no.gramarye;
 
 import com.mojang.logging.LogUtils;
 import com.yo1no.gramarye.magic.api.registry.MagicRegistries;
+import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
 import com.yo1no.gramarye.magic.definition.migration.DescriptorMigrationAudit;
 import net.neoforged.bus.api.IEventBus;
@@ -15,11 +16,13 @@ public final class Gramarye {
     public static final String DATA_NAMESPACE = "gramarye";
     public static final Logger LOGGER = LogUtils.getLogger();
 
+    private final PlayerSkillAttachmentService playerSkillAttachmentService;
     private final SkillDefinitionStoreService skillDefinitionStoreService;
 
     public Gramarye(IEventBus modBus) {
         MagicRegistries.register(modBus);
         new DescriptorMigrationAudit().register(modBus);
+        playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus);
         skillDefinitionStoreService = SkillDefinitionStoreService.registerOn(
                 NeoForge.EVENT_BUS);
     }

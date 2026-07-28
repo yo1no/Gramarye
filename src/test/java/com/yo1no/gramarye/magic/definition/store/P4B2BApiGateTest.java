@@ -228,8 +228,8 @@ class P4B2BApiGateTest {
     @Test
     void probeSourcesContainNoLaterPhaseOrUnsafeCompositionSurface() throws Exception {
         var code = sources(PROBE_ROOT) + "\n" + sources(GAME_TEST_ROOT);
-        // P4-C1 phase-local: its production physical model does not authorize P4-B2-B fixtures
-        // to depend on Attachment persistence or bypass the production ingress boundary.
+        // P4-C2-A production registration/lifecycle does not authorize P4-B2-B fixtures to depend
+        // on Attachment persistence or bypass the production ingress boundary.
         for (var forbidden : List.of(
                 "PlayerSkillAttachment",
                 "IAttachmentSerializer",
@@ -265,7 +265,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(main.contains("P4B2ProbeMain")),
                 () -> assertFalse(main.contains("P4B2MemoryGameTests")),
                 () -> assertFalse(main.contains("gramarye_p4_b2")),
-                () -> assertEquals(5, occurrences(main, "@GameTest(")));
+                () -> assertEquals(7, occurrences(main, "@GameTest(")));
     }
 
     @Test

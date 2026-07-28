@@ -339,6 +339,8 @@ class P4B2AApiGateTest {
         assertEquals(
                 Set.of(
                         "com/yo1no/gramarye/Gramarye.java",
+                        "com/yo1no/gramarye/magic/definition/player/"
+                                + "PlayerSkillAttachmentService.java",
                         "com/yo1no/gramarye/magic/definition/store/"
                                 + "SkillDefinitionStoreService.java"),
                 filesContaining(productionSources(MAIN_JAVA), "registerOn("));
@@ -387,7 +389,7 @@ class P4B2AApiGateTest {
     }
 
     @Test
-    void normalGameTestCountIsFiveAndB2BConfigurationIsStrictlyIsolated() throws Exception {
+    void normalGameTestCountIsSevenAndB2BConfigurationIsStrictlyIsolated() throws Exception {
         var production = productionSources(MAIN_JAVA);
         var allMain = production.stream().map(P4B2AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
@@ -395,14 +397,20 @@ class P4B2AApiGateTest {
                 "com/yo1no/gramarye/gametest/PlatformGameTests.java"));
         var lifecycleTests = read(STORE_ROOT.resolve(
                 "SkillSavedDataLifecycleGameTests.java"));
+        var playerTests = read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/definition/player/"
+                        + "PlayerSkillAttachmentGameTests.java"));
 
-        assertEquals(5, occurrences(allMain, "@GameTest("));
+        assertEquals(7, occurrences(allMain, "@GameTest("));
         assertEquals(4, occurrences(platformTests, "@GameTest("));
         assertEquals(1, occurrences(lifecycleTests, "@GameTest("));
+        assertEquals(2, occurrences(playerTests, "@GameTest("));
         assertTrue(lifecycleTests.contains("@GameTestHolder(Gramarye.MOD_ID)"));
         assertTrue(lifecycleTests.contains(
                 "startupInstalledExactReadyAdapterInOverworldCache"));
         assertTrue(lifecycleTests.contains("templateNamespace = \"minecraft\""));
+        assertTrue(playerTests.contains("@GameTestHolder(Gramarye.MOD_ID)"));
+        assertTrue(playerTests.contains("templateNamespace = \"minecraft\""));
 
         var build = read(PROJECT_ROOT.resolve("build.gradle")).toLowerCase();
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml")).toLowerCase();

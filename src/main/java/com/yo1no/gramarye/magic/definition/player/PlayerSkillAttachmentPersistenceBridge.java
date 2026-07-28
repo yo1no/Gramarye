@@ -50,8 +50,25 @@ final class PlayerSkillAttachmentPersistenceBridge {
         }
     }
 
-    Result emptyReady() {
-        return buildReady(List.of(), List.of(), List.of(), PlayerSkillEditorState.empty());
+    static PlayerSkillAttachmentReady freshEmptyReady() {
+        var rebuilt = rebuildReady(
+                List.of(), List.of(), List.of(), PlayerSkillEditorState.empty());
+        if (rebuilt instanceof PlayerSkillAttachmentBuildResult.Built built) {
+            return built.ready();
+        }
+        throw new IllegalStateException("Canonical empty player skill Attachment was rejected");
+    }
+
+    static boolean draftCountWithinLimit(int count) {
+        return count >= 0 && count <= MagicSafetyCeilings.MAX_PLAYER_DRAFTS;
+    }
+
+    static boolean canAddDraftRoute(int currentCount) {
+        return currentCount >= 0 && currentCount < MagicSafetyCeilings.MAX_PLAYER_DRAFTS;
+    }
+
+    static boolean equippedSlotWithinLimit(int slot) {
+        return slot >= 0 && slot < MagicSafetyCeilings.MAX_PLAYER_EQUIPPED_REFERENCES;
     }
 
     private PlayerSkillAttachmentReady decodeCurrent(
@@ -92,7 +109,7 @@ final class PlayerSkillAttachmentPersistenceBridge {
         var latest = decodeLatest(latestTag);
         var equipped = decodeEquipped(equippedTag);
         var editor = decodeEditor((CompoundTag) outer.get(PlayerSkillAttachmentSchema.EDITOR));
-        return loaded(buildReady(drafts, latest, equipped, editor));
+        return built(rebuildReady(drafts, latest, equipped, editor));
     }
 
     private List<PlayerDraftEntry> decodeDrafts(
@@ -213,7 +230,7 @@ final class PlayerSkillAttachmentPersistenceBridge {
                     malformed(PlayerSkillAttachmentFailure.Stage.EQUIPPED_VALIDATION));
             var slotTag = (IntTag) rawSlot;
             var slot = slotTag.getAsInt();
-            require(slot >= 0 && slot < MagicSafetyCeilings.MAX_PLAYER_EQUIPPED_REFERENCES,
+            require(equippedSlotWithinLimit(slot),
                     PlayerSkillAttachmentFailure.at(
                             PlayerSkillAttachmentFailure.Code.ATTACHMENT_ENVELOPE_MALFORMED,
                             PlayerSkillAttachmentFailure.Stage.EQUIPPED_VALIDATION,
@@ -265,12 +282,13 @@ final class PlayerSkillAttachmentPersistenceBridge {
         return new PlayerSkillEditorState(selectedDraft, selectedNode);
     }
 
-    private Result buildReady(
+    static PlayerSkillAttachmentBuildResult rebuildReady(
             List<PlayerDraftEntry> drafts,
             List<PlayerLatestState> latest,
             List<EquippedSkillReference> equipped,
             PlayerSkillEditorState editor) {
         try {
+            validateReadyInputs(drafts, latest, equipped, editor);
             var sortedDrafts = drafts.stream()
                     .sorted(Comparator.comparing(PlayerDraftEntry::skillId, SKILL_ID_ORDER))
                     .toList();
@@ -283,22 +301,163 @@ final class PlayerSkillAttachmentPersistenceBridge {
             var tag = encodeCurrent(sortedDrafts, sortedLatest, sortedEquipped, editor);
             var measured = AttachmentTagSize.measure(tag);
             if (measured instanceof AttachmentTagSizeResult.Exceeded exceeded) {
-                return new Rejected(PlayerSkillAttachmentFailure.capacity(
-                        PlayerSkillAttachmentFailure.Code.ATTACHMENT_ENCODED_CAPACITY_EXCEEDED,
-                        PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
-                        exceeded.observedAtLeast(),
-                        exceeded.maximum()));
+                return new PlayerSkillAttachmentBuildResult.Rejected(
+                        PlayerSkillAttachmentFailure.capacity(
+                                PlayerSkillAttachmentFailure.Code.ATTACHMENT_ENCODED_CAPACITY_EXCEEDED,
+                                PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                                exceeded.observedAtLeast(),
+                                exceeded.maximum()));
             }
             var count = ((AttachmentTagSizeResult.WithinLimit) measured).exactByteCount();
             var carrier = EncodedPlayerSkillAttachment.takeOwnership(
                     tag, count, sortedDrafts.size(), sortedLatest.size(), sortedEquipped.size());
-            return new Loaded(new PlayerSkillAttachmentReady(
-                    sortedDrafts, sortedLatest, sortedEquipped, editor, carrier));
+            return new PlayerSkillAttachmentBuildResult.Built(
+                    new PlayerSkillAttachmentReady(
+                            sortedDrafts, sortedLatest, sortedEquipped, editor, carrier));
+        } catch (DataFailure failure) {
+            return new PlayerSkillAttachmentBuildResult.Rejected(failure.failure);
         } catch (IOException exception) {
-            return new Rejected(PlayerSkillAttachmentFailure.simple(
-                    PlayerSkillAttachmentFailure.Code.INTERNAL_CODEC_EXCEPTION,
-                    PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+            return new PlayerSkillAttachmentBuildResult.Rejected(
+                    PlayerSkillAttachmentFailure.simple(
+                            PlayerSkillAttachmentFailure.Code.INTERNAL_CODEC_EXCEPTION,
+                            PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+        } catch (RuntimeException exception) {
+            return new PlayerSkillAttachmentBuildResult.Rejected(
+                    PlayerSkillAttachmentFailure.exception(
+                            PlayerSkillAttachmentFailure.Code.INTERNAL_CODEC_EXCEPTION,
+                            PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                            exception));
         }
+    }
+
+    private static void validateReadyInputs(
+            List<PlayerDraftEntry> drafts,
+            List<PlayerLatestState> latest,
+            List<EquippedSkillReference> equipped,
+            PlayerSkillEditorState editor) {
+        require(drafts != null, malformed(PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+        require(latest != null, malformed(PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+        require(equipped != null, malformed(PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+        require(editor != null, PlayerSkillAttachmentFailure.simple(
+                PlayerSkillAttachmentFailure.Code.EDITOR_STATE_INVALID,
+                PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+        require(draftCountWithinLimit(drafts.size()), PlayerSkillAttachmentFailure.capacity(
+                PlayerSkillAttachmentFailure.Code.ATTACHMENT_ENVELOPE_MALFORMED,
+                PlayerSkillAttachmentFailure.Stage.DRAFT_COUNT,
+                drafts.size(),
+                MagicSafetyCeilings.MAX_PLAYER_DRAFTS));
+        require(latest.size() <= MagicSafetyCeilings.MAX_PLAYER_LATEST_STATES,
+                PlayerSkillAttachmentFailure.capacity(
+                        PlayerSkillAttachmentFailure.Code.ATTACHMENT_ENVELOPE_MALFORMED,
+                        PlayerSkillAttachmentFailure.Stage.LATEST_COUNT,
+                        latest.size(),
+                        MagicSafetyCeilings.MAX_PLAYER_LATEST_STATES));
+        require(equipped.size() <= MagicSafetyCeilings.MAX_PLAYER_EQUIPPED_REFERENCES,
+                PlayerSkillAttachmentFailure.capacity(
+                        PlayerSkillAttachmentFailure.Code.ATTACHMENT_ENVELOPE_MALFORMED,
+                        PlayerSkillAttachmentFailure.Stage.EQUIPPED_COUNT,
+                        equipped.size(),
+                        MagicSafetyCeilings.MAX_PLAYER_EQUIPPED_REFERENCES));
+        validateDraftEntries(drafts);
+        validateLatestStates(latest);
+        validateEquippedReferences(equipped);
+        validateEditor(editor);
+    }
+
+    private static void validateDraftEntries(List<PlayerDraftEntry> drafts) {
+        var routes = new HashSet<SkillId>();
+        for (var index = 0; index < drafts.size(); index++) {
+            var entry = drafts.get(index);
+            require(entry != null, malformed(PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+            require(entry.skillId() != null
+                            && entry.draft() != null
+                            && entry.encodedDraft() != null,
+                    malformed(PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+            if (!routes.add(entry.skillId())) {
+                throw data(PlayerSkillAttachmentFailure.route(
+                        PlayerSkillAttachmentFailure.Code.DUPLICATE_DRAFT_ROUTE,
+                        PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                        entry.skillId()));
+            }
+            require(entry.skillId().equals(entry.draft().skillId()),
+                    PlayerSkillAttachmentFailure.route(
+                            PlayerSkillAttachmentFailure.Code.DRAFT_ROUTE_MISMATCH,
+                            PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                            entry.skillId()));
+            var encoded = SkillDraftPersistenceFacade.encodeCurrent(entry.draft());
+            if (encoded instanceof SkillDraftPersistenceFacade.EncodeRejected rejected) {
+                throw data(mapDraftFailure(
+                        rejected.failure(), PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+            }
+            require(entry.encodedDraft().equals(
+                            ((SkillDraftPersistenceFacade.Encoded) encoded).draft()),
+                    PlayerSkillAttachmentFailure.route(
+                            PlayerSkillAttachmentFailure.Code.DRAFT_CARRIER_MISMATCH,
+                            PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                            entry.skillId()));
+        }
+    }
+
+    private static void validateLatestStates(List<PlayerLatestState> latest) {
+        var routes = new HashSet<SkillId>();
+        for (var index = 0; index < latest.size(); index++) {
+            var state = latest.get(index);
+            require(state != null
+                            && state.skillId() != null
+                            && state.pointer() != null,
+                    malformed(PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+            if (!routes.add(state.skillId())) {
+                throw data(PlayerSkillAttachmentFailure.route(
+                        PlayerSkillAttachmentFailure.Code.DUPLICATE_LATEST_ROUTE,
+                        PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                        state.skillId()));
+            }
+            require(state.mutationGeneration() >= 0, PlayerSkillAttachmentFailure.at(
+                    PlayerSkillAttachmentFailure.Code.GENERATION_INVALID,
+                    PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                    index));
+            require(state.pointer().isEmpty()
+                            || state.pointer().orElseThrow().skillId().equals(state.skillId()),
+                    PlayerSkillAttachmentFailure.route(
+                            PlayerSkillAttachmentFailure.Code.LATEST_POINTER_ROUTE_MISMATCH,
+                            PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                            state.skillId()));
+        }
+    }
+
+    private static void validateEquippedReferences(List<EquippedSkillReference> equipped) {
+        var slots = new HashSet<Integer>();
+        for (var index = 0; index < equipped.size(); index++) {
+            var reference = equipped.get(index);
+            require(reference != null && reference.reference() != null,
+                    malformed(PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+            require(equippedSlotWithinLimit(reference.slot()),
+                    PlayerSkillAttachmentFailure.at(
+                            PlayerSkillAttachmentFailure.Code.ATTACHMENT_ENVELOPE_MALFORMED,
+                            PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                            reference.slot()));
+            if (!slots.add(reference.slot())) {
+                throw data(PlayerSkillAttachmentFailure.at(
+                        PlayerSkillAttachmentFailure.Code.DUPLICATE_EQUIPPED_SLOT,
+                        PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                        reference.slot()));
+            }
+        }
+    }
+
+    private static void validateEditor(PlayerSkillEditorState editor) {
+        require(editor.selectedDraft() != null && editor.selectedNodeIndex() != null,
+                PlayerSkillAttachmentFailure.simple(
+                        PlayerSkillAttachmentFailure.Code.EDITOR_STATE_INVALID,
+                        PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD));
+        require(editor.selectedNodeIndex().isEmpty()
+                        || editor.selectedNodeIndex().getAsInt() >= 0
+                                && editor.selectedNodeIndex().getAsInt()
+                                        < MagicSafetyCeilings.MAX_NODES,
+                PlayerSkillAttachmentFailure.at(
+                        PlayerSkillAttachmentFailure.Code.EDITOR_STATE_INVALID,
+                        PlayerSkillAttachmentFailure.Stage.CARRIER_BUILD,
+                        editor.selectedNodeIndex().orElse(-1)));
     }
 
     private static CompoundTag encodeCurrent(
@@ -430,11 +589,11 @@ final class PlayerSkillAttachmentPersistenceBridge {
         return new DataFailure(failure);
     }
 
-    private static PlayerSkillAttachmentReady loaded(Result result) {
-        if (result instanceof Loaded loaded) {
-            return loaded.ready();
+    private static PlayerSkillAttachmentReady built(PlayerSkillAttachmentBuildResult result) {
+        if (result instanceof PlayerSkillAttachmentBuildResult.Built built) {
+            return built.ready();
         }
-        throw data(((Rejected) result).failure());
+        throw data(((PlayerSkillAttachmentBuildResult.Rejected) result).failure());
     }
 
     sealed interface Result permits Loaded, Rejected {

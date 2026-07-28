@@ -229,7 +229,7 @@ class P4A3AApiGateTest {
     }
 
     @Test
-    void probesRemainTestOnlyAndP4C1PhysicalTypesDoNotOpenC2Lifecycle() throws Exception {
+    void probesRemainTestOnlyAndP4C2AOpensOnlyReviewedPlayerLifecycle() throws Exception {
         var production = productionSources(PROJECT_ROOT.resolve("src/main/java")).stream()
                 .map(P4A3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
@@ -240,17 +240,20 @@ class P4A3AApiGateTest {
                 () -> assertFalse(production.contains("P4B2ProbeMain")),
                 () -> assertFalse(production.contains("P4B2MemoryGameTests")),
                 () -> assertFalse(production.contains("gramarye_p4_b2")),
-                // P4-C1 phase-local: the physical state and total serializer are now present.
+                // P4-C2-A phase-local: exact registration, controlled mutation, token, and
+                // per-player root projection are now reviewed production.
                 () -> assertTrue(production.contains("PlayerSkillAttachmentState")),
                 () -> assertTrue(production.contains("PlayerSkillAttachmentSerializer")),
                 () -> assertTrue(production.contains("SkillDraftPersistenceFacade")),
-                () -> assertFalse(production.contains("AttachmentType")),
-                () -> assertFalse(production.contains(".copyOnDeath()")),
-                () -> assertFalse(production.contains("ServerPlayer")),
-                () -> assertFalse(production.contains(".setData(")),
-                () -> assertFalse(production.contains("PreparedPlayerSkillTransition")),
+                () -> assertTrue(production.contains("PlayerSkillAttachments")),
+                () -> assertTrue(production.contains("PlayerSkillAttachmentService")),
+                () -> assertTrue(production.contains("AttachmentType")),
+                () -> assertTrue(production.contains(".copyOnDeath()")),
+                () -> assertTrue(production.contains("ServerPlayer")),
+                () -> assertTrue(production.contains(".setData(")),
+                () -> assertTrue(production.contains("PreparedPlayerSkillTransition")),
                 () -> assertFalse(production.contains("PendingAttachmentJournal")),
-                () -> assertFalse(production.contains("PlayerSkillRootProjection")));
+                () -> assertTrue(production.contains("PlayerSkillRootProjection")));
     }
 
     private static List<Path> reviewedSources() throws Exception {

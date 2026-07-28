@@ -50,7 +50,13 @@ class P4C1ApiGateTest {
 
     @Test
     void exactReviewedTypesExistWithOnePublicTopLevelDraftFacade() throws Exception {
-        var playerSources = javaSources(PLAYER_ROOT);
+        // C2-A adds registration/service/GameTest files to the same package. Keep this C1 gate
+        // pinned to the exact physical-model files that C1 reviewed; P4C2AApiGateTest owns the
+        // union of the two phase allowlists.
+        var playerSources = P4C1PhaseTypes.PLAYER_SOURCE_FILE_NAMES.stream()
+                .map(PLAYER_ROOT::resolve)
+                .sorted()
+                .toList();
         var documentSources = P4C1PhaseTypes.DOCUMENT_SOURCE_FILE_NAMES.stream()
                 .map(DOCUMENT_ROOT::resolve)
                 .sorted()
@@ -225,7 +231,7 @@ class P4C1ApiGateTest {
                         Set.of(
                                 ceilingPath,
                                 "com/yo1no/gramarye/magic/definition/player/"
-                                        + "PlayerSkillAttachmentMigrator.java"),
+                                        + "PlayerSkillAttachmentPersistenceBridge.java"),
                         relativeFilesContaining(production, "MAX_PLAYER_DRAFTS")),
                 () -> assertEquals(
                         Set.of(
@@ -314,8 +320,8 @@ class P4C1ApiGateTest {
             }
         }
 
-        // P4-C1 phase-local: registration, Player mutation, lifecycle, P4-D/E, and network remain
-        // absent even though the bounded physical state and total serializer are now allowed.
+        // Keep the exact C1 files isolated from registration, Player mutation, lifecycle, P4-D/E,
+        // and network even after those reviewed C2-A files join the same package.
         for (var forbidden : List.of(
                 "AttachmentType",
                 "copyOnDeath",
@@ -355,7 +361,10 @@ class P4C1ApiGateTest {
 
     private static List<Path> reviewedSources() throws Exception {
         var result = new java.util.ArrayList<Path>();
-        result.addAll(javaSources(PLAYER_ROOT));
+        P4C1PhaseTypes.PLAYER_SOURCE_FILE_NAMES.stream()
+                .map(PLAYER_ROOT::resolve)
+                .sorted()
+                .forEach(result::add);
         P4C1PhaseTypes.DOCUMENT_SOURCE_FILE_NAMES.stream()
                 .map(DOCUMENT_ROOT::resolve)
                 .sorted()

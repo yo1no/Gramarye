@@ -1,6 +1,5 @@
 package com.yo1no.gramarye.magic.definition.player;
 
-import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Objects;
@@ -70,7 +69,7 @@ final class PlayerSkillAttachmentMigrator {
 
     private static PlayerSkillAttachmentMigrationResult tokenize(CompoundTag input, int sourceVersion) {
         if (!(input.get(PlayerSkillAttachmentSchema.DRAFTS) instanceof ListTag drafts)
-                || drafts.size() > MagicSafetyCeilings.MAX_PLAYER_DRAFTS) {
+                || !PlayerSkillAttachmentPersistenceBridge.draftCountWithinLimit(drafts.size())) {
             return rejected(PlayerSkillAttachmentMigrationFailure.Code.ENVELOPE_MALFORMED, sourceVersion, "");
         }
         var tree = new CompoundTag();

@@ -901,19 +901,13 @@ verify_b2_sources_and_outputs() {
             "P4-B2-B probe code leaked into production Java sources (${literal})"
     done
 
-    # P4-C1 phase-local: its bounded physical model and total serializer may be present in main.
-    # Registration, player lifecycle mutation, composition, roots, and networking remain absent.
+    # P4-C2-A phase-local: exact registration, controlled player mutation, prepared transition,
+    # and per-player roots are reviewed by its own portable verifier. Later composition,
+    # offline-root, manual-clone, and networking surfaces remain absent.
     for literal in \
-        'AttachmentType' \
-        '.copyOnDeath()' \
-        'ServerPlayer' \
         'PlayerEvent' \
-        '.getData(' \
-        '.setData(' \
-        'PreparedPlayerSkillTransition' \
         'PendingAttachmentJournal' \
         'SkillDefinitionSubmissionService' \
-        'RootProjection' \
         'OfflineRoot' \
         'CustomPacketPayload' \
         'PayloadRegistrar' \
@@ -921,8 +915,13 @@ verify_b2_sources_and_outputs() {
         forbid_fixed_in_file_list \
             "${PRODUCTION_SOURCE_LIST}" \
             "${literal}" \
-            "P4-C2 or later production surface appeared during P4-C1 (${literal})"
+            "P4-C2-A or later forbidden composition/network surface appeared (${literal})"
     done
+    require_regular_file \
+        'scripts/verify-p4-c2-a-configuration.sh' \
+        'P4-C2-A portable configuration verifier is missing'
+    [[ -x scripts/verify-p4-c2-a-configuration.sh ]] \
+        || fail 'P4-C2-A portable configuration verifier is not executable'
 
     for literal in NoClassDefFoundError LinkageError Error; do
         forbid_ere_in_file_list \

@@ -9,9 +9,12 @@ import net.minecraft.nbt.Tag;
 import net.neoforged.neoforge.attachment.IAttachmentHolder;
 import net.neoforged.neoforge.attachment.IAttachmentSerializer;
 
-/** Unregistered P4-C1 total serializer for any per-attachment Tag root delivered by NeoForge. */
+/** Total serializer for any per-attachment Tag root delivered by NeoForge. */
 final class PlayerSkillAttachmentSerializer
         implements IAttachmentSerializer<Tag, PlayerSkillAttachmentState> {
+    static final PlayerSkillAttachmentSerializer INSTANCE =
+            new PlayerSkillAttachmentSerializer();
+
     private final PlayerSkillAttachmentPersistenceBridge persistence;
 
     PlayerSkillAttachmentSerializer() {

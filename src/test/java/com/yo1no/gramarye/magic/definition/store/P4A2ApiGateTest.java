@@ -180,7 +180,7 @@ class P4A2ApiGateTest {
     }
 
     @Test
-    void productionStoreMigrationPlanHasOneProviderAndNoC2LifecycleOrProbeTypes()
+    void productionStoreMigrationPlanHasOneProviderAndNoLaterCompositionOrProbeTypes()
             throws Exception {
         var planSource = read(STORE_ROOT.resolve("StorePersistenceMigrationPlan.java"));
         var allSource = productionSources(MAIN_JAVA).stream()
@@ -192,12 +192,9 @@ class P4A2ApiGateTest {
                         "static StorePersistenceMigrationPlan production()")),
                 () -> assertEquals(1, occurrences(planSource,
                         "private static final StorePersistenceMigrationPlan PRODUCTION")),
-                // P4-C1 phase-local: its physical state/serializer and sole Draft facade are
-                // reviewed production. Registration, lifecycle, and composition remain absent.
+                // P4-C2-A phase-local: its exact registration/service lifecycle is reviewed
+                // production. Journal/composition and isolated probe code remain absent.
                 () -> assertTrue(List.of(
-                                "PlayerSkillAttachmentRegistration",
-                                "PlayerSkillAttachmentService",
-                                "PreparedPlayerSkillTransition",
                                 "PendingAttachmentJournal", "P4A3HeapProbeMain",
                                 "P4A3CarrierGameTests")
                         .stream().noneMatch(allSource::contains)));

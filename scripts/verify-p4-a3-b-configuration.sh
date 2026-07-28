@@ -312,20 +312,13 @@ main() {
             'P4-B2-A production code bypassed the reviewed strict gzip boundary'
     done
 
-    # P4-C1 phase-local: the bounded player Attachment physical model and total serializer are
-    # reviewed production. Registration, player mutation, lifecycle, composition, roots, and
-    # network surfaces remain later-phase domains.
+    # P4-C2-A phase-local: exact Attachment registration, controlled ServerPlayer mutation,
+    # prepared transition, and per-player roots are reviewed by the portable C2-A verifier.
+    # Manual clone hooks, journal/composition, offline roots, and networking remain forbidden.
     for literal in \
-        'AttachmentType' \
-        '.copyOnDeath()' \
-        'ServerPlayer' \
         'PlayerEvent' \
-        '.getData(' \
-        '.setData(' \
-        'PreparedPlayerSkillTransition' \
         'PendingAttachmentJournal' \
         'SkillDefinitionSubmissionService' \
-        'RootProjection' \
         'OfflineRoot' \
         'CustomPacketPayload' \
         'PayloadRegistrar' \
@@ -333,8 +326,10 @@ main() {
         forbid_fixed_in_file_list \
             "${SOURCE_FILE_LIST}" \
             "${literal}" \
-            'P4-C2 or later lifecycle/composition types appeared before their phase'
+            'P4-C2-A or later forbidden composition/network surface appeared in production'
     done
+    test -x scripts/verify-p4-c2-a-configuration.sh \
+        || fail 'P4-C2-A portable configuration verifier is missing or not executable'
 
     test -f build/classes/java/p4A3Probe/com/yo1no/gramarye/magic/definition/store/P4A3HeapProbeMain.class
     test -f build/classes/java/p4A3GameTest/com/yo1no/gramarye/magic/definition/store/P4A3CarrierGameTests.class

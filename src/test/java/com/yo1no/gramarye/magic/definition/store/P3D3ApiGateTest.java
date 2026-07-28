@@ -451,11 +451,12 @@ class P3D3ApiGateTest {
             }
         }
 
-        // P4-C1 phase-local: player/document persistence types must not be added to the Store
-        // source allowlist merely because they are now reviewed production.
+        // P4-C1/C2-A player/document types must not be added to the Store source allowlist merely
+        // because they are now reviewed production.
         assertTrue(storeSources.stream()
                 .map(path -> path.getFileName().toString())
-                .noneMatch(P4C1PhaseTypes::containsSourceFileName));
+                .noneMatch(name -> P4C1PhaseTypes.containsSourceFileName(name)
+                        || P4C2PhaseTypes.containsSourceFileName(name)));
 
         var productionNames = productionClassNames();
         assertTrue(productionNames.stream()

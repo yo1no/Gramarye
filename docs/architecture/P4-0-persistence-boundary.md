@@ -222,8 +222,9 @@ The recorded external results are PASS for `build`, `P4-A3 memory gates`, and `P
 including the exact-maximum hostile-FNAME first／restart pair and packaged runtime smoke. The P4-C
 read-only design review is complete. The P4-C0 framing conflict is resolved by the
 `NbtIo.writeAnyTag` byte-coordinate decision, and the explicit destructive-oversize quarantine
-policy closes the preservation-policy stop gate; P4-C1／C2 remain unstarted and gated until the
-complete P4-C0 authority patch is committed and remote CI passes.
+policy closes the preservation-policy stop gate. P4-C0.1 and P4-C1 are complete with their required
+remote gates passed; P4-C2-A is the current registration／domain-lifecycle implementation recorded
+below, while P4-C2-B remains unstarted.
 
 ## P4-A1 implementation ledger
 
@@ -643,8 +644,55 @@ range. Generation remains `int`／`IntTag`; `MutationGeneration` is the sole suc
 owner and returns exhausted at `Integer.MAX_VALUE`. Hard-invalid editor indexes reject Ready,
 while structurally valid stale selections are preserved.
 
-P4-C2 remains unstarted: there is no `AttachmentType` registration, `copyOnDeath`, Player／
-ServerPlayer mutation, `getData`／`setData`, lifecycle event, latest transition publication,
-P4-D journal／commit composition, P4-E root projection, offline enumeration, reconciliation,
-networking, Gradle source set, fixed-heap job, or CI change. P4-C is not complete until C2 and its
-required fixed-1-GiB quarantine lifecycle gate pass; this C1 ledger makes no remote C1 gate claim.
+## P4-C2-A implementation ledger
+
+P4-C2-A adds the sole permanent player-skill Attachment registration owner,
+`PlayerSkillAttachments`, at stable ID `gramarye:player_skills`. It uses the C1
+`IAttachmentSerializer<Tag, PlayerSkillAttachmentState>`, supplies a fresh canonical empty Ready
+identity for every platform default request, enables `copyOnDeath()` after serializer wiring, and
+has no sync handler. `Gramarye` registers it on the mod bus through the single stateless
+`PlayerSkillAttachmentService` instance held by the composition root; the Attachment type, holder,
+serializer, physical state, and carrier remain package-private.
+
+`PlayerSkillAttachmentPersistenceBridge.freshEmptyReady()` and the universal
+`rebuildReady(...)` admission seam are the only C1 additions needed by C2-A. Every rebuild repeats
+null, count, duplicate route／slot, slot-range, Draft-carrier pairing, latest pointer／generation,
+editor, canonical-order, matching-carrier, and whole-Attachment byte admission before returning a
+fresh Ready. `PlayerSkillAttachmentBuildResult` keeps rejection details inside the player package;
+the service never constructs Ready or physical NBT itself.
+
+Every service call performs a server-thread check and uses one non-installing
+`ObservedPlayerSkillAttachment` observation. Missing reads expose empty semantics without calling
+platform `getData`; failed and no-op mutations leave the holder missing; a successful mutation
+publishes one complete replacement with exactly one final `setData`. Existing PreservedRaw and
+OversizeMarker states map to distinct bounded public unavailable reasons and never become missing
+or empty Ready. Draft, equipped, and editor mutations are immutable; they do not allocate skill
+IDs, consult the Store, change latest generation, or normalize structurally valid stale editor
+metadata.
+
+Latest-pointer preparation treats a missing route as implicit empty pointer／generation zero,
+checks expected pointer and `int` generation, gives same-pointer changes a no-op token, and delegates
+the sole changed successor arithmetic to `MutationGeneration`. The opaque prepared token binds the
+exact server, authenticated player owner, and an internal original state of either Missing or exact
+Present Ready identity. Publication revalidates that identity and the expected route state; no-op
+publishes nothing, while a valid change performs one final `setData`. C2-A creates no journal,
+Store plan, commit, retry, or merge behavior.
+
+The controlled owner is always `SkillOwnerId(player.getUUID())`. The per-player root projection is
+an immutable canonical list of latest-present references followed by equipped references; Draft,
+base revision, editor, empty latest entries, and owner are excluded. Its maximum is derived from
+the already-admitted `256 + 64` entries, cross-category duplicates remain visible, and quarantine
+returns unavailable rather than an empty or complete root set. C2-A performs no offline player
+enumeration, Store lookup, reconciliation, root-completeness claim, or reclaim invocation.
+
+`PlayerSkillAttachmentGameTests` contributes two required normal GameTests, raising the normal
+total from five to seven. They exercise the registered total serializer, fresh defaults,
+non-installing missing observation, actual synchronous playerdata save／primary readback／same-UUID
+reload, and small Ready／PreservedRaw／OversizeMarker death and End-equivalent clone paths. The
+default NeoForge serializer-write／serializer-read copy path produces a fresh state identity for
+each clone; no manual clone handler or network synchronization is registered.
+
+P4-C2-B remains unstarted: there is no `p4C2Probe` or `p4C2GameTest` source set, fixed-1-GiB
+playerdata workload, Gradle task, or P4-C memory CI job. P4-C is not complete until C2-B and its
+required remote fixed-heap lifecycle Gate pass. P4-D journal／commit composition and P4-E offline
+root completeness remain later phases.
