@@ -265,6 +265,8 @@ class P4B1ApiGateTest {
                 "targetAttachmentGeneration",
                 "P4B2Probe",
                 "P4B2MemoryGameTests",
+                "P4C2Probe",
+                "P4C2MemoryGameTests",
                 "@SuppressWarnings");
 
         assertAll(

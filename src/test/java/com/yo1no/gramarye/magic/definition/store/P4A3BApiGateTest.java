@@ -49,10 +49,17 @@ class P4A3BApiGateTest {
                 () -> assertEquals(
                         "P4B2ProbeMain",
                         P4B2ProbeMain.class.getSimpleName()),
+                () -> assertEquals(
+                        "P4C2ProbeMain",
+                        Class.forName(
+                                "com.yo1no.gramarye.magic.definition.player.P4C2ProbeMain")
+                                .getSimpleName()),
                 () -> assertThrows(ClassNotFoundException.class, () -> Class.forName(
                         "com.yo1no.gramarye.magic.definition.store.P4A3CarrierGameTests")),
                 () -> assertThrows(ClassNotFoundException.class, () -> Class.forName(
-                        "com.yo1no.gramarye.magic.definition.store.P4B2MemoryGameTests")));
+                        "com.yo1no.gramarye.magic.definition.store.P4B2MemoryGameTests")),
+                () -> assertThrows(ClassNotFoundException.class, () -> Class.forName(
+                        "com.yo1no.gramarye.magic.definition.player.P4C2MemoryGameTests")));
     }
 
     @Test

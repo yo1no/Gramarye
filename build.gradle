@@ -31,7 +31,14 @@ def p4A3ProbeSourceSet = sourceSets.create('p4A3Probe')
 def p4A3GameTestSourceSet = sourceSets.create('p4A3GameTest')
 def p4B2ProbeSourceSet = sourceSets.create('p4B2Probe')
 def p4B2GameTestSourceSet = sourceSets.create('p4B2GameTest')
+def p4C2ProbeSourceSet = sourceSets.create('p4C2Probe')
+def p4C2GameTestSourceSet = sourceSets.create('p4C2GameTest')
 def p4B2FixedHeapJvmArgs = [
+        '-Xms512m',
+        '-Xmx1024m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
+def p4C2FixedHeapJvmArgs = [
         '-Xms512m',
         '-Xmx1024m',
         '-XX:+ExitOnOutOfMemoryError',
@@ -62,6 +69,19 @@ def p4B2GameTestResources = tasks.register('generateP4B2GameTestResources', Sync
     into(layout.buildDirectory.dir('generated/p4B2GameTestResources'))
 }
 p4B2GameTestSourceSet.resources.srcDir(p4B2GameTestResources)
+def p4C2GameTestResources = tasks.register('generateP4C2GameTestResources', Sync) {
+    dependsOn('createMinecraftArtifacts')
+    from(zipTree(layout.buildDirectory.file(
+            "moddev/artifacts/neoforge-${neo_version}-client-extra-aka-minecraft-resources.jar"))) {
+        include 'data/minecraft/structure/bastion/blocks/air.nbt'
+        eachFile { details ->
+            details.path = 'data/gramarye_p4_c2/structure/p4_c2_probe.nbt'
+        }
+        includeEmptyDirs = false
+    }
+    into(layout.buildDirectory.dir('generated/p4C2GameTestResources'))
+}
+p4C2GameTestSourceSet.resources.srcDir(p4C2GameTestResources)
 
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
@@ -88,6 +108,8 @@ neoForge {
     addModdingDependenciesTo(p4A3GameTestSourceSet)
     addModdingDependenciesTo(p4B2ProbeSourceSet)
     addModdingDependenciesTo(p4B2GameTestSourceSet)
+    addModdingDependenciesTo(p4C2ProbeSourceSet)
+    addModdingDependenciesTo(p4C2GameTestSourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -101,6 +123,7 @@ neoForge {
             sourceSet(sourceSets.main)
             sourceSet(p4A3ProbeSourceSet)
             sourceSet(p4B2ProbeSourceSet)
+            sourceSet(p4C2ProbeSourceSet)
         }
 
         // Userdev treats this name only as a source-folder group. The main resources in this
@@ -118,12 +141,19 @@ neoForge {
             sourceSet(p4B2ProbeSourceSet)
             sourceSet(p4B2GameTestSourceSet)
         }
+
+        p4C2HeapProbe {
+            sourceSet(sourceSets.main)
+            sourceSet(p4C2ProbeSourceSet)
+            sourceSet(p4C2GameTestSourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
     def p4A3ProbeTestMod = mods.named('p4A3ProbeTestSupport').get()
     def p4A3ProbeMod = mods.named('p4A3HeapProbe').get()
     def p4B2ProbeMod = mods.named('p4B2HeapProbe').get()
+    def p4C2ProbeMod = mods.named('p4C2HeapProbe').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -278,6 +308,72 @@ neoForge {
             taskBefore(tasks.named(p4B2GameTestSourceSet.classesTaskName))
         }
 
+        p4C2ReadyServer {
+            type = 'gameTestServer'
+            sourceSet = p4C2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-c2/ready-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_c2'
+            systemProperty 'gramarye.p4c2.runMode', 'ready-first'
+            jvmArguments.addAll(p4C2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4C2GameTestSourceSet.classesTaskName))
+        }
+
+        p4C2ReadyRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4C2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-c2/ready-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_c2'
+            systemProperty 'gramarye.p4c2.runMode', 'ready-restart'
+            jvmArguments.addAll(p4C2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4C2GameTestSourceSet.classesTaskName))
+        }
+
+        p4C2PreservedRawServer {
+            type = 'gameTestServer'
+            sourceSet = p4C2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-c2/preserved-raw-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_c2'
+            systemProperty 'gramarye.p4c2.runMode', 'preserved-raw-first'
+            jvmArguments.addAll(p4C2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4C2GameTestSourceSet.classesTaskName))
+        }
+
+        p4C2PreservedRawRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4C2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-c2/preserved-raw-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_c2'
+            systemProperty 'gramarye.p4c2.runMode', 'preserved-raw-restart'
+            jvmArguments.addAll(p4C2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4C2GameTestSourceSet.classesTaskName))
+        }
+
+        p4C2OversizeServer {
+            type = 'gameTestServer'
+            sourceSet = p4C2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-c2/oversize-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_c2'
+            systemProperty 'gramarye.p4c2.runMode', 'oversize-first'
+            jvmArguments.addAll(p4C2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4C2GameTestSourceSet.classesTaskName))
+        }
+
+        p4C2OversizeRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4C2GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-c2/oversize-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_c2'
+            systemProperty 'gramarye.p4c2.runMode', 'oversize-restart'
+            jvmArguments.addAll(p4C2FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4C2GameTestSourceSet.classesTaskName))
+        }
+
         data {
             data()
 
@@ -292,7 +388,8 @@ neoForge {
         configureEach {
             loadedMods.set([name == 'p4A3HeapProbeServer'
                     ? p4A3ProbeMod
-                    : name.startsWith('p4B2') ? p4B2ProbeMod : productionMod])
+                    : name.startsWith('p4B2') ? p4B2ProbeMod
+                    : name.startsWith('p4C2') ? p4C2ProbeMod : productionMod])
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -356,8 +453,12 @@ dependencies {
     add(p4B2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p4B2GameTestSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
     add(p4B2GameTestSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
+    add(p4C2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4C2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4C2GameTestSourceSet.implementationConfigurationName, p4C2ProbeSourceSet.output)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
+    testImplementation p4C2ProbeSourceSet.output
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.4'
@@ -843,6 +944,208 @@ tasks.register('p4B2FixedHeapGate') {
             p4B2InvalidRestartGate)
 }
 
+def p4C2ReadyGameDirectory = layout.buildDirectory.dir('p4-c2/ready-world')
+def p4C2PreservedRawGameDirectory =
+        layout.buildDirectory.dir('p4-c2/preserved-raw-world')
+def p4C2OversizeGameDirectory = layout.buildDirectory.dir('p4-c2/oversize-world')
+
+def resetP4C2Worlds = tasks.register('resetP4C2Worlds', Delete) {
+    delete(layout.buildDirectory.dir('p4-c2'))
+}
+
+// Reuse the sole reviewed P4-B2 full Store builder in the same world that will carry the
+// exact-limit PreservedRaw player Attachment. The C2 builder runs second and must retain it.
+def prepareP4C2PreservedStore = tasks.register(
+        'prepareP4C2PreservedStore', JavaExec) {
+    group = 'verification'
+    description = 'Installs the reviewed full-size noncanonical P4-B2 Store in the C2 preserved world.'
+    dependsOn(
+            resetP4C2Worlds,
+            tasks.named(p4B2ProbeSourceSet.classesTaskName))
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4B2ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    args(
+            'prepare-full',
+            p4C2PreservedRawGameDirectory.get().asFile.absolutePath)
+    jvmArgs(p4C2FixedHeapJvmArgs)
+    timeout.set(java.time.Duration.ofSeconds(300))
+    outputs.upToDateWhen { false }
+}
+
+def prepareP4C2Worlds = tasks.register('prepareP4C2Worlds', JavaExec) {
+    group = 'verification'
+    description = 'Rebuilds the three deterministic P4-C2 playerdata worlds and bounded manifests.'
+    dependsOn(
+            prepareP4C2PreservedStore,
+            tasks.named(p4C2ProbeSourceSet.classesTaskName))
+    mustRunAfter(prepareP4C2PreservedStore)
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4C2ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.player.P4C2ProbeMain')
+    args(
+            'prepare-worlds',
+            p4C2ReadyGameDirectory.get().asFile.absolutePath,
+            p4C2PreservedRawGameDirectory.get().asFile.absolutePath,
+            p4C2OversizeGameDirectory.get().asFile.absolutePath)
+    jvmArgs(p4C2FixedHeapJvmArgs)
+    timeout.set(java.time.Duration.ofSeconds(300))
+    outputs.upToDateWhen { false }
+}
+
+def registerP4C2FileVerifier = {
+        String taskName, String command, Provider<Directory> gameDirectory ->
+    tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        description = "Strictly verifies P4-C2 playerdata after ${command}."
+        dependsOn(tasks.named(p4C2ProbeSourceSet.classesTaskName))
+        javaLauncher.set(p4A3JavaLauncher)
+        classpath = p4C2ProbeSourceSet.runtimeClasspath
+        mainClass.set('com.yo1no.gramarye.magic.definition.player.P4C2ProbeMain')
+        args(command, gameDirectory.get().asFile.absolutePath)
+        jvmArgs(p4C2FixedHeapJvmArgs)
+        timeout.set(java.time.Duration.ofSeconds(180))
+        outputs.upToDateWhen { false }
+    }
+}
+
+def verifyP4C2ReadyFirst = registerP4C2FileVerifier(
+        'verifyP4C2ReadyFirst', 'verify-ready-first', p4C2ReadyGameDirectory)
+def verifyP4C2ReadyRestart = registerP4C2FileVerifier(
+        'verifyP4C2ReadyRestart', 'verify-ready-restart', p4C2ReadyGameDirectory)
+def verifyP4C2PreservedRawFirst = registerP4C2FileVerifier(
+        'verifyP4C2PreservedRawFirst',
+        'verify-preserved-raw-first',
+        p4C2PreservedRawGameDirectory)
+def verifyP4C2PreservedRawRestart = registerP4C2FileVerifier(
+        'verifyP4C2PreservedRawRestart',
+        'verify-preserved-raw-restart',
+        p4C2PreservedRawGameDirectory)
+def verifyP4C2OversizeFirst = registerP4C2FileVerifier(
+        'verifyP4C2OversizeFirst', 'verify-oversize-first', p4C2OversizeGameDirectory)
+def verifyP4C2OversizeRestart = registerP4C2FileVerifier(
+        'verifyP4C2OversizeRestart',
+        'verify-oversize-restart',
+        p4C2OversizeGameDirectory)
+
+def runP4C2ReadyServer = tasks.named('runP4C2ReadyServer', JavaExec)
+def runP4C2ReadyRestartServer = tasks.named('runP4C2ReadyRestartServer', JavaExec)
+def runP4C2PreservedRawServer = tasks.named('runP4C2PreservedRawServer', JavaExec)
+def runP4C2PreservedRawRestartServer =
+        tasks.named('runP4C2PreservedRawRestartServer', JavaExec)
+def runP4C2OversizeServer = tasks.named('runP4C2OversizeServer', JavaExec)
+def runP4C2OversizeRestartServer = tasks.named('runP4C2OversizeRestartServer', JavaExec)
+
+[
+        runP4C2ReadyServer,
+        runP4C2ReadyRestartServer,
+        runP4C2PreservedRawServer,
+        runP4C2PreservedRawRestartServer,
+        runP4C2OversizeServer,
+        runP4C2OversizeRestartServer,
+].each { taskProvider ->
+    taskProvider.configure {
+        javaLauncher.set(p4A3JavaLauncher)
+        timeout.set(java.time.Duration.ofSeconds(600))
+    }
+}
+
+runP4C2ReadyServer.configure {
+    dependsOn(prepareP4C2Worlds)
+    finalizedBy(verifyP4C2ReadyFirst)
+}
+verifyP4C2ReadyFirst.configure {
+    mustRunAfter(runP4C2ReadyServer)
+}
+runP4C2ReadyRestartServer.configure {
+    dependsOn(runP4C2ReadyServer, verifyP4C2ReadyFirst)
+    mustRunAfter(verifyP4C2ReadyFirst)
+    finalizedBy(verifyP4C2ReadyRestart)
+}
+verifyP4C2ReadyRestart.configure {
+    mustRunAfter(runP4C2ReadyRestartServer)
+}
+
+runP4C2PreservedRawServer.configure {
+    dependsOn(runP4C2ReadyRestartServer, verifyP4C2ReadyRestart)
+    mustRunAfter(verifyP4C2ReadyRestart)
+    finalizedBy(verifyP4C2PreservedRawFirst)
+}
+verifyP4C2PreservedRawFirst.configure {
+    mustRunAfter(runP4C2PreservedRawServer)
+}
+runP4C2PreservedRawRestartServer.configure {
+    dependsOn(runP4C2PreservedRawServer, verifyP4C2PreservedRawFirst)
+    mustRunAfter(verifyP4C2PreservedRawFirst)
+    finalizedBy(verifyP4C2PreservedRawRestart)
+}
+verifyP4C2PreservedRawRestart.configure {
+    mustRunAfter(runP4C2PreservedRawRestartServer)
+}
+
+runP4C2OversizeServer.configure {
+    dependsOn(runP4C2PreservedRawRestartServer, verifyP4C2PreservedRawRestart)
+    mustRunAfter(verifyP4C2PreservedRawRestart)
+    finalizedBy(verifyP4C2OversizeFirst)
+}
+verifyP4C2OversizeFirst.configure {
+    mustRunAfter(runP4C2OversizeServer)
+}
+runP4C2OversizeRestartServer.configure {
+    dependsOn(runP4C2OversizeServer, verifyP4C2OversizeFirst)
+    mustRunAfter(verifyP4C2OversizeFirst)
+    finalizedBy(verifyP4C2OversizeRestart)
+}
+verifyP4C2OversizeRestart.configure {
+    mustRunAfter(runP4C2OversizeRestartServer)
+}
+
+def verifyP4C2AConfiguration = tasks.register(
+        'verifyP4C2AConfiguration', Exec) {
+    group = 'verification'
+    description = 'Rechecks the P4-C2-A production registration and service boundary.'
+    dependsOn(tasks.named('jar'))
+    inputs.file(layout.projectDirectory.file('scripts/verify-p4-c2-a-configuration.sh'))
+    inputs.files(fileTree('src/main/java') { include '**/*.java' })
+    workingDir(layout.projectDirectory)
+    commandLine(
+            'bash',
+            layout.projectDirectory.file(
+                    'scripts/verify-p4-c2-a-configuration.sh').asFile.absolutePath)
+}
+
+def verifyP4C2Configuration = tasks.register(
+        'verifyP4C2Configuration', Exec) {
+    group = 'verification'
+    description = 'Verifies P4-C2 source sets, serialized fixed-heap tasks, CI, and JAR isolation.'
+    dependsOn(
+            verifyP4B2Configuration,
+            verifyP4C2AConfiguration,
+            tasks.named('jar'),
+            tasks.named(p4C2ProbeSourceSet.classesTaskName),
+            tasks.named(p4C2GameTestSourceSet.classesTaskName))
+    inputs.file(layout.projectDirectory.file('build.gradle'))
+    inputs.file(layout.projectDirectory.file('.github/workflows/build.yml'))
+    inputs.file(layout.projectDirectory.file('scripts/verify-p4-c2-b-configuration.sh'))
+    inputs.files(fileTree('src/main/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4C2Probe/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4C2GameTest/java') { include '**/*.java' })
+    workingDir(layout.projectDirectory)
+    commandLine(
+            'bash',
+            layout.projectDirectory.file(
+                    'scripts/verify-p4-c2-b-configuration.sh').asFile.absolutePath)
+}
+
+tasks.register('p4C2FixedHeapGate') {
+    group = 'verification'
+    description = 'Runs all six serialized P4-C2 fixed-heap playerdata lifecycle processes.'
+    dependsOn(
+            verifyP4C2Configuration,
+            runP4C2OversizeRestartServer,
+            verifyP4C2OversizeRestart)
+}
+
 tasks.named('test', Test).configure {
     useJUnitPlatform()
 }
@@ -904,6 +1207,12 @@ tasks.named(p4B2ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4B2GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4C2ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4C2GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 
@@ -1082,4 +1391,5 @@ tasks.named('check').configure {
     dependsOn tasks.named('verifyPlatformBaseline')
     dependsOn verifyP4A3BConfiguration
     dependsOn verifyP4B2Configuration
+    dependsOn verifyP4C2Configuration
 }

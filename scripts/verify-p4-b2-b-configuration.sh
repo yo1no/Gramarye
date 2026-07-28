@@ -411,7 +411,8 @@ verify_b2_build_contracts() {
         'sourceSet(p4B2ProbeSourceSet)' \
         'sourceSet(p4B2GameTestSourceSet)' \
         "mods.named('p4B2HeapProbe')" \
-        "name.startsWith('p4B2') ? p4B2ProbeMod : productionMod" \
+        "name.startsWith('p4B2') ? p4B2ProbeMod" \
+        "name.startsWith('p4C2') ? p4C2ProbeMod : productionMod" \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)' \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)' \
         'add(p4B2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)' \
@@ -507,13 +508,13 @@ verify_b2_build_contracts() {
     require_ere_count \
         build.gradle \
         'timeout\.set\(java\.time\.Duration\.ofSeconds\(600\)\)' \
-        5 \
-        'The four full-size runs and packaged-runtime smoke must retain 600-second task timeouts'
+        6 \
+        'The four P4-B full-size runs, packaged smoke, and reviewed C2 successor chain must retain 600-second timeout declarations'
     require_ere_count \
         build.gradle \
         'timeout\.set\(java\.time\.Duration\.ofSeconds\(300\)\)' \
-        4 \
-        'The existing A3 run, two B2 full preparations, and six B2 invalid runs must retain 300-second task timeouts'
+        6 \
+        'The existing A3/P4-B declarations and two reviewed C2 preparations must retain 300-second timeout declarations'
     for literal in \
         'runP4B2MalformedServer,' \
         'runP4B2MalformedRestartServer,' \
@@ -894,7 +895,10 @@ verify_b2_sources_and_outputs() {
         'P4B2' \
         'p4B2Probe' \
         'p4B2GameTest' \
-        'gramarye_p4_b2'; do
+        'gramarye_p4_b2' \
+        'P4C2Probe' \
+        'P4C2MemoryGameTests' \
+        '"gramarye_p4_c2"'; do
         forbid_fixed_in_file_list \
             "${PRODUCTION_SOURCE_LIST}" \
             "${literal}" \
@@ -988,7 +992,11 @@ verify_production_jar_isolation() {
             'P4B2' \
             'p4B2Probe' \
             'p4B2GameTest' \
-            'gramarye_p4_b2'; do
+            'gramarye_p4_b2' \
+            'P4C2' \
+            'p4C2Probe' \
+            'p4C2GameTest' \
+            'gramarye_p4_c2'; do
             forbid_fixed \
                 "${JAR_LISTING}" \
                 "${literal}" \

@@ -320,8 +320,8 @@ class P4C1ApiGateTest {
             }
         }
 
-        // Keep the exact C1 files isolated from registration, Player mutation, lifecycle, P4-D/E,
-        // and network even after those reviewed C2-A files join the same package.
+        // Keep exact C1 files isolated from registration, lifecycle, P4-D/E, network, and every
+        // C2-B fixture even after C2-A production joins the package and C2-B joins test roots.
         for (var forbidden : List.of(
                 "AttachmentType",
                 "copyOnDeath",
@@ -345,7 +345,9 @@ class P4C1ApiGateTest {
                 "StreamCodec",
                 "PayloadRegistrar",
                 "PacketDistributor",
-                "net.minecraft.client")) {
+                "net.minecraft.client",
+                "P4C2Probe",
+                "P4C2MemoryGameTests")) {
             assertFalse(joined.contains(forbidden), () -> "P4-C1 source contains " + forbidden);
         }
         assertAll(
@@ -355,8 +357,8 @@ class P4C1ApiGateTest {
                 () -> assertTrue(fixtures.isEmpty(), () -> "Production fixtures: " + fixtures),
                 () -> assertFalse(read(PROJECT_ROOT.resolve("build.gradle"))
                         .contains("p4C1")),
-                () -> assertFalse(read(PROJECT_ROOT.resolve(".github/workflows/build.yml"))
-                        .contains("p4-c-memory")));
+                () -> assertTrue(read(PROJECT_ROOT.resolve(".github/workflows/build.yml"))
+                        .contains("  p4-c-memory-gates:\n    name: P4-C memory gates")));
     }
 
     private static List<Path> reviewedSources() throws Exception {

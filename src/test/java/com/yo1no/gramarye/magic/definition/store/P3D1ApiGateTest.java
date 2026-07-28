@@ -181,7 +181,8 @@ class P3D1ApiGateTest {
                 .filter(name -> name.startsWith(STORE_PACKAGE))
                 .map(P3D1ApiGateTest::simpleTopLevelName)
                 .filter(name -> P4C1PhaseTypes.containsTopLevelName(name)
-                        || P4C2PhaseTypes.containsTopLevelName(name))
+                        || P4C2PhaseTypes.containsTopLevelName(name)
+                        || P4C2BPhaseTypes.containsTopLevelName(name))
                 .collect(Collectors.toSet());
         var forbiddenTypeDeclarations = List.of(
                 "SkillDefinitionSubmissionService",
@@ -198,8 +199,7 @@ class P3D1ApiGateTest {
                 () -> assertTrue(forbiddenTypeDeclarations.stream().noneMatch(name ->
                         allProduction.stream().anyMatch(className ->
                                 simpleTopLevelName(className).equals(name)))),
-                // P4-C1/C2-A exact types live only in player/document, never in the P3-D Store
-                // package or its reviewed post-P3-D allowlist.
+                // C1/C2-A production stays in player/document; C2-B remains test-only.
                 () -> assertTrue(misplacedPostP3Types.isEmpty(),
                         () -> "P4-C types in Store package: " + misplacedPostP3Types),
                 () -> assertTrue(storeTypes.stream().allMatch(P3D1ApiGateTest::hasOnlyD1SurfaceTypes)),

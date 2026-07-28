@@ -254,7 +254,7 @@ class P4C2AApiGateTest {
     }
 
     @Test
-    void c2ASourcesKeepLaterCompositionNetworkAndC2BInfrastructureAbsent()
+    void c2ASourcesKeepLaterCompositionAbsentWhileC2BStaysTestOnly()
             throws Exception {
         var c2Source = P4C2PhaseTypes.PLAYER_SOURCE_FILE_NAMES.stream()
                 .map(PLAYER_ROOT::resolve)
@@ -306,12 +306,14 @@ class P4C2AApiGateTest {
                 () -> assertFalse(c2Source.contains(".sync(")),
                 () -> assertFalse(allProduction.contains("p4C2Probe")),
                 () -> assertFalse(allProduction.contains("p4C2GameTest")),
-                () -> assertFalse(build.contains("p4C2Probe")),
-                () -> assertFalse(build.contains("p4C2GameTest")),
-                () -> assertFalse(build.contains("p4C2FixedHeapGate")),
-                () -> assertFalse(workflow.contains("p4-c-memory-gates")),
-                () -> assertFalse(Files.exists(PROJECT_ROOT.resolve("src/p4C2Probe"))),
-                () -> assertFalse(Files.exists(PROJECT_ROOT.resolve("src/p4C2GameTest"))));
+                () -> assertTrue(build.contains("sourceSets.create('p4C2Probe')")),
+                () -> assertTrue(build.contains("sourceSets.create('p4C2GameTest')")),
+                () -> assertTrue(build.contains("p4C2FixedHeapGate")),
+                () -> assertTrue(workflow.contains("p4-c-memory-gates:")),
+                () -> assertTrue(Files.isDirectory(
+                        PROJECT_ROOT.resolve("src/p4C2Probe/java"))),
+                () -> assertTrue(Files.isDirectory(
+                        PROJECT_ROOT.resolve("src/p4C2GameTest/java"))));
     }
 
     @Test

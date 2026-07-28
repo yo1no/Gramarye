@@ -34,9 +34,10 @@ This page is a compact phase boundary, not a second persistence specification.
 - P4-C1 owns physical V0, the bounded total serializer, Ready／PreservedRaw／OversizeMarker, Draft
   persistence／migration, exact bounds, and the prebuilt Ready carrier; it owns no registration or
   player mutation lifecycle.
-- P4-C2 owns Attachment registration, the immutable `setData` service, generation transition,
-  death／End lifecycle, the controlled P4-D transition seam, bounded per-player P4-E root projection,
-  GameTests, the fixed-heap gate, and phase gates.
+- P4-C2-A owns Attachment registration, the immutable `setData` service, generation transition,
+  the controlled P4-D transition seam, bounded per-player P4-E root projection, and normal lifecycle
+  GameTests. P4-C2-B owns only the isolated fixed-heap playerdata／restart／death／End probes,
+  external verifiers, task／CI wiring, and phase gates.
 - P4-D owns authenticated submission composition, invocation of A3 prospective Store builders,
   prospective journal replacement, commit-oriented persistence preflight, Store commit, carrier／
   journal publication, Attachment transition, typed outcome, and crash recovery.
@@ -223,8 +224,9 @@ including the exact-maximum hostile-FNAME first／restart pair and packaged runt
 read-only design review is complete. The P4-C0 framing conflict is resolved by the
 `NbtIo.writeAnyTag` byte-coordinate decision, and the explicit destructive-oversize quarantine
 policy closes the preservation-policy stop gate. P4-C0.1 and P4-C1 are complete with their required
-remote gates passed; P4-C2-A is the current registration／domain-lifecycle implementation recorded
-below, while P4-C2-B remains unstarted.
+remote gates passed, and P4-C2-A is complete as the registration／domain-lifecycle implementation
+recorded below. P4-C2-B has passed its local fixed-heap Gate; its required remote `P4-C memory gates`
+result remains pending, so P4-C remains incomplete and P4-D remains blocked.
 
 ## P4-A1 implementation ledger
 
@@ -692,7 +694,70 @@ reload, and small Ready／PreservedRaw／OversizeMarker death and End-equivalent
 default NeoForge serializer-write／serializer-read copy path produces a fresh state identity for
 each clone; no manual clone handler or network synchronization is registered.
 
-P4-C2-B remains unstarted: there is no `p4C2Probe` or `p4C2GameTest` source set, fixed-1-GiB
-playerdata workload, Gradle task, or P4-C memory CI job. P4-C is not complete until C2-B and its
-required remote fixed-heap lifecycle Gate pass. P4-D journal／commit composition and P4-E offline
-root completeness remain later phases.
+## P4-C2-B fixed-heap lifecycle ledger
+
+P4-C2-B adds only test infrastructure. `p4C2Probe` owns deterministic worlds, bounded manifests,
+logical-tree／payload checksums, fixture preparation, and external strict playerdata verification;
+`p4C2GameTest` owns the single property-dispatched dedicated holder and actual player lifecycle.
+Every dedicated run loads exactly main + those two source sets under namespace
+`gramarye_p4_c2`; neither source set nor its generated structure enters runtime publication or the
+production JAR. The worlds are `build/p4-c2/ready-world`, `preserved-raw-world`, and
+`oversize-world`. The preserved world alone reuses the existing P4-B2 full noncanonical Store
+builder through its separate preparation process; the six C2 servers do not load P4-A3／P4-B2 probe
+classes.
+
+The exact raw payloads are `16_777_211` bytes for a complete `writeAnyTag` count of `16_777_216`,
+and `16_777_212` bytes for the first rejected count of `16_777_217`. The latter saves as the exact
+`142`-byte canonical OversizeMarker. Ready contains the reviewed mixed JSON／NBT Draft with
+RegistryOps context, present and explicit-empty latest routes, two equipped slots, and stale but
+structurally valid editor metadata. Each first and restart process performed synchronous
+`PlayerList.saveAll()` followed by finite strict readback, one actual death respawn, and one actual
+End non-death return. Each path observed exactly one clone and one respawn event, produced a fresh
+Attachment state identity, retained its variant, wrote and strictly read back a phase-specific
+non-Attachment witness, and required no sleep or direct serializer substitute. PreservedRaw
+additionally proved deep-copy alias isolation.
+
+The local fixed-heap run used Java 21 with `-Xms512m -Xmx1024m` and
+`-XX:+ExitOnOutOfMemoryError`; all six processes completed their single required GameTest and their
+external verifier:
+
+| Process | State | Attachment bytes | Playerdata compressed bytes | Heap peak bytes | Pool peak sum | Elapsed ms | Attachment checksum witness |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Ready first | Ready | 1,199 | 1,276 | 455,911,424 | 500,475,904 | 1,186 | `10a2b5a1171a6277` |
+| Ready restart | Ready | 1,199 | 1,278 | 457,362,624 | 495,635,648 | 949 | `10a2b5a1171a6277` |
+| PreservedRaw first | PreservedRaw | 16,777,216 | 2,157,869 | 963,910,032 | 1,387,726,256 | 4,228 | `e8ba519155fe9501` |
+| PreservedRaw restart | PreservedRaw | 16,777,216 | 2,157,870 | 962,181,784 | 1,467,973,528 | 3,435 | `e8ba519155fe9501` |
+| Oversize first | OversizeMarker | 142 | 927 | 455,606,272 | 530,579,456 | 1,021 | `125b1abac92c9935` |
+| Oversize restart | OversizeMarker | 142 | 924 | 468,832,192 | 492,425,152 | 959 | `125b1abac92c9935` |
+
+Every process reported `heap_max = 1_073_741_824` and initial committed heap
+`536_870_912`. `heap_pool_peak_sum` is the sum of each heap pool's independently observed peak;
+those peaks need not be simultaneous, so that diagnostic is not compared directly with Xmx. The
+sampled whole-heap peak is the Xmx-relevant value in the table.
+
+The full PreservedRaw process simultaneously retained and rewrote the P4-B Store carrier at
+`66_060_348` bytes, 8 histories, and 64 revisions. First load required rewrite and dirty save;
+restart was canonical, clean Ready. Both phases produced Store checksum witness
+`2fc9d556e5189b2b` (full SHA-256
+`2fc9d556e5189b2b6087feb4287cf7fc781a11d810939a62450511829de4b30a`). The exact raw payload
+checksum is `92dc83c6b53f0c69c481820911eb246d49d6c88413b511eee342eb92d85210fb`;
+Ready's canonical logical-tree checksum is
+`10a2b5a1171a62773a40edb6ae47d642abf3934a523564ad83edee1eb42c43a1`; and the marker checksum is
+`125b1abac92c99354f91ef26014eb8bca6fb51ba899f8659924ccd8ffd448c8d`.
+
+The serialized task chain is prepare → Ready first／verify／restart／verify → PreservedRaw
+first／verify／restart／verify → Oversize first／verify／restart／verify. Portable configuration and
+JAR gates are exposed through `verifyP4C2Configuration`; the aggregate local workload is
+`p4C2FixedHeapGate`. CI adds the required-on-failure `P4-C memory gates` job after `build`,
+`P4-A3 memory gates`, and `P4-B memory gates`, with no conditional or allow-failure escape.
+
+```text
+P4-C2-A local/remote prerequisites = COMPLETE
+P4-C2-B local fixed-heap Gate       = PASS
+P4-C memory gates remote            = PENDING
+P4-C                                = INCOMPLETE
+P4-D                                = BLOCKED
+```
+
+P4-C cannot be declared complete until the required remote `P4-C memory gates` job passes. P4-D
+journal／commit composition and P4-E offline root completeness remain later phases.

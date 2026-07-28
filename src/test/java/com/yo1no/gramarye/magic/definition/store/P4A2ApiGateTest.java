@@ -192,11 +192,12 @@ class P4A2ApiGateTest {
                         "static StorePersistenceMigrationPlan production()")),
                 () -> assertEquals(1, occurrences(planSource,
                         "private static final StorePersistenceMigrationPlan PRODUCTION")),
-                // P4-C2-A phase-local: its exact registration/service lifecycle is reviewed
-                // production. Journal/composition and isolated probe code remain absent.
+                // P4-C2-A phase-local production is reviewed; C2-B remains test-only.
+                // Journal/composition and every isolated probe holder remain absent from main.
                 () -> assertTrue(List.of(
                                 "PendingAttachmentJournal", "P4A3HeapProbeMain",
-                                "P4A3CarrierGameTests")
+                                "P4A3CarrierGameTests", "P4C2ProbeMain",
+                                "P4C2MemoryGameTests")
                         .stream().noneMatch(allSource::contains)));
     }
 

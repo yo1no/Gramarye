@@ -2,7 +2,10 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import java.util.Set;
 
-/** Exact P4-C2-A production allowlist shared by its gate and legacy phase boundaries. */
+/**
+ * Exact P4-C2-A production allowlist shared by its gate and legacy phase boundaries.
+ * P4-C2-B remains deliberately absent because both of its source sets are test-only.
+ */
 final class P4C2PhaseTypes {
     static final String PLAYER_PACKAGE =
             "com.yo1no.gramarye.magic.definition.player.";

@@ -97,11 +97,12 @@ class P4A1ApiGateTest {
     private static final Pattern UNCHECKED_STYLE_CAST = Pattern.compile(
             "\\(\\s*(?:Class|Codec|Collection|DataResult|Dynamic|DynamicOps|Iterable|List|Map|"
                     + "Optional|RegistryOps|Set|Stream)\\s*\\)");
-    /** P4-C2-A phase-local: registered player lifecycle is allowed; composition remains absent. */
+    /** C2-A production is allowed; C2-B fixtures and later composition remain outside main. */
     private static final Pattern FORBIDDEN_POST_C2_A_TYPE = Pattern.compile(
             "\\b(?:class|record|interface|enum)\\s+"
                     + "(?:[A-Za-z0-9_]*CarrierDelta[A-Za-z0-9_]*|"
-                    + "PendingAttachmentJournal[A-Za-z0-9_]*)\\b");
+                    + "PendingAttachmentJournal[A-Za-z0-9_]*|"
+                    + "P4C2(?:Probe|Memory)[A-Za-z0-9_]*)\\b");
     private static final Pattern PRODUCTION_FIXTURE_TYPE = Pattern.compile(
             "\\b(?:class|record|interface|enum)\\s+[A-Za-z0-9_]*(?:Test|Fixture|Fake|Dummy|Noop|Stub)\\b");
 

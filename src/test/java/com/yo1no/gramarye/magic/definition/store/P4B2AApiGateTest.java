@@ -389,7 +389,7 @@ class P4B2AApiGateTest {
     }
 
     @Test
-    void normalGameTestCountIsSevenAndB2BConfigurationIsStrictlyIsolated() throws Exception {
+    void normalGameTestCountIsSevenAndDedicatedMemorySourcesStayIsolated() throws Exception {
         var production = productionSources(MAIN_JAVA);
         var allMain = production.stream().map(P4B2AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
@@ -423,13 +423,27 @@ class P4B2AApiGateTest {
                 () -> assertTrue(build.contains("verifyp4b2configuration")),
                 () -> assertTrue(workflow.contains("p4-b-memory-gates:")),
                 () -> assertTrue(workflow.contains("name: p4-b memory gates")),
+                () -> assertTrue(build.contains("sourcesets.create('p4c2probe')")),
+                () -> assertTrue(build.contains("sourcesets.create('p4c2gametest')")),
+                () -> assertTrue(build.contains("p4c2fixedheapgate")),
+                () -> assertTrue(build.contains("verifyp4c2configuration")),
+                () -> assertTrue(workflow.contains("p4-c-memory-gates:")),
+                () -> assertTrue(workflow.contains("name: p4-c memory gates")),
                 () -> assertTrue(Files.isDirectory(
                         PROJECT_ROOT.resolve("src/p4B2Probe/java"))),
                 () -> assertTrue(Files.isDirectory(
                         PROJECT_ROOT.resolve("src/p4B2GameTest/java"))),
+                () -> assertTrue(Files.isDirectory(
+                        PROJECT_ROOT.resolve("src/p4C2Probe/java"))),
+                () -> assertTrue(Files.isDirectory(
+                        PROJECT_ROOT.resolve("src/p4C2GameTest/java"))),
                 () -> assertFalse(allMain.contains("P4B2ProbeMain")),
                 () -> assertFalse(allMain.contains("P4B2MemoryGameTests")),
-                () -> assertFalse(allMain.contains("gramarye_p4_b2")));
+                () -> assertFalse(allMain.contains("gramarye_p4_b2")),
+                () -> assertFalse(allMain.contains("P4C2ProbeMain")),
+                () -> assertFalse(allMain.contains("P4C2MemoryGameTests")),
+                () -> assertFalse(allMain.contains(
+                        "@GameTestHolder(\"gramarye_p4_c2\")")));
     }
 
     private static Set<String> publicDeclaredMethodNames(Class<?> type) {

@@ -294,7 +294,10 @@ main() {
         'P4A3CarrierGameTests' \
         'P4B2ProbeMain' \
         'P4B2MemoryGameTests' \
-        'gramarye_p4_b2'; do
+        'gramarye_p4_b2' \
+        'P4C2Probe' \
+        'P4C2MemoryGameTests' \
+        '"gramarye_p4_c2"'; do
         forbid_fixed_in_file_list \
             "${SOURCE_FILE_LIST}" \
             "${literal}" \
@@ -363,7 +366,11 @@ main() {
         'P4B2' \
         'p4B2Probe' \
         'p4B2GameTest' \
-        'gramarye_p4_b2'; do
+        'gramarye_p4_b2' \
+        'P4C2' \
+        'p4C2Probe' \
+        'p4C2GameTest' \
+        'gramarye_p4_c2'; do
         forbid_fixed \
             "${JAR_LISTING}" \
             "${literal}" \

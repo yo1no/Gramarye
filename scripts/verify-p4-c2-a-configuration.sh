@@ -261,7 +261,7 @@ verify_exact_sources_and_registration() {
         'production must never remove the permanent player skill Attachment entry'
 }
 
-verify_phase_absences_and_normal_tests() {
+verify_phase_bounds_and_normal_tests() {
     local game_tests='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java'
     local normal_count=''
 
@@ -302,16 +302,16 @@ verify_phase_absences_and_normal_tests() {
         'P4-C2-A normal holder lost the production GameTest namespace'
 
     for literal in \
-        'p4C2Probe' \
-        'p4C2GameTest' \
-        'p4C2FixedHeapGate'; do
-        forbid_fixed build.gradle "${literal}" \
-            "P4-C2-B Gradle infrastructure appeared during C2-A (${literal})"
+        "sourceSets.create('p4C2Probe')" \
+        "sourceSets.create('p4C2GameTest')" \
+        "tasks.register('p4C2FixedHeapGate')"; do
+        require_fixed build.gradle "${literal}" \
+            "P4-C2-A boundary lost reviewed test-only C2-B marker ${literal}"
     done
-    forbid_fixed .github/workflows/build.yml 'p4-c-memory-gates' \
-        'P4-C2-B CI job appeared during C2-A'
-    [[ ! -e src/p4C2Probe && ! -e src/p4C2GameTest ]] \
-        || fail 'P4-C2-B source set appeared during C2-A'
+    require_fixed .github/workflows/build.yml 'p4-c-memory-gates:' \
+        'P4-C2-A boundary lost the reviewed P4-C memory job'
+    [[ -d src/p4C2Probe/java && -d src/p4C2GameTest/java ]] \
+        || fail 'P4-C2-B isolated Java source roots are missing'
 }
 
 verify_generation_owner() {
@@ -383,7 +383,7 @@ verify_production_jar() {
 
 main() {
     verify_exact_sources_and_registration
-    verify_phase_absences_and_normal_tests
+    verify_phase_bounds_and_normal_tests
     verify_generation_owner
     verify_production_jar
     printf '%s\n' 'Verified P4-C2-A registration, ownership, lifecycle, phase, and JAR contracts.'

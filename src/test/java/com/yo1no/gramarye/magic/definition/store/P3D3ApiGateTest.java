@@ -451,12 +451,12 @@ class P3D3ApiGateTest {
             }
         }
 
-        // P4-C1/C2-A player/document types must not be added to the Store source allowlist merely
-        // because they are now reviewed production.
+        // C1/C2-A player/document production and C2-B test-only types never join Store production.
         assertTrue(storeSources.stream()
                 .map(path -> path.getFileName().toString())
                 .noneMatch(name -> P4C1PhaseTypes.containsSourceFileName(name)
-                        || P4C2PhaseTypes.containsSourceFileName(name)));
+                        || P4C2PhaseTypes.containsSourceFileName(name)
+                        || P4C2BPhaseTypes.containsSourceFileName(name)));
 
         var productionNames = productionClassNames();
         assertTrue(productionNames.stream()
