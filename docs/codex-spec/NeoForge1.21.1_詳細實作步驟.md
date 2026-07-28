@@ -245,9 +245,13 @@ P4-C1：physical V0、total serializer、bounded counting、Ready／PreservedRaw
        Draft persistence／三軸migration、exact bounds與prebuilt Ready carrier；無registration／lifecycle service
 P4-C2：Attachment registration、immutable `setData` service、唯一int generation transition、death／End、
        P4-D transition seam、P4-E bounded per-player root projection、GameTests／fixed-heap／phase gates
-P4-D：authenticated composition、調用A3 prospective Store builder、prospective journal、
-      commit-oriented preflight、P3-D commit、carrier／journal publication、Attachment transition
-      與crash recovery
+P4-D0：documentation-only journal framing／availability、policy ownership、composition與combined
+       memory authority
+P4-D1：strict journal／migration、single Store authority snapshot、窄Store submission port、
+       Store／journal preflight、opaque commit handle、publication與journal roots
+P4-D2：unique policy／SkillId providers、Draft creation、authenticated P3-C composition、
+       prepared Attachment transition與composition outcome
+P4-D3：bootstrap／login recovery、persisted-readback clear、paired restart與combined fixed-heap Gate
 P4-E：offline roots、rebuildable index、reconciliation與reclaim composition
 ```
 
@@ -493,9 +497,10 @@ Tests：missing／multiple pins、double-close、latest root、external root、u
 
 禁止：SavedData、Runtime SkillInstance implementation、Attachment、scheduler、automatic root discovery。
 
-Composition facade留給P4-D：authenticated principal → fresh authorization → 一份immutable
-quota snapshot → P3-C prepare → persistence／journal preflight → P3-D commit → Attachment
-transition。Facade不把Player／ServerPlayer傳入domain API。
+Composition facade留給P4-D：authenticated principal → single Store authority snapshot → 唯一provider
+的一份immutable quota／ValidationContext snapshot → P3-C prepare → persistence／journal preflight → final
+identity／authority recheck → P3-D commit → Attachment transition。Facade不把Player／ServerPlayer傳入
+domain API。
 
 ## P3 Definition of Done
 
@@ -513,6 +518,8 @@ P4-0只修訂權威文件；修正案提交且遠端CI通過前不得開始P4-A1
 P4-A子階段契約；該文件變更提交且遠端CI通過前不得開始P4-A2 implementation。
 P4-B0只明確化SavedData outer framing、no-journal sentinel、strict gzip與lifecycle；該文件
 變更提交且遠端CI通過前不得開始P4-B1 implementation。
+P4-D0只明確化journal physical framing、partial availability、policy ownership、composition與
+combined fixed-heap authority；該文件boundary完成前不得開始P4-D1 implementation。
 P4-C0只修訂player Attachment quarantine authority；整份文件變更提交且遠端CI通過前不得開始
 P4-C1。P4-C1完成physical／serializer Gate後才可開始P4-C2 registration／lifecycle；C1、C2與
 required remote fixed-heap Gate全部通過前，P4-C不得標記完成。
@@ -918,33 +925,61 @@ Store commit composition、journal domain／generation chain、revision allocati
 
 ## P4-D：Submission composition
 
-### 責任
+完整authority以[18號P4修正案 §§14–16](18_P4持久化與組合修正案.md#14-submission-composition)
+為準；本節只列phase execution boundary，不複製journal schema。
 
-- Facade位於submission package，從authenticated server principal導出`SkillOwnerId`，從own
-  Ready Attachment取得Draft，讀current Store owner/latest，只取得一次immutable quota
-  snapshot，再重用package-private C1～C4 preparation。
-- Preparation後fresh owner/state recheck；調用P4-A3 pure prospective Store carrier builder，
-  建立prospective journal replacement，並在live Store mutation前完成全部revision／history／
-  Store／journal／carrier capacity preflight。
-- 用同一quota snapshot呼叫P3-D commit。只有`Committed`才發布預建carrier／journal、dirty，
-  再執行Attachment immutable transition。
-- 建立獨立composition outcome；不得把`SkillSubmissionOutcome.Prepared`當Committed。取得
-  preparation report後，後續outcome保留同一warning-only report reference。
-- Store-first bounded `int` expected／target generation journal記錄changed pointer transition；target
-  successor只由P4-C checked helper提供。In-memory
-  `setData`後不立即清除，等startup／login persisted playerdata readback確認後才清除。
-- Crash recovery replay idempotent；pending target是external retention root。
+### P4-D0：Authority patch
+
+- 只修改既有authoritative Markdown與architecture ledger。
+- 鎖定`NbtIo.writeAnyTag` no-root-name journal framing、zero sentinel、1 MiB／4096座標、canonical
+  continuous chains、derived Unavailable partial availability、unique policy／SkillId ownership、Draft
+  retention、report identity與combined fixed-heap obligation。
+- 禁止Java、Gradle、tests、resources、CI與第19號修正案。
+
+### P4-D1：Journal model and Store port
+
+- 建立strict pre-materialization journal decoder／migration、canonical writer、Ready／Unavailable
+  operational state與root projection。
+- 建立single Store authority snapshot及獨立窄`SkillDefinitionStoreSubmissionPort`；public不得暴露raw
+  Store、carrier、SavedData Ready或pending bytes。
+- Prebuild prospective Store carrier、journal及SavedData inner carrier，完成all byte/count/chain/audit
+  checks，建立identity-bound opaque handle；commit恰一次，成功後publication再dirty。
+- 不建立authenticated facade、policy provider或event listener。
+
+### P4-D2：Normal submission
+
+- Facade位於submission package，從authenticated player導出owner及own Ready Attachment Draft；使用
+  single Store authority snapshot與唯一provider恰取一次的combined quota／ValidationContext snapshot。
+- `SkillDraftCreationService`是第一個production `SkillIdSource` consumer；唯一UUID adapter由
+  composition root持有。Successful submission保留Draft。
+- P3-C C1～C4 stages各恰一次。Prepared後先prepare P4-C transition，再做全部Store／journal prebuild，
+  最後在commit前fresh identity／authority recheck；normal same-pointer不commit。
+- P3-D Store `Committed`才publication carrier／journal及dirty，再publication Attachment transition。
+  Post-Prepared outcomes保留exact same report reference。
+- 不建立recovery listener或network。
+
+### P4-D3：Recovery and combined Gate
+
+- 在P4-B install完成後且正常login前bootstrap journal；malformed／future／invalid chain保留exact blob，
+  Store read／pin仍可用，但submission／recovery／production reclaim及journal roots fail closed。
+- Persisted base replay chain而不clear；persisted intermediate／final target確認並clear prefix；third state或
+  Store target invalid保留journal。只以later playerdata readback clear，不以`setData`作durability ack。
+- Paired process覆蓋replay／clear crash windows。平台可能先replace playerdata再寫SavedData，不宣稱
+  cross-file transaction或能由journal復原不存在於persisted Store的target。
+- Single-process fixed `-Xms512m -Xmx1024m -XX:+ExitOnOutOfMemoryError` Gate同時保留full current／
+  prospective Store、largest valid 4096-entry journal、SavedData deep copy與Attachment transition，完成
+  commit／save／restart／recovery／clear；既有分離memory Gates不可替代。
 
 ### Gate
 
-- Fresh authorization、quota只取一次、SkillIdSource null fail-fast、preparation／commit conflict
-  分離、preflight failure零Store mutation、opaque owner rejection、success／Attachment failure、
-  journal cap與所有crash windows、readback-confirmed clear、report identity。
+- Framing／duplicate／EOF、byte exact／+1、4096／4097、canonical／broken chain、partial availability、
+  single authority／policy snapshots、SkillId ownership、Draft retention、P3-C exactly once、report
+  `assertSame`、zero-mutation preflight、commit／Attachment outcomes、paired recovery及combined heap全部通過。
 
 ### 禁止
 
-Network、接受client owner／authorization／quota／revision／Store state、Attachment-first ordering、
-重寫P4-A2 Store／History／Revision encoding。
+Network、caller-supplied owner／authorization／quota／context／revision／Store state、Attachment-first、
+raw Store exposure、Store rollback、offline enumeration、P4-E implementation及重寫P4-A2 encoding。
 
 ## P4-E：Offline roots 與 reconciliation
 
@@ -979,12 +1014,15 @@ source implementation仍留各自後續工程階段。
 
 - P4-A1～A3、P4-B1／B2與P4-C～E各自gate及
   [18號修正案required tests](18_P4持久化與組合修正案.md#21-required-tests)通過。
-- `SkillDefinitionStore`只有一份domain truth；Overworld adapter、player Attachment與journal
-  各自遵守其單一真相／derived data邊界。
+- `SkillDefinitionStore`只有一份domain truth；Store carrier是derived encoding，P4-B exact pending blob
+  是pending transition唯一persistent truth，decoded journal state只是identity-bound operational view；
+  player Attachment遵守自己的pointer／Draft truth邊界。
 - Existing invalid data不silent empty；SavedData load failure不覆寫primary。Player Attachment
   in-bound malformed保留materialized logical tree；oversize只有第18號核准的canonical marker可
   破壞性取代原representation，restart仍必須Quarantined。
-- Store-first ordering、readback-confirmed journal clear與offline-root fail-closed均可由測試證明。
+- Store-first ordering、readback-confirmed journal clear、malformed partial availability、offline-root
+  fail-closed及single-process fixed-1-GiB combined Gate均可由測試證明；不宣稱playerdata／SavedData
+  cross-file durable atomicity。
 
 ---
 

@@ -1,12 +1,12 @@
 # P3-C skill submission decision ledger
 
-This ledger records the implemented P3-C phase seams. Architecture authority remains the approved [P3 scoped amendment §9-A](../codex-spec/17_P3資料模型修正案.md#9-a-p3-c-submission-preparation-與-p3-d-commit-邊界), the [frozen skeleton](../codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md), the [implementation contract](../codex-spec/Codex_實作總規格Prompt.md), and the [detailed phases](../codex-spec/NeoForge1.21.1_詳細實作步驟.md). The earlier [P3-C0 boundary](P3-C0-submission-boundary.md) remains in force, and the resolved Store-boundary decisions are indexed by [P3-D0](P3-D0-store-boundary.md). This is a compact decision index, not a second submission specification.
+This ledger records the implemented P3-C phase seams. Architecture authority remains the approved [P3 scoped amendment §9-A](../codex-spec/17_P3資料模型修正案.md#9-a-p3-c-submission-preparation-與-p3-d-commit-邊界), the [frozen skeleton](../codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md), the [implementation contract](../codex-spec/Codex_實作總規格Prompt.md), and the [detailed phases](../codex-spec/NeoForge1.21.1_詳細實作步驟.md). The earlier [P3-C0 boundary](P3-C0-submission-boundary.md) remains in force, the resolved Store-boundary decisions are indexed by [P3-D0](P3-D0-store-boundary.md), and the later composition handoff is indexed by [P4-D0](P4-D0-submission-journal-boundary.md). This is a compact decision index, not a second submission specification.
 
 ## C0: prepare and commit ownership
 
 - P3-C prepares an immutable, transient plan; it neither mutates Store state nor formally allocates a revision. A prepared plan is not a committed revision.
 - P3-D owns a production pure-Java Store aggregate, committed owner/history truth, atomic admission／CAS／insert, formal revision allocation, pin／unpin／reclaim, and the plan commit boundary. Store's greatest retained revision is the allocator truth and implicit root; an Attachment latest pointer is not.
-- The later composition facade acquires current authority and state, invokes P3-C prepare, then invokes P3-D commit. Neither domain boundary depends on Minecraft player classes.
+- The P4-D2 authenticated composition facade acquires one Store authority observation and the player's authoritative Draft, invokes P3-C prepare, then invokes P3-D commit through the P4-D1 narrow Store port. Neither domain boundary depends on Minecraft player classes.
 - P4 owns the sole Overworld SavedData persistence adapter, snapshot encoding, complete offline roots, dirty marking, and Store／Attachment ordering, recovery, and reconciliation; it does not reimplement P3-D domain policy.
 
 ## C1: Draft provenance and formalization
@@ -17,7 +17,7 @@ This ledger records the implemented P3-C phase seams. Architecture authority rem
 
 ## C2: identity and authority
 
-- `SkillIdSource` is the server-side mint contract. Minting is neither reservation nor authorization, and a transient mint grant is not a restart-stable submission credential.
+- `SkillIdSource` is the server-side mint contract. Minting is neither reservation nor authorization, and a transient mint grant is not a restart-stable submission credential. P4-D2's `SkillDraftCreationService` is its first production consumer; the composition root owns the sole random-UUID adapter, while P3-C retains only the pure domain port.
 - `SkillOwnerId` is pure domain identity. Its lack of a Codec or StreamCodec applies through P3-D; P4 persistence is the reviewed point for adding the one canonical UUID Codec.
 - Authoritative state is the sealed New/Existing snapshot. Optimistic base-revision conflicts are classified before C3, while identity rejection remains opaque about existence, owner, and latest revision.
 - `NOT_AUTHORIZED` and `QUOTA_EXCEEDED` are the bounded preparation-precheck vocabulary. C4 only preserves an existing rejection; it performs no quota lookup or admission decision, while P3-D Store admission remains authoritative at commit.
@@ -48,10 +48,20 @@ The one public `Invalid` variant deliberately preserves three report shapes with
 
 ### Plan lifetime and commit handoff
 
-A plan is discarded after server restart, policy or descriptor/registry reload, commit conflict, failed reauthorization, owner mismatch, or authoritative quota rejection. It is never edited and retried. Before commit, composition must reacquire authority, match the plan owner, obtain an immutable quota snapshot, and invoke Store compare-and-insert. The Store atomically performs final owner, quota, precondition, capacity, and insert checks.
+A plan is discarded after server restart, policy or descriptor/registry reload, commit conflict, failed reauthorization, owner mismatch, or authoritative quota rejection. It is never edited and retried. Before commit, composition must reacquire one Store authority snapshot, match the plan owner, and use the same immutable `SkillSubmissionPolicySnapshot` acquired exactly once for that attempt: its `ValidationContext` feeds P3-C and its `SkillQuota` feeds Store compare-and-insert. P3-C and P3-D own neither the provider nor a second default snapshot. The Store atomically performs final owner, quota, precondition, capacity, and insert checks.
 
 ## Resolved P3-D0 commit obligations
 
 P3-D0 resolved the former blocker: immutable quota snapshot admission, committed-owner check, `ExpectedAbsent`／`ExpectedLatest` CAS, technical capacity, and revision insert share one server-thread-confined Store aggregate mutation. All typed failures precede the first truth mutation, and an inserted revision can never later produce quota rejection. The normal Store result vocabulary has committed, conflict, quota, capacity, and opaque owner rejection; it has no commit-time `RevisionExhausted`. P3-C's preparation `RevisionExhausted` remains unchanged.
 
 The approved [P4 amendment](../codex-spec/18_P4持久化與組合修正案.md) closes the former composition-report deferral: P4-D uses a distinct composition outcome, and once preparation produced a warning-only report, every later commit／quota／capacity／journal outcome preserves that same report reference without rebuilding, merging, or persisting it.
+
+## P4-D0 composition handoff
+
+P4-D preserves a successfully submitted Draft; it only publishes the prepared latest-pointer
+transition. A pre-preparation failure invents no `ValidationResult`; `PreparationRejected` wraps the
+exact existing P3-C non-Prepared outcome and its report; every post-Prepared result holds the exact
+same warning-only report reference. A normal same-pointer result is a stale／invariant failure with
+zero Store commit, not an idempotent duplicate submission. Exact public outcomes,
+journal semantics, and the Store-side port remain owned by the [P4 amendment §§14–16](../codex-spec/18_P4持久化與組合修正案.md#14-submission-composition)
+and the compact [P4-D0 ledger](P4-D0-submission-journal-boundary.md).

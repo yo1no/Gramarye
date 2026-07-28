@@ -135,10 +135,13 @@ DefinitionEnvelope
 - 【Capacity result】technical capacity使用 `CapacityRejected(SkillStoreCapacityScope, current, maximum)`；scope固定為 `OWNER_SKILL_HISTORIES`、`GLOBAL_SKILL_HISTORIES`、`SKILL_RETAINED_REVISIONS`、`GLOBAL_RETAINED_REVISIONS`，`current`／`maximum`非負且 `current >= maximum`，不保存任意message，不與policy `QuotaRejected`混用。
 - 【Commit result】正常vocabulary為 `Committed`、`Conflict`、`QuotaRejected`、`CapacityRejected`、`OwnerRejected`。Conflict只含 `ExpectedAbsentButPresent`、`ExpectedLatestButAbsent`、`LatestMismatch`；無`AlreadyCommitted`或commit-time `RevisionExhausted`，不自動retry。Owner mismatch先於latest mismatch，不保存actual owner或observed latest。
 - 【組合服務】P4-D 的 `SkillDefinitionSubmissionService` 由 authenticated server principal
-  導出 owner，fresh reauthorize、只取得一次 immutable quota snapshot、呼叫 P3-C prepare，
-  再經 persistence／journal preflight 呼叫 P3-D commit。Store 仍防禦性檢查 committed owner
-  與 state；P3-C／P3-D 不依賴 Minecraft Player 類別。
+  導出 owner，以單一Store observation取得authority，並從composition-root唯一provider恰取一次
+  同時包含quota與`ValidationContext`的immutable policy snapshot；呼叫P3-C exactly-once prepare，
+  完成persistence／journal preflight後作final recheck，再呼叫P3-D commit。Store仍防禦性檢查
+  committed owner與state；P3-C／P3-D不依賴Minecraft Player類別。成功提交保留Draft。
 - 【Draft】`SkillDraft` 是業務上可編輯、Java instance 上不可變的 snapshot；使用 `AppearanceDocument` 與 `AppearanceOverrideDocument`，不建立 `DraftAppearance`。Draft 持有候選 `SkillId`；P3-C 定義 server-side mint contract，但 transient mint grant 不是跨重啟 submission credential，提交授權仍以當下 authoritative snapshot 為準。
+  P4-D2 `SkillDraftCreationService`是第一個production `SkillIdSource` consumer，唯一random-UUID
+  adapter由composition root持有。
 
 ---
 
@@ -203,6 +206,10 @@ DefinitionEnvelope
 - 【No-journal sentinel】`pending_attachment_updates_blob`欄位必須存在，zero-length ByteArray payload
   是唯一canonical no-journal representation。P4-B只對non-zero blob執行byte bound、defensive copy
   與byte-exact opaque preservation；不解析`journal_schema_version`、entries、generation或pointer。
+- 【Journal framing】P4-D non-zero journal唯一使用`NbtIo.writeAnyTag` type-byte＋payload／no-root-name
+  framing，raw payload ceiling為1 MiB，raw entries ceiling為4096；strict decoder在materialization前
+  拒絕duplicate fields及trailing bytes。完整physical schema、failure precedence與migration只以
+  [18號P4修正案 §16](18_P4持久化與組合修正案.md#16-store-first-recovery-journal)為準。
 - 【載入】Primary `.dat`只接受exactly one gzip member；member後必須compressed EOF，解壓後只接受
   exactly one whole root與EOF。拒絕第二member／root、任意trailing garbage與zero padding。通過
   compressed-file bound、bounded strict NBT outer decode、SavedData carrier migration後，依序委派
@@ -269,6 +276,9 @@ DefinitionEnvelope
   Store-first：prebuild carrier／journal → Store commit → publish carrier／journal → dirty →
   Attachment immutable transition。Pending journal target 是 retention root；不得在 in-memory
   `setData` 後立即清除，必須等後續 persisted playerdata readback 確認 generation／pointer。
+- 【Journal availability】Malformed／future／chain-invalid或Store-target-invalid journal保留exact
+  opaque bytes且不dirty；Store read／pin仍可用，但submission／recovery／production reclaim composition
+  停用，journal roots為Unavailable且P4-E global completeness固定為false。
 - 【對帳】Store owner／documents 是 truth。Missing／owner-mismatched pointer 只做 opaque
   Attachment prune；合法舊 pointer 不自動升 Store latest；orphan revision 不自動刪除或釋放
   quota。Duplicate persisted route／slot 不採 last-write-wins。
@@ -686,6 +696,8 @@ PresentationEvent
   1 GiB fixed-heap full-size load／save Gate。P4-C另以固定1 GiB heap驗證exact 16 MiB
   PreservedRaw load／save／restart／death／End與maximum + 1 marker lifecycle；P4-D～E另驗證
   Store-first journal crash windows、persisted-readback clear、offline roots fail-closed與no chunk load。
+  P4-D另須在單一fixed-1-GiB process同時保留full current／prospective Store、largest valid
+  4096-entry journal、SavedData deep copy與Attachment transition；既有分離memory Gates不能替代。
   完整逐項矩陣以
   [18號P4修正案 §21](18_P4持久化與組合修正案.md#21-required-tests)為準。
 
@@ -719,6 +731,8 @@ PresentationEvent
   P4-C 1 GiB exact-limit lifecycle Gate任一失敗亦阻擋發布。
 - Store commit 後才首次執行一般 Codec／capacity check，或 Attachment-first ordering 繞過
   Store-first journal。
+- P4-D journal使用`writeUnnamedTag`／named-root framing、malformed被當empty、root Unavailable仍允許
+  commit／reclaim，或single-process combined 1 GiB Gate失敗。
 - Journal 在 persisted playerdata readback 前清除，或 generation overflow 未 fail closed。
 - Offline roots 不完整仍 best-effort reclaim，或只掃 online players 即宣稱 Complete。
 - SavedData API 宣稱 fsync／disk write 成功或 Store／Attachment durable atomic。
@@ -797,9 +811,13 @@ P4-C1：physical V0、total serializer、bounded counting、Ready／PreservedRaw
        Draft persistence／三軸migration、exact bounds與prebuilt Ready carrier；無registration／lifecycle service
 P4-C2：Attachment registration、immutable `setData` service、唯一int generation transition、death／End、
        P4-D transition seam、P4-E bounded per-player root projection、GameTests／fixed-heap／phase gates
-P4-D：authenticated submission composition、fresh authority／quota、P3-C prepare、調用A3
-      prospective Store builder與prospective journal、commit-oriented preflight、P3-D commit、
-      carrier／journal publication、Attachment transition與recovery；無network
+P4-D0：只修訂journal framing／availability、policy ownership、composition與combined memory authority
+P4-D1：strict journal／migration、single Store authority snapshot、窄Store submission port、
+       prospective Store／journal preflight、opaque commit handle、publication與journal roots
+P4-D2：unique policy／SkillId providers、Draft creation、authenticated P3-C composition、
+       prepared Attachment transition與composition outcome
+P4-D3：bootstrap／login recovery、persisted-readback prefix clear、paired restart與combined fixed-heap Gate；
+       無offline enumeration／network
 P4-E：complete offline root audit、rebuildable index、reconciliation、reclaim composition
       與dirty mapping；無chunk force、無background sweep
 ```
@@ -821,9 +839,10 @@ P3-D 明確建立production pure-Java aggregate；它集中domain truth與行為
 SavedData lifecycle或第二份persistent copy。P4-B的Overworld SavedData adapter是這份P3-D
 Skill Store的唯一world persistence，並委派同一aggregate，不得重寫quota／CAS／owner policy。
 
-P4-D composition facade `SkillDefinitionSubmissionService` 取得 authenticated principal、fresh
-authoritative identity／state與一份immutable quota snapshot，呼叫P3-C prepare，經persistence／
-journal preflight後呼叫P3-D commit；P3-C與P3-D本身不依賴Minecraft player class。P3規則以
+P4-D composition facade `SkillDefinitionSubmissionService`取得authenticated principal、single Store
+authority snapshot與一份combined immutable quota／ValidationContext snapshot，呼叫P3-C exactly once，
+完成persistence／journal preflight後作final identity／authority recheck，再呼叫P3-D commit；P3-C與
+P3-D本身不依賴Minecraft player class。P3規則以
 [P3 scoped amendment §9-A](17_P3資料模型修正案.md#9-a-p3-c-submission-preparation-與-p3-d-commit-邊界)為準，
 P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修正案.md)為準。
 
@@ -924,7 +943,8 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - [ ] SavedData exact root／inner framing、zero-length no-journal sentinel、strict single-member gzip、
       Ready／Quarantined／Unavailable non-saving邊界與1 GiB full-size load／save Gate已有測試。
 - [ ] Store-first journal使用bounded generation且只在persisted readback確認後清除；
-      composition outcome不把Prepared冒充Committed。
+      composition outcome不把Prepared冒充Committed；strict `writeAnyTag` framing、partial availability、
+      continuous chain與single-process fixed-1-GiB combined Gate均通過。
 - [ ] Offline root audit包含offline players與journal targets；restart預設Incomplete，任何
       source family未證明完整時reclaim disabled。
 - [ ] ItemStack 自訂資料使用 Data Component。

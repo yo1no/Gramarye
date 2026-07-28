@@ -129,8 +129,9 @@ test(skill): verify unknown action payload preservation
 
 P4 的 `gramarye_skill_definitions` 只持久化 P3-D Skill Store 與 pending Attachment update
 journal；不承載 `RuntimePersistentStore`。Player Draft／latest／equipped／editor truth 位於獨立
-`gramarye:player_skills` Attachment。Journal與encoded carrier都是derived／recovery資料，
-不是第二份Store domain truth。
+`gramarye:player_skills` Attachment。P4-B SavedData中的exact opaque pending blob是唯一persistent
+pending-transition truth；P4-D decoded journal state只是與該blob identity-bound的derived operational
+view，encoded Store carrier只是derived save representation。三者都不是第二份Store domain truth。
 
 ## 4.2 不可變技能 revision
 
@@ -551,7 +552,9 @@ SkillQuota
 - Limited範圍是`0..MAX_COMMITTED_SKILLS_PER_OWNER`；0表示拒絕所有New。
 - Quota計算per-owner distinct active committed SkillId／owner binding，不計revision、Attachment pointer、Draft或pin。
 - New成功+1；Existing、failed commit與old revision reclaim不變。Quota只在確認history absent後檢查；Existing不因policy降低而被拒絕。
-- Composition fresh reauthorize後取得immutable quota snapshot；Store mutation內不重新呼叫policy provider。
+- 每個composition attempt在P3-C前從唯一provider恰取得一次combined immutable policy snapshot；final fresh
+  reauthorize／identity check只驗證同一snapshot與prepared identities，不重新snapshot。Store mutation內
+  也不呼叫policy provider。
 - 正式retire／quota release出現前預設policy是Unlimited；主動使用Limited的伺服器必須接受目前沒有release workflow。
 
 Hard ceilings固定為：
@@ -653,9 +656,14 @@ P4固定拆分為：
 - P4-C2：Attachment registration、immutable `setData` service、唯一int generation transition、
   death／End、P4-D transition seam、P4-E bounded per-player root projection、GameTests／fixed-heap／
   phase gates；無Store commit composition。
-- P4-D：authenticated submission composition、調用A3 prospective Store builder、prospective
-  journal、commit-oriented persistence preflight、P3-D commit、carrier／journal publication、
-  Attachment transition與crash recovery；無network。
+- P4-D0：documentation-only journal framing／availability、policy ownership、composition與combined
+  memory authority。
+- P4-D1：strict journal／migration、single Store authority snapshot、窄Store submission port、
+  prospective Store／journal preflight、opaque commit handle、publication與journal roots。
+- P4-D2：unique policy／SkillId providers、Draft creation、authenticated exactly-once P3-C
+  composition、prepared Attachment transition與composition outcome。
+- P4-D3：bootstrap／login recovery、persisted-readback clear、paired restart與combined fixed-heap Gate；
+  無offline enumeration或network。
 - P4-E：complete offline roots、rebuildable root index、reconciliation與reclaim composition；
   無chunk force、無background sweep。
 
@@ -663,7 +671,10 @@ P4-B的whole root固定為unnamed Compound，exact fields只有`data` Compound�
 inner `data` exact fields只有`saved_data_schema_version` Int、`store_blob` ByteArray與
 `pending_attachment_updates_blob` ByteArray。Pending欄位不得省略，zero-length ByteArray payload
 是唯一canonical no-journal representation；non-zero bytes在P4-B只做bound、defensive copy與
-byte-exact opaque preservation，P4-D才解析journal schema。`MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES`
+byte-exact opaque preservation，P4-D才以`NbtIo.writeAnyTag` type-byte＋payload／no-root-name framing
+strict解析journal schema。Malformed／future journal保留exact bytes與Store read／pin，但停用
+submission／recovery／production reclaim composition並使root completeness為false。
+`MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES`
 計量完整unnamed inner Compound encoding，whole-root V0 framing固定比它增加26 bytes；pending ceiling
 只計ByteArray raw payload，compressed-file ceiling計完整primary `.dat`。完整數值、finite
 `NbtAccounter` quota與framing推導以18號P4修正案
@@ -716,8 +727,9 @@ corruption／unreadable input，Unavailable只表示runtime Store／carrier pair
 預建logical carrier；意外進入其他state時在修改output前fail fast。Async SavedData write不代表
 fsync或cross-location durable atomic。
 
-所有一般可失敗encoding與capacity checks仍在Store mutation前完成；P3-D回`Committed`後才可
-發布預建carrier／journal並dirty，P4-B不得提前實作或重寫此P4-D composition邊界。
+所有一般可失敗encoding與capacity checks仍在Store mutation前完成；final identity／authority
+recheck位於全部prebuild之後且緊鄰commit。P3-D回`Committed`後才可發布預建carrier／journal並dirty，
+再publication prepared Attachment transition；P4-B不得提前實作或重寫此P4-D composition邊界。
 
 P4-E只負責取得complete retention roots與reclaim composition；P4-B2 controlled API負責實際
 Store reclaim、matching carrier publication與dirty。Rejected／reclaimed=0不修改state，reclaimed>0
@@ -1160,16 +1172,21 @@ P4-C1：physical V0、total serializer、bounded counting、Ready／PreservedRaw
        Draft persistence／三軸migration、exact bounds與prebuilt Ready carrier；無registration／lifecycle service
 P4-C2：Attachment registration、immutable `setData` service、唯一int generation transition、death／End、
        P4-D transition seam、P4-E bounded per-player root projection、GameTests／fixed-heap／phase gates
-P4-D：authenticated composition、fresh authority／quota、P3-C prepare、調用A3 prospective
-      Store builder、prospective journal與commit-oriented preflight、P3-D commit、carrier／journal
-      publication、Attachment transition與crash recovery
+P4-D0：documentation-only journal framing／availability、policy ownership與combined memory authority
+P4-D1：strict journal、single Store authority snapshot、窄Store submission port、Store／journal
+       preflight、opaque commit handle、publication與journal roots
+P4-D2：unique policy／SkillId providers、Draft creation、authenticated P3-C composition、
+       Attachment transition與composition outcome
+P4-D3：bootstrap／login recovery、persisted-readback clear、paired restart與combined fixed-heap Gate
 P4-E：offline roots、rebuildable index、reconciliation與reclaim composition
 ```
 
 P3-D建立production pure-Java domain aggregate與behavior；它不是第二個persistent adapter。P4接入Overworld SavedData前不建立檔案I/O或替代persistent copy，P4也不得重寫P3-D policy。
 
-P4-D 才由 composition facade `SkillDefinitionSubmissionService` 串接 authenticated authority、
-P3-C prepare、persistence preflight、P3-D commit與Attachment transition。Submission prepare規則
+P4-D 才由 composition facade `SkillDefinitionSubmissionService` 串接authenticated principal、single
+Store authority snapshot、唯一provider的一份quota／ValidationContext snapshot、P3-C exactly-once
+prepare、persistence preflight、final recheck、P3-D commit與Attachment transition；成功後Draft保留。
+Submission prepare規則
 以[P3 scoped amendment §9-A](17_P3資料模型修正案.md#9-a-p3-c-submission-preparation-與-p3-d-commit-邊界)為準；
 composition outcome、report identity、journal與recovery以
 [18號P4修正案](18_P4持久化與組合修正案.md)為準。
@@ -1268,8 +1285,10 @@ composition outcome、report identity、journal與recovery以
 - P4-C totality／duplicate platform boundary、`writeAnyTag` exact／+1 counting、PreservedRaw／marker
   structural round-trip、Draft／latest／equipped／editor、int／same-pointer-no-op generation、
   death／End／logout-login與fixed-1-GiB Gate。
-- P4-D preflight zero-mutation failures、Store-first journal crash windows、readback-confirmed
-  clear、replay idempotence與report reference identity。
+- P4-D strict `writeAnyTag` journal、1 MiB／4096 bounds、continuous chains、partial availability、single
+  policy／authority snapshots、preflight zero-mutation failures、Store-first crash windows、
+  readback-confirmed clear、replay idempotence、report reference identity與single-process fixed-1-GiB
+  combined Gate。
 - P4-E offline player roots、future source-family completeness、MAX+1 capture、no chunk load與
   fail-closed reclaim。
 - scheduler stable ordering。

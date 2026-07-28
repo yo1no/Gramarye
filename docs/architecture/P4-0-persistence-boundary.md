@@ -38,14 +38,22 @@ This page is a compact phase boundary, not a second persistence specification.
   the controlled P4-D transition seam, bounded per-player P4-E root projection, and normal lifecycle
   GameTests. P4-C2-B owns only the isolated fixed-heap playerdata／restart／death／End probes,
   external verifiers, task／CI wiring, and phase gates.
-- P4-D owns authenticated submission composition, invocation of A3 prospective Store builders,
-  prospective journal replacement, commit-oriented persistence preflight, Store commit, carrier／
-  journal publication, Attachment transition, typed outcome, and crash recovery.
+- P4-D0 owns only the documentation authority for journal framing／availability, submission policy
+  ownership, recovery, and the combined memory Gate.
+- P4-D1 owns strict journal framing／migration／operational state, the single Store authority
+  snapshot, narrow Store submission port, prospective Store／journal preflight, opaque commit handle,
+  Store／journal publication, and journal roots; it owns no facade or event listener.
+- P4-D2 owns authenticated submission, the unique policy provider and SkillId mint adapter,
+  exactly-once P3-C composition, prepared Attachment transition, and typed composition outcome.
+- P4-D3 owns bootstrap／login recovery, persisted-readback clear, paired restart tests, and the
+  combined fixed-heap／CI Gates.
 - P4-E owns complete offline root audit, rebuildable root indexing, reconciliation, and reclaim
   composition. It supplies the complete root snapshot; P4-B2 owns the resulting carrier publication
   and Store SavedData dirty decision.
-- P4 delegates Store owner, quota, CAS, allocation, validation, and reclaim policy to P3. The
-  `gramarye_skill_definitions` carrier does not absorb RuntimePersistentStore or Marker schemas.
+- P4 delegates Store owner, quota, CAS, allocation, validation, and reclaim policy to P3. P4-D owns
+  the server-side acquisition of one combined quota／ValidationContext snapshot, while P3-C and P3-D
+  consume its respective validation and quota members. The `gramarye_skill_definitions` carrier does
+  not absorb RuntimePersistentStore or Marker schemas.
 
 ## Mixed-family storage boundary
 
@@ -68,9 +76,11 @@ The physical hierarchy is length-delimited:
 SavedData carrier -> Store blob -> History blobs -> Revision blobs -> document storage tree
 ```
 
-Ordered lists preserve duplicate routes until P3-D restore can reject them. The carrier and journal
-are derived encodings, not domain truth. Exact fields, canonical ordering, encoded byte ceilings,
-and quarantine limits are owned by the P4 amendment and `MagicSafetyCeilings`.
+Ordered lists preserve duplicate routes until P3-D restore can reject them. The Store carrier is a
+derived encoding. The exact opaque pending blob is the sole persistent truth for pending Attachment
+transitions; decoded journal Ready／Unavailable is a derived operational view bound to that blob.
+Exact fields, canonical ordering, encoded byte ceilings, and quarantine limits are owned by the P4
+amendment and `MagicSafetyCeilings`.
 
 Physical exact-field preflight validates only count arithmetic and framing: counts must be
 non-negative and compatible with element type, remaining bytes, minimum framing, checked
@@ -89,9 +99,10 @@ missing, or wrong-type fields and oversized nested byte arrays before full Compo
 list duplicate routes remain intact for restore.
 
 P4-A3 performs only pure carrier calculations. Before a live commit, P4-D uses those primitives to
-build and bound the prospective Store and journal replacements. Only `Committed` lets the P4-B
-lifecycle publish the prebuilt carrier／journal and mark dirty. Reclaim uses A3 filtering of already
-encoded retained entries and never cross-family re-encodes raw trees.
+build and bound the prospective Store and journal replacements. Only a P3-D Store `Committed` result
+permits publication of the prebuilt carrier／journal and dirty; the final composition result may still
+be `CommittedPendingAttachmentRecovery` if later Attachment publication fails. Reclaim uses A3
+filtering of already encoded retained entries and never cross-family re-encodes raw trees.
 
 ## Migration and load boundary
 
@@ -156,10 +167,14 @@ PreservedRaw with a defensive logical-tree snapshot; an oversize value is Quaran
 OversizeMarker and is explicitly replaced by the bounded reserved marker on a later normal save.
 Neither variant is treated as missing or empty Ready.
 
-Submission derives a fresh server principal, reads current Store authority, obtains one immutable
-quota snapshot, delegates preparation to P3-C, rechecks authority, performs persistence preflight,
-and delegates commit to P3-D. Its result is a distinct composition outcome, not
-`SkillSubmissionOutcome.Prepared`.
+Submission derives a fresh server principal, reads one Store authority snapshot, and obtains one
+immutable policy snapshot containing both quota and ValidationContext. It invokes each P3-C stage
+exactly once, prebuilds all persistence state, performs the final authority／identity recheck, and
+delegates commit to P3-D. Successful submission retains the Draft. Pre-preparation failures invent no
+report; `PreparationRejected` preserves the exact existing P3-C non-Prepared outcome and report;
+every post-Prepared result preserves the exact same warning-only report reference. Its result is a
+distinct composition outcome, not `SkillSubmissionOutcome.Prepared`. The compact
+[P4-D0 ledger](P4-D0-submission-journal-boundary.md) indexes the exact handoff.
 
 Store mutation precedes Attachment mutation. A bounded world journal records the expected and target
 generation/pointer transition. An in-memory `setData` does not prove durability; journal entries
@@ -172,6 +187,8 @@ future persistent runtime source. A rebuildable index is never truth and starts 
 restart. Unreadable, truncated, unknown, or unaudited sources keep the aggregate incomplete, so
 reclaim is not invoked. Root capture and reclaim occur immediately in one logic-thread call chain,
 without forced chunk loads, background sweeping, or cross-tick reuse of `Complete`.
+An unavailable journal projection is an unreadable root source: global completeness remains false
+and production reclaim composition is not invoked; it never becomes an empty root list.
 
 ## Implementation gate
 
@@ -183,6 +200,10 @@ migration/decode/restore failure installs neither a partial nor an empty Store.
 P4-C1 starts only after the complete P4-C0 authority patch is committed and remote CI passes. P4-C2
 starts only after P4-C1's physical／serializer Gate passes. P4-C completes only after C1, C2, and the
 required fixed-1-GiB exact-limit quarantine lifecycle job pass locally and remotely.
+
+P4-D1 starts only after the documentation-only P4-D0 authority patch is complete. D2 starts after
+D1's strict journal and Store-port Gate; D3 starts after D2 normal submission passes. P4-D completes
+only after D1, D2, D3, and the required single-process combined fixed-1-GiB remote Gate pass.
 
 ## P4-B0 clarification ledger
 
@@ -224,8 +245,9 @@ including the exact-maximum hostile-FNAME first／restart pair and packaged runt
 read-only design review is complete. The P4-C0 framing conflict is resolved by the
 `NbtIo.writeAnyTag` byte-coordinate decision, and the explicit destructive-oversize quarantine
 policy closes the preservation-policy stop gate. P4-C0.1, P4-C1, P4-C2-A, and P4-C2-B are complete,
-and the required remote `P4-C memory gates` result passed. P4-C is therefore complete. P4-D is open
-only for read-only design review; its journal／commit implementation has not started.
+and the required remote `P4-C memory gates` result passed. P4-C is therefore complete. The P4-D
+read-only review exposed the non-zero journal-framing gap; P4-D0 now closes that authority gap without
+Java changes. P4-D1 journal／Store-port implementation has not started.
 
 ## P4-A1 implementation ledger
 
@@ -756,9 +778,14 @@ P4-C1   = COMPLETE
 P4-C2-A = COMPLETE
 P4-C2-B = COMPLETE
 P4-C    = COMPLETE
-P4-D    = READY FOR READ-ONLY DESIGN REVIEW
+P4-D0   = DOCUMENTATION COMPLETE
+P4-D1   = NOT STARTED
+P4-D2   = NOT STARTED
+P4-D3   = NOT STARTED
+P4-D    = INCOMPLETE
+P4-E    = NOT STARTED
 ```
 
-The required remote `P4-C memory gates` job passed. P4-D journal／commit composition remains
-unimplemented and may proceed only through its read-only design review; P4-E offline root
-completeness remains a later phase.
+The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed by
+[P4-D0 submission journal and composition boundary](P4-D0-submission-journal-boundary.md); P4-D1／
+D2／D3 remain unimplemented. P4-E offline root completeness remains a later phase.

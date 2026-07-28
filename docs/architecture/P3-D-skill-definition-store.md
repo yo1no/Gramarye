@@ -28,8 +28,9 @@ ledger, not a second complete Store specification.
 
 ## D2 — atomic revision admission
 
-- An immutable quota snapshot is policy input, not authorization. Composition must freshly
-  authorize before commit.
+- An immutable quota snapshot is policy input, not authorization. P4-D composition must freshly
+  authorize before commit and supplies the quota from its one combined quota／ValidationContext
+  snapshot; P3-D owns neither that provider nor a second default snapshot.
 - Every typed owner/CAS/quota/capacity failure precedes the first Store mutation. Success publishes
   one prebuilt replacement history and formally allocates the proposed revision.
 - A repeated plan conflicts; commit does not retry, canonicalize documents, or imply that
@@ -61,8 +62,11 @@ ledger, not a second complete Store specification.
 
 | Aggregate operation/result | P4 dirty decision |
 | --- | --- |
-| P4-D commit `Committed` + prebuilt carrier/journal published | dirty |
+| P3-D Store `Committed` + prebuilt Store carrier/journal published | dirty; a later Attachment publication failure does not undo it |
 | commit typed failure | not dirty |
+| valid journal migration/canonical rewrite published | dirty |
+| journal unavailable, read, or root projection | not dirty |
+| persisted target confirmed and journal prefix clear published | dirty |
 | pin / close | not dirty |
 | reclaim `Rejected` | not dirty |
 | reclaim `Completed`, reclaimed = 0 | not dirty |
@@ -71,9 +75,18 @@ ledger, not a second complete Store specification.
 
 ## P4 obligations
 
-The approved [P4 amendment](../codex-spec/18_P4持久化與組合修正案.md) and
-[P4-0 boundary ledger](P4-0-persistence-boundary.md) close the physical-schema, byte-bound,
-lifecycle, composition, and complete-root decisions deferred by P3-D.
+The approved [P4 amendment](../codex-spec/18_P4持久化與組合修正案.md),
+[P4-0 boundary ledger](P4-0-persistence-boundary.md), and compact
+[P4-D0 composition boundary](P4-D0-submission-journal-boundary.md) close the physical-schema,
+byte-bound, lifecycle, composition, and complete-root decisions deferred by P3-D.
+
+P4-D1 uses a separate narrow Store submission port for one same-thread owner/latest authority
+observation, prospective Store/journal preflight, an opaque identity-bound prepared handle, and the
+single commit/publication boundary. It does not expose the raw Store, carrier, SavedData Ready, or
+pending bytes. A malformed or future journal leaves Store reads and pins available but disables
+submission, recovery, and production reclaim composition; its unavailable root projection keeps
+P4-E global completeness false. P4-E, not P3-D or the port, remains responsible for complete offline
+root acquisition.
 
 P4 owns the completeness gate and bounded offline enumeration for every enabled root source family,
 including player, future SkillInstance, Marker, Construct, and Schedule references; Store/Attachment
