@@ -223,10 +223,9 @@ The recorded external results are PASS for `build`, `P4-A3 memory gates`, and `P
 including the exact-maximum hostile-FNAME first／restart pair and packaged runtime smoke. The P4-C
 read-only design review is complete. The P4-C0 framing conflict is resolved by the
 `NbtIo.writeAnyTag` byte-coordinate decision, and the explicit destructive-oversize quarantine
-policy closes the preservation-policy stop gate. P4-C0.1 and P4-C1 are complete with their required
-remote gates passed, and P4-C2-A is complete as the registration／domain-lifecycle implementation
-recorded below. P4-C2-B has passed its local fixed-heap Gate; its required remote `P4-C memory gates`
-result remains pending, so P4-C remains incomplete and P4-D remains blocked.
+policy closes the preservation-policy stop gate. P4-C0.1, P4-C1, P4-C2-A, and P4-C2-B are complete,
+and the required remote `P4-C memory gates` result passed. P4-C is therefore complete. P4-D is open
+only for read-only design review; its journal／commit implementation has not started.
 
 ## P4-A1 implementation ledger
 
@@ -752,12 +751,14 @@ JAR gates are exposed through `verifyP4C2Configuration`; the aggregate local wor
 `P4-A3 memory gates`, and `P4-B memory gates`, with no conditional or allow-failure escape.
 
 ```text
-P4-C2-A local/remote prerequisites = COMPLETE
-P4-C2-B local fixed-heap Gate       = PASS
-P4-C memory gates remote            = PENDING
-P4-C                                = INCOMPLETE
-P4-D                                = BLOCKED
+P4-C0.1 = COMPLETE
+P4-C1   = COMPLETE
+P4-C2-A = COMPLETE
+P4-C2-B = COMPLETE
+P4-C    = COMPLETE
+P4-D    = READY FOR READ-ONLY DESIGN REVIEW
 ```
 
-P4-C cannot be declared complete until the required remote `P4-C memory gates` job passes. P4-D
-journal／commit composition and P4-E offline root completeness remain later phases.
+The required remote `P4-C memory gates` job passed. P4-D journal／commit composition remains
+unimplemented and may proceed only through its read-only design review; P4-E offline root
+completeness remains a later phase.
