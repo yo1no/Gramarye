@@ -86,5 +86,11 @@ The immutable `SkillSubmissionPolicySnapshot` keeps the exact quota／validation
 composition, while the eleven-variant `SkillSubmissionCompositionOutcome` is distinct from the
 five-variant P3-C preparation outcome. `PreparationRejected` rejects `Prepared` and derives the
 exact existing report; all post-preparation variants require and retain the exact warning-only
-report object. D2-A does not yet invoke the provider or build the authenticated facade: those
-ordering and publication responsibilities remain blocked in D2-B until D2-A closure.
+report object. D2-A does not invoke the provider or build the authenticated facade: those ordering
+and publication responsibilities remain owned by D2-B.
+
+D2-A is complete: its production commit is present at `HEAD`／`origin/main`, local full regression
+and the existing memory Gates passed, and the externally reported remote `build`, `P4-A3 memory
+gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all passed. D2-B is ready for
+implementation, but the authenticated facade, composition-root wiring, and normal submission
+GameTests do not yet exist. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.

@@ -150,7 +150,7 @@ configuration, which remains external governance unknown／pending.
 The completed P4-D2 read-only design review forces the D2-A／D2-B split, authorized D2-A
 implementation, and requires no D0.1 authority patch.
 
-## D2-A local implementation ledger
+## D2-A completed implementation ledger
 
 D2-A refines the existing D1 `PreparationFailure` vocabulary without changing the public Store-port
 method set. Four typed Store blob-capacity failures and the journal entry-count／encoded-byte
@@ -181,17 +181,19 @@ D2-A adds no authenticated `SkillDefinitionSubmissionService`, composition-root 
 D2 GameTest entry or holder, Store／Attachment commit composition, event or recovery listener,
 Gradle source set, CI job, offline root enumeration, reconciliation, reclaim caller, or network
 surface. Its seam assertions reuse the existing P4-C normal GameTest holder without changing the
-required-test count. Local unit, API, normal GameTest, dedicated-smoke, and inherited A3／B／C
-configuration and memory Gates are the phase closure evidence; commit, push, and remote build
-evidence remain pending. Consequently D2-B remains blocked until D2-A is committed, pushed, and its
-required remote checks pass. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.
+required-test count. Local unit, API, normal GameTest, dedicated-smoke, full regression, and the
+existing A3／B／C configuration and memory Gates passed. The D2-A production commit is present at
+`HEAD`／`origin/main`, and the externally reported remote `build`, `P4-A3 memory gates`, `P4-B
+memory gates`, and `P4-C memory gates` jobs all passed. D2-A is therefore complete and D2-B is ready
+for implementation. D2-B has not yet created the authenticated facade, composition-root wiring, or
+normal submission GameTests. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.
 
 ```text
 P4-D0               = COMPLETE
 P4-D1               = COMPLETE
 P4-D2 design review = COMPLETE
-P4-D2-A             = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
-P4-D2-B             = BLOCKED UNTIL D2-A CLOSURE
+P4-D2-A             = COMPLETE
+P4-D2-B             = READY FOR IMPLEMENTATION
 P4-D3               = NOT STARTED
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED

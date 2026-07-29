@@ -832,7 +832,7 @@ configuration, which remains external governance unknown／pending.
 The completed P4-D2 read-only design review forces the D2-A／D2-B split, authorized D2-A
 implementation, and requires no D0.1 authority patch.
 
-## P4-D2-A local implementation ledger
+## P4-D2-A completed implementation ledger
 
 D2-A keeps `SkillDefinitionStoreSubmissionPort` as the sole production Store commit owner and keeps
 its eight public methods unchanged. Its nested preparation taxonomy now distinguishes document,
@@ -861,9 +861,12 @@ orchestration seam and retains every existing exactly-once stage boundary.
 D2-A has no authenticated facade, Gramarye D2 wiring, additional D2 GameTest entry or holder,
 recovery event, fixed-heap source set, Gradle／CI change, offline roots, reconciliation, reclaim, or
 network code. Its seam assertions reuse the existing P4-C normal GameTest holder without changing
-the required-test count. Local implementation and inherited gates are complete, but
-commit／push／remote evidence is pending; therefore D2-B is still blocked. D3 has not started, P4-D
-remains incomplete, and P4-E remains blocked.
+the required-test count. Local full regression and the existing A3／B／C configuration and memory
+Gates passed. The D2-A production commit is present at `HEAD`／`origin/main`, and the externally
+reported remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all
+passed. D2-A is therefore complete and D2-B is ready for implementation. D2-B has not yet created
+the authenticated facade, Gramarye composition-root wiring, or normal submission GameTests. D3 has
+not started, P4-D remains incomplete, and P4-E remains blocked.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -874,8 +877,8 @@ P4-C    = COMPLETE
 P4-D0               = COMPLETE
 P4-D1               = COMPLETE
 P4-D2 design review = COMPLETE
-P4-D2-A             = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
-P4-D2-B             = BLOCKED UNTIL D2-A CLOSURE
+P4-D2-A             = COMPLETE
+P4-D2-B             = READY FOR IMPLEMENTATION
 P4-D3               = NOT STARTED
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED
@@ -885,6 +888,8 @@ The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed b
 [P4-D0 submission journal and composition boundary](P4-D0-submission-journal-boundary.md). P4-D1 is
 complete: its production commit is present at `HEAD`／`origin/main`, local full regression passed,
 and the externally reported remote build／A3／B／C jobs passed. The P4-D2 design review is complete;
-D2-A is implemented locally with commit／push／remote evidence pending, D2-B remains blocked on its
-closure, and D3 has not started. P4-D remains incomplete and P4-E remains blocked.
+D2-A is complete with its production commit present at `HEAD`／`origin/main`, local regression and
+existing memory Gates passed, and the externally reported remote build／A3／B／C jobs passed. D2-B is
+ready for implementation but has no authenticated facade, composition-root wiring, or normal
+submission GameTests yet. D3 has not started. P4-D remains incomplete and P4-E remains blocked.
 Branch-protection required-check configuration remains external governance unknown／pending.
