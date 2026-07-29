@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STORE_ROOT='src/main/java/com/yo1no/gramarye/magic/definition/store'
 PLAYER_SERVICE='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java'
+SUBMISSION_ROOT='src/main/java/com/yo1no/gramarye/magic/definition/submission'
 CEILINGS='src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java'
 
 fail() {
@@ -102,6 +103,71 @@ verify_unique_owners() {
     [[ "${reclaim_count}" -eq 2 ]] || fail 'reviewed P4-B reclaim caller set changed'
 }
 
+verify_d2a_sources_and_owners() {
+    local source=''
+    for source in \
+        DefaultSkillSubmissionPolicyProvider \
+        RandomUuidSkillIdSource \
+        SkillDraftCreationService \
+        SkillSubmissionCompositionOutcome \
+        SkillSubmissionPolicyProvider \
+        SkillSubmissionPolicySnapshot \
+        SkillSubmissionPreparationPipeline; do
+        [[ -f "${SUBMISSION_ROOT}/${source}.java" ]] \
+            || fail "missing reviewed D2-A production source ${source}.java"
+    done
+
+    [[ "$(grep -R -l -F --include='*.java' -- 'UUID.randomUUID()' src/main/java | wc -l | tr -d ' ')" -eq 1 ]] \
+        || fail 'UUID.randomUUID() must have one production owner'
+    grep -Fq -- 'UUID.randomUUID()' "${SUBMISSION_ROOT}/RandomUuidSkillIdSource.java" \
+        || fail 'random UUID minting escaped its reviewed adapter'
+
+    [[ "$(grep -R -l -F --include='*.java' -- 'SkillQuota.Unlimited.INSTANCE' src/main/java | wc -l | tr -d ' ')" -eq 1 ]] \
+        || fail 'submission Unlimited default must have one production owner'
+    [[ "$(grep -R -l -F --include='*.java' -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' src/main/java | wc -l | tr -d ' ')" -eq 1 ]] \
+        || fail 'submission validation default must have one production owner'
+    grep -Fq -- 'SkillQuota.Unlimited.INSTANCE' \
+        "${SUBMISSION_ROOT}/DefaultSkillSubmissionPolicyProvider.java" \
+        || fail 'Unlimited default escaped the reviewed provider'
+    grep -Fq -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' \
+        "${SUBMISSION_ROOT}/DefaultSkillSubmissionPolicyProvider.java" \
+        || fail 'validation default escaped the reviewed provider'
+
+    grep -Fq -- 'prepareLatestTransitionToCurrent(' "${PLAYER_SERVICE}" \
+        || fail 'P4-C prepare-to-current seam is missing'
+    grep -Fq -- 'checkPreparedTransitionCurrent(' "${PLAYER_SERVICE}" \
+        || fail 'P4-C currentness seam is missing'
+    [[ "$(grep -F -c -- 'validatePreparedTransition(' "${PLAYER_SERVICE}")" -eq 3 ]] \
+        || fail 'P4-C check and publish must share one validator'
+
+    for source in \
+        DOCUMENT_BLOB_CAPACITY_REJECTED \
+        REVISION_BLOB_CAPACITY_REJECTED \
+        HISTORY_BLOB_CAPACITY_REJECTED \
+        STORE_BLOB_CAPACITY_REJECTED \
+        JOURNAL_ENTRY_COUNT_REJECTED \
+        JOURNAL_ENCODED_CAPACITY_REJECTED \
+        STORE_CARRIER_INVARIANT_FAILURE \
+        JOURNAL_CHAIN_INVARIANT_FAILURE \
+        SAVED_DATA_CARRIER_INVARIANT_FAILURE \
+        PLAN_TRANSITION_PAIRING_FAILURE \
+        AUTHORITY_PRECONDITION_MISMATCH \
+        TRANSITION_SERVER_MISMATCH \
+        NORMAL_SUBMISSION_NO_OP; do
+        grep -Fq -- "${source}" "${STORE_ROOT}/SkillDefinitionStoreSubmissionPort.java" \
+            || fail "missing refined D1 preparation code ${source}"
+    done
+    for source in \
+        STORE_CARRIER_REJECTED \
+        JOURNAL_REJECTED \
+        TRANSITION_NO_OP \
+        AUTHORITY_MISMATCH; do
+        if grep -Fq -- "${source}" "${STORE_ROOT}/SkillDefinitionStoreSubmissionPort.java"; then
+            fail "obsolete D1 preparation umbrella remains: ${source}"
+        fi
+    done
+}
+
 verify_phase_boundary() {
     local token=''
     grep -Fq -- 'isChangedGenerationSuccessor(' "${PLAYER_SERVICE}" \
@@ -110,9 +176,6 @@ verify_phase_boundary() {
         || fail 'P4-C prepared-transition server predicate is missing'
     for token in \
         SkillDefinitionSubmissionService \
-        SkillSubmissionPolicyProvider \
-        RandomUuidSkillIdSource \
-        SkillDraftCreationService \
         PlayerLoggedInEvent \
         OfflineRoot \
         RootCollector \
@@ -135,8 +198,9 @@ main() {
     cd "${REPO_ROOT}"
     verify_exact_sources
     verify_unique_owners
+    verify_d2a_sources_and_owners
     verify_phase_boundary
-    printf '%s\n' 'Verified exact P4-D1 production ownership and later-phase absence.'
+    printf '%s\n' 'Verified exact P4-D1/P4-D2-A production ownership and later-phase absence.'
 }
 
 main "$@"

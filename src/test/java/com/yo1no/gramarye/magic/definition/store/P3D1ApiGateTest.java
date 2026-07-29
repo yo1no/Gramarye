@@ -169,8 +169,9 @@ class P3D1ApiGateTest {
     }
 
     @Test
-    void phaseLocalFullTreeGateAllowsFinalD3ButRejectsP4AndCompositionTypes() throws Exception {
-        // Final P3-D3: pins and bounded reclaim are present; P4/composition remain absent.
+    void phaseLocalFullTreeGateAllowsReviewedP4TypesButRejectsFacadeAndStoreLeakage()
+            throws Exception {
+        // Reviewed P4 types are legal; authenticated facade and unreviewed Store leakage remain absent.
         var allProduction = productionClassNames();
         var storeTypes = allProduction.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
@@ -186,7 +187,6 @@ class P3D1ApiGateTest {
                 .collect(Collectors.toSet());
         var forbiddenTypeDeclarations = List.of(
                 "SkillDefinitionSubmissionService",
-                "RandomUuidSkillIdSource",
                 "SkillSubmissionAuthorizationAdapter");
 
         assertAll(

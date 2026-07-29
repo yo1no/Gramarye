@@ -138,19 +138,23 @@ public final class PlayerSkillAttachmentGameTests {
 
             var draft = mixedFamilyDraft();
             var reference = new SkillReference(draft.skillId(), new SkillRevision(9));
-            var preparedWhileMissing = prepared(service.prepareLatestTransition(
-                    player,
-                    draft.skillId(),
-                    Optional.empty(),
-                    0,
-                    Optional.of(reference)));
+            var preparedWhileMissing = prepared(service.prepareLatestTransitionToCurrent(
+                    player, draft.skillId(), reference));
             helper.assertFalse(preparedWhileMissing.isNoOp(),
                     "missing changed prepare must prebuild a replacement without installing it");
+            assertCurrentness(
+                    service.checkPreparedTransitionCurrent(player, preparedWhileMissing),
+                    PlayerSkillAttachmentService.TransitionCurrentness.CURRENT,
+                    "Missing prepared transition currentness");
             helper.assertFalse(player.hasData(PlayerSkillAttachments.type()),
-                    "changed prepare must leave the missing Attachment map untouched");
+                    "prepare/currentness must leave the missing Attachment map untouched");
             assertApplied(service.putDraft(player, draft), "Draft publication");
             helper.assertTrue(player.hasData(PlayerSkillAttachments.type()),
                     "first changed mutation must install one complete Ready state");
+            assertCurrentness(
+                    service.checkPreparedTransitionCurrent(player, preparedWhileMissing),
+                    PlayerSkillAttachmentService.TransitionCurrentness.STATE_CHANGED,
+                    "Missing token invalidated currentness");
             assertMutationRejected(
                     service.publishPreparedTransition(player, preparedWhileMissing),
                     PlayerSkillAttachmentService.MutationRejectionCode.STATE_CHANGED,
@@ -159,12 +163,8 @@ public final class PlayerSkillAttachmentGameTests {
             assertNoOp(service.putDraft(player, draft), "canonical same-Draft publication");
             helper.assertTrue(requireReady(service.observe(player)) == draftReadyIdentity,
                     "same Draft no-op must preserve the exact Ready identity");
-            var transition = prepared(service.prepareLatestTransition(
-                    player,
-                    draft.skillId(),
-                    Optional.empty(),
-                    0,
-                    Optional.of(reference)));
+            var transition = prepared(service.prepareLatestTransitionToCurrent(
+                    player, draft.skillId(), reference));
             helper.assertFalse(transition.isNoOp(),
                     "empty-to-present latest transition must be changed");
             helper.assertTrue(transition.owner().equals(new SkillOwnerId(player.getUUID()))
@@ -174,8 +174,15 @@ public final class PlayerSkillAttachmentGameTests {
                             && transition.targetPointer().equals(Optional.of(reference))
                             && transition.targetGeneration() == 1,
                     "prepared token must expose only its exact bounded public values");
+            var beforeCurrentness = requireReady(service.observe(player));
+            assertCurrentness(
+                    service.checkPreparedTransitionCurrent(player, transition),
+                    PlayerSkillAttachmentService.TransitionCurrentness.CURRENT,
+                    "present prepared transition currentness");
+            helper.assertTrue(requireReady(service.observe(player)) == beforeCurrentness,
+                    "currentness check must not replace the Ready state");
             assertApplied(service.publishPreparedTransition(player, transition),
-                    "latest transition publication");
+                    "latest transition publication after currentness check");
             assertApplied(service.setEquipped(player, 3, Optional.of(reference)),
                     "equipped publication");
             var explicitPresent = prepared(service.prepareLatestTransition(
@@ -199,6 +206,15 @@ public final class PlayerSkillAttachmentGameTests {
             helper.assertTrue(explicitEmpty.pointer().isEmpty()
                             && explicitEmpty.mutationGeneration() == 2,
                     "explicit empty latest state must retain its non-zero generation");
+            var explicitEmptyTarget = new SkillReference(
+                    EXPLICIT_EMPTY_SKILL_ID, new SkillRevision(31));
+            var explicitEmptyPrepared = prepared(
+                    service.prepareLatestTransitionToCurrent(
+                            player, EXPLICIT_EMPTY_SKILL_ID, explicitEmptyTarget));
+            helper.assertTrue(explicitEmptyPrepared.expectedPointer().isEmpty()
+                            && explicitEmptyPrepared.expectedGeneration() == 2
+                            && explicitEmptyPrepared.targetGeneration() == 3,
+                    "prepare-to-current must retain explicit-empty generation state");
 
             assertTransitionRejected(
                     service.prepareLatestTransition(
@@ -232,12 +248,18 @@ public final class PlayerSkillAttachmentGameTests {
                     PlayerSkillAttachmentService.TransitionRejectionCode
                             .TARGET_ROUTE_MISMATCH,
                     "target route mismatch");
-            var samePointer = prepared(service.prepareLatestTransition(
-                    player,
-                    draft.skillId(),
-                    Optional.of(reference),
-                    1,
-                    Optional.of(reference)));
+            assertTransitionRejected(
+                    service.prepareLatestTransitionToCurrent(
+                            player,
+                            draft.skillId(),
+                            new SkillReference(
+                                    new SkillId(new UUID(0L, 0xBADL)),
+                                    new SkillRevision(1))),
+                    PlayerSkillAttachmentService.TransitionRejectionCode
+                            .TARGET_ROUTE_MISMATCH,
+                    "prepare-to-current target route mismatch");
+            var samePointer = prepared(service.prepareLatestTransitionToCurrent(
+                    player, draft.skillId(), reference));
             var samePointerIdentity = requireReady(service.observe(player));
             helper.assertTrue(samePointer.isNoOp()
                             && samePointer.targetGeneration() == 1,
@@ -268,6 +290,18 @@ public final class PlayerSkillAttachmentGameTests {
                     server, player.getUUID(), "p4c2-same-uuid-quarantine");
             loadAttachmentFixture(sameUuidQuarantined, ByteTag.valueOf((byte) 19));
             assertUnavailable(
+                    service.checkPreparedTransitionCurrent(
+                            sameUuidQuarantined, presentToMissing),
+                    PlayerSkillAttachmentService.UnavailableReason
+                            .PRESERVED_RAW_QUARANTINE,
+                    "currentness against same-UUID quarantined holder");
+            assertUnavailable(
+                    service.prepareLatestTransitionToCurrent(
+                            sameUuidQuarantined, draft.skillId(), replacementReference),
+                    PlayerSkillAttachmentService.UnavailableReason
+                            .PRESERVED_RAW_QUARANTINE,
+                    "prepare-to-current against quarantined holder");
+            assertUnavailable(
                     service.publishPreparedTransition(
                             sameUuidQuarantined, presentToMissing),
                     PlayerSkillAttachmentService.UnavailableReason
@@ -286,6 +320,10 @@ public final class PlayerSkillAttachmentGameTests {
                     2);
             assertApplied(service.putDraft(player, temporaryDraft),
                     "intermediate Draft publication");
+            assertCurrentness(
+                    service.checkPreparedTransitionCurrent(player, draftInvalidated),
+                    PlayerSkillAttachmentService.TransitionCurrentness.STATE_CHANGED,
+                    "Draft mutation invalidates prepared currentness");
             assertMutationRejected(
                     service.publishPreparedTransition(player, draftInvalidated),
                     PlayerSkillAttachmentService.MutationRejectionCode.STATE_CHANGED,
@@ -301,6 +339,10 @@ public final class PlayerSkillAttachmentGameTests {
                     Optional.of(replacementReference)));
             assertApplied(service.setEquipped(player, 4, Optional.of(reference)),
                     "intermediate equipped publication");
+            assertCurrentness(
+                    service.checkPreparedTransitionCurrent(player, equippedInvalidated),
+                    PlayerSkillAttachmentService.TransitionCurrentness.STATE_CHANGED,
+                    "equipped mutation invalidates prepared currentness");
             assertMutationRejected(
                     service.publishPreparedTransition(player, equippedInvalidated),
                     PlayerSkillAttachmentService.MutationRejectionCode.STATE_CHANGED,
@@ -317,6 +359,10 @@ public final class PlayerSkillAttachmentGameTests {
                     1,
                     Optional.of(replacementReference)));
             assertApplied(service.setEditorState(player, editor), "editor publication");
+            assertCurrentness(
+                    service.checkPreparedTransitionCurrent(player, staleTransition),
+                    PlayerSkillAttachmentService.TransitionCurrentness.STATE_CHANGED,
+                    "editor mutation invalidates prepared currentness");
             assertMutationRejected(
                     service.publishPreparedTransition(player, staleTransition),
                     PlayerSkillAttachmentService.MutationRejectionCode.STATE_CHANGED,
@@ -329,6 +375,10 @@ public final class PlayerSkillAttachmentGameTests {
                     Optional.of(replacementReference)));
             assertApplied(service.publishPreparedTransition(player, replacementTransition),
                     "replacement latest publication");
+            assertCurrentness(
+                    service.checkPreparedTransitionCurrent(player, replacementTransition),
+                    PlayerSkillAttachmentService.TransitionCurrentness.STATE_CHANGED,
+                    "published token is no longer current");
             assertMutationRejected(
                     service.publishPreparedTransition(player, replacementTransition),
                     PlayerSkillAttachmentService.MutationRejectionCode.STATE_CHANGED,
@@ -343,6 +393,10 @@ public final class PlayerSkillAttachmentGameTests {
                     Optional.of(replacementReference),
                     2,
                     Optional.of(replacementReference)));
+            assertCurrentness(
+                    service.checkPreparedTransitionCurrent(wrongPlayer, wrongPlayerToken),
+                    PlayerSkillAttachmentService.TransitionCurrentness.STATE_CHANGED,
+                    "wrong-player currentness");
             assertMutationRejected(
                     service.publishPreparedTransition(wrongPlayer, wrongPlayerToken),
                     PlayerSkillAttachmentService.MutationRejectionCode.WRONG_PLAYER,
@@ -923,24 +977,16 @@ public final class PlayerSkillAttachmentGameTests {
 
     private static Tag advanceToGenerationMaximum(
             PlayerSkillAttachmentService service, ServerPlayer player) {
-        var transition = prepared(service.prepareLatestTransition(
-                player,
-                GENERATION_BOUNDARY_SKILL_ID,
-                Optional.of(GENERATION_BOUNDARY_FIRST),
-                Integer.MAX_VALUE - 1,
-                Optional.of(GENERATION_BOUNDARY_SECOND)));
+        var transition = prepared(service.prepareLatestTransitionToCurrent(
+                player, GENERATION_BOUNDARY_SKILL_ID, GENERATION_BOUNDARY_SECOND));
         if (transition.targetGeneration() != Integer.MAX_VALUE || transition.isNoOp()) {
             throw new AssertionError("MAX-1 transition did not target Integer.MAX_VALUE");
         }
         assertApplied(service.publishPreparedTransition(player, transition),
                 "MAX-1 to MAX transition");
         var maximumIdentity = requireReady(service.observe(player));
-        var samePointer = prepared(service.prepareLatestTransition(
-                player,
-                GENERATION_BOUNDARY_SKILL_ID,
-                Optional.of(GENERATION_BOUNDARY_SECOND),
-                Integer.MAX_VALUE,
-                Optional.of(GENERATION_BOUNDARY_SECOND)));
+        var samePointer = prepared(service.prepareLatestTransitionToCurrent(
+                player, GENERATION_BOUNDARY_SKILL_ID, GENERATION_BOUNDARY_SECOND));
         if (!samePointer.isNoOp()
                 || samePointer.targetGeneration() != Integer.MAX_VALUE) {
             throw new AssertionError("MAX same-pointer transition was not a legal no-op");
@@ -951,12 +997,8 @@ public final class PlayerSkillAttachmentGameTests {
             throw new AssertionError("MAX same-pointer no-op changed Ready identity");
         }
         assertTransitionRejected(
-                service.prepareLatestTransition(
-                        player,
-                        GENERATION_BOUNDARY_SKILL_ID,
-                        Optional.of(GENERATION_BOUNDARY_SECOND),
-                        Integer.MAX_VALUE,
-                        Optional.of(GENERATION_BOUNDARY_FIRST)),
+                service.prepareLatestTransitionToCurrent(
+                        player, GENERATION_BOUNDARY_SKILL_ID, GENERATION_BOUNDARY_FIRST),
                 PlayerSkillAttachmentService.TransitionRejectionCode.GENERATION_EXHAUSTED,
                 "MAX changed transition");
         if (requireReady(service.observe(player)) != maximumIdentity) {
@@ -1058,6 +1100,18 @@ public final class PlayerSkillAttachmentGameTests {
                         instanceof PlayerSkillAttachmentService.TransitionRejected rejected)
                 || rejected.code() != expected) {
             throw new AssertionError(operation + " returned the wrong transition rejection");
+        }
+    }
+
+    private static void assertCurrentness(
+            PlayerSkillAttachmentService.Result<
+                            PlayerSkillAttachmentService.TransitionCurrentness>
+                    result,
+            PlayerSkillAttachmentService.TransitionCurrentness expected,
+            String operation) {
+        if (!(result instanceof PlayerSkillAttachmentService.Available<?> available)
+                || available.value() != expected) {
+            throw new AssertionError(operation + " returned the wrong currentness");
         }
     }
 

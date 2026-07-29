@@ -127,12 +127,12 @@ class P3C4ApiGateTest {
     }
 
     @Test
-    void finalP3D3GateRecognizesPinsAndReclaimButStillHasNoCompositionTypes() throws Exception {
-        // Final P3-D3: active pins and bounded reclaim are legal; composition remains absent.
+    void phaseLocalGateAllowsReviewedD2APrimitivesButRejectsFacadeAndLegacyTypes()
+            throws Exception {
+        // Reviewed D2-A primitives are legal; authenticated facade and later-phase types remain absent.
         var productionClasses = productionClassNames();
         var absentSimpleNames = List.of(
                 "SkillDefinitionSubmissionService",
-                "RandomUuidSkillIdSource",
                 "SkillSubmissionAuthorizationAdapter",
                 "SkillQuotaView",
                 "SkillPin");

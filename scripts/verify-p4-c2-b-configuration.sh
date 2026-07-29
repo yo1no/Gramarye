@@ -233,27 +233,18 @@ verify_search_helpers() {
     fi
 }
 
-is_reviewed_d1_production_path() {
+is_reviewed_d2a_production_path() {
     case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/GramaryeSkillSavedData.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/JournalTargetAuditProof.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/JournalTargetAuditResult.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/OpaquePendingAttachmentUpdatesBlob.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournal.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalFailure.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalFraming.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalLifecycle.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalMigration.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalSchema.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalState.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalWireScan.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStore.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/StoreSubmissionAuthorityObservation.java | \
-        src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java) return 0 ;;
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/DefaultSkillSubmissionPolicyProvider.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/RandomUuidSkillIdSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDraftCreationService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionCompositionOutcome.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionPolicyProvider.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionPolicySnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionPreparationPipeline.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -274,8 +265,8 @@ verify_production_freeze() {
     fi
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
-        is_reviewed_d1_production_path "${path}" \
-            || fail "production Java changed outside exact P4-D1 allowlist: ${path}"
+        is_reviewed_d2a_production_path "${path}" \
+            || fail "production Java changed outside exact current P4-D2-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
     untracked="$(git ls-files --others --exclude-standard -- \
@@ -285,8 +276,8 @@ verify_production_freeze() {
     fi
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
-        is_reviewed_d1_production_path "${path}" \
-            || fail "untracked production path escaped exact P4-D1 allowlist: ${path}"
+        is_reviewed_d2a_production_path "${path}" \
+            || fail "untracked production path escaped exact current P4-D2-A allowlist: ${path}"
     done <<< "${untracked}"
 }
 
@@ -619,6 +610,15 @@ verify_compiled_outputs_and_jar() {
         for source in P4C2 p4C2Probe p4C2GameTest gramarye_p4_c2; do
             forbid_fixed "${JAR_LISTING}" "${source}" \
                 "P4-C2-B fixture leaked into production JAR ${jar_path} (${source})"
+        done
+        for source in \
+            P4D2ApiGateTest \
+            SkillDraftCreationServiceTest \
+            SkillSubmissionCompositionOutcomeTest \
+            SkillSubmissionPolicyProviderTest \
+            SkillSubmissionPreparationPipelineTest; do
+            forbid_fixed "${JAR_LISTING}" "${source}" \
+                "P4-D2-A test fixture leaked into production JAR ${jar_path} (${source})"
         done
     done < "${JAR_FILE_LIST}"
     if [[ "${jar_count}" -ne 1 ]]; then

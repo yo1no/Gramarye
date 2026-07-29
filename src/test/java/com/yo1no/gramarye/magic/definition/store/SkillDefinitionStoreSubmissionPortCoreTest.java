@@ -28,6 +28,135 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
             UUID.fromString("6ca19576-98af-47e9-847b-ed3e2a526d6e"));
 
     @Test
+    void preparationFailureVocabularyIsExactAndHasNoCapacityInvariantUmbrellas() {
+        assertEquals(Set.of(
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .TRANSITION_SERVER_MISMATCH,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .NORMAL_SUBMISSION_NO_OP,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .PLAN_TRANSITION_PAIRING_FAILURE,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .AUTHORITY_PRECONDITION_MISMATCH,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .DOCUMENT_BLOB_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .REVISION_BLOB_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .HISTORY_BLOB_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .STORE_BLOB_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .JOURNAL_ENTRY_COUNT_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .JOURNAL_ENCODED_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .STORE_CARRIER_INVARIANT_FAILURE,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .JOURNAL_CHAIN_INVARIANT_FAILURE,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .SAVED_DATA_CARRIER_INVARIANT_FAILURE),
+                Set.of(SkillDefinitionStoreSubmissionPort.PreparationFailure.values()));
+    }
+
+    @Test
+    void storeCarrierTypedFailuresMapExhaustivelyWithoutCapacityInference() {
+        assertEquals(
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .DOCUMENT_BLOB_CAPACITY_REJECTED,
+                SkillDefinitionStoreSubmissionPort.mapStoreCarrierFailure(
+                        new StorePersistenceFailure.DocumentBlobEncodedCapacityExceeded(2, 1)));
+        assertEquals(
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .REVISION_BLOB_CAPACITY_REJECTED,
+                SkillDefinitionStoreSubmissionPort.mapStoreCarrierFailure(
+                        new StorePersistenceFailure.RevisionBlobEncodedCapacityExceeded(2, 1)));
+        assertEquals(
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .HISTORY_BLOB_CAPACITY_REJECTED,
+                SkillDefinitionStoreSubmissionPort.mapStoreCarrierFailure(
+                        new StorePersistenceFailure.HistoryBlobEncodedCapacityExceeded(2, 1)));
+        assertEquals(
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .STORE_BLOB_CAPACITY_REJECTED,
+                SkillDefinitionStoreSubmissionPort.mapStoreCarrierFailure(
+                        new StorePersistenceFailure.StoreBlobEncodedCapacityExceeded(2, 1)));
+
+        var reference = new SkillReference(SKILL_ID, new SkillRevision(0));
+        var invariants = List.<StorePersistenceFailure>of(
+                StorePersistenceFailure.MalformedStoreEnvelope.INSTANCE,
+                StorePersistenceFailure.MalformedHistoryEnvelope.INSTANCE,
+                StorePersistenceFailure.MalformedRevisionEnvelope.INSTANCE,
+                new StorePersistenceFailure.UnsupportedStoreSchema(1, 0),
+                new StorePersistenceFailure.UnsupportedDocumentEncoding(reference),
+                new StorePersistenceFailure.StoreEnvelopeMigrationFailed(
+                        StorePersistenceMigrationFailure.simple(
+                                StorePersistenceMigrationFailure.Code.INVALID_ROOT)),
+                new StorePersistenceFailure.DocumentMigrationFailed(reference),
+                new StorePersistenceFailure.OpaqueTokenInvariantViolation(reference),
+                new StorePersistenceFailure.DocumentDecodeFailed(reference),
+                new StorePersistenceFailure.RegistryContextUnavailable(reference),
+                new StorePersistenceFailure.StoreRestoreRejected(
+                        new SkillDefinitionStoreRestoreFailure.EmptyHistory(SKILL_ID)),
+                StorePersistenceFailure.EncodeFailed.INSTANCE);
+        for (var failure : invariants) {
+            assertEquals(
+                    SkillDefinitionStoreSubmissionPort.PreparationFailure
+                            .STORE_CARRIER_INVARIANT_FAILURE,
+                    SkillDefinitionStoreSubmissionPort.mapStoreCarrierFailure(failure));
+        }
+    }
+
+    @Test
+    void journalTypedFailuresMapOnlyTheTwoCapacityCodesAsCapacity() {
+        for (var code : PendingAttachmentJournalFailure.Code.values()) {
+            var expected = switch (code) {
+                case ENTRY_COUNT_EXCEEDED ->
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .JOURNAL_ENTRY_COUNT_REJECTED;
+                case ENCODED_CAPACITY_EXCEEDED ->
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .JOURNAL_ENCODED_CAPACITY_REJECTED;
+                case MALFORMED_ROOT,
+                        DUPLICATE_PHYSICAL_FIELD,
+                        MISSING_FIELD,
+                        UNKNOWN_FIELD,
+                        WRONG_TAG_TYPE,
+                        TRAILING_DATA,
+                        UNSUPPORTED_SCHEMA,
+                        MISSING_MIGRATION_EDGE,
+                        MIGRATION_EXCEPTION,
+                        MIGRATION_PARTIAL,
+                        GENERATION_INVALID,
+                        GENERATION_EXHAUSTED,
+                        POINTER_ROUTE_MISMATCH,
+                        DUPLICATE_STABLE_KEY,
+                        BROKEN_GENERATION_CHAIN,
+                        BROKEN_POINTER_CHAIN,
+                        TARGET_MISSING,
+                        TARGET_OWNER_MISMATCH,
+                        JOURNAL_NOT_BOOTSTRAPPED,
+                        JOURNAL_UNAVAILABLE,
+                        STORE_UNAVAILABLE,
+                        AUTHORITY_UNAVAILABLE,
+                        BOOTSTRAP_ALREADY_INSTALLED,
+                        PREPARED_BASE_MISMATCH,
+                        PREPARED_ALREADY_CONSUMED,
+                        PREFIX_TARGET_MISMATCH,
+                        CARRIER_INVARIANT_FAILURE,
+                        POST_COMMIT_INVARIANT_FAILURE,
+                        TRANSITION_SERVER_MISMATCH ->
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .JOURNAL_CHAIN_INVARIANT_FAILURE;
+            };
+            assertEquals(
+                    expected,
+                    SkillDefinitionStoreSubmissionPort.mapJournalFailure(
+                            PendingAttachmentJournalFailure.simple(code)));
+        }
+    }
+
+    @Test
     void prepareDoesNoMutationAndCommitInvokesStoreOnceThenPublishesDirty() {
         var fixture = fixture();
         var plan = SubmissionPlanTestFactory.newPlan(SKILL_ID, OWNER);
@@ -459,14 +588,15 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
                         Optional.empty(),
                         0,
                         true)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.TRANSITION_NO_OP);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure.NORMAL_SUBMISSION_NO_OP);
         assertRejected(fixture.port().prepareSubmissionCommitCore(
                 fixture.serverIdentity(),
                 fixture.adapter(),
                 plan,
                 SkillQuota.Unlimited.INSTANCE,
                 changedView(fixture.serverIdentity(), Optional.empty(), 0, target, 2)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.GENERATION_INVALID);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .PLAN_TRANSITION_PAIRING_FAILURE);
         assertSame(base, fixture.adapter().state());
         assertFalse(fixture.adapter().isDirty());
         assertEquals(Optional.empty(), fixture.store().latestReference(SKILL_ID));
@@ -491,7 +621,8 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
                 SkillDefinitionStoreSubmissionPort.TransitionView.capture(
                         fixture.serverIdentity(), OWNER, SKILL_ID,
                         Optional.empty(), 0, Optional.empty(), 1, false)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.TARGET_POINTER_MISSING);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .PLAN_TRANSITION_PAIRING_FAILURE);
         assertRejected(fixture.port().prepareSubmissionCommitCore(
                 fixture.serverIdentity(),
                 fixture.adapter(),
@@ -500,7 +631,8 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
                 SkillDefinitionStoreSubmissionPort.TransitionView.capture(
                         fixture.serverIdentity(), otherOwner, SKILL_ID,
                         Optional.empty(), 0, Optional.of(target), 1, false)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.PLAN_OWNER_MISMATCH);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .PLAN_TRANSITION_PAIRING_FAILURE);
         assertRejected(fixture.port().prepareSubmissionCommitCore(
                 fixture.serverIdentity(),
                 fixture.adapter(),
@@ -509,7 +641,8 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
                 SkillDefinitionStoreSubmissionPort.TransitionView.capture(
                         fixture.serverIdentity(), OWNER, otherSkill,
                         Optional.empty(), 0, Optional.of(target), 1, false)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.PLAN_SKILL_ID_MISMATCH);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .PLAN_TRANSITION_PAIRING_FAILURE);
         assertRejected(fixture.port().prepareSubmissionCommitCore(
                 fixture.serverIdentity(),
                 fixture.adapter(),
@@ -521,7 +654,8 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
                         0,
                         new SkillReference(SKILL_ID, new SkillRevision(1)),
                         1)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.PLAN_REFERENCE_MISMATCH);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .PLAN_TRANSITION_PAIRING_FAILURE);
         assertRejected(fixture.port().prepareSubmissionCommitCore(
                 fixture.serverIdentity(),
                 fixture.adapter(),
@@ -529,7 +663,8 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
                 SkillQuota.Unlimited.INSTANCE,
                 changedView(
                         fixture.serverIdentity(), Optional.of(target), 0, target, 1)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.PRECONDITION_MISMATCH);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .PLAN_TRANSITION_PAIRING_FAILURE);
 
         var existingPlan = SubmissionPlanTestFactory.existingPlan(
                 SKILL_ID, OWNER, new SkillRevision(0));
@@ -544,7 +679,8 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
                         0,
                         referenceOf(existingPlan),
                         1)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.AUTHORITY_MISMATCH);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .AUTHORITY_PRECONDITION_MISMATCH);
 
         var oversized = SubmissionPlanTestFactory.oversizedDocumentPlan(
                 SKILL_ID, OWNER, 5, 120_000);
@@ -559,7 +695,8 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
                         0,
                         referenceOf(oversized),
                         1)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.STORE_CARRIER_REJECTED);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .DOCUMENT_BLOB_CAPACITY_REJECTED);
 
         assertSame(base, fixture.adapter().state());
         assertFalse(fixture.adapter().isDirty());
@@ -596,7 +733,8 @@ final class SkillDefinitionStoreSubmissionPortCoreTest {
                         0,
                         referenceOf(secondPlan),
                         1)),
-                SkillDefinitionStoreSubmissionPort.PreparationFailure.JOURNAL_REJECTED);
+                SkillDefinitionStoreSubmissionPort.PreparationFailure
+                        .JOURNAL_CHAIN_INVARIANT_FAILURE);
 
         assertSame(base, fixture.adapter().state());
         assertFalse(fixture.adapter().isDirty());

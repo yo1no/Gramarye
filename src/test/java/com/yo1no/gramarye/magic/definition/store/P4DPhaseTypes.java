@@ -2,7 +2,7 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import java.util.Set;
 
-/** Exact phase-local production allowlist for engineering P4-D1. */
+/** Exact phase-local production allowlists for engineering P4-D1 and P4-D2-A. */
 final class P4DPhaseTypes {
     static final Set<String> NEW_STORE_SOURCE_FILE_NAMES = Set.of(
             "JournalTargetAuditProof.java",
@@ -59,6 +59,35 @@ final class P4DPhaseTypes {
 
     static final String ONLY_NEW_PUBLIC_TOP_LEVEL =
             "SkillDefinitionStoreSubmissionPort";
+
+    static final Set<String> D2A_SUBMISSION_SOURCE_FILE_NAMES = Set.of(
+            "DefaultSkillSubmissionPolicyProvider.java",
+            "RandomUuidSkillIdSource.java",
+            "SkillDraftCreationService.java",
+            "SkillSubmissionCompositionOutcome.java",
+            "SkillSubmissionPolicyProvider.java",
+            "SkillSubmissionPolicySnapshot.java",
+            "SkillSubmissionPreparationPipeline.java");
+
+    static final Set<String> D2A_SUBMISSION_TOP_LEVEL_TYPE_NAMES = Set.of(
+            "DefaultSkillSubmissionPolicyProvider",
+            "RandomUuidSkillIdSource",
+            "SkillDraftCreationService",
+            "SkillSubmissionCompositionOutcome",
+            "SkillSubmissionPolicyProvider",
+            "SkillSubmissionPolicySnapshot",
+            "SkillSubmissionPreparationPipeline");
+
+    static final Set<String> D2A_PUBLIC_TOP_LEVEL_TYPE_NAMES = Set.of(
+            "SkillDraftCreationService",
+            "SkillSubmissionCompositionOutcome",
+            "SkillSubmissionPolicyProvider",
+            "SkillSubmissionPolicySnapshot");
+
+    static final Set<String> D2A_MODIFIED_SOURCE_PATHS = Set.of(
+            "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java",
+            "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java",
+            "com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java");
 
     private P4DPhaseTypes() {
     }

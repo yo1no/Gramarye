@@ -147,17 +147,51 @@ gates` jobs passed. D1 intentionally adds no Gradle／CI memory Gate; the combin
 remains D3-owned. Repository contents do not establish branch-protection required-check
 configuration, which remains external governance unknown／pending.
 
-The completed P4-D2 read-only design review forces the D2-A／D2-B split. D2-A is ready for
-implementation; its first production work is refinement of the D1 bounded failure taxonomy and
-requires no D0.1 authority patch. D2-B remains blocked until D2-A completes. D3 has not started,
-P4-D remains incomplete, and P4-E remains blocked.
+The completed P4-D2 read-only design review forces the D2-A／D2-B split, authorized D2-A
+implementation, and requires no D0.1 authority patch.
+
+## D2-A local implementation ledger
+
+D2-A refines the existing D1 `PreparationFailure` vocabulary without changing the public Store-port
+method set. Four typed Store blob-capacity failures and the journal entry-count／encoded-byte
+failures now map to six distinct capacity codes. Plan／transition pairing, authority-precondition
+drift, Store-carrier invariants, journal-chain invariants, and the unreachable SavedData
+inner-carrier invariant remain separate machine codes. The Store and journal classifiers are
+exhaustive typed switches with no default, message, exception-class, or enum-name inference. The
+inner-carrier maximum remains dominated by its existing component ceilings:
+`91 + 67,108,864 + 1,048,576 = 68,157,531 <= 69,206,016`; no false capacity outcome was added.
+
+The P4-C service adds `prepareLatestTransitionToCurrent`, non-mutating
+`checkPreparedTransitionCurrent`, and `TransitionCurrentness`. Prepare-to-current derives pointer
+and generation from one `observeChecked` call and does not install a missing Attachment. Currentness
+and publication use one shared private validator over exact server, player, original Ready identity,
+pointer, and generation; a currentness check neither consumes the token nor calls `setData`.
+
+The submission package now contains public `SkillSubmissionPolicyProvider`, immutable
+`SkillSubmissionPolicySnapshot`, `SkillDraftCreationService`, and the sealed eleven-variant
+`SkillSubmissionCompositionOutcome`. Package-private `DefaultSkillSubmissionPolicyProvider` is the
+only V0 owner of Unlimited plus `MagicPolicyLimits.DEFAULTS`; package-private
+`RandomUuidSkillIdSource` is the only production `UUID.randomUUID()` owner. Draft creation performs
+one authenticated Attachment availability gate, one mint, one collision lookup, and at most one
+immutable `putDraft`, with no retry or Store call. Package-private
+`SkillSubmissionPreparationPipeline` composes the existing C1–C4 tokens and mappers exactly once
+without adding a public stage token or raw ingress.
+
+D2-A adds no authenticated `SkillDefinitionSubmissionService`, composition-root wiring, additional
+D2 GameTest entry or holder, Store／Attachment commit composition, event or recovery listener,
+Gradle source set, CI job, offline root enumeration, reconciliation, reclaim caller, or network
+surface. Its seam assertions reuse the existing P4-C normal GameTest holder without changing the
+required-test count. Local unit, API, normal GameTest, dedicated-smoke, and inherited A3／B／C
+configuration and memory Gates are the phase closure evidence; commit, push, and remote build
+evidence remain pending. Consequently D2-B remains blocked until D2-A is committed, pushed, and its
+required remote checks pass. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.
 
 ```text
 P4-D0               = COMPLETE
 P4-D1               = COMPLETE
 P4-D2 design review = COMPLETE
-P4-D2-A             = READY FOR IMPLEMENTATION
-P4-D2-B             = BLOCKED UNTIL D2-A COMPLETION
+P4-D2-A             = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
+P4-D2-B             = BLOCKED UNTIL D2-A CLOSURE
 P4-D3               = NOT STARTED
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED

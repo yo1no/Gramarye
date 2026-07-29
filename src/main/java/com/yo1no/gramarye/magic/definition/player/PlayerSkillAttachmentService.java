@@ -265,6 +265,50 @@ public final class PlayerSkillAttachmentService {
         }
 
         var observed = observeChecked(player);
+        return prepareLatestTransitionFromObservation(
+                server,
+                player,
+                skillId,
+                expectedPointer,
+                expectedGeneration,
+                targetPointer,
+                observed);
+    }
+
+    /**
+     * Prepares a present-pointer transition from the exact latest state seen in one Attachment
+     * observation.
+     */
+    public Result<TransitionPreparation> prepareLatestTransitionToCurrent(
+            ServerPlayer player, SkillId skillId, SkillReference targetReference) {
+        var server = requireServerThread(player);
+        Objects.requireNonNull(skillId, "skillId");
+        Objects.requireNonNull(targetReference, "targetReference");
+        if (!targetReference.skillId().equals(skillId)) {
+            return new Available<>(new TransitionRejected(
+                    TransitionRejectionCode.TARGET_ROUTE_MISMATCH));
+        }
+
+        var observed = observeChecked(player);
+        var current = effectiveLatest(observed, skillId);
+        return prepareLatestTransitionFromObservation(
+                server,
+                player,
+                skillId,
+                current.pointer(),
+                current.mutationGeneration(),
+                Optional.of(targetReference),
+                observed);
+    }
+
+    private static Result<TransitionPreparation> prepareLatestTransitionFromObservation(
+            MinecraftServer server,
+            ServerPlayer player,
+            SkillId skillId,
+            Optional<SkillReference> expectedPointer,
+            int expectedGeneration,
+            Optional<SkillReference> targetPointer,
+            ObservedPlayerSkillAttachment observed) {
         if (observed instanceof ObservedPlayerSkillAttachment.Quarantined quarantined) {
             return new Unavailable<>(quarantined.reason());
         }
@@ -334,32 +378,31 @@ public final class PlayerSkillAttachmentService {
         return new Available<>(new Prepared(transition));
     }
 
+    /** Checks whether a prepared token still describes the current Attachment state. */
+    public Result<TransitionCurrentness> checkPreparedTransitionCurrent(
+            ServerPlayer player, PreparedPlayerSkillTransition transition) {
+        var server = requireServerThread(player);
+        Objects.requireNonNull(transition, "transition");
+        var validation = validatePreparedTransition(server, player, transition);
+        if (validation.unavailableReason() != null) {
+            return new Unavailable<>(validation.unavailableReason());
+        }
+        if (validation.changeCode() != null) {
+            return new Available<>(TransitionCurrentness.STATE_CHANGED);
+        }
+        return new Available<>(TransitionCurrentness.CURRENT);
+    }
+
     public Result<MutationOutcome> publishPreparedTransition(
             ServerPlayer player, PreparedPlayerSkillTransition transition) {
         var server = requireServerThread(player);
         Objects.requireNonNull(transition, "transition");
-        if (server != transition.server) {
-            return new Available<>(new MutationRejected(
-                    MutationRejectionCode.WRONG_SERVER));
+        var validation = validatePreparedTransition(server, player, transition);
+        if (validation.unavailableReason() != null) {
+            return new Unavailable<>(validation.unavailableReason());
         }
-        if (!player.getUUID().equals(transition.playerId)) {
-            return new Available<>(new MutationRejected(
-                    MutationRejectionCode.WRONG_PLAYER));
-        }
-
-        var observed = observeChecked(player);
-        if (observed instanceof ObservedPlayerSkillAttachment.Quarantined quarantined) {
-            return new Unavailable<>(quarantined.reason());
-        }
-        if (!transition.original.matches(observed)) {
-            return new Available<>(new MutationRejected(
-                    MutationRejectionCode.STATE_CHANGED));
-        }
-        var current = effectiveLatest(observed, transition.skillId);
-        if (current.mutationGeneration() != transition.expectedGeneration
-                || !current.pointer().equals(transition.expectedPointer)) {
-            return new Available<>(new MutationRejected(
-                    MutationRejectionCode.STATE_CHANGED));
+        if (validation.changeCode() != null) {
+            return new Available<>(new MutationRejected(validation.changeCode()));
         }
         if (transition.isNoOp()) {
             return new Available<>(NoOp.INSTANCE);
@@ -370,6 +413,36 @@ public final class PlayerSkillAttachmentService {
         Result<MutationOutcome> applied = new Available<>(Applied.INSTANCE);
         publishReplacement(player, transition.replacement);
         return applied;
+    }
+
+    private static PreparedTransitionValidation validatePreparedTransition(
+            MinecraftServer server,
+            ServerPlayer player,
+            PreparedPlayerSkillTransition transition) {
+        if (server != transition.server) {
+            return PreparedTransitionValidation.changed(
+                    MutationRejectionCode.WRONG_SERVER);
+        }
+        if (!player.getUUID().equals(transition.playerId)) {
+            return PreparedTransitionValidation.changed(
+                    MutationRejectionCode.WRONG_PLAYER);
+        }
+
+        var observed = observeChecked(player);
+        if (observed instanceof ObservedPlayerSkillAttachment.Quarantined quarantined) {
+            return PreparedTransitionValidation.quarantined(quarantined.reason());
+        }
+        if (!transition.original.matches(observed)) {
+            return PreparedTransitionValidation.changed(
+                    MutationRejectionCode.STATE_CHANGED);
+        }
+        var current = effectiveLatest(observed, transition.skillId);
+        if (current.mutationGeneration() != transition.expectedGeneration
+                || !current.pointer().equals(transition.expectedPointer)) {
+            return PreparedTransitionValidation.changed(
+                    MutationRejectionCode.STATE_CHANGED);
+        }
+        return PreparedTransitionValidation.current();
     }
 
     public Result<PlayerSkillRootProjection> rootProjection(ServerPlayer player) {
@@ -635,6 +708,11 @@ public final class PlayerSkillAttachmentService {
         ATTACHMENT_CAPACITY_REJECTED
     }
 
+    public enum TransitionCurrentness {
+        CURRENT,
+        STATE_CHANGED
+    }
+
     public static final class PreparedPlayerSkillTransition {
         private final MinecraftServer server;
         private final UUID playerId;
@@ -736,6 +814,29 @@ public final class PlayerSkillAttachmentService {
                 return observed instanceof ObservedPlayerSkillAttachment.Ready ready
                         && ready.state() == exactReference;
             }
+        }
+    }
+
+    private record PreparedTransitionValidation(
+            MutationRejectionCode changeCode, UnavailableReason unavailableReason) {
+        private PreparedTransitionValidation {
+            if (changeCode != null && unavailableReason != null) {
+                throw new IllegalArgumentException(
+                        "Prepared transition validation cannot be changed and unavailable");
+            }
+        }
+
+        private static PreparedTransitionValidation current() {
+            return new PreparedTransitionValidation(null, null);
+        }
+
+        private static PreparedTransitionValidation changed(MutationRejectionCode code) {
+            return new PreparedTransitionValidation(Objects.requireNonNull(code, "code"), null);
+        }
+
+        private static PreparedTransitionValidation quarantined(UnavailableReason reason) {
+            return new PreparedTransitionValidation(
+                    null, Objects.requireNonNull(reason, "reason"));
         }
     }
 }

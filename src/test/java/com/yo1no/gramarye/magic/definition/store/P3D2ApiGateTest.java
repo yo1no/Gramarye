@@ -260,7 +260,8 @@ class P3D2ApiGateTest {
     }
 
     @Test
-    void compiledProductionTreeContainsFinalD3ButNoP4OrCompositionSurface() throws Exception {
+    void compiledProductionTreeAllowsReviewedP4TypesButRejectsFacadeAndStoreLeakage()
+            throws Exception {
         var productionClasses = productionClassNames();
         var storeTypes = productionClasses.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
@@ -276,7 +277,6 @@ class P3D2ApiGateTest {
                 .collect(Collectors.toSet());
         var forbiddenTopLevelTypes = Set.of(
                 "SkillDefinitionSubmissionService",
-                "RandomUuidSkillIdSource",
                 "SkillSubmissionAuthorizationAdapter",
                 "SkillPin");
 

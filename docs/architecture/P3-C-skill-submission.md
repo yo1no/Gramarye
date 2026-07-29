@@ -65,3 +65,26 @@ same warning-only report reference. A normal same-pointer result is a stale／in
 zero Store commit, not an idempotent duplicate submission. Exact public outcomes,
 journal semantics, and the Store-side port remain owned by the [P4 amendment §§14–16](../codex-spec/18_P4持久化與組合修正案.md#14-submission-composition)
 and the compact [P4-D0 ledger](P4-D0-submission-journal-boundary.md).
+
+## P4-D2-A exactly-once handoff
+
+P4-D2-A adds package-private `SkillSubmissionPreparationPipeline` in the submission package. Its
+only operations are the existing stage-shaped calls: direct Draft precheck, authority check, the
+three short-circuit mappings, and preparation plus mapping. `SkillSubmissionInput.direct` is called
+once, each selected C1／C2／C3 stage is called once, and exactly one C4 mapper terminates a path. It
+does not call a Reader, Writer, raw resolver, Store, Attachment mutation, or manually reconstruct a
+plan, revision, definition, or report. Its single package-private nested stage adapter exists only
+for invocation-count tests and does not make a P3-C token public.
+
+`SkillDraftCreationService` is now the first production `SkillIdSource` consumer. Its injected
+package-private `RandomUuidSkillIdSource` is the sole production random-UUID owner; minting remains
+neither reservation nor authorization. The service constructs only the current empty Draft and
+publishes it through the controlled immutable P4-C replacement API after an exact collision check;
+it performs no Store call or retry.
+
+The immutable `SkillSubmissionPolicySnapshot` keeps the exact quota／validation pair for later D2-B
+composition, while the eleven-variant `SkillSubmissionCompositionOutcome` is distinct from the
+five-variant P3-C preparation outcome. `PreparationRejected` rejects `Prepared` and derives the
+exact existing report; all post-preparation variants require and retain the exact warning-only
+report object. D2-A does not yet invoke the provider or build the authenticated facade: those
+ordering and publication responsibilities remain blocked in D2-B until D2-A closure.

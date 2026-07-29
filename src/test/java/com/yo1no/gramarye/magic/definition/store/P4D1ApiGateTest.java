@@ -97,6 +97,34 @@ final class P4D1ApiGateTest {
                         "committedSkillCount", "find", "latestReference", "ownerOf", "pin",
                         "reclaim", "registerOn", "submissionPort"),
                 publicMethodNames(SkillDefinitionStoreService.class));
+        assertEquals(Set.of(
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .TRANSITION_SERVER_MISMATCH,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .NORMAL_SUBMISSION_NO_OP,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .PLAN_TRANSITION_PAIRING_FAILURE,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .AUTHORITY_PRECONDITION_MISMATCH,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .DOCUMENT_BLOB_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .REVISION_BLOB_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .HISTORY_BLOB_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .STORE_BLOB_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .JOURNAL_ENTRY_COUNT_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .JOURNAL_ENCODED_CAPACITY_REJECTED,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .STORE_CARRIER_INVARIANT_FAILURE,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .JOURNAL_CHAIN_INVARIANT_FAILURE,
+                        SkillDefinitionStoreSubmissionPort.PreparationFailure
+                                .SAVED_DATA_CARRIER_INVARIANT_FAILURE),
+                Set.of(SkillDefinitionStoreSubmissionPort.PreparationFailure.values()));
     }
 
     @Test
@@ -148,9 +176,6 @@ final class P4D1ApiGateTest {
                 .collect(Collectors.joining("\n"));
         for (var forbidden : List.of(
                 "SkillDefinitionSubmissionService",
-                "SkillSubmissionPolicyProvider",
-                "RandomUuidSkillIdSource",
-                "SkillDraftCreationService",
                 "PlayerLoggedInEvent",
                 "RootCollector",
                 "OfflineRoot",

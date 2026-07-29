@@ -43,9 +43,10 @@ This page is a compact phase boundary, not a second persistence specification.
 - P4-D1 owns strict journal framing／migration／operational state, the single Store authority
   snapshot, narrow Store submission port, prospective Store／journal preflight, opaque commit handle,
   Store／journal publication, and journal roots; it owns no facade or event listener.
-- P4-D2 is forcibly split into P4-D2-A followed by P4-D2-B. Together they own authenticated
-  submission, the unique policy provider and SkillId mint adapter, exactly-once P3-C composition,
-  prepared Attachment transition, and typed composition outcome.
+- P4-D2 is forcibly split into P4-D2-A followed by P4-D2-B. D2-A owns the refined D1 preparation
+  taxonomy, policy／Draft-creation primitives, typed composition outcome, package-private P3-C
+  exactly-once pipeline, and P4-C single-observation／currentness seams. D2-B later owns the
+  authenticated submission facade and complete Store／Attachment composition.
 - P4-D3 owns bootstrap／login recovery, persisted-readback clear, paired restart tests, and the
   combined fixed-heap／CI Gates.
 - P4-E owns complete offline root audit, rebuildable root indexing, reconciliation, and reclaim
@@ -828,10 +829,41 @@ publication, recovery event, offline root enumeration, Store reclaim caller, net
 Gradle source set, or CI job. Repository contents do not establish branch-protection required-check
 configuration, which remains external governance unknown／pending.
 
-The completed P4-D2 read-only design review forces the D2-A／D2-B split. D2-A is ready for
-implementation; its first production work is refinement of the D1 bounded failure taxonomy and
-requires no D0.1 authority patch. D2-B remains blocked until D2-A completes. D3 has not started,
-P4-D remains incomplete, and P4-E remains blocked.
+The completed P4-D2 read-only design review forces the D2-A／D2-B split, authorized D2-A
+implementation, and requires no D0.1 authority patch.
+
+## P4-D2-A local implementation ledger
+
+D2-A keeps `SkillDefinitionStoreSubmissionPort` as the sole production Store commit owner and keeps
+its eight public methods unchanged. Its nested preparation taxonomy now distinguishes document,
+revision, history, Store, journal-count, and journal-byte capacity from Store-carrier,
+journal-chain, SavedData-carrier, plan／transition, authority, server, and normal no-op failures.
+The mapping consumes the existing typed A1／A2／A3／journal results through exhaustive switches; the
+SavedData inner carrier has no independent capacity branch because the existing maxima prove
+`68,157,531 <= 69,206,016`.
+
+`PlayerSkillAttachmentService.prepareLatestTransitionToCurrent` observes the Attachment once and
+derives the exact current pointer／generation without installing a missing default. Its new
+non-mutating currentness query and the existing publication path share one private validator;
+currentness does not consume the prepared token, build a replacement, or call `setData`.
+
+The actual D2-A submission-package top levels are public `SkillSubmissionPolicyProvider`,
+`SkillSubmissionPolicySnapshot`, `SkillDraftCreationService`, and
+`SkillSubmissionCompositionOutcome`, plus package-private
+`DefaultSkillSubmissionPolicyProvider`, `RandomUuidSkillIdSource`, and
+`SkillSubmissionPreparationPipeline`. The default provider alone owns the immutable Unlimited／
+`MagicPolicyLimits.DEFAULTS` snapshot, the UUID adapter alone mints random IDs, and Draft creation
+uses the controlled P4-C service without reservation or Store access. The eleven composition
+outcomes preserve the exact warning-only report reference after preparation and expose no plan,
+document, carrier, journal, or raw state. The package-private pipeline is the only new C1–C4
+orchestration seam and retains every existing exactly-once stage boundary.
+
+D2-A has no authenticated facade, Gramarye D2 wiring, additional D2 GameTest entry or holder,
+recovery event, fixed-heap source set, Gradle／CI change, offline roots, reconciliation, reclaim, or
+network code. Its seam assertions reuse the existing P4-C normal GameTest holder without changing
+the required-test count. Local implementation and inherited gates are complete, but
+commit／push／remote evidence is pending; therefore D2-B is still blocked. D3 has not started, P4-D
+remains incomplete, and P4-E remains blocked.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -842,8 +874,8 @@ P4-C    = COMPLETE
 P4-D0               = COMPLETE
 P4-D1               = COMPLETE
 P4-D2 design review = COMPLETE
-P4-D2-A             = READY FOR IMPLEMENTATION
-P4-D2-B             = BLOCKED UNTIL D2-A COMPLETION
+P4-D2-A             = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
+P4-D2-B             = BLOCKED UNTIL D2-A CLOSURE
 P4-D3               = NOT STARTED
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED
@@ -853,6 +885,6 @@ The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed b
 [P4-D0 submission journal and composition boundary](P4-D0-submission-journal-boundary.md). P4-D1 is
 complete: its production commit is present at `HEAD`／`origin/main`, local full regression passed,
 and the externally reported remote build／A3／B／C jobs passed. The P4-D2 design review is complete;
-D2-A is ready, D2-B is blocked on D2-A, and D3 has not started. P4-D remains incomplete and P4-E
-remains blocked. Branch-protection required-check configuration remains external governance
-unknown／pending.
+D2-A is implemented locally with commit／push／remote evidence pending, D2-B remains blocked on its
+closure, and D3 has not started. P4-D remains incomplete and P4-E remains blocked.
+Branch-protection required-check configuration remains external governance unknown／pending.

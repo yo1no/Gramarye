@@ -229,7 +229,7 @@ public final class SkillDefinitionStoreSubmissionPort {
         }
         if (!authorityMatchesPlan(ready.savedDataReady().store(), plan)) {
             return new SubmissionPreparationResult.Rejected(
-                    PreparationFailure.AUTHORITY_MISMATCH);
+                    PreparationFailure.AUTHORITY_PRECONDITION_MISMATCH);
         }
 
         CarrierUpdateResult carrierResult;
@@ -238,11 +238,11 @@ public final class SkillDefinitionStoreSubmissionPort {
                     ready.savedDataReady().storeCarrier(), plan);
         } catch (CarrierInvariantException exception) {
             return new SubmissionPreparationResult.Rejected(
-                    PreparationFailure.STORE_CARRIER_REJECTED);
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE);
         }
-        if (carrierResult instanceof CarrierUpdateResult.Failure) {
+        if (carrierResult instanceof CarrierUpdateResult.Failure failure) {
             return new SubmissionPreparationResult.Rejected(
-                    PreparationFailure.STORE_CARRIER_REJECTED);
+                    mapStoreCarrierFailure(failure.failure()));
         }
         var carrierUpdate = ((CarrierUpdateResult.Prepared) carrierResult).update();
         var target = transition.targetPointer().orElseThrow();
@@ -253,16 +253,18 @@ public final class SkillDefinitionStoreSubmissionPort {
                 transition.targetGeneration(),
                 transition.expectedPointer(),
                 target));
-        if (appended instanceof PendingAttachmentJournal.DomainMutation.Rejected) {
+        if (appended instanceof PendingAttachmentJournal.DomainMutation.Rejected rejected) {
             return new SubmissionPreparationResult.Rejected(
-                    PreparationFailure.JOURNAL_REJECTED);
+                    mapJournalFailure(rejected.failure()));
         }
         var prospectiveJournal = ((PendingAttachmentJournal.DomainMutation.Updated) appended)
                 .journal();
         var encodedResult = PendingAttachmentJournalFraming.encode(prospectiveJournal);
-        if (encodedResult instanceof PendingAttachmentJournalFraming.JournalEncodingResult.Rejected) {
+        if (encodedResult
+                instanceof PendingAttachmentJournalFraming.JournalEncodingResult.Rejected
+                        rejected) {
             return new SubmissionPreparationResult.Rejected(
-                    PreparationFailure.JOURNAL_REJECTED);
+                    mapJournalFailure(rejected.failure()));
         }
         var encoded = ((PendingAttachmentJournalFraming.JournalEncodingResult.Encoded)
                 encodedResult).journal();
@@ -273,7 +275,7 @@ public final class SkillDefinitionStoreSubmissionPort {
                     carrierUpdate.prospectiveCarrier(), encoded.pending());
         } catch (IllegalArgumentException | ArithmeticException exception) {
             return new SubmissionPreparationResult.Rejected(
-                    PreparationFailure.CARRIER_INVARIANT_FAILURE);
+                    PreparationFailure.SAVED_DATA_CARRIER_INVARIANT_FAILURE);
         }
         var proof = new JournalTargetAuditProof.ConditionalOnExactCommit(
                 ready.journalReady(),
@@ -532,34 +534,112 @@ public final class SkillDefinitionStoreSubmissionPort {
             return Optional.of(PreparationFailure.TRANSITION_SERVER_MISMATCH);
         }
         if (transition.isNoOp()) {
-            return Optional.of(PreparationFailure.TRANSITION_NO_OP);
+            return Optional.of(PreparationFailure.NORMAL_SUBMISSION_NO_OP);
         }
         if (transition.targetPointer().isEmpty()) {
-            return Optional.of(PreparationFailure.TARGET_POINTER_MISSING);
+            return Optional.of(PreparationFailure.PLAN_TRANSITION_PAIRING_FAILURE);
         }
         var target = transition.targetPointer().orElseThrow();
         if (!plan.owner().equals(transition.owner())) {
-            return Optional.of(PreparationFailure.PLAN_OWNER_MISMATCH);
+            return Optional.of(PreparationFailure.PLAN_TRANSITION_PAIRING_FAILURE);
         }
         if (!plan.precondition().skillId().equals(transition.skillId())) {
-            return Optional.of(PreparationFailure.PLAN_SKILL_ID_MISMATCH);
+            return Optional.of(PreparationFailure.PLAN_TRANSITION_PAIRING_FAILURE);
         }
         if (!plan.proposedDocument().skillId().equals(target.skillId())
                 || !plan.proposedDocument().revision().equals(target.revision())) {
-            return Optional.of(PreparationFailure.PLAN_REFERENCE_MISMATCH);
+            return Optional.of(PreparationFailure.PLAN_TRANSITION_PAIRING_FAILURE);
         }
         var preconditionPointer = switch (plan.precondition()) {
             case SkillCommitPrecondition.ExpectedAbsent ignored -> Optional.<SkillReference>empty();
             case SkillCommitPrecondition.ExpectedLatest expected -> Optional.of(expected.latest());
         };
         if (!transition.expectedPointer().equals(preconditionPointer)) {
-            return Optional.of(PreparationFailure.PRECONDITION_MISMATCH);
+            return Optional.of(PreparationFailure.PLAN_TRANSITION_PAIRING_FAILURE);
         }
         if (!PlayerSkillAttachmentService.isChangedGenerationSuccessor(
                 transition.expectedGeneration(), transition.targetGeneration())) {
-            return Optional.of(PreparationFailure.GENERATION_INVALID);
+            return Optional.of(PreparationFailure.PLAN_TRANSITION_PAIRING_FAILURE);
         }
         return Optional.empty();
+    }
+
+    static PreparationFailure mapStoreCarrierFailure(StorePersistenceFailure failure) {
+        Objects.requireNonNull(failure, "failure");
+        return switch (failure) {
+            case StorePersistenceFailure.DocumentBlobEncodedCapacityExceeded ignored ->
+                    PreparationFailure.DOCUMENT_BLOB_CAPACITY_REJECTED;
+            case StorePersistenceFailure.RevisionBlobEncodedCapacityExceeded ignored ->
+                    PreparationFailure.REVISION_BLOB_CAPACITY_REJECTED;
+            case StorePersistenceFailure.HistoryBlobEncodedCapacityExceeded ignored ->
+                    PreparationFailure.HISTORY_BLOB_CAPACITY_REJECTED;
+            case StorePersistenceFailure.StoreBlobEncodedCapacityExceeded ignored ->
+                    PreparationFailure.STORE_BLOB_CAPACITY_REJECTED;
+            case StorePersistenceFailure.MalformedStoreEnvelope ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.MalformedHistoryEnvelope ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.MalformedRevisionEnvelope ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.UnsupportedStoreSchema ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.UnsupportedDocumentEncoding ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.StoreEnvelopeMigrationFailed ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.DocumentMigrationFailed ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.OpaqueTokenInvariantViolation ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.DocumentDecodeFailed ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.RegistryContextUnavailable ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.StoreRestoreRejected ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+            case StorePersistenceFailure.EncodeFailed ignored ->
+                    PreparationFailure.STORE_CARRIER_INVARIANT_FAILURE;
+        };
+    }
+
+    static PreparationFailure mapJournalFailure(PendingAttachmentJournalFailure failure) {
+        Objects.requireNonNull(failure, "failure");
+        return switch (failure.code()) {
+            case ENTRY_COUNT_EXCEEDED ->
+                    PreparationFailure.JOURNAL_ENTRY_COUNT_REJECTED;
+            case ENCODED_CAPACITY_EXCEEDED ->
+                    PreparationFailure.JOURNAL_ENCODED_CAPACITY_REJECTED;
+            case MALFORMED_ROOT,
+                    DUPLICATE_PHYSICAL_FIELD,
+                    MISSING_FIELD,
+                    UNKNOWN_FIELD,
+                    WRONG_TAG_TYPE,
+                    TRAILING_DATA,
+                    UNSUPPORTED_SCHEMA,
+                    MISSING_MIGRATION_EDGE,
+                    MIGRATION_EXCEPTION,
+                    MIGRATION_PARTIAL,
+                    GENERATION_INVALID,
+                    GENERATION_EXHAUSTED,
+                    POINTER_ROUTE_MISMATCH,
+                    DUPLICATE_STABLE_KEY,
+                    BROKEN_GENERATION_CHAIN,
+                    BROKEN_POINTER_CHAIN,
+                    TARGET_MISSING,
+                    TARGET_OWNER_MISMATCH,
+                    JOURNAL_NOT_BOOTSTRAPPED,
+                    JOURNAL_UNAVAILABLE,
+                    STORE_UNAVAILABLE,
+                    AUTHORITY_UNAVAILABLE,
+                    BOOTSTRAP_ALREADY_INSTALLED,
+                    PREPARED_BASE_MISMATCH,
+                    PREPARED_ALREADY_CONSUMED,
+                    PREFIX_TARGET_MISMATCH,
+                    CARRIER_INVARIANT_FAILURE,
+                    POST_COMMIT_INVARIANT_FAILURE,
+                    TRANSITION_SERVER_MISMATCH ->
+                    PreparationFailure.JOURNAL_CHAIN_INVARIANT_FAILURE;
+        };
     }
 
     private static boolean authorityMatchesPlan(
@@ -872,17 +952,18 @@ public final class SkillDefinitionStoreSubmissionPort {
 
     public enum PreparationFailure {
         TRANSITION_SERVER_MISMATCH,
-        TRANSITION_NO_OP,
-        TARGET_POINTER_MISSING,
-        PLAN_OWNER_MISMATCH,
-        PLAN_SKILL_ID_MISMATCH,
-        PLAN_REFERENCE_MISMATCH,
-        PRECONDITION_MISMATCH,
-        GENERATION_INVALID,
-        AUTHORITY_MISMATCH,
-        STORE_CARRIER_REJECTED,
-        JOURNAL_REJECTED,
-        CARRIER_INVARIANT_FAILURE
+        NORMAL_SUBMISSION_NO_OP,
+        PLAN_TRANSITION_PAIRING_FAILURE,
+        AUTHORITY_PRECONDITION_MISMATCH,
+        DOCUMENT_BLOB_CAPACITY_REJECTED,
+        REVISION_BLOB_CAPACITY_REJECTED,
+        HISTORY_BLOB_CAPACITY_REJECTED,
+        STORE_BLOB_CAPACITY_REJECTED,
+        JOURNAL_ENTRY_COUNT_REJECTED,
+        JOURNAL_ENCODED_CAPACITY_REJECTED,
+        STORE_CARRIER_INVARIANT_FAILURE,
+        JOURNAL_CHAIN_INVARIANT_FAILURE,
+        SAVED_DATA_CARRIER_INVARIANT_FAILURE
     }
 
     public enum PreparedBaseMismatchCode {
