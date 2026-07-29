@@ -12,14 +12,14 @@ unchanged.
 - D1 owns the strict journal model and migration, derived operational state, single Store authority
   snapshot, narrow Store submission port, opaque prepared commit handle, Store／journal publication,
   and journal-root projection. It owns no authenticated facade or event listener.
-- D2 owns the authenticated facade, unique policy provider, Draft creation／SkillId mint adapter,
-  exactly-once P3-C composition, prepared Attachment transition, and composition outcome. It owns no
-  recovery listener.
+- D2 is forcibly split into D2-A followed by D2-B. Together they own the authenticated facade,
+  unique policy provider, Draft creation／SkillId mint adapter, exactly-once P3-C composition,
+  prepared Attachment transition, and composition outcome. They own no recovery listener.
 - D3 owns bootstrap and login recovery, persisted-readback prefix clear, paired crash／restart probes,
   the combined fixed-heap Gate, Gradle／CI wiring, and final phase gates.
 
-D1, D2, D3, and the required remote memory Gate must all pass before P4-D is complete. P4-E remains
-not started.
+D1, D2-A, D2-B, D3, and the required remote memory Gate must all pass before P4-D is complete. P4-E
+remains blocked until P4-D completes.
 
 ## Journal physical boundary
 
@@ -139,14 +139,26 @@ canonical operational view without a dirty delta, or publishes a validated rewri
 Unavailable bootstrap preserves the source carrier and dirty state.
 
 D1 adds no authenticated facade, provider, Attachment publication, event listener, recovery
-orchestration, Gradle source set, CI job, reclaim caller, or P4-E collector. D2 and D3 remain not
-started, and P4-D is incomplete until those phases and the combined remote memory Gate pass.
+orchestration, Gradle source set, CI job, reclaim caller, or P4-E collector. P4-D1 closure includes
+strict pending-journal framing, the journal operational lifecycle, authority observation, the
+Store-side submission port, and prepare／commit／bootstrap／clear. The local full regression passed.
+The externally reported remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory
+gates` jobs passed. D1 intentionally adds no Gradle／CI memory Gate; the combined P4-D memory Gate
+remains D3-owned. Repository contents do not establish branch-protection required-check
+configuration, which remains external governance unknown／pending.
+
+The completed P4-D2 read-only design review forces the D2-A／D2-B split. D2-A is ready for
+implementation; its first production work is refinement of the D1 bounded failure taxonomy and
+requires no D0.1 authority patch. D2-B remains blocked until D2-A completes. D3 has not started,
+P4-D remains incomplete, and P4-E remains blocked.
 
 ```text
-P4-D0 = DOCUMENTATION COMPLETE
-P4-D1 = IMPLEMENTED; LOCAL GATES PASS; COMMIT/PUSH/REMOTE BUILD PENDING
-P4-D2 = NOT STARTED
-P4-D3 = NOT STARTED
-P4-D  = INCOMPLETE
-P4-E  = NOT STARTED
+P4-D0               = COMPLETE
+P4-D1               = COMPLETE
+P4-D2 design review = COMPLETE
+P4-D2-A             = READY FOR IMPLEMENTATION
+P4-D2-B             = BLOCKED UNTIL D2-A COMPLETION
+P4-D3               = NOT STARTED
+P4-D                = INCOMPLETE
+P4-E                = BLOCKED
 ```

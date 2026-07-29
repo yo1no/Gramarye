@@ -43,8 +43,9 @@ This page is a compact phase boundary, not a second persistence specification.
 - P4-D1 owns strict journal framing／migration／operational state, the single Store authority
   snapshot, narrow Store submission port, prospective Store／journal preflight, opaque commit handle,
   Store／journal publication, and journal roots; it owns no facade or event listener.
-- P4-D2 owns authenticated submission, the unique policy provider and SkillId mint adapter,
-  exactly-once P3-C composition, prepared Attachment transition, and typed composition outcome.
+- P4-D2 is forcibly split into P4-D2-A followed by P4-D2-B. Together they own authenticated
+  submission, the unique policy provider and SkillId mint adapter, exactly-once P3-C composition,
+  prepared Attachment transition, and typed composition outcome.
 - P4-D3 owns bootstrap／login recovery, persisted-readback clear, paired restart tests, and the
   combined fixed-heap／CI Gates.
 - P4-E owns complete offline root audit, rebuildable root indexing, reconciliation, and reclaim
@@ -201,9 +202,10 @@ P4-C1 starts only after the complete P4-C0 authority patch is committed and remo
 starts only after P4-C1's physical／serializer Gate passes. P4-C completes only after C1, C2, and the
 required fixed-1-GiB exact-limit quarantine lifecycle job pass locally and remotely.
 
-P4-D1 starts only after the documentation-only P4-D0 authority patch is complete. D2 starts after
-D1's strict journal and Store-port Gate; D3 starts after D2 normal submission passes. P4-D completes
-only after D1, D2, D3, and the required single-process combined fixed-1-GiB remote Gate pass.
+P4-D1 starts only after the documentation-only P4-D0 authority patch is complete. P4-D2-A starts
+only after D1 closure and the completed D2 read-only design review; P4-D2-B starts only after D2-A
+completes. D3 starts only after D2-B normal submission passes. P4-D completes only after D1, D2-A,
+D2-B, D3, and the required single-process combined fixed-1-GiB remote Gate pass.
 
 ## P4-B0 clarification ledger
 
@@ -246,9 +248,12 @@ read-only design review is complete. The P4-C0 framing conflict is resolved by t
 `NbtIo.writeAnyTag` byte-coordinate decision, and the explicit destructive-oversize quarantine
 policy closes the preservation-policy stop gate. P4-C0.1, P4-C1, P4-C2-A, and P4-C2-B are complete,
 and the required remote `P4-C memory gates` result passed. P4-C is therefore complete. The P4-D
-read-only review exposed the non-zero journal-framing gap; P4-D0 now closes that authority gap without
-Java changes. P4-D1 now implements the strict journal and Store-port boundary locally; D2／D3 and
-the combined P4-D remote memory Gate remain future work.
+read-only review exposed the non-zero journal-framing gap; P4-D0 closed that authority gap without
+Java changes. P4-D1 closure includes strict pending-journal framing, the journal operational
+lifecycle, authority observation, the Store-side submission port, and
+prepare／commit／bootstrap／clear. The local full regression passed, and the externally reported
+remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs passed. D1
+intentionally adds no Gradle／CI memory Gate; the combined P4-D memory Gate remains D3-owned.
 
 ## P4-A1 implementation ledger
 
@@ -820,7 +825,13 @@ The two additive P4-C seams are `isChangedGenerationSuccessor`, which delegates 
 `MutationGeneration` arithmetic owner, and exact-server `PreparedPlayerSkillTransition.isBoundTo`.
 D1 adds no authenticated `ServerPlayer` facade, policy provider, Attachment transition
 publication, recovery event, offline root enumeration, Store reclaim caller, network surface,
-Gradle source set, or CI job. P4-D2 and P4-D3 have not started; P4-D and P4-E remain incomplete.
+Gradle source set, or CI job. Repository contents do not establish branch-protection required-check
+configuration, which remains external governance unknown／pending.
+
+The completed P4-D2 read-only design review forces the D2-A／D2-B split. D2-A is ready for
+implementation; its first production work is refinement of the D1 bounded failure taxonomy and
+requires no D0.1 authority patch. D2-B remains blocked until D2-A completes. D3 has not started,
+P4-D remains incomplete, and P4-E remains blocked.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -828,15 +839,20 @@ P4-C1   = COMPLETE
 P4-C2-A = COMPLETE
 P4-C2-B = COMPLETE
 P4-C    = COMPLETE
-P4-D0   = DOCUMENTATION COMPLETE
-P4-D1   = IMPLEMENTED; LOCAL GATES PASS; COMMIT/PUSH/REMOTE BUILD PENDING
-P4-D2   = NOT STARTED
-P4-D3   = NOT STARTED
-P4-D    = INCOMPLETE
-P4-E    = NOT STARTED
+P4-D0               = COMPLETE
+P4-D1               = COMPLETE
+P4-D2 design review = COMPLETE
+P4-D2-A             = READY FOR IMPLEMENTATION
+P4-D2-B             = BLOCKED UNTIL D2-A COMPLETION
+P4-D3               = NOT STARTED
+P4-D                = INCOMPLETE
+P4-E                = BLOCKED
 ```
 
 The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed by
 [P4-D0 submission journal and composition boundary](P4-D0-submission-journal-boundary.md). P4-D1 is
-implemented in the current review worktree and awaits commit／push／remote build evidence; D2／D3 are
-unimplemented. P4-E offline root completeness remains a later phase.
+complete: its production commit is present at `HEAD`／`origin/main`, local full regression passed,
+and the externally reported remote build／A3／B／C jobs passed. The P4-D2 design review is complete;
+D2-A is ready, D2-B is blocked on D2-A, and D3 has not started. P4-D remains incomplete and P4-E
+remains blocked. Branch-protection required-check configuration remains external governance
+unknown／pending.
