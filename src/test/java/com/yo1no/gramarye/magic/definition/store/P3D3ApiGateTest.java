@@ -445,7 +445,7 @@ class P3D3ApiGateTest {
                 "Executor", "Timer", "scheduler");
 
         for (var source : storeSources) {
-            var text = readSanitized(source);
+            var text = withoutExactD1StoreIntegration(source, readSanitized(source));
             for (var token : forbiddenSourceTokens) {
                 assertFalse(text.contains(token), source + " contains " + token);
             }
@@ -510,7 +510,7 @@ class P3D3ApiGateTest {
         assertTrue(normalized.contains("## d3-b"));
         assertTrue(normalized.contains("dirty-state matrix"));
         assertTrue(normalized.contains(
-                "p4-d commit `committed` + prebuilt carrier/journal published | dirty"));
+                "p3-d store `committed` + prebuilt store carrier/journal published | dirty"));
         assertTrue(normalized.contains("commit typed failure | not dirty"));
         assertTrue(normalized.contains("pin / close | not dirty"));
         assertTrue(normalized.contains("reclaim `rejected` | not dirty"));
@@ -552,6 +552,7 @@ class P3D3ApiGateTest {
                 && !name.equals("SkillDefinitionStorePersistenceBridge.java")
                 && !P4B1PhaseTypes.containsSourceFileName(name)
                 && !P4B2PhaseTypes.containsSourceFileName(name)
+                && !P4DPhaseTypes.containsNewStoreSourceFileName(name)
                 && !Set.of(
                                 "StoreEncodingLayout.java",
                                 "StoreLayoutEncodeResult.java",
@@ -569,6 +570,17 @@ class P3D3ApiGateTest {
                                 "StoreHistoryBlobSlice.java",
                                 "StoreRevisionBlobSlice.java")
                         .contains(name);
+    }
+
+    private static String withoutExactD1StoreIntegration(Path source, String text) {
+        if (!source.getFileName().toString().equals("SkillDefinitionStore.java")) {
+            return text;
+        }
+        var start = text.indexOf("StoreSubmissionAuthorityObservation observeSubmissionAuthority(");
+        var end = text.indexOf("public Optional<SkillRevisionPin> pin(", start);
+        assertTrue(start >= 0, "missing reviewed D1 authority observation slice");
+        assertTrue(end > start, "missing end of reviewed D1 Store integration slice");
+        return text.substring(0, start) + text.substring(end);
     }
 
     private static void assertMapField(

@@ -320,7 +320,6 @@ main() {
     # Manual clone hooks, journal/composition, offline roots, and networking remain forbidden.
     for literal in \
         'PlayerEvent' \
-        'PendingAttachmentJournal' \
         'SkillDefinitionSubmissionService' \
         'OfflineRoot' \
         'CustomPacketPayload' \
@@ -386,6 +385,7 @@ main() {
         fi
     done < "${JAR_LISTING}"
 
+    bash scripts/verify-p4-d1-configuration.sh
     printf 'Verified P4-A3-B task, source-set, CI, and JAR isolation contracts.\n'
 }
 

@@ -1,0 +1,73 @@
+package com.yo1no.gramarye.magic.definition.store;
+
+import java.util.Set;
+
+/** Exact phase-local production allowlist for engineering P4-D1. */
+final class P4DPhaseTypes {
+    static final Set<String> NEW_STORE_SOURCE_FILE_NAMES = Set.of(
+            "JournalTargetAuditProof.java",
+            "JournalTargetAuditResult.java",
+            "PendingAttachmentJournal.java",
+            "PendingAttachmentJournalFailure.java",
+            "PendingAttachmentJournalFraming.java",
+            "PendingAttachmentJournalLifecycle.java",
+            "PendingAttachmentJournalMigration.java",
+            "PendingAttachmentJournalSchema.java",
+            "PendingAttachmentJournalState.java",
+            "PendingAttachmentJournalWireScan.java",
+            "SkillDefinitionStoreSubmissionPort.java",
+            "StoreSubmissionAuthorityObservation.java");
+
+    static final Set<String> NEW_STORE_TOP_LEVEL_TYPE_NAMES = Set.of(
+            "EncodedPendingAttachmentJournal",
+            "JournalTargetAuditProof",
+            "JournalTargetAuditResult",
+            "MalformedWireException",
+            "PendingAttachmentJournal",
+            "PendingAttachmentJournalCursor",
+            "PendingAttachmentJournalEntry",
+            "PendingAttachmentJournalEntryPhysicalV0",
+            "PendingAttachmentJournalFailure",
+            "PendingAttachmentJournalFraming",
+            "PendingAttachmentJournalLifecycle",
+            "PendingAttachmentJournalLoadCandidate",
+            "PendingAttachmentJournalLoadResult",
+            "PendingAttachmentJournalMigrationPlan",
+            "PendingAttachmentJournalMigrationPlans",
+            "PendingAttachmentJournalMigrationResult",
+            "PendingAttachmentJournalMigrationStep",
+            "PendingAttachmentJournalMigrationStepOutput",
+            "PendingAttachmentJournalMigrator",
+            "PendingAttachmentJournalOperationalFailure",
+            "PendingAttachmentJournalPhysicalV0",
+            "PendingAttachmentJournalSchema",
+            "PendingAttachmentJournalState",
+            "PendingAttachmentJournalWireScan",
+            "SkillDefinitionStoreSubmissionPort",
+            "StoreSubmissionAuthorityObservation");
+
+    static final Set<String> MODIFIED_STORE_SOURCE_FILE_NAMES = Set.of(
+            "GramaryeSkillSavedData.java",
+            "OpaquePendingAttachmentUpdatesBlob.java",
+            "SkillDefinitionStore.java",
+            "SkillDefinitionStoreService.java",
+            "SkillSavedDataLifecycleGameTests.java");
+
+    static final Set<String> MODIFIED_NON_STORE_SOURCE_PATHS = Set.of(
+            "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java",
+            "com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java");
+
+    static final String ONLY_NEW_PUBLIC_TOP_LEVEL =
+            "SkillDefinitionStoreSubmissionPort";
+
+    private P4DPhaseTypes() {
+    }
+
+    static boolean containsNewStoreSourceFileName(String name) {
+        return NEW_STORE_SOURCE_FILE_NAMES.contains(name);
+    }
+
+    static boolean containsNewStoreTopLevelName(String name) {
+        return NEW_STORE_TOP_LEVEL_TYPE_NAMES.contains(name);
+    }
+}

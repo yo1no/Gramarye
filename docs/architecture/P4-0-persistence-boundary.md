@@ -247,7 +247,8 @@ read-only design review is complete. The P4-C0 framing conflict is resolved by t
 policy closes the preservation-policy stop gate. P4-C0.1, P4-C1, P4-C2-A, and P4-C2-B are complete,
 and the required remote `P4-C memory gates` result passed. P4-C is therefore complete. The P4-D
 read-only review exposed the non-zero journal-framing gap; P4-D0 now closes that authority gap without
-Java changes. P4-D1 journal／Store-port implementation has not started.
+Java changes. P4-D1 now implements the strict journal and Store-port boundary locally; D2／D3 and
+the combined P4-D remote memory Gate remain future work.
 
 ## P4-A1 implementation ledger
 
@@ -772,6 +773,55 @@ JAR gates are exposed through `verifyP4C2Configuration`; the aggregate local wor
 `p4C2FixedHeapGate`. CI adds the required-on-failure `P4-C memory gates` job after `build`,
 `P4-A3 memory gates`, and `P4-B memory gates`, with no conditional or allow-failure escape.
 
+## P4-D1 strict journal and Store-port ledger
+
+P4-D1 adds the package-private journal layers `PendingAttachmentJournalSchema`,
+`PendingAttachmentJournalWireScan`, `PendingAttachmentJournalFraming`,
+`PendingAttachmentJournalMigration`, `PendingAttachmentJournal`,
+`PendingAttachmentJournalState`, and `PendingAttachmentJournalLifecycle`. Zero reuses the exact
+zero-length pending handle without invoking the parser or Store audit. Nonzero framing is precisely
+`NbtIo.writeAnyTag` with no root name. The iterative scanner covers every NBT payload kind, uses
+modified UTF, records bounded duplicate evidence while preserving late truncation／trailing
+precedence, and extracts only a non-negative schema version before strict current decode. Legacy
+materialization, when a production edge exists, is finite and follows exact adjacent migration
+coverage; the V0 production plan currently has no edge.
+
+The current immutable journal retains input order through validation, then canonicalizes by owner
+UUID, SkillId UUID, and target generation. It rejects route mismatch, duplicate stable keys,
+generation／pointer gaps, branches, non-final append, 4,097 raw entries, and encoded bytes above
+1,048,576. Its canonical encoding owns one `OpaquePendingAttachmentUpdatesBlob`; source and
+canonical bytes are never both retained as competing truth. Rewrite is permitted only after domain
+validation and exact Store-target audit.
+
+SavedData Ready now explicitly carries an `Uninitialized` or `Installed` journal lifecycle.
+Installed contains operational `Ready` or bounded `Unavailable`; the latter preserves the exact
+P4-B inner carrier and pending handle, remains non-dirty, keeps controlled Store read and pin
+available, and makes submission, authority, roots, and clear unavailable. Reclaim carries the exact
+journal-lifecycle identity into its replacement, while the save callback continues to use only the
+prebuilt inner carrier.
+
+`SkillDefinitionStore` owns both the one-history authority observation and the distinct-SkillId
+target audit. The nominal audit proof is exactly `AuditedExisting` or
+`ConditionalOnExactCommit`. The conditional proof is installed only in a prospective journal
+Ready, binds the exact base journal／carrier update／owner／route／target／commit, and clears all heavy
+base bindings when satisfied immediately before publication.
+
+`SkillDefinitionStoreSubmissionPort` is the only new public top-level and the only production
+caller of `SkillDefinitionStore.commit`. One instance is owned by `SkillDefinitionStoreService`.
+Its eight methods expose bounded authority, status, root, prepare, commit, and prefix-clear results;
+opaque handles are port/server bound, single-use, and clear their payload on every owned terminal
+attempt. Preparation performs all Store-carrier, journal append, canonical encode, pending sharing,
+inner-carrier capacity, proof, and fallback work before mutation. A typed Store rejection publishes
+nothing; exact success publishes the prebuilt Store／journal Ready and then dirty. A defensive
+postcommit mismatch publishes prebuilt SavedData Unavailable and `setDirty(false)`. Bootstrap and
+prefix clear likewise publish before their required dirty delta.
+
+The two additive P4-C seams are `isChangedGenerationSuccessor`, which delegates to the sole
+`MutationGeneration` arithmetic owner, and exact-server `PreparedPlayerSkillTransition.isBoundTo`.
+D1 adds no authenticated `ServerPlayer` facade, policy provider, Attachment transition
+publication, recovery event, offline root enumeration, Store reclaim caller, network surface,
+Gradle source set, or CI job. P4-D2 and P4-D3 have not started; P4-D and P4-E remain incomplete.
+
 ```text
 P4-C0.1 = COMPLETE
 P4-C1   = COMPLETE
@@ -779,7 +829,7 @@ P4-C2-A = COMPLETE
 P4-C2-B = COMPLETE
 P4-C    = COMPLETE
 P4-D0   = DOCUMENTATION COMPLETE
-P4-D1   = NOT STARTED
+P4-D1   = IMPLEMENTED; LOCAL GATES PASS; COMMIT/PUSH/REMOTE BUILD PENDING
 P4-D2   = NOT STARTED
 P4-D3   = NOT STARTED
 P4-D    = INCOMPLETE
@@ -787,5 +837,6 @@ P4-E    = NOT STARTED
 ```
 
 The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed by
-[P4-D0 submission journal and composition boundary](P4-D0-submission-journal-boundary.md); P4-D1／
-D2／D3 remain unimplemented. P4-E offline root completeness remains a later phase.
+[P4-D0 submission journal and composition boundary](P4-D0-submission-journal-boundary.md). P4-D1 is
+implemented in the current review worktree and awaits commit／push／remote build evidence; D2／D3 are
+unimplemented. P4-E offline root completeness remains a later phase.

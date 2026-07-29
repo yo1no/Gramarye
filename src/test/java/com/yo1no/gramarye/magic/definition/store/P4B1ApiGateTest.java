@@ -78,13 +78,16 @@ class P4B1ApiGateTest {
                 () -> assertEquals(
                         69_206_016,
                         MagicSafetyCeilings.MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES),
+                () -> assertEquals(
+                        4_096,
+                        MagicSafetyCeilings.MAX_PENDING_ATTACHMENT_UPDATES),
                 () -> assertTrue(ceilingNames.containsAll(Set.of(
                         "MAX_PENDING_ATTACHMENT_JOURNAL_ENCODED_BYTES",
+                        "MAX_PENDING_ATTACHMENT_UPDATES",
                         "MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES"))),
                 // P4-C2-A phase-local: its service reuses the five reviewed C1 ceilings through
                 // the universal bridge; the constants remain asserted by P4C1ApiGateTest.
                 () -> assertTrue(Set.of(
-                                "MAX_PENDING_ATTACHMENT_UPDATES",
                                 "MAX_STORE_QUARANTINE_ENTRY_BYTES",
                                 "MAX_STORE_QUARANTINE_TOTAL_BYTES")
                         .stream().noneMatch(ceilingNames::contains)),
@@ -169,7 +172,8 @@ class P4B1ApiGateTest {
                         Set.of(
                                 "SkillSavedDataInnerCarrier.java",
                                 "GramaryeSkillSavedData.java",
-                                "SkillSavedDataCarrierPersistenceBridge.java"),
+                                "SkillSavedDataCarrierPersistenceBridge.java",
+                                "SkillDefinitionStoreSubmissionPort.java"),
                         filesContaining(production, "fromPrevalidatedFraming(")),
                 () -> assertEquals(
                         Set.of(

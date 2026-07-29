@@ -186,6 +186,13 @@ class P4A2ApiGateTest {
         var allSource = productionSources(MAIN_JAVA).stream()
                 .map(P4A2ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
+        var journalOwners = productionSources(STORE_ROOT).stream()
+                .filter(path -> read(path).contains("PendingAttachmentJournal"))
+                .map(path -> path.getFileName().toString())
+                .collect(Collectors.toSet());
+        var reviewedD1JournalOwners = new java.util.HashSet<>(
+                P4DPhaseTypes.NEW_STORE_SOURCE_FILE_NAMES);
+        reviewedD1JournalOwners.addAll(P4DPhaseTypes.MODIFIED_STORE_SOURCE_FILE_NAMES);
 
         assertAll(
                 () -> assertEquals(1, occurrences(planSource,
@@ -195,10 +202,12 @@ class P4A2ApiGateTest {
                 // P4-C2-A phase-local production is reviewed; C2-B remains test-only.
                 // Journal/composition and every isolated probe holder remain absent from main.
                 () -> assertTrue(List.of(
-                                "PendingAttachmentJournal", "P4A3HeapProbeMain",
+                                "P4A3HeapProbeMain",
                                 "P4A3CarrierGameTests", "P4C2ProbeMain",
                                 "P4C2MemoryGameTests")
-                        .stream().noneMatch(allSource::contains)));
+                        .stream().noneMatch(allSource::contains)),
+                () -> assertTrue(reviewedD1JournalOwners.containsAll(journalOwners),
+                        () -> "Pending journal escaped exact D1 allowlist: " + journalOwners));
     }
 
     private static Set<String> fieldNames(Class<?> type) {

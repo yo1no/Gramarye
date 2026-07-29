@@ -386,6 +386,7 @@ main() {
     verify_phase_bounds_and_normal_tests
     verify_generation_owner
     verify_production_jar
+    bash scripts/verify-p4-d1-configuration.sh
     printf '%s\n' 'Verified P4-C2-A registration, ownership, lifecycle, phase, and JAR contracts.'
 }
 

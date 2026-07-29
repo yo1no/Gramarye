@@ -118,6 +118,9 @@ public final class MagicSafetyCeilings {
     /** Inclusive raw-byte ceiling for the opaque pending Attachment-update journal blob. */
     public static final int MAX_PENDING_ATTACHMENT_JOURNAL_ENCODED_BYTES = 1_048_576;
 
+    /** Technical ceiling for raw pending Attachment-update entries before validation. */
+    public static final int MAX_PENDING_ATTACHMENT_UPDATES = 4_096;
+
     /** Inclusive encoded-byte ceiling for the unnamed SavedData inner carrier Compound. */
     public static final int MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES = 69_206_016;
 

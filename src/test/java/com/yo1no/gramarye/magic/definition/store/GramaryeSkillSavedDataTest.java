@@ -19,6 +19,10 @@ class GramaryeSkillSavedDataTest {
     void readyCallbackReturnsOnlyFreshPrebuiltInnerTagsWithoutChangingDirty() {
         var adapter = GramaryeSkillSavedData.ready(
                 SkillSavedDataCarrierPersistenceBridge.createEmptyCurrent());
+        assertSame(
+                PendingAttachmentJournalLifecycle.Uninitialized.INSTANCE,
+                assertInstanceOf(SkillSavedDataState.Ready.class, adapter.state())
+                        .journalLifecycle());
         var first = adapter.save(new CompoundTag(), null);
         var originalStore = first.getByteArray(
                 SkillSavedDataPersistenceSchema.STORE_BLOB_FIELD).clone();
@@ -215,6 +219,67 @@ class GramaryeSkillSavedDataTest {
                 adapter.save(new CompoundTag(), null)
                         .getByteArray(SkillSavedDataPersistenceSchema.STORE_BLOB_FIELD));
         assertTrue(adapter.isDirty(), "callback must not clear dirty");
+    }
+
+    @Test
+    void positiveReclaimCarriesTheExactInstalledJournalLifecycleIdentity() {
+        var adapter = readyWithRevisions(0, 1, 2);
+        var base = assertInstanceOf(SkillSavedDataState.Ready.class, adapter.state());
+        var journal = PendingAttachmentJournal.empty();
+        var encoded = assertInstanceOf(
+                PendingAttachmentJournalFraming.JournalEncodingResult.Encoded.class,
+                PendingAttachmentJournalFraming.encode(journal)).journal();
+        var journalState = new PendingAttachmentJournalState.Ready(
+                journal,
+                encoded,
+                base.innerCarrier().pending(),
+                false,
+                new JournalTargetAuditProof.AuditedExisting(journal));
+        var lifecycle = new PendingAttachmentJournalLifecycle.Installed(journalState);
+        var installed = base.withJournalLifecycle(lifecycle);
+        adapter.publishState(base, installed);
+
+        var result = assertInstanceOf(
+                SkillSubsystemResult.Available.class,
+                adapter.reclaim(complete()));
+
+        assertTrue(assertInstanceOf(
+                SkillReclaimResult.Completed.class, result.value())
+                .report().revisionsReclaimed() > 0);
+        var replacement = assertInstanceOf(
+                SkillSavedDataState.Ready.class, adapter.state());
+        assertSame(lifecycle, replacement.journalLifecycle());
+        assertSame(journalState,
+                assertInstanceOf(
+                        PendingAttachmentJournalLifecycle.Installed.class,
+                        replacement.journalLifecycle()).state());
+    }
+
+    @Test
+    void journalUnavailableDoesNotQuarantineStoreOrChangeSavedPendingBytes() {
+        var adapter = GramaryeSkillSavedData.ready(
+                SkillSavedDataCarrierPersistenceBridge.createEmptyCurrent());
+        var base = assertInstanceOf(SkillSavedDataState.Ready.class, adapter.state());
+        var before = adapter.save(new CompoundTag(), null)
+                .getByteArray(SkillSavedDataPersistenceSchema.PENDING_UPDATES_BLOB_FIELD);
+        var unavailable = new PendingAttachmentJournalState.Unavailable(
+                new PendingAttachmentJournalOperationalFailure.Persistence(
+                        PendingAttachmentJournalFailure.simple(
+                                PendingAttachmentJournalFailure.Code.MALFORMED_ROOT)));
+        adapter.publishState(
+                base,
+                base.withJournalLifecycle(
+                        new PendingAttachmentJournalLifecycle.Installed(unavailable)));
+
+        assertInstanceOf(
+                SkillSubsystemResult.Available.class,
+                adapter.latestReference(StoreTestFixtures.skillId(99)));
+        assertArrayEquals(
+                before,
+                adapter.save(new CompoundTag(), null)
+                        .getByteArray(
+                                SkillSavedDataPersistenceSchema.PENDING_UPDATES_BLOB_FIELD));
+        assertFalse(adapter.isDirty());
     }
 
     @Test

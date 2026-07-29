@@ -118,6 +118,15 @@ final class GramaryeSkillSavedData extends SavedData {
         return state;
     }
 
+    void publishState(SkillSavedDataState expected, SkillSavedDataState replacement) {
+        Objects.requireNonNull(expected, "expected");
+        Objects.requireNonNull(replacement, "replacement");
+        if (state != expected) {
+            throw new IllegalStateException("skill SavedData state identity changed");
+        }
+        state = replacement;
+    }
+
     @Override
     public CompoundTag save(CompoundTag output, HolderLookup.Provider provider) {
         var current = state;
@@ -155,24 +164,41 @@ sealed interface SkillSavedDataState
         private final SkillDefinitionStore store;
         private final SkillSavedDataInnerCarrier innerCarrier;
         private final boolean rewriteRequired;
+        private final PendingAttachmentJournalLifecycle journalLifecycle;
 
         private Ready(
                 SkillDefinitionStore store,
                 SkillSavedDataInnerCarrier innerCarrier,
-                boolean rewriteRequired) {
+                boolean rewriteRequired,
+                PendingAttachmentJournalLifecycle journalLifecycle) {
             this.store = Objects.requireNonNull(store, "store");
             this.innerCarrier = Objects.requireNonNull(innerCarrier, "innerCarrier");
             this.rewriteRequired = rewriteRequired;
+            this.journalLifecycle = Objects.requireNonNull(
+                    journalLifecycle, "journalLifecycle");
         }
 
         static Ready fromCandidate(SkillSavedDataReadyCandidate candidate) {
             Objects.requireNonNull(candidate, "candidate");
             return new Ready(
-                    candidate.store(), candidate.carrier(), candidate.rewriteRequired());
+                    candidate.store(),
+                    candidate.carrier(),
+                    candidate.rewriteRequired(),
+                    PendingAttachmentJournalLifecycle.Uninitialized.INSTANCE);
         }
 
         Ready afterReclaim(SkillSavedDataInnerCarrier replacementInner) {
-            return new Ready(store, replacementInner, rewriteRequired);
+            return new Ready(store, replacementInner, rewriteRequired, journalLifecycle);
+        }
+
+        Ready withJournalLifecycle(PendingAttachmentJournalLifecycle replacementLifecycle) {
+            return new Ready(store, innerCarrier, rewriteRequired, replacementLifecycle);
+        }
+
+        Ready afterJournalPublication(
+                SkillSavedDataInnerCarrier replacementInner,
+                PendingAttachmentJournalLifecycle replacementLifecycle) {
+            return new Ready(store, replacementInner, false, replacementLifecycle);
         }
 
         SkillDefinitionStore store() {
@@ -191,6 +217,10 @@ sealed interface SkillSavedDataState
             return rewriteRequired;
         }
 
+        PendingAttachmentJournalLifecycle journalLifecycle() {
+            return journalLifecycle;
+        }
+
         @Override
         public SkillSubsystemUnavailableReason unavailableReason() {
             throw new IllegalStateException("Ready state is available");
@@ -199,6 +229,7 @@ sealed interface SkillSavedDataState
         @Override
         public String toString() {
             return "Ready[rewriteRequired=" + rewriteRequired
+                    + ", journalLifecycle=" + journalLifecycle.getClass().getSimpleName()
                     + ", carrierByteCount=" + innerCarrier.encodedByteCount() + "]";
         }
     }
@@ -264,7 +295,12 @@ record SkillSavedDataRuntimeFailure(Code code) {
         return new SkillSavedDataRuntimeFailure(Code.RECLAIM_CARRIER_INVARIANT);
     }
 
+    static SkillSavedDataRuntimeFailure submissionPostCommitInvariant() {
+        return new SkillSavedDataRuntimeFailure(Code.SUBMISSION_POST_COMMIT_INVARIANT);
+    }
+
     enum Code {
-        RECLAIM_CARRIER_INVARIANT
+        RECLAIM_CARRIER_INVARIANT,
+        SUBMISSION_POST_COMMIT_INVARIANT
     }
 }

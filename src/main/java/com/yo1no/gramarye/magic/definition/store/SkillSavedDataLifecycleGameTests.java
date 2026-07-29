@@ -1,7 +1,10 @@
 package com.yo1no.gramarye.magic.definition.store;
 
 import com.yo1no.gramarye.Gramarye;
+import com.yo1no.gramarye.magic.api.id.SkillId;
+import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import net.minecraft.gametest.framework.GameTest;
@@ -56,6 +59,10 @@ public final class SkillSavedDataLifecycleGameTests {
         var adapter = (GramaryeSkillSavedData) first;
         helper.assertTrue(adapter.state() instanceof SkillSavedDataState.Ready,
                 "fresh normal GameTest world must install Ready state");
+        helper.assertTrue(
+                ((SkillSavedDataState.Ready) adapter.state()).journalLifecycle()
+                        == PendingAttachmentJournalLifecycle.Uninitialized.INSTANCE,
+                "P4-B load must leave the D1 journal lifecycle explicitly uninitialized");
         helper.assertTrue(!adapter.isDirty(),
                 "absent primary must install a non-dirty empty Ready state");
         var missing = adapter.latestReference(
@@ -136,6 +143,53 @@ public final class SkillSavedDataLifecycleGameTests {
                 storage.get(throwingFactory, SkillDefinitionStoreService.SAVED_DATA_NAME)
                         == adapter,
                 "controlled quarantine fixture must restore the startup adapter");
+        try {
+            isolated.install(server);
+            var port = isolated.submissionPort();
+            helper.assertTrue(port == isolated.submissionPort(),
+                    "service must own one exact submission-port identity");
+            helper.assertTrue(
+                    port.journalStatus(server)
+                            instanceof SkillDefinitionStoreSubmissionPort.JournalStatus.Unavailable,
+                    "journal must be unavailable before explicit D1 bootstrap");
+            var bootstrapped = port.bootstrapJournal(server);
+            helper.assertTrue(
+                    bootstrapped
+                            instanceof SkillDefinitionStoreSubmissionPort.BootstrapResult.Ready ready
+                            && ready.entryCount() == 0
+                            && !ready.rewritePublished(),
+                    "zero sentinel must bootstrap as canonical empty Ready");
+            helper.assertTrue(
+                    port.journalStatus(server)
+                            instanceof SkillDefinitionStoreSubmissionPort.JournalStatus.Ready ready
+                            && ready.entryCount() == 0,
+                    "bootstrapped journal status must be Ready and empty");
+            helper.assertTrue(
+                    port.journalRoots(server)
+                            instanceof SkillDefinitionStoreSubmissionPort.JournalRootProjection.Available roots
+                            && roots.references().isEmpty(),
+                    "zero journal must project available empty roots");
+            helper.assertTrue(
+                    port.observeSubmissionAuthority(
+                                    server,
+                                    new SkillId(new UUID(0L, 0xD1L)),
+                                    new SkillOwnerId(new UUID(0L, 0xD101L)))
+                            instanceof SkillDefinitionStoreSubmissionPort.AuthoritySnapshot.Absent,
+                    "empty Store must report absent submission authority");
+            var installedAdapter = storage.get(
+                    throwingFactory, SkillDefinitionStoreService.SAVED_DATA_NAME);
+            helper.assertTrue(
+                    installedAdapter instanceof GramaryeSkillSavedData installedGramarye
+                            && !installedGramarye.isDirty(),
+                    "canonical zero bootstrap must not mark SavedData dirty");
+        } finally {
+            isolated.uninstall(server);
+            storage.set(SkillDefinitionStoreService.SAVED_DATA_NAME, adapter);
+        }
+        helper.assertTrue(
+                storage.get(throwingFactory, SkillDefinitionStoreService.SAVED_DATA_NAME)
+                        == adapter,
+                "journal bootstrap fixture must restore the startup adapter");
         helper.succeed();
     }
 }

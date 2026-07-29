@@ -76,6 +76,93 @@ public final class SkillDefinitionStore {
     }
 
     /**
+     * Observes one submission route with exactly one history lookup and without disclosing a
+     * foreign owner's identity or latest revision.
+     */
+    StoreSubmissionAuthorityObservation observeSubmissionAuthority(
+            SkillId skillId, SkillOwnerId requester) {
+        Objects.requireNonNull(skillId, "skillId");
+        Objects.requireNonNull(requester, "requester");
+        var history = histories.get(skillId);
+        if (history == null) {
+            return new StoreSubmissionAuthorityObservation.Absent(skillId);
+        }
+        if (!history.owner().equals(requester)) {
+            return new StoreSubmissionAuthorityObservation.ForeignOwned(skillId);
+        }
+        if (history.revisions().isEmpty()) {
+            throw new IllegalStateException("stored history must retain a revision");
+        }
+        return new StoreSubmissionAuthorityObservation.Owned(
+                new SkillReference(skillId, history.revisions().lastKey()));
+    }
+
+    /** Audits exact journal targets with at most one history lookup per distinct SkillId. */
+    JournalTargetAuditResult auditJournalTargets(PendingAttachmentJournal journal) {
+        Objects.requireNonNull(journal, "journal");
+        var observed = new HashMap<SkillId, StoredSkillHistory>();
+        var absent = new HashSet<SkillId>();
+        for (var entryIndex = 0; entryIndex < journal.entries().size(); entryIndex++) {
+            var entry = journal.entries().get(entryIndex);
+            var skillId = entry.skillId();
+            StoredSkillHistory history;
+            if (absent.contains(skillId)) {
+                return new JournalTargetAuditResult.Rejected(
+                        targetAuditFailure(
+                                PendingAttachmentJournalFailure.Code.TARGET_MISSING,
+                                entryIndex,
+                                entry));
+            }
+            if (observed.containsKey(skillId)) {
+                history = observed.get(skillId);
+            } else {
+                history = histories.get(skillId);
+                if (history == null) {
+                    absent.add(skillId);
+                    return new JournalTargetAuditResult.Rejected(
+                            targetAuditFailure(
+                                    PendingAttachmentJournalFailure.Code.TARGET_MISSING,
+                                    entryIndex,
+                                    entry));
+                }
+                observed.put(skillId, history);
+            }
+            if (!history.owner().equals(entry.owner())) {
+                return new JournalTargetAuditResult.Rejected(
+                        targetAuditFailure(
+                                PendingAttachmentJournalFailure.Code.TARGET_OWNER_MISMATCH,
+                                entryIndex,
+                                entry));
+            }
+            if (!history.revisions().containsKey(entry.targetPointer().revision())) {
+                return new JournalTargetAuditResult.Rejected(
+                        targetAuditFailure(
+                                PendingAttachmentJournalFailure.Code.TARGET_MISSING,
+                                entryIndex,
+                                entry));
+            }
+        }
+        return new JournalTargetAuditResult.Audited(
+                new JournalTargetAuditProof.AuditedExisting(journal));
+    }
+
+    private static PendingAttachmentJournalFailure targetAuditFailure(
+            PendingAttachmentJournalFailure.Code code,
+            int entryIndex,
+            PendingAttachmentJournalEntry entry) {
+        return new PendingAttachmentJournalFailure(
+                code,
+                PendingAttachmentJournalFailure.Stage.TARGET_AUDIT,
+                PendingAttachmentJournalFailure.Field.TARGET_POINTER,
+                -1,
+                -1,
+                entryIndex,
+                Optional.of(entry.skillId()),
+                Optional.of(entry.targetPointer()),
+                Optional.empty());
+    }
+
+    /**
      * Pins an exact retained revision for an active in-memory caller.
      *
      * <p>The returned handle belongs to this Store instance and follows the Store's server

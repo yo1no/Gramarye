@@ -101,9 +101,50 @@ copy, P3-C plan/report, prepared and current Attachment states, and journal root
 performs commit, save, restart, recovery, and clear. Separate earlier memory Gates cannot substitute
 for this combined workload.
 
+## D1 implementation ledger
+
+D1 is implemented under `com.yo1no.gramarye.magic.definition.store`. The package-private
+`PendingAttachmentJournalSchema`, `PendingAttachmentJournalWireScan`,
+`PendingAttachmentJournalFraming`, and `PendingAttachmentJournalMigration` layers enforce the
+zero sentinel, the exact `writeAnyTag` nonzero coordinate, iterative all-tag duplicate-aware scan,
+finite legacy materialization, adjacent migration coverage, current V0 exact decode, and the
+1,048,576-byte／4,096-entry bounds. Golden tests lock zero, minimal nonzero, one-entry,
+`writeUnnamedTag` negative, modified-UTF, duplicate／late-framing precedence, all NBT payload kinds,
+and exact byte／entry boundaries.
+
+`PendingAttachmentJournal` is the immutable canonical domain journal. It validates the stable key,
+owner／SkillId／target-generation order, generation and pointer continuity, route pairing, and
+chain-final-only append. `EncodedPendingAttachmentJournal` owns only the matching opaque P4-B
+pending handle. `PendingAttachmentJournalState` and `PendingAttachmentJournalLifecycle` add the
+derived `Ready`／`Unavailable` and `Uninitialized`／`Installed` layers to SavedData Ready; failures
+retain the exact source pending carrier, leave Store read／pin available, and never become an empty
+journal.
+
+`SkillDefinitionStore` now owns the distinct-target audit and the one-history submission-authority
+observation. `JournalTargetAuditProof` is exactly `AuditedExisting` or
+`ConditionalOnExactCommit`; the conditional variant binds the exact base journal, carrier update,
+owner, route, target, and committed reference, then releases those heavy bindings when discharged
+immediately before publication.
+
+The sole new public top-level is `SkillDefinitionStoreSubmissionPort`, owned once by
+`SkillDefinitionStoreService`. Its eight bounded operations expose only authority/status/root
+results and opaque single-use prepare or clear handles. Submission preparation prebuilds the Store
+carrier, appended canonical journal, shared pending handle, inner carrier, SavedData Ready,
+success result, and fail-closed fallback without mutation. Commit consumes the handle, rechecks
+exact identities and authority, calls `SkillDefinitionStore.commit` exactly once, publishes only an
+exact committed target, then marks dirty. A postcommit pairing failure publishes prebuilt SavedData
+Unavailable and clears dirty. Prefix clear removes only a confirmed route prefix, preserves its
+canonical suffix, publishes the prebuilt carrier, and then marks dirty. Bootstrap publishes a
+canonical operational view without a dirty delta, or publishes a validated rewrite before dirty;
+Unavailable bootstrap preserves the source carrier and dirty state.
+
+D1 adds no authenticated facade, provider, Attachment publication, event listener, recovery
+orchestration, Gradle source set, CI job, reclaim caller, or P4-E collector. D2 and D3 remain not
+started, and P4-D is incomplete until those phases and the combined remote memory Gate pass.
+
 ```text
 P4-D0 = DOCUMENTATION COMPLETE
-P4-D1 = NOT STARTED
+P4-D1 = IMPLEMENTED; LOCAL GATES PASS; COMMIT/PUSH/REMOTE BUILD PENDING
 P4-D2 = NOT STARTED
 P4-D3 = NOT STARTED
 P4-D  = INCOMPLETE

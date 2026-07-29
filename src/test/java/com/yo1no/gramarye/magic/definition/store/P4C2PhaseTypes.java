@@ -53,6 +53,7 @@ final class P4C2PhaseTypes {
             "equippedAt",
             "findDraft",
             "findLatestState",
+            "isChangedGenerationSuccessor",
             "ownerId",
             "prepareLatestTransition",
             "publishPreparedTransition",

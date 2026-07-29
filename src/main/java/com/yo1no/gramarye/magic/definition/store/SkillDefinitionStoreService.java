@@ -31,6 +31,8 @@ public final class SkillDefinitionStoreService {
 
     private final IdentityHashMap<MinecraftServer, InstalledMarker> installedServers =
             new IdentityHashMap<>();
+    private final SkillDefinitionStoreSubmissionPort submissionPort =
+            new SkillDefinitionStoreSubmissionPort(this);
 
     SkillDefinitionStoreService() {
     }
@@ -93,6 +95,11 @@ public final class SkillDefinitionStoreService {
         return installedAdapter(server).reclaim(roots);
     }
 
+    /** Returns the unique narrow submission/journal port owned by this lifecycle service. */
+    public SkillDefinitionStoreSubmissionPort submissionPort() {
+        return submissionPort;
+    }
+
     void install(MinecraftServer server) {
         requireServerThread(server);
         if (installedServers.containsKey(server)) {
@@ -134,7 +141,7 @@ public final class SkillDefinitionStoreService {
         uninstall(event.getServer());
     }
 
-    private GramaryeSkillSavedData installedAdapter(MinecraftServer server) {
+    GramaryeSkillSavedData installedAdapter(MinecraftServer server) {
         requireServerThread(server);
         if (!installedServers.containsKey(server)) {
             throw lifecycle(SkillSubsystemLifecycleException.Code.BOOTSTRAP_NOT_INSTALLED);
@@ -157,7 +164,7 @@ public final class SkillDefinitionStoreService {
         return overworld;
     }
 
-    private static void requireServerThread(MinecraftServer server) {
+    static void requireServerThread(MinecraftServer server) {
         Objects.requireNonNull(server, "server");
         if (!server.isSameThread()) {
             throw lifecycle(SkillSubsystemLifecycleException.Code.WRONG_THREAD);
@@ -192,6 +199,7 @@ final class SkillSubsystemLifecycleException extends IllegalStateException {
         BOOTSTRAP_ALREADY_INSTALLED,
         BOOTSTRAP_NOT_INSTALLED,
         OVERWORLD_UNAVAILABLE,
-        CACHE_IDENTITY_MISMATCH
+        CACHE_IDENTITY_MISMATCH,
+        JOURNAL_BOOTSTRAP_ALREADY_INSTALLED
     }
 }

@@ -86,7 +86,8 @@ class P4B2AApiGateTest {
                         "ownerOf",
                         "pin",
                         "reclaim",
-                        "registerOn"),
+                        "registerOn",
+                        "submissionPort"),
                 publicDeclaredMethodNames(SkillDefinitionStoreService.class));
         assertEquals(
                 Set.of("startupInstalledExactReadyAdapterInOverworldCache"),
@@ -177,6 +178,7 @@ class P4B2AApiGateTest {
                 Set.of(
                         SkillDefinitionStore.class,
                         SkillSavedDataInnerCarrier.class,
+                        PendingAttachmentJournalLifecycle.class,
                         boolean.class),
                 instanceFieldTypes(SkillSavedDataState.Ready.class));
         assertEquals(
@@ -213,6 +215,14 @@ class P4B2AApiGateTest {
     void strictIngressAndLifecycleSourcesKeepTheReviewedBoundary() throws Exception {
         var sources = b2Sources();
         var code = sources.stream()
+                .map(P4B2AApiGateTest::read)
+                .map(P4B2AApiGateTest::withoutCommentsAndLiterals)
+                .collect(Collectors.joining("\n"));
+        var journalFreeCode = sources.stream()
+                .filter(path -> !Set.of(
+                                "GramaryeSkillSavedData.java",
+                                "SkillSavedDataLifecycleGameTests.java")
+                        .contains(path.getFileName().toString()))
                 .map(P4B2AApiGateTest::read)
                 .map(P4B2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
@@ -264,8 +274,16 @@ class P4B2AApiGateTest {
                 "P4B2Heap");
 
         for (var forbidden : forbiddenFragments) {
-            assertFalse(code.contains(forbidden), () -> "B2-A source contains " + forbidden);
+            var inspected = Set.of("PendingAttachmentJournal", "Attachment", "Journal")
+                    .contains(forbidden) ? journalFreeCode : code;
+            assertFalse(inspected.contains(forbidden),
+                    () -> "B2-A source contains " + forbidden);
         }
+        assertEquals(
+                Set.of(
+                        "GramaryeSkillSavedData.java",
+                        "SkillSavedDataLifecycleGameTests.java"),
+                fileNamesContaining(sources, "PendingAttachmentJournal"));
         assertFalse(Pattern.compile("\\.\\s*available\\s*\\(").matcher(code).find());
         assertFalse(Pattern.compile("\\.\\s*commit\\s*\\(").matcher(code).find());
         assertFalse(raw.contains(".dat_old"));

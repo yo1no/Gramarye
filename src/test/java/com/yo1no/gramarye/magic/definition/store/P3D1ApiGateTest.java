@@ -284,6 +284,7 @@ class P3D1ApiGateTest {
                 || name.equals("SkillDefinitionStorePersistenceBridge")
                 || P4B1PhaseTypes.containsTopLevelName(name)
                 || P4B2PhaseTypes.containsTopLevelName(name)
+                || P4DPhaseTypes.containsNewStoreTopLevelName(name)
                 || Set.of(
                                 "StoreEncodingLayout",
                                 "StoreLayoutEncodeResult",
@@ -305,11 +306,19 @@ class P3D1ApiGateTest {
 
     private static boolean hasOnlyD1SurfaceTypes(Class<?> type) {
         return Arrays.stream(type.getDeclaredFields()).allMatch(field -> isAllowedType(field.getType()))
-                && Arrays.stream(type.getDeclaredMethods()).allMatch(method ->
+                && Arrays.stream(type.getDeclaredMethods())
+                        .filter(method -> !isExactD1StoreIntegrationMethod(type, method.getName()))
+                        .allMatch(method ->
                         isAllowedType(method.getReturnType())
                                 && Arrays.stream(method.getParameterTypes()).allMatch(P3D1ApiGateTest::isAllowedType))
                 && Arrays.stream(type.getDeclaredConstructors()).allMatch(constructor ->
                         Arrays.stream(constructor.getParameterTypes()).allMatch(P3D1ApiGateTest::isAllowedType));
+    }
+
+    private static boolean isExactD1StoreIntegrationMethod(Class<?> owner, String methodName) {
+        return owner == SkillDefinitionStore.class
+                && Set.of("observeSubmissionAuthority", "auditJournalTargets")
+                        .contains(methodName);
     }
 
     private static boolean isAllowedType(Class<?> type) {

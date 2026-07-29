@@ -166,6 +166,7 @@ class P4C2AApiGateTest {
                         Set.of(
                                 "expectedGeneration",
                                 "expectedPointer",
+                                "isBoundTo",
                                 "isNoOp",
                                 "owner",
                                 "skillId",
@@ -265,11 +266,18 @@ class P4C2AApiGateTest {
                 .map(P4C2AApiGateTest::read)
                 .map(P4C2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
+        var journalOwners = javaSources(MAIN_JAVA).stream()
+                .filter(path -> withoutCommentsAndLiterals(read(path))
+                        .contains("PendingAttachmentJournal"))
+                .map(path -> path.getFileName().toString())
+                .collect(Collectors.toSet());
+        var reviewedD1JournalOwners = new java.util.HashSet<>(
+                P4DPhaseTypes.NEW_STORE_SOURCE_FILE_NAMES);
+        reviewedD1JournalOwners.addAll(P4DPhaseTypes.MODIFIED_STORE_SOURCE_FILE_NAMES);
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
 
         for (var forbidden : List.of(
-                "PendingAttachmentJournal",
                 "SkillDefinitionSubmissionService",
                 "SkillDefinitionStore",
                 "SkillRetentionRootSnapshot",
@@ -286,7 +294,6 @@ class P4C2AApiGateTest {
             assertFalse(c2Source.contains(forbidden), () -> "C2-A source contains " + forbidden);
         }
         for (var forbidden : List.of(
-                "PendingAttachmentJournal",
                 "SkillDefinitionSubmissionService",
                 "OfflineRoot",
                 "RootCollector",
@@ -298,6 +305,8 @@ class P4C2AApiGateTest {
             assertFalse(allProduction.contains(forbidden),
                     () -> "Later phase production surface appeared: " + forbidden);
         }
+        assertTrue(reviewedD1JournalOwners.containsAll(journalOwners),
+                () -> "Pending journal escaped exact D1 allowlist: " + journalOwners);
         assertAll(
                 () -> assertFalse(Pattern.compile("\\.\\s*commit\\s*\\(")
                         .matcher(c2Source).find()),

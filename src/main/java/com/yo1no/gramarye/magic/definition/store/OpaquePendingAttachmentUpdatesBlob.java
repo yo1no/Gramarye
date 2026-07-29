@@ -48,6 +48,10 @@ final class OpaquePendingAttachmentUpdatesBlob {
         System.arraycopy(bytes, 0, destination, offset, bytes.length);
     }
 
+    boolean contentEquals(OpaquePendingAttachmentUpdatesBlob other) {
+        return other != null && java.util.Arrays.equals(bytes, other.bytes);
+    }
+
     @Override
     public String toString() {
         return "OpaquePendingAttachmentUpdatesBlob[byteCount=" + bytes.length

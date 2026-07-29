@@ -233,22 +233,61 @@ verify_search_helpers() {
     fi
 }
 
+is_reviewed_d1_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/GramaryeSkillSavedData.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/JournalTargetAuditProof.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/JournalTargetAuditResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/OpaquePendingAttachmentUpdatesBlob.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournal.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalFailure.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalFraming.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalLifecycle.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalMigration.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalSchema.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalState.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PendingAttachmentJournalWireScan.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStore.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StoreSubmissionAuthorityObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 verify_production_freeze() {
+    local changed=''
+    local path=''
     local untracked=''
     local status=0
-    git diff --quiet HEAD -- src/main/java src/main/resources || status=$?
+    git diff --quiet HEAD -- src/main/resources || status=$?
     if [[ "${status}" -ne 0 ]]; then
-        fail 'P4-C2-B must not modify tracked production Java or resources'
+        fail 'P4-D1 must not modify tracked production resources'
     fi
+    status=0
+    changed="$(git diff --name-only HEAD -- src/main/java)" || status=$?
+    if [[ "${status}" -ne 0 ]]; then
+        fail "git failed while checking tracked production Java (exit ${status})"
+    fi
+    while IFS= read -r path; do
+        [[ -z "${path}" ]] && continue
+        is_reviewed_d1_production_path "${path}" \
+            || fail "production Java changed outside exact P4-D1 allowlist: ${path}"
+    done <<< "${changed}"
     status=0
     untracked="$(git ls-files --others --exclude-standard -- \
         src/main/java src/main/resources)" || status=$?
     if [[ "${status}" -ne 0 ]]; then
         fail "git failed while checking untracked production paths (exit ${status})"
     fi
-    if [[ -n "${untracked}" ]]; then
-        fail 'P4-C2-B must not add untracked production Java or resources'
-    fi
+    while IFS= read -r path; do
+        [[ -z "${path}" ]] && continue
+        is_reviewed_d1_production_path "${path}" \
+            || fail "untracked production path escaped exact P4-D1 allowlist: ${path}"
+    done <<< "${untracked}"
 }
 
 verify_sources() {
@@ -599,6 +638,7 @@ main() {
     verify_ci_contract
     verify_compiled_outputs_and_jar
     bash scripts/verify-p4-c2-a-configuration.sh
+    bash scripts/verify-p4-d1-configuration.sh
     printf '%s\n' \
         'Verified P4-C2-B source sets, six fixed-heap lifecycles, CI, phase bounds, and JAR isolation.'
 }

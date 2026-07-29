@@ -233,6 +233,11 @@ class P4A3AApiGateTest {
         var production = productionSources(PROJECT_ROOT.resolve("src/main/java")).stream()
                 .map(P4A3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
+        var journalOwners = filesContaining(
+                productionSources(STORE_ROOT), "PendingAttachmentJournal");
+        var reviewedD1JournalOwners = new java.util.HashSet<>(
+                P4DPhaseTypes.NEW_STORE_SOURCE_FILE_NAMES);
+        reviewedD1JournalOwners.addAll(P4DPhaseTypes.MODIFIED_STORE_SOURCE_FILE_NAMES);
 
         assertAll(
                 () -> assertFalse(production.contains("P4A3HeapProbe")),
@@ -256,7 +261,8 @@ class P4A3AApiGateTest {
                 () -> assertTrue(production.contains("ServerPlayer")),
                 () -> assertTrue(production.contains(".setData(")),
                 () -> assertTrue(production.contains("PreparedPlayerSkillTransition")),
-                () -> assertFalse(production.contains("PendingAttachmentJournal")),
+                () -> assertTrue(reviewedD1JournalOwners.containsAll(journalOwners),
+                        () -> "Pending journal escaped exact D1 allowlist: " + journalOwners),
                 () -> assertTrue(production.contains("PlayerSkillRootProjection")));
     }
 

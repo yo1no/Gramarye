@@ -910,7 +910,6 @@ verify_b2_sources_and_outputs() {
     # offline-root, manual-clone, and networking surfaces remain absent.
     for literal in \
         'PlayerEvent' \
-        'PendingAttachmentJournal' \
         'SkillDefinitionSubmissionService' \
         'OfflineRoot' \
         'CustomPacketPayload' \
@@ -1045,6 +1044,7 @@ main() {
     verify_b2_ci_contract
     verify_b2_sources_and_outputs
     verify_production_jar_isolation
+    bash scripts/verify-p4-d1-configuration.sh
 
     printf '%s\n' \
         'Verified P4-B2-B source sets, fixed-heap/restart tasks, CI, outputs, phase bounds, and JAR isolation.'

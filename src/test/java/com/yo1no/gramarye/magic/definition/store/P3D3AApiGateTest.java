@@ -496,6 +496,7 @@ class P3D3AApiGateTest {
                 || name.equals("SkillDefinitionStorePersistenceBridge")
                 || P4B1PhaseTypes.containsTopLevelName(name)
                 || P4B2PhaseTypes.containsTopLevelName(name)
+                || P4DPhaseTypes.containsNewStoreTopLevelName(name)
                 || Set.of(
                                 "StoreEncodingLayout",
                                 "StoreLayoutEncodeResult",
@@ -518,13 +519,24 @@ class P3D3AApiGateTest {
     private static boolean hasNoP4Dependency(Class<?> type) {
         return Arrays.stream(type.getDeclaredFields())
                         .allMatch(field -> isNotP4Type(field.getGenericType()))
-                && Arrays.stream(type.getDeclaredMethods()).allMatch(method ->
+                && Arrays.stream(type.getDeclaredMethods())
+                        .filter(method -> !isExactD1StoreIntegrationMethod(type, method.getName()))
+                        .allMatch(method ->
                         isNotP4Type(method.getGenericReturnType())
                                 && Arrays.stream(method.getGenericParameterTypes())
                                         .allMatch(P3D3AApiGateTest::isNotP4Type))
                 && Arrays.stream(type.getDeclaredConstructors()).allMatch(constructor ->
                         Arrays.stream(constructor.getGenericParameterTypes())
                                 .allMatch(P3D3AApiGateTest::isNotP4Type));
+    }
+
+    private static boolean isExactD1StoreIntegrationMethod(Class<?> owner, String methodName) {
+        return owner == SkillDefinitionStore.class
+                && Set.of(
+                                "observeSubmissionAuthority",
+                                "auditJournalTargets",
+                                "targetAuditFailure")
+                        .contains(methodName);
     }
 
     private static boolean isNotP4Type(Type type) {

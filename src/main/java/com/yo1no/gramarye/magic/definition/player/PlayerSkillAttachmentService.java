@@ -27,6 +27,19 @@ public final class PlayerSkillAttachmentService {
         return new PlayerSkillAttachmentService();
     }
 
+    /**
+     * Tests the one legal changed-pointer generation step without exposing the internal
+     * generation arithmetic owner.
+     */
+    public static boolean isChangedGenerationSuccessor(
+            int expectedGeneration, int targetGeneration) {
+        if (expectedGeneration < 0 || targetGeneration < 0) {
+            return false;
+        }
+        var successor = MutationGeneration.successor(expectedGeneration);
+        return successor.isPresent() && successor.getAsInt() == targetGeneration;
+    }
+
     public Result<Optional<SkillDraft>> findDraft(ServerPlayer player, SkillId skillId) {
         requireServerThread(player);
         Objects.requireNonNull(skillId, "skillId");
@@ -684,6 +697,11 @@ public final class PlayerSkillAttachmentService {
 
         public boolean isNoOp() {
             return replacement == null;
+        }
+
+        /** Returns whether this immutable transition was prepared for the exact server identity. */
+        public boolean isBoundTo(MinecraftServer server) {
+            return this.server == Objects.requireNonNull(server, "server");
         }
 
         @Override
