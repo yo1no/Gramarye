@@ -175,7 +175,6 @@ verify_phase_boundary() {
     grep -Fq -- 'boolean isBoundTo(MinecraftServer server)' "${PLAYER_SERVICE}" \
         || fail 'P4-C prepared-transition server predicate is missing'
     for token in \
-        SkillDefinitionSubmissionService \
         PlayerLoggedInEvent \
         OfflineRoot \
         RootCollector \
@@ -200,7 +199,7 @@ main() {
     verify_unique_owners
     verify_d2a_sources_and_owners
     verify_phase_boundary
-    printf '%s\n' 'Verified exact P4-D1/P4-D2-A production ownership and later-phase absence.'
+    printf '%s\n' 'Verified exact P4-D1 ownership with reviewed P4-D2 composition and later-phase absence.'
 }
 
 main "$@"

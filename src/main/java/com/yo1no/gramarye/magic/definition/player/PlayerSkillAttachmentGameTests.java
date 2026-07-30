@@ -75,6 +75,14 @@ public final class PlayerSkillAttachmentGameTests {
     private PlayerSkillAttachmentGameTests() {
     }
 
+    /**
+     * Returns a fresh stateless controlled port for the cross-package normal submission
+     * GameTests. Registration remains owned exclusively by the Gramarye composition root.
+     */
+    public static PlayerSkillAttachmentService newServiceForSubmissionGameTests() {
+        return new PlayerSkillAttachmentService();
+    }
+
     @GameTest(
             templateNamespace = "minecraft",
             template = "bastion/blocks/air",

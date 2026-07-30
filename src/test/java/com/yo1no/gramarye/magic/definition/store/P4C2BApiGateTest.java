@@ -261,7 +261,7 @@ class P4C2BApiGateTest {
                 () -> assertFalse(production.contains("P4C2ProbeMain")),
                 () -> assertFalse(production.contains("P4C2MemoryGameTests")),
                 () -> assertFalse(production.contains("@GameTestHolder(\"gramarye_p4_c2\")")),
-                () -> assertEquals(7, occurrences(production, "@GameTest(")));
+                () -> assertEquals(9, occurrences(production, "@GameTest(")));
     }
 
     private static Set<String> javaFiles(Path root) throws IOException {

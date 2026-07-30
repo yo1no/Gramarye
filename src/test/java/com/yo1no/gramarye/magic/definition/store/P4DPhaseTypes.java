@@ -2,7 +2,7 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import java.util.Set;
 
-/** Exact phase-local production allowlists for engineering P4-D1 and P4-D2-A. */
+/** Exact phase-local production allowlists for engineering P4-D1 through P4-D2-B. */
 final class P4DPhaseTypes {
     static final Set<String> NEW_STORE_SOURCE_FILE_NAMES = Set.of(
             "JournalTargetAuditProof.java",
@@ -88,6 +88,22 @@ final class P4DPhaseTypes {
             "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java",
             "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java",
             "com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java");
+
+    static final Set<String> D2B_SUBMISSION_SOURCE_FILE_NAMES = Set.of(
+            "SkillDefinitionSubmissionGameTests.java",
+            "SkillDefinitionSubmissionService.java");
+
+    static final Set<String> D2B_SUBMISSION_TOP_LEVEL_TYPE_NAMES = Set.of(
+            "SkillDefinitionSubmissionGameTests",
+            "SkillDefinitionSubmissionService");
+
+    static final Set<String> D2B_PUBLIC_TOP_LEVEL_TYPE_NAMES = Set.of(
+            "SkillDefinitionSubmissionGameTests",
+            "SkillDefinitionSubmissionService");
+
+    static final Set<String> D2B_MODIFIED_SOURCE_PATHS = Set.of(
+            "com/yo1no/gramarye/Gramarye.java",
+            "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java");
 
     private P4DPhaseTypes() {
     }

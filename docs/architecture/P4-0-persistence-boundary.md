@@ -45,7 +45,7 @@ This page is a compact phase boundary, not a second persistence specification.
   Store／journal publication, and journal roots; it owns no facade or event listener.
 - P4-D2 is forcibly split into P4-D2-A followed by P4-D2-B. D2-A owns the refined D1 preparation
   taxonomy, policy／Draft-creation primitives, typed composition outcome, package-private P3-C
-  exactly-once pipeline, and P4-C single-observation／currentness seams. D2-B later owns the
+  exactly-once pipeline, and P4-C single-observation／currentness seams. D2-B owns the
   authenticated submission facade and complete Store／Attachment composition.
 - P4-D3 owns bootstrap／login recovery, persisted-readback clear, paired restart tests, and the
   combined fixed-heap／CI Gates.
@@ -864,9 +864,36 @@ network code. Its seam assertions reuse the existing P4-C normal GameTest holder
 the required-test count. Local full regression and the existing A3／B／C configuration and memory
 Gates passed. The D2-A production commit is present at `HEAD`／`origin/main`, and the externally
 reported remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all
-passed. D2-A is therefore complete and D2-B is ready for implementation. D2-B has not yet created
-the authenticated facade, Gramarye composition-root wiring, or normal submission GameTests. D3 has
-not started, P4-D remains incomplete, and P4-E remains blocked.
+passed. D2-A is therefore complete. At D2-A closure, D2-B was ready for implementation and had not
+yet created the authenticated facade, Gramarye composition-root wiring, or normal submission
+GameTests.
+
+## P4-D2-B local implementation ledger
+
+The actual D2-B facade is public-final `SkillDefinitionSubmissionService`, with authenticated
+`submit(ServerPlayer, SkillId)` as its only public domain operation. It is stateless, derives owner
+only from the server player UUID, and uses a production registry-backed P3-C pipeline. `Gramarye`
+owns one UUID source, Draft-creation service, default policy provider, and submission facade next to
+the existing P4-C service and D1 Store port; it exposes no global locator and installs no event.
+
+One attempt has the strict runtime order Draft lookup → C1 precheck → Store authority observation →
+C2 authority check → policy snapshot → C3 prepare／C4 map → P4-C transition prepare → D1 preflight →
+P4-C currentness recheck → D1 commit → P4-C publication. Runtime counters lock every selected step
+to one invocation and every downstream short circuit to zero. Thus C1 invalidity wins over journal
+unavailability, C2 rejection wins over policy failure, policy is sampled exactly once only after C2
+passes, currentness is checked after preflight and before commit, and publication is unreachable
+until an exact Store `Committed(target)` result.
+
+All transition, persistence-capacity, Store-domain, prepared-base, unavailability, postcommit, and
+Attachment-publication results map exhaustively into the existing composition vocabulary. Every
+post-Prepared outcome retains the identical warning-only P3-C report; the Draft remains present and
+unchanged. Publication failure does not roll back Store, clear the journal, retry, or reprepare.
+Two normal required GameTests cover full success and postcommit Attachment drift, raising the normal
+required total from seven to nine. `scripts/verify-p4-d2-configuration.sh` plus the D2-B API／phase
+gates lock this local surface without a P4-D source set, Gradle／CI change, recovery listener,
+offline-root／reconciliation／reclaim code, or network surface. D2-B is implemented and fully
+verified locally; closure still awaits repository commit／push and remote evidence. D3 remains not
+started, P4-D remains incomplete, and P4-E remains blocked.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -878,7 +905,7 @@ P4-D0               = COMPLETE
 P4-D1               = COMPLETE
 P4-D2 design review = COMPLETE
 P4-D2-A             = COMPLETE
-P4-D2-B             = READY FOR IMPLEMENTATION
+P4-D2-B             = IMPLEMENTED LOCALLY; CLOSURE PENDING
 P4-D3               = NOT STARTED
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED
@@ -890,6 +917,7 @@ complete: its production commit is present at `HEAD`／`origin/main`, local full
 and the externally reported remote build／A3／B／C jobs passed. The P4-D2 design review is complete;
 D2-A is complete with its production commit present at `HEAD`／`origin/main`, local regression and
 existing memory Gates passed, and the externally reported remote build／A3／B／C jobs passed. D2-B is
-ready for implementation but has no authenticated facade, composition-root wiring, or normal
-submission GameTests yet. D3 has not started. P4-D remains incomplete and P4-E remains blocked.
+implemented and fully verified locally with its authenticated facade, composition-root wiring, two
+normal submission GameTests, and portable local configuration gate; repository commit／push and remote
+closure evidence remain pending. D3 has not started. P4-D remains incomplete and P4-E remains blocked.
 Branch-protection required-check configuration remains external governance unknown／pending.

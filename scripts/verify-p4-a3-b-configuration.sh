@@ -317,10 +317,10 @@ main() {
 
     # P4-C2-A phase-local: exact Attachment registration, controlled ServerPlayer mutation,
     # prepared transition, and per-player roots are reviewed by the portable C2-A verifier.
-    # Manual clone hooks, journal/composition, offline roots, and networking remain forbidden.
+    # D1/D2 composition is reviewed by its own gates. Manual clone hooks, offline roots, and
+    # networking remain forbidden.
     for literal in \
         'PlayerEvent' \
-        'SkillDefinitionSubmissionService' \
         'OfflineRoot' \
         'CustomPacketPayload' \
         'PayloadRegistrar' \
@@ -328,7 +328,7 @@ main() {
         forbid_fixed_in_file_list \
             "${SOURCE_FILE_LIST}" \
             "${literal}" \
-            'P4-C2-A or later forbidden composition/network surface appeared in production'
+            'Unreviewed later lifecycle/root/network surface appeared in production'
     done
     test -x scripts/verify-p4-c2-a-configuration.sh \
         || fail 'P4-C2-A portable configuration verifier is missing or not executable'

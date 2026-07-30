@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
-/** Exact P4-D2-A phase-local API, ownership, and later-phase absence gate. */
+/** Exact P4-D2-A/B phase-local API, ownership, and later-phase absence gate. */
 final class P4D2ApiGateTest {
     private static final Path PROJECT_ROOT = projectRoot();
     private static final Path MAIN_JAVA = PROJECT_ROOT.resolve("src/main/java");
@@ -246,13 +246,39 @@ final class P4D2ApiGateTest {
     }
 
     @Test
-    void d2BAndLaterSurfacesRemainAbsentAndBuildConfigurationIsUnchanged()
+    void d2BAddsOnlyTheReviewedFacadeAndNormalGameTestHolder()
+            throws Exception {
+        var sources = P4DPhaseTypes.D2B_SUBMISSION_SOURCE_FILE_NAMES.stream()
+                .map(SUBMISSION_ROOT::resolve)
+                .sorted()
+                .toList();
+        assertTrue(sources.stream().allMatch(Files::isRegularFile));
+        var declarations = sources.stream()
+                .flatMap(path -> TOP_LEVEL.matcher(withoutCommentsAndLiterals(read(path)))
+                        .results().map(match -> match.group(1)))
+                .collect(Collectors.toSet());
+        var loaded = P4DPhaseTypes.D2B_SUBMISSION_TOP_LEVEL_TYPE_NAMES.stream()
+                .map(P4D2ApiGateTest::loadSubmission)
+                .toList();
+
+        assertEquals(P4DPhaseTypes.D2B_SUBMISSION_TOP_LEVEL_TYPE_NAMES, declarations);
+        assertEquals(P4DPhaseTypes.D2B_PUBLIC_TOP_LEVEL_TYPE_NAMES,
+                loaded.stream()
+                        .filter(type -> Modifier.isPublic(type.getModifiers()))
+                        .map(Class::getSimpleName)
+                        .collect(Collectors.toSet()));
+        assertTrue(P4DPhaseTypes.D2B_MODIFIED_SOURCE_PATHS.stream()
+                .map(MAIN_JAVA::resolve)
+                .allMatch(Files::isRegularFile));
+    }
+
+    @Test
+    void laterSurfacesRemainAbsentAndBuildConfigurationIsUnchanged()
             throws Exception {
         var allMain = javaSources(MAIN_JAVA).stream()
                 .map(P4D2ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         for (var forbidden : List.of(
-                "SkillDefinitionSubmissionService",
                 "PlayerLoggedInEvent",
                 "PlayerLoggedOutEvent",
                 "OfflineRoot",

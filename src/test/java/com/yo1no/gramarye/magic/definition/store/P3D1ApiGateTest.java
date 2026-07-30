@@ -169,9 +169,9 @@ class P3D1ApiGateTest {
     }
 
     @Test
-    void phaseLocalFullTreeGateAllowsReviewedP4TypesButRejectsFacadeAndStoreLeakage()
+    void phaseLocalFullTreeGateAllowsReviewedP4TypesButRejectsStoreLeakage()
             throws Exception {
-        // Reviewed P4 types are legal; authenticated facade and unreviewed Store leakage remain absent.
+        // Reviewed P4 types, including D2-B's facade, are legal; Store leakage remains absent.
         var allProduction = productionClassNames();
         var storeTypes = allProduction.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
@@ -185,9 +185,7 @@ class P3D1ApiGateTest {
                         || P4C2PhaseTypes.containsTopLevelName(name)
                         || P4C2BPhaseTypes.containsTopLevelName(name))
                 .collect(Collectors.toSet());
-        var forbiddenTypeDeclarations = List.of(
-                "SkillDefinitionSubmissionService",
-                "SkillSubmissionAuthorizationAdapter");
+        var forbiddenTypeDeclarations = List.of("SkillSubmissionAuthorizationAdapter");
 
         assertAll(
                 () -> assertTrue(allProduction.contains(SkillDefinitionStore.class.getName())),

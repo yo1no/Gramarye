@@ -359,6 +359,8 @@ class P4B2AApiGateTest {
                         "com/yo1no/gramarye/Gramarye.java",
                         "com/yo1no/gramarye/magic/definition/player/"
                                 + "PlayerSkillAttachmentService.java",
+                        "com/yo1no/gramarye/magic/definition/submission/"
+                                + "SkillDefinitionSubmissionGameTests.java",
                         "com/yo1no/gramarye/magic/definition/store/"
                                 + "SkillDefinitionStoreService.java"),
                 filesContaining(productionSources(MAIN_JAVA), "registerOn("));
@@ -407,7 +409,7 @@ class P4B2AApiGateTest {
     }
 
     @Test
-    void normalGameTestCountIsSevenAndDedicatedMemorySourcesStayIsolated() throws Exception {
+    void normalGameTestCountIsNineAndDedicatedMemorySourcesStayIsolated() throws Exception {
         var production = productionSources(MAIN_JAVA);
         var allMain = production.stream().map(P4B2AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
@@ -419,7 +421,7 @@ class P4B2AApiGateTest {
                 "com/yo1no/gramarye/magic/definition/player/"
                         + "PlayerSkillAttachmentGameTests.java"));
 
-        assertEquals(7, occurrences(allMain, "@GameTest("));
+        assertEquals(9, occurrences(allMain, "@GameTest("));
         assertEquals(4, occurrences(platformTests, "@GameTest("));
         assertEquals(1, occurrences(lifecycleTests, "@GameTest("));
         assertEquals(2, occurrences(playerTests, "@GameTest("));

@@ -184,16 +184,55 @@ surface. Its seam assertions reuse the existing P4-C normal GameTest holder with
 required-test count. Local unit, API, normal GameTest, dedicated-smoke, full regression, and the
 existing A3／B／C configuration and memory Gates passed. The D2-A production commit is present at
 `HEAD`／`origin/main`, and the externally reported remote `build`, `P4-A3 memory gates`, `P4-B
-memory gates`, and `P4-C memory gates` jobs all passed. D2-A is therefore complete and D2-B is ready
-for implementation. D2-B has not yet created the authenticated facade, composition-root wiring, or
-normal submission GameTests. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.
+memory gates`, and `P4-C memory gates` jobs all passed. D2-A is therefore complete. At D2-A closure,
+D2-B was ready for implementation and had not yet created the authenticated facade,
+composition-root wiring, or normal submission GameTests.
+
+## D2-B local implementation ledger
+
+D2-B adds the stateless public-final `SkillDefinitionSubmissionService`. Its sole public domain
+operation is authenticated `submit(ServerPlayer, SkillId)`; null, missing-server, and wrong-thread
+conditions fail before any domain mapping. The service derives `SkillOwnerId` only from the server
+player UUID and retains no server, player, Draft, Store, journal, prepared handle, report, or mutable
+attempt state. Its production factory constructs the P3-C pipeline with deferred registry-backed
+trigger／action lookup, the production analyzer, and projector. `Gramarye` owns one random-UUID
+`SkillIdSource`, one `SkillDraftCreationService`, one default policy provider, and one submission
+service alongside the existing P4-C Attachment service and D1 Store submission port; none is a
+static locator or per-submit allocation.
+
+The runtime order is fixed and invocation-count tested as Draft lookup, C1 precheck, one Store
+authority observation, C2 authority check, one policy snapshot, C3 prepare and C4 map, P4-C latest
+transition prepare, D1 Store／journal preflight, the non-mutating P4-C currentness recheck, one D1
+commit, and only then P4-C Attachment publication. C1 invalidity therefore precedes journal
+unavailability, while C2 rejection precedes provider failure. Every short circuit leaves all later
+counts at zero: there is no retry, policy resnapshot, authority resnapshot, reprepare, second commit,
+or early Attachment publication.
+
+Only C2 `Passed` obtains the immutable quota／validation policy pair, and the exact two members feed
+D1 preflight and C3 respectively. Only P3-C `Prepared` enters persistence composition. Transition
+capacity, generation, route, no-op, and Attachment-unavailable results and all D1 preparation,
+domain-commit, prepared-base, unavailable, and postcommit-invariant results map exhaustively to the
+existing eleven-variant composition outcome; no message or enum-name inference is used. A fresh
+currentness failure prevents commit. Only an exact D1 `Committed(target)` permits publication;
+postcommit publication no-op, drift, quarantine, or bounded runtime failure retains Store and
+journal truth as `CommittedPendingAttachmentRecovery`, without rollback, clear, or retry.
+
+Every post-Prepared branch retains the exact warning-only P3-C report reference. The authoritative
+Draft is preserved on success and every failure, and editor state is not rewritten. Two normal
+required GameTests cover the complete authenticated success path and drift injected after Store
+commit but before Attachment publication, raising the normal required total from seven to nine.
+The portable `scripts/verify-p4-d2-configuration.sh` and D2-B API／phase gates constrain the facade,
+root wiring, holder, and test seam while continuing to forbid recovery listeners, fixed-heap／Gradle／
+CI additions, offline roots, reconciliation, reclaim, and network code. This ledger records the
+locally implemented and fully verified D2-B work; closure still requires repository commit／push and
+remote evidence. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.
 
 ```text
 P4-D0               = COMPLETE
 P4-D1               = COMPLETE
 P4-D2 design review = COMPLETE
 P4-D2-A             = COMPLETE
-P4-D2-B             = READY FOR IMPLEMENTATION
+P4-D2-B             = IMPLEMENTED LOCALLY; CLOSURE PENDING
 P4-D3               = NOT STARTED
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED

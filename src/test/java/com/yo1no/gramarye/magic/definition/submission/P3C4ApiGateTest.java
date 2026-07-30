@@ -127,16 +127,16 @@ class P3C4ApiGateTest {
     }
 
     @Test
-    void phaseLocalGateAllowsReviewedD2APrimitivesButRejectsFacadeAndLegacyTypes()
+    void phaseLocalGateAllowsReviewedD2CompositionButRejectsLegacyTypes()
             throws Exception {
-        // Reviewed D2-A primitives are legal; authenticated facade and later-phase types remain absent.
+        // Reviewed D2-A primitives and D2-B facade are legal; legacy surfaces remain absent.
         var productionClasses = productionClassNames();
         var absentSimpleNames = List.of(
-                "SkillDefinitionSubmissionService",
                 "SkillSubmissionAuthorizationAdapter",
                 "SkillQuotaView",
                 "SkillPin");
         var presentSimpleNames = List.of(
+                "SkillDefinitionSubmissionService",
                 "SkillDefinitionStore",
                 "SkillStoreCommitResult",
                 "SkillStoreCommitConflict",

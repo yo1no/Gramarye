@@ -91,6 +91,34 @@ and publication responsibilities remain owned by D2-B.
 
 D2-A is complete: its production commit is present at `HEAD`／`origin/main`, local full regression
 and the existing memory Gates passed, and the externally reported remote `build`, `P4-A3 memory
-gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all passed. D2-B is ready for
-implementation, but the authenticated facade, composition-root wiring, and normal submission
-GameTests do not yet exist. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.
+gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all passed. At D2-A closure, D2-B was ready
+for implementation, while the authenticated facade, composition-root wiring, and normal submission
+GameTests did not yet exist.
+
+## P4-D2-B authenticated handoff
+
+`SkillDefinitionSubmissionService.submit(ServerPlayer, SkillId)` now owns the Minecraft-facing
+composition without moving player types into P3. The authenticated player UUID is the sole owner
+source, while the authoritative Draft comes from the controlled P4-C service. The production
+pipeline uses registry-backed definition lookups and preserves the existing C1–C4 domain stages.
+
+The facade executes Draft lookup, C1 precheck, one Store authority observation, C2 authority, one
+combined quota／validation policy snapshot, C3 prepare, and C4 map in that order. Runtime invocation
+counters prove every selected P3-C stage runs exactly once and that invalid／conflict／identity paths
+invoke neither the policy provider nor any downstream persistence step. The same policy snapshot's
+validation context feeds C3 and its quota feeds the D1 preflight; neither authority nor policy is
+resampled.
+
+Only the exact P3-C `Prepared` plan proceeds to P4-C transition preparation, D1 Store／journal
+preflight, a fresh non-mutating Attachment currentness check, one D1 commit, and then Attachment
+publication. Every later branch retains the exact original warning-only report reference. A commit
+or publication result never rebuilds, merges, normalizes, or persists that report, and normal
+submission preserves the authoritative Draft unchanged. Publication drift after Store commit maps
+to pending Attachment recovery without Store rollback, journal clear, retry, or P3-C re-execution.
+
+Two normal required GameTests exercise the full success path and postcommit Attachment drift; the
+normal required total rises from seven to nine. The D2-B API／phase tests and portable
+`scripts/verify-p4-d2-configuration.sh` guard the exactly-once handoff and retain the phase-local
+prohibitions on recovery, fixed-heap／Gradle／CI, offline roots, reconciliation, reclaim, and network
+work. D2-B is implemented and fully verified locally; closure still awaits repository commit／push
+and remote evidence. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.

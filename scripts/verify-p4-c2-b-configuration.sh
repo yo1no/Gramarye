@@ -233,8 +233,9 @@ verify_search_helpers() {
     fi
 }
 
-is_reviewed_d2a_production_path() {
+is_reviewed_d2_production_path() {
     case "$1" in
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/DefaultSkillSubmissionPolicyProvider.java | \
@@ -244,6 +245,8 @@ is_reviewed_d2a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionPolicyProvider.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionPolicySnapshot.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionPreparationPipeline.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java) return 0 ;;
         *) return 1 ;;
     esac
@@ -265,8 +268,8 @@ verify_production_freeze() {
     fi
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
-        is_reviewed_d2a_production_path "${path}" \
-            || fail "production Java changed outside exact current P4-D2-A allowlist: ${path}"
+        is_reviewed_d2_production_path "${path}" \
+            || fail "production Java changed outside exact current P4-D2-B allowlist: ${path}"
     done <<< "${changed}"
     status=0
     untracked="$(git ls-files --others --exclude-standard -- \
@@ -276,8 +279,8 @@ verify_production_freeze() {
     fi
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
-        is_reviewed_d2a_production_path "${path}" \
-            || fail "untracked production path escaped exact current P4-D2-A allowlist: ${path}"
+        is_reviewed_d2_production_path "${path}" \
+            || fail "untracked production path escaped exact current P4-D2-B allowlist: ${path}"
     done <<< "${untracked}"
 }
 
@@ -613,7 +616,9 @@ verify_compiled_outputs_and_jar() {
         done
         for source in \
             P4D2ApiGateTest \
+            P4D2BApiGateTest \
             SkillDraftCreationServiceTest \
+            SkillDefinitionSubmissionServiceTest \
             SkillSubmissionCompositionOutcomeTest \
             SkillSubmissionPolicyProviderTest \
             SkillSubmissionPreparationPipelineTest; do

@@ -260,7 +260,7 @@ class P3D2ApiGateTest {
     }
 
     @Test
-    void compiledProductionTreeAllowsReviewedP4TypesButRejectsFacadeAndStoreLeakage()
+    void compiledProductionTreeAllowsReviewedP4TypesButRejectsStoreLeakage()
             throws Exception {
         var productionClasses = productionClassNames();
         var storeTypes = productionClasses.stream()
@@ -276,9 +276,7 @@ class P3D2ApiGateTest {
                         || P4C2BPhaseTypes.containsTopLevelName(name))
                 .collect(Collectors.toSet());
         var forbiddenTopLevelTypes = Set.of(
-                "SkillDefinitionSubmissionService",
-                "SkillSubmissionAuthorizationAdapter",
-                "SkillPin");
+                "SkillSubmissionAuthorizationAdapter", "SkillPin");
 
         assertAll(
                 () -> assertTrue(productionClasses.contains(SkillRevisionPin.class.getName())),

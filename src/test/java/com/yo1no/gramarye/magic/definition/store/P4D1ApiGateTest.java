@@ -175,7 +175,6 @@ final class P4D1ApiGateTest {
                 .map(P4D1ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         for (var forbidden : List.of(
-                "SkillDefinitionSubmissionService",
                 "PlayerLoggedInEvent",
                 "RootCollector",
                 "OfflineRoot",

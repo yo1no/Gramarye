@@ -293,8 +293,8 @@ verify_phase_bounds_and_normal_tests() {
         'P4-C2-A generation must remain int/Integer.MAX_VALUE'
 
     normal_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
-    if [[ "${normal_count}" -ne 7 ]]; then
-        fail "P4-C2-A normal required GameTest count must be seven (found ${normal_count})"
+    if [[ "${normal_count}" -ne 9 ]]; then
+        fail "P4-C2-A plus reviewed P4-D2-B normal GameTest count must be nine (found ${normal_count})"
     fi
     require_fixed_count "${game_tests}" '@GameTest(' 2 \
         'P4-C2-A normal holder must contain exactly two GameTests'

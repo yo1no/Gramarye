@@ -906,11 +906,10 @@ verify_b2_sources_and_outputs() {
     done
 
     # P4-C2-A phase-local: exact registration, controlled player mutation, prepared transition,
-    # and per-player roots are reviewed by its own portable verifier. Later composition,
-    # offline-root, manual-clone, and networking surfaces remain absent.
+    # per-player roots, and D1/D2 composition are reviewed by their own portable verifiers.
+    # Offline-root, manual-clone, and networking surfaces remain absent.
     for literal in \
         'PlayerEvent' \
-        'SkillDefinitionSubmissionService' \
         'OfflineRoot' \
         'CustomPacketPayload' \
         'PayloadRegistrar' \
@@ -918,7 +917,7 @@ verify_b2_sources_and_outputs() {
         forbid_fixed_in_file_list \
             "${PRODUCTION_SOURCE_LIST}" \
             "${literal}" \
-            "P4-C2-A or later forbidden composition/network surface appeared (${literal})"
+            "unreviewed later lifecycle/root/network surface appeared (${literal})"
     done
     require_regular_file \
         'scripts/verify-p4-c2-a-configuration.sh' \

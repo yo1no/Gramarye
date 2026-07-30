@@ -269,11 +269,9 @@ class P3D3AApiGateTest {
     }
 
     @Test
-    void phaseLocalProductionTreeContainsFinalD3ButNoP4Surface() throws Exception {
+    void phaseLocalProductionTreeContainsFinalD3AndReviewedP4Surface() throws Exception {
         var productionClasses = productionClasses();
-        var forbiddenTopLevelTypes = Set.of(
-                "SkillDefinitionSubmissionService",
-                "RootProvider");
+        var forbiddenTopLevelTypes = Set.of("RootProvider");
         var storeTypes = productionClasses.stream()
                 .filter(name -> name.startsWith(STORE_PACKAGE))
                 .filter(name -> !isReviewedPostP3DStoreType(name))

@@ -231,7 +231,8 @@ class P4C2AApiGateTest {
     }
 
     @Test
-    void exactlyTwoNormalRegisteredGameTestsRaiseTheRequiredTotalToSeven() throws Exception {
+    void c2AHolderStaysAtTwoTestsWhileReviewedD2BRaisesRequiredTotalToNine()
+            throws Exception {
         var holder = load(P4C2PhaseTypes.PLAYER_PACKAGE
                 + "PlayerSkillAttachmentGameTests");
         var methods = Arrays.stream(holder.getDeclaredMethods())
@@ -251,7 +252,7 @@ class P4C2AApiGateTest {
                                 && Modifier.isStatic(method.getModifiers()))),
                 () -> assertTrue(holderAnnotation != null
                         && holderAnnotation.value().equals(Gramarye.MOD_ID)),
-                () -> assertEquals(7, occurrences(allMain, "@GameTest(")));
+                () -> assertEquals(9, occurrences(allMain, "@GameTest(")));
     }
 
     @Test
@@ -294,7 +295,6 @@ class P4C2AApiGateTest {
             assertFalse(c2Source.contains(forbidden), () -> "C2-A source contains " + forbidden);
         }
         for (var forbidden : List.of(
-                "SkillDefinitionSubmissionService",
                 "OfflineRoot",
                 "RootCollector",
                 "RootIndex",
