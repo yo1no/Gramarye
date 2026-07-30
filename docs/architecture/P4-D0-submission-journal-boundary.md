@@ -232,7 +232,7 @@ production commit is present at `HEAD`／`origin/main`, and the externally repor
 `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all passed. D2-B and P4-D2
 are therefore complete. The D3 read-only design review is complete and forced the D3-A／D3-B split.
 
-## D3-A locally implemented ledger
+## D3-A closure ledger
 
 `SkillDefinitionStoreService.onServerStarting` now performs the production startup sequence in one
 listener: install the unique Overworld adapter, bootstrap the D1 journal immediately, then return.
@@ -265,13 +265,19 @@ transition publication. The normal required count is now 12. The portable D3-A v
 API/phase gates keep D3-B source sets, Gradle／CI, offline enumeration, reconciliation, Store reclaim,
 and network code absent.
 
-The D3-A local implementation and its local gates are complete in the current worktree; commit,
-push, and remote gates remain pending. D3-B has not started. Its approved combined fixture must use
-an exact `66_060_348`-byte Store with a D3-specific 2,048 histories／4,095 revisions; it need not be
-bit-identical to the earlier eight-history Store fixture. In the future D3-B J matrix, J1 persisted
-invalid target is expected to become bootstrap journal Unavailable. J2 is only a package-private
-defensive live re-audit that yields `TargetInvalid`; current production restart does not naturally
-reach J2. P4-D remains incomplete, and P4-E remains blocked.
+The D3-A production commit is present at `HEAD`／`origin/main`. Its local full regression, all 12
+normal required GameTests, and the existing P4-A3／P4-B／P4-C fixed-heap Gates passed. The externally
+reported remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all
+passed, so D3-A is complete and D3-B is ready for implementation.
+
+D3-B owns the remaining crash D–J matrix, combined fixed-heap workload, Gradle wiring, and CI job.
+Its approved combined fixture must use an exact `66_060_348`-byte Store with a D3-specific 2,048
+histories／4,095 revisions; it need not be bit-identical to the earlier eight-history Store fixture.
+In the future D3-B J matrix, J1 persisted invalid target is expected to become bootstrap journal
+Unavailable. J2 is only a package-private defensive live re-audit that yields `TargetInvalid`;
+current production restart does not naturally reach J2. P4-D remains incomplete, and P4-E remains
+blocked. Branch-protection required-check configuration remains external governance
+unknown／pending.
 
 ```text
 P4-D0               = COMPLETE
@@ -281,8 +287,8 @@ P4-D2-A             = COMPLETE
 P4-D2-B             = COMPLETE
 P4-D2               = COMPLETE
 P4-D3 design review = COMPLETE
-P4-D3-A             = LOCALLY IMPLEMENTED; COMMIT/PUSH/REMOTE GATES PENDING
-P4-D3-B             = BLOCKED UNTIL D3-A CLOSURE
+P4-D3-A             = COMPLETE
+P4-D3-B             = READY FOR IMPLEMENTATION
 P4-D3               = INCOMPLETE
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED

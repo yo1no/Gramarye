@@ -900,7 +900,7 @@ is present at `HEAD`／`origin/main`, and the externally reported remote `build`
 `P4-B memory gates`, and `P4-C memory gates` jobs all passed. D2-B and P4-D2 are therefore complete.
 The completed D3 read-only design review forces the D3-A／D3-B split.
 
-## P4-D3-A locally implemented ledger
+## P4-D3-A closure ledger
 
 Production server startup now uses one `SkillDefinitionStoreService` callback with the exact order
 `install(server)` then `submissionPort.bootstrapJournal(server)`. The install primitive itself
@@ -934,13 +934,17 @@ and roots, and dirty behavior. Together with the prior nine, all 12 normal requi
 locally. The D3-A unit/API/portable gates keep Gradle, workflow, D3-B source sets/tasks, offline
 enumeration, root indexing, reconciliation, Store reclaim, and network/sync absent.
 
-D3-A is locally implemented in the current worktree; commit, push, and remote gates remain pending.
-D3-B has not started and stays blocked until D3-A closure. Its approved combined workload uses an
-exact `66_060_348`-byte Store built specifically with 2,048 histories and 4,095 revisions; it is not
-required to reproduce the earlier eight-history Store bit-for-bit. D3-B J1 persists an invalid
-target and expects bootstrap journal Unavailable. J2 is only a package-private defensive live
-target re-audit yielding `TargetInvalid`, not a currently natural production-restart path. P4-D
-remains incomplete and P4-E remains blocked.
+D3-A's production commit is present at `HEAD`／`origin/main`. Its local full regression, all 12
+normal required GameTests, and the existing P4-A3／P4-B／P4-C fixed-heap Gates passed. The externally
+reported remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all
+passed, so D3-A is complete and D3-B is ready for implementation.
+
+D3-B still owns crash cases D–J, the combined fixed-heap workload, Gradle wiring, and CI. Its approved
+combined workload uses an exact `66_060_348`-byte Store built specifically with 2,048 histories and
+4,095 revisions; it is not required to reproduce the earlier eight-history Store bit-for-bit. D3-B
+J1 persists an invalid target and expects bootstrap journal Unavailable. J2 is only a
+package-private defensive live target re-audit yielding `TargetInvalid`, not a currently natural
+production-restart path. P4-D remains incomplete and P4-E remains blocked.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -955,8 +959,8 @@ P4-D2-A             = COMPLETE
 P4-D2-B             = COMPLETE
 P4-D2               = COMPLETE
 P4-D3 design review = COMPLETE
-P4-D3-A             = LOCALLY IMPLEMENTED; COMMIT/PUSH/REMOTE GATES PENDING
-P4-D3-B             = BLOCKED UNTIL D3-A CLOSURE
+P4-D3-A             = COMPLETE
+P4-D3-B             = READY FOR IMPLEMENTATION
 P4-D3               = INCOMPLETE
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED
@@ -971,7 +975,9 @@ existing memory Gates passed, and the externally reported remote build／A3／B�
 complete: its production commit is present at `HEAD`／`origin/main`; its authenticated facade,
 composition-root wiring, two normal submission GameTests, and portable local configuration gate
 passed local regression and the existing fixed-heap Gates; and the externally reported remote
-build／A3／B／C jobs passed. P4-D2 is complete. The P4-D3 design review is complete; D3-A is locally
-implemented with commit／push／remote gates pending, while D3-B and its crash matrix／combined
-fixed-heap Gate have not started. P4-D remains incomplete and P4-E remains blocked.
+build／A3／B／C jobs passed. P4-D2 is complete. The P4-D3 design review is complete; D3-A's production
+commit is present at `HEAD`／`origin/main`, its local regression and existing fixed-heap Gates
+passed, and the externally reported remote build／A3／B／C jobs passed. D3-A is complete. D3-B is
+ready for implementation and still owns the crash D–J matrix, combined fixed-heap Gate, Gradle, and
+CI. P4-D remains incomplete and P4-E remains blocked.
 Branch-protection required-check configuration remains external governance unknown／pending.
