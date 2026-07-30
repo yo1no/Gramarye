@@ -868,7 +868,7 @@ passed. D2-A is therefore complete. At D2-A closure, D2-B was ready for implemen
 yet created the authenticated facade, Gramarye composition-root wiring, or normal submission
 GameTests.
 
-## P4-D2-B local implementation ledger
+## P4-D2-B completed implementation ledger
 
 The actual D2-B facade is public-final `SkillDefinitionSubmissionService`, with authenticated
 `submit(ServerPlayer, SkillId)` as its only public domain operation. It is stateless, derives owner
@@ -891,9 +891,12 @@ unchanged. Publication failure does not roll back Store, clear the journal, retr
 Two normal required GameTests cover full success and postcommit Attachment drift, raising the normal
 required total from seven to nine. `scripts/verify-p4-d2-configuration.sh` plus the D2-B API／phase
 gates lock this local surface without a P4-D source set, Gradle／CI change, recovery listener,
-offline-root／reconciliation／reclaim code, or network surface. D2-B is implemented and fully
-verified locally; closure still awaits repository commit／push and remote evidence. D3 remains not
-started, P4-D remains incomplete, and P4-E remains blocked.
+offline-root／reconciliation／reclaim code, or network surface. All nine normal required GameTests
+passed, as did the local full regression and existing fixed-heap Gates. The D2-B production commit
+is present at `HEAD`／`origin/main`, and the externally reported remote `build`, `P4-A3 memory gates`,
+`P4-B memory gates`, and `P4-C memory gates` jobs all passed. D2-B and P4-D2 are therefore complete.
+Recovery／readback／clear, the crash matrix, and the combined P4-D fixed-heap Gate remain D3-owned.
+P4-D3 is ready for read-only design review; P4-D remains incomplete, and P4-E remains blocked.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -905,8 +908,9 @@ P4-D0               = COMPLETE
 P4-D1               = COMPLETE
 P4-D2 design review = COMPLETE
 P4-D2-A             = COMPLETE
-P4-D2-B             = IMPLEMENTED LOCALLY; CLOSURE PENDING
-P4-D3               = NOT STARTED
+P4-D2-B             = COMPLETE
+P4-D2               = COMPLETE
+P4-D3               = READY FOR READ-ONLY DESIGN REVIEW
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED
 ```
@@ -917,7 +921,10 @@ complete: its production commit is present at `HEAD`／`origin/main`, local full
 and the externally reported remote build／A3／B／C jobs passed. The P4-D2 design review is complete;
 D2-A is complete with its production commit present at `HEAD`／`origin/main`, local regression and
 existing memory Gates passed, and the externally reported remote build／A3／B／C jobs passed. D2-B is
-implemented and fully verified locally with its authenticated facade, composition-root wiring, two
-normal submission GameTests, and portable local configuration gate; repository commit／push and remote
-closure evidence remain pending. D3 has not started. P4-D remains incomplete and P4-E remains blocked.
+complete: its production commit is present at `HEAD`／`origin/main`; its authenticated facade,
+composition-root wiring, two normal submission GameTests, and portable local configuration gate
+passed local regression and the existing fixed-heap Gates; and the externally reported remote
+build／A3／B／C jobs passed. P4-D2 is complete. P4-D3 is ready for read-only design review; recovery／
+readback／clear, the crash matrix, and the combined P4-D fixed-heap Gate remain D3-owned. P4-D remains
+incomplete and P4-E remains blocked.
 Branch-protection required-check configuration remains external governance unknown／pending.

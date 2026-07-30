@@ -188,7 +188,7 @@ memory gates`, and `P4-C memory gates` jobs all passed. D2-A is therefore comple
 D2-B was ready for implementation and had not yet created the authenticated facade,
 composition-root wiring, or normal submission GameTests.
 
-## D2-B local implementation ledger
+## D2-B completed implementation ledger
 
 D2-B adds the stateless public-final `SkillDefinitionSubmissionService`. Its sole public domain
 operation is authenticated `submit(ServerPlayer, SkillId)`; null, missing-server, and wrong-thread
@@ -223,17 +223,22 @@ required GameTests cover the complete authenticated success path and drift injec
 commit but before Attachment publication, raising the normal required total from seven to nine.
 The portable `scripts/verify-p4-d2-configuration.sh` and D2-B API／phase gates constrain the facade,
 root wiring, holder, and test seam while continuing to forbid recovery listeners, fixed-heap／Gradle／
-CI additions, offline roots, reconciliation, reclaim, and network code. This ledger records the
-locally implemented and fully verified D2-B work; closure still requires repository commit／push and
-remote evidence. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.
+CI additions, offline roots, reconciliation, reclaim, and network code. All nine normal required
+GameTests passed, as did the local full regression and existing fixed-heap Gates. The D2-B
+production commit is present at `HEAD`／`origin/main`, and the externally reported remote `build`,
+`P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all passed. D2-B and P4-D2
+are therefore complete. Recovery／readback／clear, the crash matrix, and the combined P4-D fixed-heap
+Gate remain D3-owned. D3 is ready for read-only design review; P4-D remains incomplete, and P4-E
+remains blocked.
 
 ```text
 P4-D0               = COMPLETE
 P4-D1               = COMPLETE
 P4-D2 design review = COMPLETE
 P4-D2-A             = COMPLETE
-P4-D2-B             = IMPLEMENTED LOCALLY; CLOSURE PENDING
-P4-D3               = NOT STARTED
+P4-D2-B             = COMPLETE
+P4-D2               = COMPLETE
+P4-D3               = READY FOR READ-ONLY DESIGN REVIEW
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED
 ```

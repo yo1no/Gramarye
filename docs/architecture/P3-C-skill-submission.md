@@ -120,5 +120,9 @@ Two normal required GameTests exercise the full success path and postcommit Atta
 normal required total rises from seven to nine. The D2-B API／phase tests and portable
 `scripts/verify-p4-d2-configuration.sh` guard the exactly-once handoff and retain the phase-local
 prohibitions on recovery, fixed-heap／Gradle／CI, offline roots, reconciliation, reclaim, and network
-work. D2-B is implemented and fully verified locally; closure still awaits repository commit／push
-and remote evidence. D3 has not started, P4-D remains incomplete, and P4-E remains blocked.
+work. All nine normal required GameTests passed, as did the local full regression and existing
+fixed-heap Gates. The D2-B production commit is present at `HEAD`／`origin/main`, and the externally
+reported remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all
+passed. D2-B and P4-D2 are therefore complete. Recovery／readback／clear, the crash matrix, and the
+combined P4-D fixed-heap Gate remain D3-owned. D3 is ready for read-only design review; P4-D remains
+incomplete, and P4-E remains blocked.
