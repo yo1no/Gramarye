@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STORE_ROOT='src/main/java/com/yo1no/gramarye/magic/definition/store'
 PLAYER_SERVICE='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java'
 SUBMISSION_ROOT='src/main/java/com/yo1no/gramarye/magic/definition/submission'
+RECOVERY_SERVICE="${SUBMISSION_ROOT}/SkillSubmissionRecoveryService.java"
 CEILINGS='src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java'
 
 fail() {
@@ -27,6 +28,7 @@ is_reviewed_d1_journal_owner() {
         "${STORE_ROOT}/PendingAttachmentJournalWireScan.java" | \
         "${STORE_ROOT}/SkillDefinitionStore.java" | \
         "${STORE_ROOT}/SkillDefinitionStoreSubmissionPort.java" | \
+        "${STORE_ROOT}/SkillSubmissionRecoveryGameTests.java" | \
         "${STORE_ROOT}/SkillSavedDataLifecycleGameTests.java") return 0 ;;
         *) return 1 ;;
     esac
@@ -79,7 +81,9 @@ verify_unique_owners() {
     while IFS= read -r -d '' source; do
         if grep -Fq -- 'MAX_PENDING_ATTACHMENT_UPDATES' "${source}"; then
             case "${source}" in
-                "${STORE_ROOT}/PendingAttachmentJournalSchema.java" | "${CEILINGS}") ;;
+                "${STORE_ROOT}/PendingAttachmentJournalSchema.java" | \
+                "${SUBMISSION_ROOT}/SkillSubmissionRecoveryService.java" | \
+                "${CEILINGS}") ;;
                 *) fail "journal entry ceiling escaped its unique schema owner: ${source}" ;;
             esac
             ceiling_count=$((ceiling_count + 1))
@@ -98,7 +102,8 @@ verify_unique_owners() {
             reclaim_count=$((reclaim_count + 1))
         fi
     done < <(find src/main/java -type f -name '*.java' -print0)
-    [[ "${ceiling_count}" -eq 2 ]] || fail 'journal entry ceiling must have one schema consumer'
+    [[ "${ceiling_count}" -eq 3 ]] \
+        || fail 'journal entry ceiling must have its schema and reviewed recovery consumers'
     [[ "${commit_count}" -eq 1 ]] || fail 'production must have exactly one Store commit caller'
     [[ "${reclaim_count}" -eq 2 ]] || fail 'reviewed P4-B reclaim caller set changed'
 }
@@ -170,12 +175,22 @@ verify_d2a_sources_and_owners() {
 
 verify_phase_boundary() {
     local token=''
+    local source=''
     grep -Fq -- 'isChangedGenerationSuccessor(' "${PLAYER_SERVICE}" \
         || fail 'P4-C successor predicate is missing'
     grep -Fq -- 'boolean isBoundTo(MinecraftServer server)' "${PLAYER_SERVICE}" \
         || fail 'P4-C prepared-transition server predicate is missing'
+    [[ -f "${RECOVERY_SERVICE}" ]] \
+        || fail 'P4-D3-A reviewed recovery service is missing'
+    grep -Fq -- 'PlayerEvent.PlayerLoggedInEvent' "${RECOVERY_SERVICE}" \
+        || fail 'P4-D3-A reviewed login recovery event owner is missing'
+    while IFS= read -r -d '' source; do
+        if [[ "${source}" != "${RECOVERY_SERVICE}" ]] \
+                && grep -Fq -- 'PlayerEvent' "${source}"; then
+            fail "PlayerEvent escaped the exact P4-D3-A recovery-service allowlist: ${source}"
+        fi
+    done < <(find src/main/java -type f -name '*.java' -print0)
     for token in \
-        PlayerLoggedInEvent \
         OfflineRoot \
         RootCollector \
         Reconciliation \
@@ -199,7 +214,8 @@ main() {
     verify_unique_owners
     verify_d2a_sources_and_owners
     verify_phase_boundary
-    printf '%s\n' 'Verified exact P4-D1 ownership with reviewed P4-D2 composition and later-phase absence.'
+    printf '%s\n' \
+        'Verified exact P4-D1 ownership with reviewed P4-D2/D3-A composition and later-phase absence.'
 }
 
 main "$@"

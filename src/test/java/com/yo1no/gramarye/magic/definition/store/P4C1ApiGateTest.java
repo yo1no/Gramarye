@@ -237,7 +237,9 @@ class P4C1ApiGateTest {
                         Set.of(
                                 ceilingPath,
                                 "com/yo1no/gramarye/magic/definition/player/"
-                                        + "PlayerSkillAttachmentPersistenceBridge.java"),
+                                        + "PlayerSkillAttachmentPersistenceBridge.java",
+                                "com/yo1no/gramarye/magic/definition/submission/"
+                                        + "SkillSubmissionRecoveryService.java"),
                         relativeFilesContaining(production, "MAX_PLAYER_LATEST_STATES")),
                 () -> assertEquals(
                         Set.of(

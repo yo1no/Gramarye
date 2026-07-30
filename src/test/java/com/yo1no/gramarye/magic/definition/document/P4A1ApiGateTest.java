@@ -97,7 +97,7 @@ class P4A1ApiGateTest {
     private static final Pattern UNCHECKED_STYLE_CAST = Pattern.compile(
             "\\(\\s*(?:Class|Codec|Collection|DataResult|Dynamic|DynamicOps|Iterable|List|Map|"
                     + "Optional|RegistryOps|Set|Stream)\\s*\\)");
-    /** C2-A production is allowed; C2-B fixtures and later composition remain outside main. */
+    /** Reviewed C2-A/D1/D3-A production is allowed; dedicated later fixtures stay outside main. */
     private static final Pattern FORBIDDEN_POST_C2_A_TYPE = Pattern.compile(
             "\\b(?:class|record|interface|enum)\\s+"
                     + "(?:[A-Za-z0-9_]*CarrierDelta[A-Za-z0-9_]*|"
@@ -105,7 +105,7 @@ class P4A1ApiGateTest {
                     + "P4C2(?:Probe|Memory)[A-Za-z0-9_]*)\\b");
     private static final Pattern PRODUCTION_FIXTURE_TYPE = Pattern.compile(
             "\\b(?:class|record|interface|enum)\\s+[A-Za-z0-9_]*(?:Test|Fixture|Fake|Dummy|Noop|Stub)\\b");
-    private static final Set<String> REVIEWED_D1_STORE_SOURCES = Set.of(
+    private static final Set<String> REVIEWED_P4_STORE_SOURCES = Set.of(
             "JournalTargetAuditProof.java",
             "JournalTargetAuditResult.java",
             "PendingAttachmentJournal.java",
@@ -117,6 +117,7 @@ class P4A1ApiGateTest {
             "PendingAttachmentJournalState.java",
             "PendingAttachmentJournalWireScan.java",
             "SkillDefinitionStoreSubmissionPort.java",
+            "SkillSubmissionRecoveryGameTests.java",
             "StoreSubmissionAuthorityObservation.java");
 
     @Test
@@ -289,7 +290,7 @@ class P4A1ApiGateTest {
         var sources = productionSources();
         var laterPhaseDeclarations = sources.stream()
                 .filter(source -> FORBIDDEN_POST_C2_A_TYPE.matcher(source.contents()).find())
-                .filter(source -> !REVIEWED_D1_STORE_SOURCES.contains(
+                .filter(source -> !REVIEWED_P4_STORE_SOURCES.contains(
                         source.path().getFileName().toString()))
                 .map(SourceFile::path)
                 .toList();

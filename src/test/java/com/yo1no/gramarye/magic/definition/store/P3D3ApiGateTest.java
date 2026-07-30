@@ -546,6 +546,7 @@ class P3D3ApiGateTest {
     private static boolean isP3dStoreSource(Path path) {
         var name = path.getFileName().toString();
         return !name.startsWith("StorePersistence")
+                && !name.equals("SkillSubmissionRecoveryGameTests.java")
                 && !name.equals("StoreNbtFraming.java")
                 && !name.equals("StorePersistentEnvelopeV0.java")
                 && !name.equals("ImmutableStoreBlob.java")

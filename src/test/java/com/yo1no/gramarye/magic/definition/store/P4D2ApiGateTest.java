@@ -278,8 +278,9 @@ final class P4D2ApiGateTest {
         var allMain = javaSources(MAIN_JAVA).stream()
                 .map(P4D2ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
+        assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
+                relativeSourcesContaining("PlayerLoggedInEvent"));
         for (var forbidden : List.of(
-                "PlayerLoggedInEvent",
                 "PlayerLoggedOutEvent",
                 "OfflineRoot",
                 "Reconciliation",

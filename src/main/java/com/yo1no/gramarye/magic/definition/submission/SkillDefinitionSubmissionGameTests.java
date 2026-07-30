@@ -340,13 +340,11 @@ public final class SkillDefinitionSubmissionGameTests {
                     storage,
                     original,
                     installed);
-            var bootstrap = service.submissionPort().bootstrapJournal(server);
             helper.assertTrue(
-                    bootstrap
-                            instanceof SkillDefinitionStoreSubmissionPort.BootstrapResult.Ready ready
-                            && ready.entryCount() == 0
-                            && !ready.rewritePublished(),
-                    "D2-B normal submission requires canonical zero-journal D1 bootstrap");
+                    service.submissionPort().journalStatus(server)
+                            instanceof SkillDefinitionStoreSubmissionPort.JournalStatus.Ready ready
+                            && ready.entryCount() == 0,
+                    "D2-B isolated ServerStarting must install then bootstrap the journal once");
             return fixture;
         } catch (RuntimeException failure) {
             if (fixture == null) {

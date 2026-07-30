@@ -15,8 +15,11 @@ unchanged.
 - D2 is forcibly split into D2-A followed by D2-B. Together they own the authenticated facade,
   unique policy provider, Draft creation／SkillId mint adapter, exactly-once P3-C composition,
   prepared Attachment transition, and composition outcome. They own no recovery listener.
-- D3 owns bootstrap and login recovery, persisted-readback prefix clear, paired crash／restart probes,
-  the combined fixed-heap Gate, Gradle／CI wiring, and final phase gates.
+- D3 is forcibly split into D3-A followed by D3-B. D3-A owns production bootstrap ordering,
+  owner-scoped recovery projection, one-shot persisted Attachment observation, login recovery,
+  readback-confirmed prefix clear, controlled replay, normal GameTests, and local phase gates. D3-B
+  owns only the paired crash／restart probes, combined fixed-heap Gate, Gradle／CI wiring, and final
+  D3 closure gates.
 
 D1, D2-A, D2-B, D3, and the required remote memory Gate must all pass before P4-D is complete. P4-E
 remains blocked until P4-D completes.
@@ -127,7 +130,7 @@ owner, route, target, and committed reference, then releases those heavy binding
 immediately before publication.
 
 The sole new public top-level is `SkillDefinitionStoreSubmissionPort`, owned once by
-`SkillDefinitionStoreService`. Its eight bounded operations expose only authority/status/root
+`SkillDefinitionStoreService`. Its nine bounded operations expose only authority/status/root
 results and opaque single-use prepare or clear handles. Submission preparation prebuilds the Store
 carrier, appended canonical journal, shared pending handle, inner carrier, SavedData Ready,
 success result, and fail-closed fallback without mutation. Commit consumes the handle, rechecks
@@ -227,9 +230,48 @@ CI additions, offline roots, reconciliation, reclaim, and network code. All nine
 GameTests passed, as did the local full regression and existing fixed-heap Gates. The D2-B
 production commit is present at `HEAD`／`origin/main`, and the externally reported remote `build`,
 `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all passed. D2-B and P4-D2
-are therefore complete. Recovery／readback／clear, the crash matrix, and the combined P4-D fixed-heap
-Gate remain D3-owned. D3 is ready for read-only design review; P4-D remains incomplete, and P4-E
-remains blocked.
+are therefore complete. The D3 read-only design review is complete and forced the D3-A／D3-B split.
+
+## D3-A locally implemented ledger
+
+`SkillDefinitionStoreService.onServerStarting` now performs the production startup sequence in one
+listener: install the unique Overworld adapter, bootstrap the D1 journal immediately, then return.
+The reusable `install(server)` primitive remains install-only. A decoded or target-audit journal
+failure completes bootstrap as fail-closed journal Unavailable without making the Store unavailable
+or aborting normal server startup; lifecycle/programming failures remain fail-fast.
+
+The ninth Store-port operation, `observePendingRecovery(server, requestedOwner)`, filters to that
+owner before one bounded target audit and returns canonical immutable SkillId chains without
+exposing entries, bytes, Store, carrier, or other owners. The P4-C service adds
+`observeLatestStates(player)`, which performs one non-installing `observeChecked` and returns the
+canonical explicit latest tuples; Missing is an available empty list and either quarantine is
+Unavailable.
+
+The composition root owns one `SkillSubmissionRecoveryService` with only the P4-C Attachment
+service and D1 Store port as production dependencies. It registers exactly one
+`PlayerLoggedInEvent` listener. Recovery observes the journal before the Attachment batch,
+classifies each owner chain by exact pointer-plus-generation tuple as base, intermediate, final, or
+third state, clears only a readback-confirmed prefix before replaying a suffix, and replays only
+through P4-C prepare-to-current, currentness, and publication. Replayed entries remain journaled.
+Chains run in canonical SkillId order with deterministic first-failure stop and no rollback of
+prior successful chains. Bounded outcomes report cleared/replayed progress, conflict, defensive
+target invalidity, or unavailability; only a bounded RuntimeException class name may cross the
+controlled P4-C boundary, and `Error` remains uncaught.
+
+Three normal required GameTests perform real playerdata save, player removal, same-UUID
+`placeNewPlayer`, and the global login event. They cover base replay with the complete journal
+retained, intermediate prefix clear followed by suffix replay, and final full-prefix clear with no
+transition publication. The normal required count is now 12. The portable D3-A verifier and exact
+API/phase gates keep D3-B source sets, Gradle／CI, offline enumeration, reconciliation, Store reclaim,
+and network code absent.
+
+The D3-A local implementation and its local gates are complete in the current worktree; commit,
+push, and remote gates remain pending. D3-B has not started. Its approved combined fixture must use
+an exact `66_060_348`-byte Store with a D3-specific 2,048 histories／4,095 revisions; it need not be
+bit-identical to the earlier eight-history Store fixture. In the future D3-B J matrix, J1 persisted
+invalid target is expected to become bootstrap journal Unavailable. J2 is only a package-private
+defensive live re-audit that yields `TargetInvalid`; current production restart does not naturally
+reach J2. P4-D remains incomplete, and P4-E remains blocked.
 
 ```text
 P4-D0               = COMPLETE
@@ -238,7 +280,10 @@ P4-D2 design review = COMPLETE
 P4-D2-A             = COMPLETE
 P4-D2-B             = COMPLETE
 P4-D2               = COMPLETE
-P4-D3               = READY FOR READ-ONLY DESIGN REVIEW
+P4-D3 design review = COMPLETE
+P4-D3-A             = LOCALLY IMPLEMENTED; COMMIT/PUSH/REMOTE GATES PENDING
+P4-D3-B             = BLOCKED UNTIL D3-A CLOSURE
+P4-D3               = INCOMPLETE
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED
 ```

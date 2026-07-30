@@ -55,6 +55,7 @@ final class P4C2PhaseTypes {
             "findDraft",
             "findLatestState",
             "isChangedGenerationSuccessor",
+            "observeLatestStates",
             "ownerId",
             "prepareLatestTransition",
             "prepareLatestTransitionToCurrent",

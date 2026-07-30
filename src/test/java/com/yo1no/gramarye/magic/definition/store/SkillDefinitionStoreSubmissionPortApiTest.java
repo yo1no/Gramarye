@@ -22,7 +22,7 @@ final class SkillDefinitionStoreSubmissionPortApiTest {
     }
 
     @Test
-    void publicPortDeclaresExactlyTheEightApprovedOperations() {
+    void publicPortDeclaresExactlyTheNineApprovedOperations() {
         var methods = Arrays.stream(SkillDefinitionStoreSubmissionPort.class.getDeclaredMethods())
                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                 .map(method -> method.getName())
@@ -32,6 +32,7 @@ final class SkillDefinitionStoreSubmissionPortApiTest {
                 "bootstrapJournal",
                 "journalStatus",
                 "journalRoots",
+                "observePendingRecovery",
                 "prepareSubmissionCommit",
                 "commitPreparedSubmission",
                 "prepareJournalPrefixClear",

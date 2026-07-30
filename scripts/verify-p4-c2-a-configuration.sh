@@ -293,13 +293,25 @@ verify_phase_bounds_and_normal_tests() {
         'P4-C2-A generation must remain int/Integer.MAX_VALUE'
 
     normal_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
-    if [[ "${normal_count}" -ne 9 ]]; then
-        fail "P4-C2-A plus reviewed P4-D2-B normal GameTest count must be nine (found ${normal_count})"
+    if [[ "${normal_count}" -ne 12 ]]; then
+        fail "P4-C2-A plus reviewed P4-D3-A normal GameTest count must be twelve (found ${normal_count})"
     fi
     require_fixed_count "${game_tests}" '@GameTest(' 2 \
         'P4-C2-A normal holder must contain exactly two GameTests'
     require_fixed "${game_tests}" '@GameTestHolder(Gramarye.MOD_ID)' \
         'P4-C2-A normal holder lost the production GameTest namespace'
+
+    require_regular_file \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'P4-D3-A reviewed recovery service is missing'
+    require_fixed \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'PlayerEvent.PlayerLoggedInEvent' \
+        'P4-D3-A reviewed login recovery event owner is missing'
+    forbid_fixed_outside \
+        "${PRODUCTION_SOURCE_LIST}" 'PlayerEvent' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' '' \
+        'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
 
     for literal in \
         "sourceSets.create('p4C2Probe')" \

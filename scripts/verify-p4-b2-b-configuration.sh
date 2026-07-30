@@ -905,11 +905,9 @@ verify_b2_sources_and_outputs() {
             "P4-B2-B probe code leaked into production Java sources (${literal})"
     done
 
-    # P4-C2-A phase-local: exact registration, controlled player mutation, prepared transition,
-    # per-player roots, and D1/D2 composition are reviewed by their own portable verifiers.
-    # Offline-root, manual-clone, and networking surfaces remain absent.
+    # P4-C2-A and D1/D2 composition are reviewed by their own portable verifiers. D3-A adds one
+    # exact login-event owner; offline-root, manual-clone, and networking surfaces remain absent.
     for literal in \
-        'PlayerEvent' \
         'OfflineRoot' \
         'CustomPacketPayload' \
         'PayloadRegistrar' \
@@ -919,6 +917,17 @@ verify_b2_sources_and_outputs() {
             "${literal}" \
             "unreviewed later lifecycle/root/network surface appeared (${literal})"
     done
+    require_fixed \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'PlayerEvent.PlayerLoggedInEvent' \
+        'P4-D3-A reviewed login recovery event owner is missing'
+    while IFS= read -r -d '' source; do
+        if [[ "${source}" != \
+                'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' ]]; then
+            forbid_fixed "${source}" 'PlayerEvent' \
+                'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
+        fi
+    done < "${PRODUCTION_SOURCE_LIST}"
     require_regular_file \
         'scripts/verify-p4-c2-a-configuration.sh' \
         'P4-C2-A portable configuration verifier is missing'

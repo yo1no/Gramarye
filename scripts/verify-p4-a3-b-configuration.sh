@@ -317,10 +317,9 @@ main() {
 
     # P4-C2-A phase-local: exact Attachment registration, controlled ServerPlayer mutation,
     # prepared transition, and per-player roots are reviewed by the portable C2-A verifier.
-    # D1/D2 composition is reviewed by its own gates. Manual clone hooks, offline roots, and
-    # networking remain forbidden.
+    # D1/D2 composition and the single D3-A login recovery owner are reviewed by their own
+    # portable gates. Manual clone hooks, offline roots, and networking remain forbidden.
     for literal in \
-        'PlayerEvent' \
         'OfflineRoot' \
         'CustomPacketPayload' \
         'PayloadRegistrar' \
@@ -330,6 +329,17 @@ main() {
             "${literal}" \
             'Unreviewed later lifecycle/root/network surface appeared in production'
     done
+    require_fixed \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'PlayerEvent.PlayerLoggedInEvent' \
+        'P4-D3-A reviewed login recovery event owner is missing'
+    while IFS= read -r -d '' file; do
+        if [[ "${file}" != \
+                'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' ]]; then
+            forbid_fixed "${file}" 'PlayerEvent' \
+                'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
+        fi
+    done < "${SOURCE_FILE_LIST}"
     test -x scripts/verify-p4-c2-a-configuration.sh \
         || fail 'P4-C2-A portable configuration verifier is missing or not executable'
 
@@ -377,7 +387,11 @@ main() {
     done
     while IFS= read -r jar_entry; do
         if [[ "${jar_entry}" == \
-            'com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.class' ]]; then
+                'com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.class' \
+                || "${jar_entry}" == \
+                'com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.class' \
+                || "${jar_entry}" == \
+                com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests\$*.class ]]; then
             continue
         fi
         if [[ "${jar_entry}" =~ (^|/)com/yo1no/gramarye/magic/definition/store/[^/]*(Test|Fixture|Fake|Dummy|Noop|Stub)[^/]*\.class$ ]]; then

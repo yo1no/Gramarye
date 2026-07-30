@@ -395,8 +395,8 @@ verify_root_and_normal_gametests() {
         'postCommitAttachmentDriftReturnsPendingRecovery' \
         'P4-D2-B postcommit-drift GameTest is missing'
     normal_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
-    [[ "${normal_count}" -eq 9 ]] \
-        || fail "P4-D2-B normal required GameTest count must be nine (found ${normal_count})"
+    [[ "${normal_count}" -eq 12 ]] \
+        || fail "P4-D3-A normal required GameTest count must be twelve (found ${normal_count})"
 }
 
 verify_static_ownership_and_phase_bounds() {
@@ -416,14 +416,14 @@ verify_static_ownership_and_phase_bounds() {
     require_exact_ere_owners '\.[[:space:]]*reclaim[[:space:]]*\(' 2 \
         'Store reclaim escaped the reviewed P4-B lifecycle owners' \
         "${saved_data}" "${store_service}"
-    while IFS= read -r -d '' file; do
-        forbid_ere "${file}" \
-            '\.[[:space:]]*prepareJournalPrefixClear[[:space:]]*\(' \
-            'P4-D2-B must not orchestrate journal-prefix clear preparation'
-        forbid_ere "${file}" \
-            '\.[[:space:]]*commitPreparedJournalClear[[:space:]]*\(' \
-            'P4-D2-B must not orchestrate journal-prefix clear publication'
-    done < "${PRODUCTION_SOURCE_LIST}"
+    require_only_ere_owner \
+        '\.[[:space:]]*prepareJournalPrefixClear[[:space:]]*\(' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'journal-prefix clear preparation escaped the exact D3-A recovery service'
+    require_only_ere_owner \
+        '\.[[:space:]]*commitPreparedJournalClear[[:space:]]*\(' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'journal-prefix clear publication escaped the exact D3-A recovery service'
     require_only_fixed_owner 'UUID.randomUUID()' "${uuid_source}" \
         'UUID minting escaped the unique reviewed source'
     require_only_fixed_owner 'SkillQuota.Unlimited.INSTANCE' "${default_provider}" \
@@ -432,8 +432,11 @@ verify_static_ownership_and_phase_bounds() {
         'new ValidationContext(MagicPolicyLimits.DEFAULTS)' "${default_provider}" \
         'default validation context escaped the unique reviewed provider'
 
-    for literal in \
+    require_only_fixed_owner \
         'PlayerLoggedInEvent' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'PlayerLoggedInEvent escaped the exact D3-A recovery service'
+    for literal in \
         'PlayerLoggedOutEvent' \
         'OfflineRoot' \
         'RootCollector' \

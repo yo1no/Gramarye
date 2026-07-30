@@ -221,7 +221,8 @@ class P4B2AApiGateTest {
         var journalFreeCode = sources.stream()
                 .filter(path -> !Set.of(
                                 "GramaryeSkillSavedData.java",
-                                "SkillSavedDataLifecycleGameTests.java")
+                                "SkillSavedDataLifecycleGameTests.java",
+                                "SkillDefinitionStoreService.java")
                         .contains(path.getFileName().toString()))
                 .map(P4B2AApiGateTest::read)
                 .map(P4B2AApiGateTest::withoutCommentsAndLiterals)
@@ -361,6 +362,8 @@ class P4B2AApiGateTest {
                                 + "PlayerSkillAttachmentService.java",
                         "com/yo1no/gramarye/magic/definition/submission/"
                                 + "SkillDefinitionSubmissionGameTests.java",
+                        "com/yo1no/gramarye/magic/definition/submission/"
+                                + "SkillSubmissionRecoveryService.java",
                         "com/yo1no/gramarye/magic/definition/store/"
                                 + "SkillDefinitionStoreService.java"),
                 filesContaining(productionSources(MAIN_JAVA), "registerOn("));
@@ -421,7 +424,7 @@ class P4B2AApiGateTest {
                 "com/yo1no/gramarye/magic/definition/player/"
                         + "PlayerSkillAttachmentGameTests.java"));
 
-        assertEquals(9, occurrences(allMain, "@GameTest("));
+        assertEquals(12, occurrences(allMain, "@GameTest("));
         assertEquals(4, occurrences(platformTests, "@GameTest("));
         assertEquals(1, occurrences(lifecycleTests, "@GameTest("));
         assertEquals(2, occurrences(playerTests, "@GameTest("));

@@ -265,7 +265,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(main.contains("P4B2ProbeMain")),
                 () -> assertFalse(main.contains("P4B2MemoryGameTests")),
                 () -> assertFalse(main.contains("gramarye_p4_b2")),
-                () -> assertEquals(9, occurrences(main, "@GameTest(")));
+                () -> assertEquals(12, occurrences(main, "@GameTest(")));
     }
 
     @Test

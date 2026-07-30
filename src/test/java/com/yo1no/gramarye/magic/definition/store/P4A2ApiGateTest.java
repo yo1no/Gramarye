@@ -193,6 +193,7 @@ class P4A2ApiGateTest {
         var reviewedD1JournalOwners = new java.util.HashSet<>(
                 P4DPhaseTypes.NEW_STORE_SOURCE_FILE_NAMES);
         reviewedD1JournalOwners.addAll(P4DPhaseTypes.MODIFIED_STORE_SOURCE_FILE_NAMES);
+        reviewedD1JournalOwners.add("SkillSubmissionRecoveryGameTests.java");
 
         assertAll(
                 () -> assertEquals(1, occurrences(planSource,

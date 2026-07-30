@@ -484,6 +484,7 @@ class P3D3AApiGateTest {
             return false;
         }
         return name.startsWith("StorePersistence")
+                || name.equals("SkillSubmissionRecoveryGameTests")
                 || name.equals("StoreNbtFraming")
                 || name.endsWith("PersistentEnvelopeV0")
                 || Set.of(

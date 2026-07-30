@@ -186,7 +186,7 @@ final class P4D2BApiGateTest {
                         "postCommitAttachmentDriftReturnsPendingRecovery"),
                 methods.stream().map(method -> method.getName()).collect(Collectors.toSet()));
         assertEquals(2, occurrences(read(SUBMISSION_GAME_TEST_SOURCE), "@GameTest("));
-        assertEquals(9, occurrences(allMain, "@GameTest("));
+        assertEquals(12, occurrences(allMain, "@GameTest("));
     }
 
     @Test
@@ -199,8 +199,10 @@ final class P4D2BApiGateTest {
                         "GramaryeSkillSavedData.java",
                         "SkillDefinitionStoreService.java"),
                 relativeSourcesMatching(RECLAIM_CALL));
-        assertEquals(Set.of(), relativeSourcesMatching(PREPARE_JOURNAL_CLEAR_CALL));
-        assertEquals(Set.of(), relativeSourcesMatching(COMMIT_JOURNAL_CLEAR_CALL));
+        assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
+                relativeSourcesMatching(PREPARE_JOURNAL_CLEAR_CALL));
+        assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
+                relativeSourcesMatching(COMMIT_JOURNAL_CLEAR_CALL));
         assertEquals(Set.of("RandomUuidSkillIdSource.java"),
                 relativeSourcesContaining("UUID.randomUUID()"));
         assertEquals(Set.of("DefaultSkillSubmissionPolicyProvider.java"),
@@ -212,8 +214,9 @@ final class P4D2BApiGateTest {
         var allMain = javaSources(MAIN_JAVA).stream()
                 .map(P4D2BApiGateTest::read)
                 .collect(Collectors.joining("\n"));
+        assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
+                relativeSourcesContaining("PlayerLoggedInEvent"));
         for (var forbidden : List.of(
-                "PlayerLoggedInEvent",
                 "PlayerLoggedOutEvent",
                 "OfflineRoot",
                 "RootCollector",

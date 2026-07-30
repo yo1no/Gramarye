@@ -173,11 +173,13 @@ class P4B1ApiGateTest {
                                 "SkillSavedDataInnerCarrier.java",
                                 "GramaryeSkillSavedData.java",
                                 "SkillSavedDataCarrierPersistenceBridge.java",
+                                "SkillSubmissionRecoveryGameTests.java",
                                 "SkillDefinitionStoreSubmissionPort.java"),
                         filesContaining(production, "fromPrevalidatedFraming(")),
                 () -> assertEquals(
                         Set.of(
                                 "SkillSavedDataReadyCandidate.java",
+                                "SkillSubmissionRecoveryGameTests.java",
                                 "SkillSavedDataCarrierPersistenceBridge.java"),
                         filesContaining(production, "afterCarrierRebuild(")),
                 () -> assertEquals(

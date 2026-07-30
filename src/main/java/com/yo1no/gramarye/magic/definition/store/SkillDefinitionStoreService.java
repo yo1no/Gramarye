@@ -134,7 +134,9 @@ public final class SkillDefinitionStoreService {
     }
 
     private void onServerStarting(ServerStartingEvent event) {
-        install(event.getServer());
+        var server = event.getServer();
+        install(server);
+        submissionPort.bootstrapJournal(server);
     }
 
     private void onServerStopped(ServerStoppedEvent event) {

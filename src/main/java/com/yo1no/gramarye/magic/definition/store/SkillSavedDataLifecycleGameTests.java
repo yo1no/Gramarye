@@ -61,8 +61,11 @@ public final class SkillSavedDataLifecycleGameTests {
                 "fresh normal GameTest world must install Ready state");
         helper.assertTrue(
                 ((SkillSavedDataState.Ready) adapter.state()).journalLifecycle()
-                        == PendingAttachmentJournalLifecycle.Uninitialized.INSTANCE,
-                "P4-B load must leave the D1 journal lifecycle explicitly uninitialized");
+                                instanceof PendingAttachmentJournalLifecycle.Installed installed
+                        && installed.state()
+                                instanceof PendingAttachmentJournalState.Ready journalReady
+                        && journalReady.journal().entryCount() == 0,
+                "production ServerStarting must install then bootstrap the empty journal");
         helper.assertTrue(!adapter.isDirty(),
                 "absent primary must install a non-dirty empty Ready state");
         var missing = adapter.latestReference(

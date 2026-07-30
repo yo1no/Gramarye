@@ -233,20 +233,15 @@ verify_search_helpers() {
     fi
 }
 
-is_reviewed_d2_production_path() {
+is_reviewed_d3a_production_path() {
     case "$1" in
         src/main/java/com/yo1no/gramarye/Gramarye.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/submission/DefaultSkillSubmissionPolicyProvider.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/submission/RandomUuidSkillIdSource.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDraftCreationService.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionCompositionOutcome.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionPolicyProvider.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionPolicySnapshot.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionPreparationPipeline.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionGameTests.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java) return 0 ;;
         *) return 1 ;;
     esac
@@ -259,7 +254,7 @@ verify_production_freeze() {
     local status=0
     git diff --quiet HEAD -- src/main/resources || status=$?
     if [[ "${status}" -ne 0 ]]; then
-        fail 'P4-D1 must not modify tracked production resources'
+        fail 'P4-D3-A must not modify tracked production resources'
     fi
     status=0
     changed="$(git diff --name-only HEAD -- src/main/java)" || status=$?
@@ -268,8 +263,8 @@ verify_production_freeze() {
     fi
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
-        is_reviewed_d2_production_path "${path}" \
-            || fail "production Java changed outside exact current P4-D2-B allowlist: ${path}"
+        is_reviewed_d3a_production_path "${path}" \
+            || fail "production Java changed outside exact current P4-D3-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
     untracked="$(git ls-files --others --exclude-standard -- \
@@ -279,8 +274,8 @@ verify_production_freeze() {
     fi
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
-        is_reviewed_d2_production_path "${path}" \
-            || fail "untracked production path escaped exact current P4-D2-B allowlist: ${path}"
+        is_reviewed_d3a_production_path "${path}" \
+            || fail "untracked production path escaped exact current P4-D3-A allowlist: ${path}"
     done <<< "${untracked}"
 }
 
@@ -355,6 +350,21 @@ verify_sources() {
         forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" "${literal}" \
             "P4-C2-B fixture leaked into production Java (${literal})"
     done
+
+    require_regular_file \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'P4-D3-A reviewed recovery service is missing'
+    require_fixed \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'PlayerEvent.PlayerLoggedInEvent' \
+        'P4-D3-A reviewed login recovery event owner is missing'
+    while IFS= read -r -d '' source; do
+        if [[ "${source}" != \
+                'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' ]]; then
+            forbid_fixed "${source}" 'PlayerEvent' \
+                'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
+        fi
+    done < "${PRODUCTION_SOURCE_LIST}"
 }
 
 verify_build_contract() {

@@ -8,6 +8,7 @@ import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
 import com.yo1no.gramarye.magic.definition.submission.SkillDefinitionSubmissionService;
 import com.yo1no.gramarye.magic.definition.submission.SkillDraftCreationService;
 import com.yo1no.gramarye.magic.definition.submission.SkillIdSource;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
@@ -26,6 +27,7 @@ public final class Gramarye {
     private final SkillDraftCreationService skillDraftCreationService;
     private final SkillSubmissionPolicyProvider skillSubmissionPolicyProvider;
     private final SkillDefinitionSubmissionService skillDefinitionSubmissionService;
+    private final SkillSubmissionRecoveryService skillSubmissionRecoveryService;
 
     public Gramarye(IEventBus modBus) {
         MagicRegistries.register(modBus);
@@ -41,6 +43,10 @@ public final class Gramarye {
                 playerSkillAttachmentService,
                 skillDefinitionStoreService.submissionPort(),
                 skillSubmissionPolicyProvider);
+        skillSubmissionRecoveryService = SkillSubmissionRecoveryService.create(
+                playerSkillAttachmentService,
+                skillDefinitionStoreService.submissionPort());
+        skillSubmissionRecoveryService.registerOn(NeoForge.EVENT_BUS);
     }
 
     /** Returns the controlled server skill subsystem port held by this composition root. */

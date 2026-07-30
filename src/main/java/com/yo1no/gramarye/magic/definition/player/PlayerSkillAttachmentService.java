@@ -86,6 +86,17 @@ public final class PlayerSkillAttachmentService {
         };
     }
 
+    /**
+     * Observes every explicit latest-pointer route from one non-installing Attachment read.
+     *
+     * <p>Absence from this immutable canonical list retains its V0 meaning: an implicit empty
+     * pointer at generation zero.</p>
+     */
+    public Result<List<LatestStateView>> observeLatestStates(ServerPlayer player) {
+        requireServerThread(player);
+        return latestStateBatch(observeChecked(player));
+    }
+
     public Result<Optional<SkillReference>> equippedAt(ServerPlayer player, int slot) {
         requireServerThread(player);
         requireEquippedSlot(slot);
@@ -487,6 +498,22 @@ public final class PlayerSkillAttachmentService {
             case PlayerSkillAttachmentOversizeMarker ignored ->
                     new ObservedPlayerSkillAttachment.Quarantined(
                             UnavailableReason.OVERSIZE_QUARANTINE);
+        };
+    }
+
+    static Result<List<LatestStateView>> latestStateBatch(
+            ObservedPlayerSkillAttachment observed) {
+        Objects.requireNonNull(observed, "observed");
+        return switch (observed) {
+            case ObservedPlayerSkillAttachment.Missing ignored ->
+                    new Available<>(List.of());
+            case ObservedPlayerSkillAttachment.Ready ready -> new Available<>(ready.state()
+                    .latestStates()
+                    .stream()
+                    .map(LatestStateView::from)
+                    .toList());
+            case ObservedPlayerSkillAttachment.Quarantined quarantined ->
+                    new Unavailable<>(quarantined.reason());
         };
     }
 

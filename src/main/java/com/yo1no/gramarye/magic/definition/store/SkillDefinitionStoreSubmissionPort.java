@@ -6,6 +6,7 @@ import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import com.yo1no.gramarye.magic.definition.submission.SkillCommitPrecondition;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPlan;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -20,6 +21,8 @@ import net.minecraft.server.MinecraftServer;
 public final class SkillDefinitionStoreSubmissionPort {
     private static final StoreCommitInvoker PRODUCTION_STORE_COMMIT =
             (store, plan, quota) -> store.commit(plan, quota);
+    private static final RecoveryTargetAuditor PRODUCTION_RECOVERY_TARGET_AUDIT =
+            SkillDefinitionStore::auditJournalTargets;
 
     private final SkillDefinitionStoreService service;
 
@@ -190,6 +193,146 @@ public final class SkillDefinitionStoreSubmissionPort {
         }
         return new JournalRootProjection.Available(
                 ((AccessReady) access).journalReady().journal().targetReferences());
+    }
+
+    /**
+     * Projects the requested owner's bounded canonical pending recovery chains after a fresh
+     * exact-target Store audit.
+     */
+    public PendingRecoveryProjection observePendingRecovery(
+            MinecraftServer server, SkillOwnerId requestedOwner) {
+        SkillDefinitionStoreService.requireServerThread(server);
+        return observePendingRecoveryCore(
+                service.installedAdapter(server),
+                requestedOwner,
+                PRODUCTION_RECOVERY_TARGET_AUDIT);
+    }
+
+    PendingRecoveryProjection observePendingRecoveryCore(
+            GramaryeSkillSavedData adapter, SkillOwnerId requestedOwner) {
+        return observePendingRecoveryCore(
+                adapter, requestedOwner, PRODUCTION_RECOVERY_TARGET_AUDIT);
+    }
+
+    PendingRecoveryProjection observePendingRecoveryCore(
+            GramaryeSkillSavedData adapter,
+            SkillOwnerId requestedOwner,
+            RecoveryTargetAuditor targetAuditor) {
+        Objects.requireNonNull(adapter, "adapter");
+        Objects.requireNonNull(requestedOwner, "requestedOwner");
+        Objects.requireNonNull(targetAuditor, "targetAuditor");
+        var access = readyAccess(adapter);
+        if (access instanceof AccessUnavailable unavailable) {
+            return new PendingRecoveryProjection.Unavailable(
+                    pendingRecoveryUnavailable(unavailable.reason()));
+        }
+
+        var ready = (AccessReady) access;
+        var ownerJournal = ownerJournal(ready.journalReady().journal(), requestedOwner);
+        if (ownerJournal.entryCount() == 0) {
+            return new PendingRecoveryProjection.Available(List.of());
+        }
+
+        var audit = Objects.requireNonNull(
+                targetAuditor.audit(ready.savedDataReady().store(), ownerJournal),
+                "targetAudit");
+        if (audit instanceof JournalTargetAuditResult.Rejected rejected) {
+            return targetInvalid(ownerJournal, rejected.failure());
+        }
+        var proof = ((JournalTargetAuditResult.Audited) audit).proof();
+        if (!proof.isFor(ownerJournal)) {
+            throw new IllegalStateException(
+                    "recovery target audit proof must bind the owner journal identity");
+        }
+        return new PendingRecoveryProjection.Available(recoveryChains(ownerJournal));
+    }
+
+    private static PendingAttachmentJournal ownerJournal(
+            PendingAttachmentJournal journal, SkillOwnerId requestedOwner) {
+        var physicalEntries = new ArrayList<PendingAttachmentJournalEntryPhysicalV0>();
+        for (var entry : journal.entries()) {
+            if (entry.owner().equals(requestedOwner)) {
+                physicalEntries.add(new PendingAttachmentJournalEntryPhysicalV0(
+                        entry.owner(),
+                        entry.skillId(),
+                        entry.expectedAttachmentGeneration(),
+                        entry.targetAttachmentGeneration(),
+                        entry.expectedPointer(),
+                        entry.targetPointer()));
+            }
+        }
+        if (physicalEntries.isEmpty()) {
+            return PendingAttachmentJournal.empty();
+        }
+        var admission = PendingAttachmentJournal.admitPhysical(
+                new PendingAttachmentJournalPhysicalV0(
+                        PendingAttachmentJournalSchema.CURRENT_SCHEMA_VERSION,
+                        physicalEntries));
+        if (admission instanceof PendingAttachmentJournal.DomainAdmission.Rejected) {
+            throw new IllegalStateException(
+                    "a canonical owner journal subset must remain admissible");
+        }
+        return ((PendingAttachmentJournal.DomainAdmission.Admitted) admission).journal();
+    }
+
+    private static PendingRecoveryProjection.TargetInvalid targetInvalid(
+            PendingAttachmentJournal ownerJournal,
+            PendingAttachmentJournalFailure failure) {
+        var reason = switch (failure.code()) {
+            case TARGET_MISSING -> PendingRecoveryTargetFailure.MISSING;
+            case TARGET_OWNER_MISMATCH -> PendingRecoveryTargetFailure.OWNER_MISMATCH;
+            default -> throw new IllegalStateException(
+                    "recovery target audit returned a non-target failure");
+        };
+        if (failure.entryIndex() < 0
+                || failure.entryIndex() >= ownerJournal.entries().size()) {
+            throw new IllegalStateException(
+                    "recovery target audit failure must identify an owner-journal entry");
+        }
+        var entry = ownerJournal.entries().get(failure.entryIndex());
+        if (failure.skillId().filter(entry.skillId()::equals).isEmpty()
+                || failure.reference().filter(entry.targetPointer()::equals).isEmpty()) {
+            throw new IllegalStateException(
+                    "recovery target audit failure metadata must match its journal entry");
+        }
+        return new PendingRecoveryProjection.TargetInvalid(
+                entry.skillId(), entry.targetPointer(), reason);
+    }
+
+    private static List<PendingSkillRecoveryChain> recoveryChains(
+            PendingAttachmentJournal ownerJournal) {
+        var chains = new ArrayList<PendingSkillRecoveryChain>();
+        SkillId currentSkillId = null;
+        var steps = new ArrayList<PendingRecoveryStep>();
+        for (var entry : ownerJournal.entries()) {
+            if (currentSkillId != null && !currentSkillId.equals(entry.skillId())) {
+                chains.add(new PendingSkillRecoveryChain(currentSkillId, steps));
+                steps = new ArrayList<>();
+            }
+            currentSkillId = entry.skillId();
+            steps.add(new PendingRecoveryStep(
+                    entry.expectedPointer(),
+                    entry.expectedAttachmentGeneration(),
+                    entry.targetPointer(),
+                    entry.targetAttachmentGeneration()));
+        }
+        if (currentSkillId != null) {
+            chains.add(new PendingSkillRecoveryChain(currentSkillId, steps));
+        }
+        return List.copyOf(chains);
+    }
+
+    private static PendingRecoveryUnavailableReason pendingRecoveryUnavailable(
+            UnavailableReason reason) {
+        return switch (reason) {
+            case JOURNAL_NOT_BOOTSTRAPPED ->
+                    PendingRecoveryUnavailableReason.JOURNAL_NOT_BOOTSTRAPPED;
+            case JOURNAL_UNAVAILABLE ->
+                    PendingRecoveryUnavailableReason.JOURNAL_UNAVAILABLE;
+            case STORE_UNAVAILABLE -> PendingRecoveryUnavailableReason.STORE_UNAVAILABLE;
+            case AUTHORITY_UNAVAILABLE ->
+                    PendingRecoveryUnavailableReason.AUTHORITY_UNAVAILABLE;
+        };
     }
 
     public SubmissionPreparationResult prepareSubmissionCommit(
@@ -758,6 +901,12 @@ public final class SkillDefinitionStoreSubmissionPort {
                 SkillQuota quota);
     }
 
+    @FunctionalInterface
+    interface RecoveryTargetAuditor {
+        JournalTargetAuditResult audit(
+                SkillDefinitionStore store, PendingAttachmentJournal journal);
+    }
+
     public enum UnavailableReason {
         JOURNAL_NOT_BOOTSTRAPPED,
         JOURNAL_UNAVAILABLE,
@@ -835,6 +984,125 @@ public final class SkillDefinitionStoreSubmissionPort {
                 Objects.requireNonNull(reason, "reason");
             }
         }
+    }
+
+    public sealed interface PendingRecoveryProjection {
+        record Available(List<PendingSkillRecoveryChain> chains)
+                implements PendingRecoveryProjection {
+            public Available {
+                chains = List.copyOf(Objects.requireNonNull(chains, "chains"));
+                long stepCount = 0;
+                SkillId previousSkillId = null;
+                for (var chain : chains) {
+                    Objects.requireNonNull(chain, "chain");
+                    if (previousSkillId != null
+                            && previousSkillId.value().compareTo(chain.skillId().value()) >= 0) {
+                        throw new IllegalArgumentException(
+                                "recovery chains must have unique canonical SkillId order");
+                    }
+                    previousSkillId = chain.skillId();
+                    stepCount = Math.addExact(stepCount, chain.steps().size());
+                }
+                if (stepCount > PendingAttachmentJournalSchema.MAX_ENTRIES) {
+                    throw new IllegalArgumentException(
+                            "recovery projection exceeds the journal entry ceiling");
+                }
+            }
+        }
+
+        record TargetInvalid(
+                SkillId skillId,
+                SkillReference target,
+                PendingRecoveryTargetFailure reason)
+                implements PendingRecoveryProjection {
+            public TargetInvalid {
+                Objects.requireNonNull(skillId, "skillId");
+                Objects.requireNonNull(target, "target");
+                Objects.requireNonNull(reason, "reason");
+                if (!skillId.equals(target.skillId())) {
+                    throw new IllegalArgumentException(
+                            "invalid recovery target must match its SkillId route");
+                }
+            }
+        }
+
+        record Unavailable(PendingRecoveryUnavailableReason reason)
+                implements PendingRecoveryProjection {
+            public Unavailable {
+                Objects.requireNonNull(reason, "reason");
+            }
+        }
+    }
+
+    public record PendingSkillRecoveryChain(
+            SkillId skillId, List<PendingRecoveryStep> steps) {
+        public PendingSkillRecoveryChain {
+            Objects.requireNonNull(skillId, "skillId");
+            steps = List.copyOf(Objects.requireNonNull(steps, "steps"));
+            if (steps.isEmpty()) {
+                throw new IllegalArgumentException("recovery chain must not be empty");
+            }
+            PendingRecoveryStep previous = null;
+            for (var step : steps) {
+                Objects.requireNonNull(step, "step");
+                if (!skillId.equals(step.targetPointer().skillId())) {
+                    throw new IllegalArgumentException(
+                            "recovery step target must match its chain route");
+                }
+                if (step.expectedPointer().isPresent()
+                        && !skillId.equals(step.expectedPointer().orElseThrow().skillId())) {
+                    throw new IllegalArgumentException(
+                            "recovery step expected pointer must match its chain route");
+                }
+                if (previous != null
+                        && (step.expectedGeneration() != previous.targetGeneration()
+                                || !step.expectedPointer().equals(
+                                        Optional.of(previous.targetPointer())))) {
+                    throw new IllegalArgumentException(
+                            "recovery chain steps must be continuous");
+                }
+                previous = step;
+            }
+        }
+    }
+
+    public record PendingRecoveryStep(
+            Optional<SkillReference> expectedPointer,
+            int expectedGeneration,
+            SkillReference targetPointer,
+            int targetGeneration) {
+        public PendingRecoveryStep {
+            expectedPointer = Objects.requireNonNull(expectedPointer, "expectedPointer");
+            Objects.requireNonNull(targetPointer, "targetPointer");
+            if (expectedGeneration < 0 || targetGeneration < 0) {
+                throw new IllegalArgumentException(
+                        "recovery generations must be non-negative");
+            }
+            if (!PlayerSkillAttachmentService.isChangedGenerationSuccessor(
+                    expectedGeneration, targetGeneration)) {
+                throw new IllegalArgumentException(
+                        "recovery target generation must be the checked successor");
+            }
+            if (expectedPointer.isPresent()
+                    && (!expectedPointer.orElseThrow().skillId().equals(
+                                    targetPointer.skillId())
+                            || expectedPointer.orElseThrow().equals(targetPointer))) {
+                throw new IllegalArgumentException(
+                        "recovery pointer transition must be changed on one route");
+            }
+        }
+    }
+
+    public enum PendingRecoveryTargetFailure {
+        MISSING,
+        OWNER_MISMATCH
+    }
+
+    public enum PendingRecoveryUnavailableReason {
+        JOURNAL_NOT_BOOTSTRAPPED,
+        JOURNAL_UNAVAILABLE,
+        STORE_UNAVAILABLE,
+        AUTHORITY_UNAVAILABLE
     }
 
     public sealed interface SubmissionPreparationResult {

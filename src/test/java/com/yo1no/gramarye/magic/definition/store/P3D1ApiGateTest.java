@@ -272,6 +272,7 @@ class P3D1ApiGateTest {
             return false;
         }
         return name.startsWith("StorePersistence")
+                || name.equals("SkillSubmissionRecoveryGameTests")
                 || name.equals("StoreNbtFraming")
                 || name.equals("StorePersistentEnvelopeV0")
                 || name.equals("HistoryPersistentEnvelopeV0")

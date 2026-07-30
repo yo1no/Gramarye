@@ -231,7 +231,7 @@ class P4C2AApiGateTest {
     }
 
     @Test
-    void c2AHolderStaysAtTwoTestsWhileReviewedD2BRaisesRequiredTotalToNine()
+    void c2AHolderStaysAtTwoTestsWhileReviewedD3ARaisesRequiredTotalToTwelve()
             throws Exception {
         var holder = load(P4C2PhaseTypes.PLAYER_PACKAGE
                 + "PlayerSkillAttachmentGameTests");
@@ -252,7 +252,7 @@ class P4C2AApiGateTest {
                                 && Modifier.isStatic(method.getModifiers()))),
                 () -> assertTrue(holderAnnotation != null
                         && holderAnnotation.value().equals(Gramarye.MOD_ID)),
-                () -> assertEquals(9, occurrences(allMain, "@GameTest(")));
+                () -> assertEquals(12, occurrences(allMain, "@GameTest(")));
     }
 
     @Test
@@ -275,6 +275,7 @@ class P4C2AApiGateTest {
         var reviewedD1JournalOwners = new java.util.HashSet<>(
                 P4DPhaseTypes.NEW_STORE_SOURCE_FILE_NAMES);
         reviewedD1JournalOwners.addAll(P4DPhaseTypes.MODIFIED_STORE_SOURCE_FILE_NAMES);
+        reviewedD1JournalOwners.add("SkillSubmissionRecoveryGameTests.java");
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
 

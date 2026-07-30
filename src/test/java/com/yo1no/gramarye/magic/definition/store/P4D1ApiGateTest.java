@@ -69,6 +69,7 @@ final class P4D1ApiGateTest {
                         "commitPreparedSubmission",
                         "journalRoots",
                         "journalStatus",
+                        "observePendingRecovery",
                         "observeSubmissionAuthority",
                         "prepareJournalPrefixClear",
                         "prepareSubmissionCommit"),
@@ -81,6 +82,11 @@ final class P4D1ApiGateTest {
                         "JournalClearPreparationResult",
                         "JournalRootProjection",
                         "JournalStatus",
+                        "PendingRecoveryProjection",
+                        "PendingRecoveryStep",
+                        "PendingRecoveryTargetFailure",
+                        "PendingRecoveryUnavailableReason",
+                        "PendingSkillRecoveryChain",
                         "PostCommitFailureCode",
                         "PreparationFailure",
                         "PreparedBaseMismatchCode",
@@ -158,7 +164,10 @@ final class P4D1ApiGateTest {
     void ceilingsCommitAuthorityAndLaterPhaseAbsenceStayExact() throws Exception {
         assertEquals(4_096, MagicSafetyCeilings.MAX_PENDING_ATTACHMENT_UPDATES);
         assertEquals(
-                Set.of("PendingAttachmentJournalSchema.java", "MagicSafetyCeilings.java"),
+                Set.of(
+                        "PendingAttachmentJournalSchema.java",
+                        "SkillSubmissionRecoveryService.java",
+                        "MagicSafetyCeilings.java"),
                 relativeFilesContaining("MAX_PENDING_ATTACHMENT_UPDATES"));
         assertEquals(
                 Set.of("SkillDefinitionStoreSubmissionPort.java"),
@@ -174,8 +183,9 @@ final class P4D1ApiGateTest {
         var allMain = javaSources(MAIN_JAVA).stream()
                 .map(P4D1ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
+        assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
+                relativeFilesContaining("PlayerLoggedInEvent"));
         for (var forbidden : List.of(
-                "PlayerLoggedInEvent",
                 "RootCollector",
                 "OfflineRoot",
                 "Reconciliation",
