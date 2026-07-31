@@ -938,9 +938,9 @@ enumeration, root indexing, reconciliation, Store reclaim, and network/sync abse
 D3-A's production commit is present at `HEAD`／`origin/main`. Its local full regression, all 12
 normal required GameTests, and the existing P4-A3／P4-B／P4-C fixed-heap Gates passed. The externally
 reported remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all
-passed, so D3-A is complete and D3-B is ready for implementation.
+passed, so D3-A is complete. At D3-A closure, D3-B became ready for implementation.
 
-## P4-D3-B local implementation evidence ledger
+## P4-D3-B implementation and closure evidence ledger
 
 D3-B is confined to the isolated `p4D3Probe` and `p4D3GameTest` source sets with eleven and two
 exact-reviewed Java files respectively. The dedicated runtime contains only `main` plus those two
@@ -993,13 +993,22 @@ only on the last verifier, and the full local chain passed in seven minutes with
 The executable minimal-PATH portable verifier, `verifyP4D3Configuration`, JUnit API／phase gates,
 production no-diff scan, task-order scan, and JAR isolation scan lock the boundary. CI adds `P4-D
 memory gates`, dependent on `build` and the A3／B／C memory jobs, with a 45-minute timeout and no
-conditional or allow-failure escape. The remote P4-D memory job is PENDING, so D3-B is locally
-implemented but not closed, P4-D remains incomplete, and P4-E remains blocked.
+conditional or allow-failure escape. The D3-B implementation commit is present at
+`HEAD`／`origin/main`. The externally reported remote `build`, `P4-A3 memory gates`, `P4-B memory
+gates`, `P4-C memory gates`, and `P4-D memory gates` jobs all passed. Branch-protection
+required-check configuration remains external governance unknown／pending.
 
 The post-change local regression also passed all 1,024 JUnit tests with zero failures, errors, or
 skips; all 12 normal required GameTests; the dedicated-server smoke; the P4-A3, P4-B (including the
 packaged runtime), and P4-C fixed-heap Gates; every phase configuration verifier; production-JAR
 isolation; warning-mode production compilation; and the final static／diff scans.
+
+Together D0 through D3 now close journal framing／migration／operational state, Store authority／
+preflight／commit／publication, authenticated submission and report identity, login recovery with
+prefix clear／replay, and the D–J1 paired-restart／J2 defensive verification boundary. D3-B, D3, and
+P4-D are complete. P4-E is ready only for read-only design review; no P4-E implementation, offline
+root-completeness proof, Store-reclaim composition, or general reconciliation exists. P4-D does not
+claim a cross-SavedData／playerdata transaction or fsync durability.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1015,10 +1024,10 @@ P4-D2-B             = COMPLETE
 P4-D2               = COMPLETE
 P4-D3 design review = COMPLETE
 P4-D3-A             = COMPLETE
-P4-D3-B             = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
-P4-D3               = INCOMPLETE
-P4-D                = INCOMPLETE
-P4-E                = BLOCKED
+P4-D3-B             = COMPLETE
+P4-D3               = COMPLETE
+P4-D                = COMPLETE
+P4-E                = READY FOR READ-ONLY DESIGN REVIEW
 ```
 
 The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed by
@@ -1033,7 +1042,8 @@ passed local regression and the existing fixed-heap Gates; and the externally re
 build／A3／B／C jobs passed. P4-D2 is complete. The P4-D3 design review is complete; D3-A's production
 commit is present at `HEAD`／`origin/main`, its local regression and existing fixed-heap Gates
 passed, and the externally reported remote build／A3／B／C jobs passed. D3-A is complete. D3-B is
-implemented locally with the crash D–J matrix, combined first／restart fixed-heap Gate, Gradle task
-graph, portable configuration verifier, and P4-D memory CI job; commit, push, and the remote P4-D
-memory result remain pending. P4-D remains incomplete and P4-E remains blocked.
+complete with the crash D–J matrix, combined first／restart fixed-heap Gate, Gradle task graph,
+portable configuration verifier, and P4-D memory CI job committed at `HEAD`／`origin/main`; the
+externally reported remote build／A3／B／C／D jobs passed. P4-D is complete. P4-E is ready for
+read-only design review and remains unimplemented.
 Branch-protection required-check configuration remains external governance unknown／pending.
