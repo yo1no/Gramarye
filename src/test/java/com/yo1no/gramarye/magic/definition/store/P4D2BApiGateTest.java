@@ -227,9 +227,13 @@ final class P4D2BApiGateTest {
                 "PacketDistributor")) {
             assertFalse(allMain.contains(forbidden), forbidden);
         }
-        assertFalse(read(PROJECT_ROOT.resolve("build.gradle")).contains("p4D"));
-        assertFalse(read(PROJECT_ROOT.resolve(".github/workflows/build.yml"))
-                .contains("P4-D memory gates"));
+        var build = read(PROJECT_ROOT.resolve("build.gradle"));
+        var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
+        assertEquals(2, occurrences(build, "sourceSets.create('p4D3"));
+        assertTrue(build.contains("sourceSets.create('p4D3Probe')"));
+        assertTrue(build.contains("sourceSets.create('p4D3GameTest')"));
+        assertTrue(workflow.contains("  p4-d-memory-gates:"));
+        assertTrue(workflow.contains("    name: P4-D memory gates"));
     }
 
     private static void assertPrivateFinalFieldCount(Class<?> fieldType, long expected) {

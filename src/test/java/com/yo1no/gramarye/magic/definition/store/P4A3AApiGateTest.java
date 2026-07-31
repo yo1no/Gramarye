@@ -250,6 +250,10 @@ class P4A3AApiGateTest {
                 () -> assertFalse(production.contains("P4C2MemoryGameTests")),
                 () -> assertFalse(production.contains(
                         "@GameTestHolder(\"gramarye_p4_c2\")")),
+                () -> assertFalse(production.contains("P4D3ProbeMain")),
+                () -> assertFalse(production.contains("P4D3MemoryGameTests")),
+                () -> assertFalse(production.contains(
+                        "@GameTestHolder(\"gramarye_p4_d3\")")),
                 // P4-C2-A phase-local: exact registration, controlled mutation, token, and
                 // per-player root projection are now reviewed production.
                 () -> assertTrue(production.contains("PlayerSkillAttachmentState")),

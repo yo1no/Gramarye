@@ -273,6 +273,8 @@ class P4B1ApiGateTest {
                 "P4B2MemoryGameTests",
                 "P4C2Probe",
                 "P4C2MemoryGameTests",
+                "P4D3Probe",
+                "P4D3MemoryGameTests",
                 "@SuppressWarnings");
 
         assertAll(

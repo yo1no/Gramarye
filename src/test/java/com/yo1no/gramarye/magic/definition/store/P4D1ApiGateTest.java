@@ -195,8 +195,10 @@ final class P4D1ApiGateTest {
         }
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
-        assertFalse(build.contains("p4D"));
-        assertFalse(workflow.contains("P4-D memory gates"));
+        assertTrue(build.contains("sourceSets.create('p4D3Probe')"));
+        assertTrue(build.contains("sourceSets.create('p4D3GameTest')"));
+        assertTrue(workflow.contains("  p4-d-memory-gates:"));
+        assertTrue(workflow.contains("    name: P4-D memory gates"));
     }
 
     private static Set<String> publicMethodNames(Class<?> type) {

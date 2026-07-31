@@ -33,12 +33,19 @@ def p4B2ProbeSourceSet = sourceSets.create('p4B2Probe')
 def p4B2GameTestSourceSet = sourceSets.create('p4B2GameTest')
 def p4C2ProbeSourceSet = sourceSets.create('p4C2Probe')
 def p4C2GameTestSourceSet = sourceSets.create('p4C2GameTest')
+def p4D3ProbeSourceSet = sourceSets.create('p4D3Probe')
+def p4D3GameTestSourceSet = sourceSets.create('p4D3GameTest')
 def p4B2FixedHeapJvmArgs = [
         '-Xms512m',
         '-Xmx1024m',
         '-XX:+ExitOnOutOfMemoryError',
 ]
 def p4C2FixedHeapJvmArgs = [
+        '-Xms512m',
+        '-Xmx1024m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
+def p4D3FixedHeapJvmArgs = [
         '-Xms512m',
         '-Xmx1024m',
         '-XX:+ExitOnOutOfMemoryError',
@@ -82,6 +89,19 @@ def p4C2GameTestResources = tasks.register('generateP4C2GameTestResources', Sync
     into(layout.buildDirectory.dir('generated/p4C2GameTestResources'))
 }
 p4C2GameTestSourceSet.resources.srcDir(p4C2GameTestResources)
+def p4D3GameTestResources = tasks.register('generateP4D3GameTestResources', Sync) {
+    dependsOn('createMinecraftArtifacts')
+    from(zipTree(layout.buildDirectory.file(
+            "moddev/artifacts/neoforge-${neo_version}-client-extra-aka-minecraft-resources.jar"))) {
+        include 'data/minecraft/structure/bastion/blocks/air.nbt'
+        eachFile { details ->
+            details.path = 'data/gramarye_p4_d3/structure/p4_d3_probe.nbt'
+        }
+        includeEmptyDirs = false
+    }
+    into(layout.buildDirectory.dir('generated/p4D3GameTestResources'))
+}
+p4D3GameTestSourceSet.resources.srcDir(p4D3GameTestResources)
 
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
@@ -110,6 +130,8 @@ neoForge {
     addModdingDependenciesTo(p4B2GameTestSourceSet)
     addModdingDependenciesTo(p4C2ProbeSourceSet)
     addModdingDependenciesTo(p4C2GameTestSourceSet)
+    addModdingDependenciesTo(p4D3ProbeSourceSet)
+    addModdingDependenciesTo(p4D3GameTestSourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -124,6 +146,7 @@ neoForge {
             sourceSet(p4A3ProbeSourceSet)
             sourceSet(p4B2ProbeSourceSet)
             sourceSet(p4C2ProbeSourceSet)
+            sourceSet(p4D3ProbeSourceSet)
         }
 
         // Userdev treats this name only as a source-folder group. The main resources in this
@@ -147,6 +170,12 @@ neoForge {
             sourceSet(p4C2ProbeSourceSet)
             sourceSet(p4C2GameTestSourceSet)
         }
+
+        p4D3HeapProbe {
+            sourceSet(sourceSets.main)
+            sourceSet(p4D3ProbeSourceSet)
+            sourceSet(p4D3GameTestSourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
@@ -154,6 +183,7 @@ neoForge {
     def p4A3ProbeMod = mods.named('p4A3HeapProbe').get()
     def p4B2ProbeMod = mods.named('p4B2HeapProbe').get()
     def p4C2ProbeMod = mods.named('p4C2HeapProbe').get()
+    def p4D3ProbeMod = mods.named('p4D3HeapProbe').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -374,6 +404,182 @@ neoForge {
             taskBefore(tasks.named(p4C2GameTestSourceSet.classesTaskName))
         }
 
+        p4D3CrashDServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-d-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-d-first'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashDRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-d-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-d-restart'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashEServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-e-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-e-first'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashERestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-e-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-e-restart'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashFServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-f-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-f-first'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashFRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-f-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-f-restart'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashGServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-g-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-g-first'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashGRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-g-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-g-restart'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashHServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-h-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-h-first'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashHRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-h-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-h-restart'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashIServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-i-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-i-first'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashIRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-i-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-i-restart'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashJ1Server {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-j1-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-j1-first'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CrashJ1RestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/crash-j1-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'crash-j1-restart'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CombinedHeapServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/combined-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'combined-first'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
+        p4D3CombinedHeapRestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4D3GameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir('p4-d3/combined-world').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_d3'
+            systemProperty 'gramarye.p4d3.runMode', 'combined-restart'
+            jvmArguments.addAll(p4D3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
+        }
+
         data {
             data()
 
@@ -389,7 +595,8 @@ neoForge {
             loadedMods.set([name == 'p4A3HeapProbeServer'
                     ? p4A3ProbeMod
                     : name.startsWith('p4B2') ? p4B2ProbeMod
-                    : name.startsWith('p4C2') ? p4C2ProbeMod : productionMod])
+                    : name.startsWith('p4C2') ? p4C2ProbeMod
+                    : name.startsWith('p4D3') ? p4D3ProbeMod : productionMod])
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -456,9 +663,19 @@ dependencies {
     add(p4C2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p4C2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p4C2GameTestSourceSet.implementationConfigurationName, p4C2ProbeSourceSet.output)
+    add(p4D3ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4D3ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
+    add(p4D3ProbeSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
+    add(p4D3ProbeSourceSet.implementationConfigurationName, p4C2ProbeSourceSet.output)
+    add(p4D3GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4D3GameTestSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
+    add(p4D3GameTestSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
+    add(p4D3GameTestSourceSet.implementationConfigurationName, p4C2ProbeSourceSet.output)
+    add(p4D3GameTestSourceSet.implementationConfigurationName, p4D3ProbeSourceSet.output)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
     testImplementation p4C2ProbeSourceSet.output
+    testImplementation p4D3ProbeSourceSet.output
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.4'
@@ -1146,6 +1363,257 @@ tasks.register('p4C2FixedHeapGate') {
             verifyP4C2OversizeRestart)
 }
 
+def verifyP4D3Configuration = tasks.register(
+        'verifyP4D3Configuration', Exec) {
+    group = 'verification'
+    description = 'Verifies P4-D3-B source sets, serialized restart tasks, CI, and JAR isolation.'
+    dependsOn(
+            verifyP4C2Configuration,
+            tasks.named('jar'),
+            tasks.named(p4D3ProbeSourceSet.classesTaskName),
+            tasks.named(p4D3GameTestSourceSet.classesTaskName))
+    inputs.file(layout.projectDirectory.file('build.gradle'))
+    inputs.file(layout.projectDirectory.file('.github/workflows/build.yml'))
+    inputs.file(layout.projectDirectory.file('scripts/verify-p4-d3-configuration.sh'))
+    inputs.files(fileTree('src/main/java') { include '**/*.java' })
+    inputs.files(fileTree('src/main/resources'))
+    inputs.files(fileTree('src/p4D3Probe/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4D3GameTest/java') { include '**/*.java' })
+    inputs.files(fileTree('src/test/java') { include '**/*.java' })
+    workingDir(layout.projectDirectory)
+    commandLine(
+            'bash',
+            layout.projectDirectory.file(
+                    'scripts/verify-p4-d3-configuration.sh').asFile.absolutePath)
+}
+
+def p4D3CrashDGameDirectory = layout.buildDirectory.dir('p4-d3/crash-d-world')
+def p4D3CrashEGameDirectory = layout.buildDirectory.dir('p4-d3/crash-e-world')
+def p4D3CrashFGameDirectory = layout.buildDirectory.dir('p4-d3/crash-f-world')
+def p4D3CrashGGameDirectory = layout.buildDirectory.dir('p4-d3/crash-g-world')
+def p4D3CrashHGameDirectory = layout.buildDirectory.dir('p4-d3/crash-h-world')
+def p4D3CrashIGameDirectory = layout.buildDirectory.dir('p4-d3/crash-i-world')
+def p4D3CrashJ1GameDirectory = layout.buildDirectory.dir('p4-d3/crash-j1-world')
+def p4D3CombinedGameDirectory = layout.buildDirectory.dir('p4-d3/combined-world')
+
+def prepareP4D3Worlds = tasks.register('prepareP4D3Worlds', JavaExec) {
+    group = 'verification'
+    description = 'Builds all isolated deterministic P4-D3-B crash and combined worlds.'
+    dependsOn(verifyP4D3Configuration)
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4D3ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4D3ProbeMain')
+    args(
+            'prepare-worlds',
+            p4D3CrashDGameDirectory.get().asFile.absolutePath,
+            p4D3CrashEGameDirectory.get().asFile.absolutePath,
+            p4D3CrashFGameDirectory.get().asFile.absolutePath,
+            p4D3CrashGGameDirectory.get().asFile.absolutePath,
+            p4D3CrashHGameDirectory.get().asFile.absolutePath,
+            p4D3CrashIGameDirectory.get().asFile.absolutePath,
+            p4D3CrashJ1GameDirectory.get().asFile.absolutePath,
+            p4D3CombinedGameDirectory.get().asFile.absolutePath)
+    jvmArgs(p4D3FixedHeapJvmArgs)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    outputs.upToDateWhen { false }
+}
+
+def registerP4D3FileVerifier = {
+        String taskName, String command, Provider<Directory> gameDirectory ->
+    tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        description = "Strictly verifies P4-D3-B disk state after ${command}."
+        dependsOn(tasks.named(p4D3ProbeSourceSet.classesTaskName))
+        javaLauncher.set(p4A3JavaLauncher)
+        classpath = p4D3ProbeSourceSet.runtimeClasspath
+        mainClass.set('com.yo1no.gramarye.magic.definition.store.P4D3ProbeMain')
+        args(command, gameDirectory.get().asFile.absolutePath)
+        jvmArgs(p4D3FixedHeapJvmArgs)
+        timeout.set(java.time.Duration.ofSeconds(300))
+        outputs.upToDateWhen { false }
+    }
+}
+
+def verifyP4D3CrashD = registerP4D3FileVerifier(
+        'verifyP4D3CrashD', 'verify-crash-d-first', p4D3CrashDGameDirectory)
+def verifyP4D3CrashDRestart = registerP4D3FileVerifier(
+        'verifyP4D3CrashDRestart', 'verify-crash-d-restart', p4D3CrashDGameDirectory)
+def verifyP4D3CrashE = registerP4D3FileVerifier(
+        'verifyP4D3CrashE', 'verify-crash-e-first', p4D3CrashEGameDirectory)
+def verifyP4D3CrashERestart = registerP4D3FileVerifier(
+        'verifyP4D3CrashERestart', 'verify-crash-e-restart', p4D3CrashEGameDirectory)
+def verifyP4D3CrashF = registerP4D3FileVerifier(
+        'verifyP4D3CrashF', 'verify-crash-f-first', p4D3CrashFGameDirectory)
+def verifyP4D3CrashFRestart = registerP4D3FileVerifier(
+        'verifyP4D3CrashFRestart', 'verify-crash-f-restart', p4D3CrashFGameDirectory)
+def verifyP4D3CrashG = registerP4D3FileVerifier(
+        'verifyP4D3CrashG', 'verify-crash-g-first', p4D3CrashGGameDirectory)
+def verifyP4D3CrashGRestart = registerP4D3FileVerifier(
+        'verifyP4D3CrashGRestart', 'verify-crash-g-restart', p4D3CrashGGameDirectory)
+def verifyP4D3CrashH = registerP4D3FileVerifier(
+        'verifyP4D3CrashH', 'verify-crash-h-first', p4D3CrashHGameDirectory)
+def verifyP4D3CrashHRestart = registerP4D3FileVerifier(
+        'verifyP4D3CrashHRestart', 'verify-crash-h-restart', p4D3CrashHGameDirectory)
+def verifyP4D3CrashI = registerP4D3FileVerifier(
+        'verifyP4D3CrashI', 'verify-crash-i-first', p4D3CrashIGameDirectory)
+def verifyP4D3CrashIRestart = registerP4D3FileVerifier(
+        'verifyP4D3CrashIRestart', 'verify-crash-i-restart', p4D3CrashIGameDirectory)
+def verifyP4D3CrashJ1 = registerP4D3FileVerifier(
+        'verifyP4D3CrashJ1', 'verify-crash-j1-first', p4D3CrashJ1GameDirectory)
+def verifyP4D3CrashJ1Restart = registerP4D3FileVerifier(
+        'verifyP4D3CrashJ1Restart', 'verify-crash-j1-restart', p4D3CrashJ1GameDirectory)
+def verifyP4D3CombinedHeap = registerP4D3FileVerifier(
+        'verifyP4D3CombinedHeap', 'verify-combined-first', p4D3CombinedGameDirectory)
+def verifyP4D3CombinedHeapRestart = registerP4D3FileVerifier(
+        'verifyP4D3CombinedHeapRestart',
+        'verify-combined-restart',
+        p4D3CombinedGameDirectory)
+
+def runP4D3CrashDServer = tasks.named('runP4D3CrashDServer', JavaExec)
+def runP4D3CrashDRestartServer = tasks.named('runP4D3CrashDRestartServer', JavaExec)
+def runP4D3CrashEServer = tasks.named('runP4D3CrashEServer', JavaExec)
+def runP4D3CrashERestartServer = tasks.named('runP4D3CrashERestartServer', JavaExec)
+def runP4D3CrashFServer = tasks.named('runP4D3CrashFServer', JavaExec)
+def runP4D3CrashFRestartServer = tasks.named('runP4D3CrashFRestartServer', JavaExec)
+def runP4D3CrashGServer = tasks.named('runP4D3CrashGServer', JavaExec)
+def runP4D3CrashGRestartServer = tasks.named('runP4D3CrashGRestartServer', JavaExec)
+def runP4D3CrashHServer = tasks.named('runP4D3CrashHServer', JavaExec)
+def runP4D3CrashHRestartServer = tasks.named('runP4D3CrashHRestartServer', JavaExec)
+def runP4D3CrashIServer = tasks.named('runP4D3CrashIServer', JavaExec)
+def runP4D3CrashIRestartServer = tasks.named('runP4D3CrashIRestartServer', JavaExec)
+def runP4D3CrashJ1Server = tasks.named('runP4D3CrashJ1Server', JavaExec)
+def runP4D3CrashJ1RestartServer = tasks.named('runP4D3CrashJ1RestartServer', JavaExec)
+def runP4D3CombinedHeapServer = tasks.named('runP4D3CombinedHeapServer', JavaExec)
+def runP4D3CombinedHeapRestartServer =
+        tasks.named('runP4D3CombinedHeapRestartServer', JavaExec)
+
+[
+        runP4D3CrashDServer,
+        runP4D3CrashDRestartServer,
+        runP4D3CrashEServer,
+        runP4D3CrashERestartServer,
+        runP4D3CrashFServer,
+        runP4D3CrashFRestartServer,
+        runP4D3CrashGServer,
+        runP4D3CrashGRestartServer,
+        runP4D3CrashHServer,
+        runP4D3CrashHRestartServer,
+        runP4D3CrashIServer,
+        runP4D3CrashIRestartServer,
+        runP4D3CrashJ1Server,
+        runP4D3CrashJ1RestartServer,
+        runP4D3CombinedHeapServer,
+        runP4D3CombinedHeapRestartServer,
+].each { taskProvider ->
+    taskProvider.configure {
+        javaLauncher.set(p4A3JavaLauncher)
+        timeout.set(java.time.Duration.ofSeconds(600))
+    }
+}
+
+runP4D3CrashDServer.configure {
+    dependsOn(prepareP4D3Worlds)
+}
+verifyP4D3CrashD.configure {
+    dependsOn(runP4D3CrashDServer)
+}
+runP4D3CrashDRestartServer.configure {
+    dependsOn(verifyP4D3CrashD)
+}
+verifyP4D3CrashDRestart.configure {
+    dependsOn(runP4D3CrashDRestartServer)
+}
+runP4D3CrashEServer.configure {
+    dependsOn(verifyP4D3CrashDRestart)
+}
+verifyP4D3CrashE.configure {
+    dependsOn(runP4D3CrashEServer)
+}
+runP4D3CrashERestartServer.configure {
+    dependsOn(verifyP4D3CrashE)
+}
+verifyP4D3CrashERestart.configure {
+    dependsOn(runP4D3CrashERestartServer)
+}
+runP4D3CrashFServer.configure {
+    dependsOn(verifyP4D3CrashERestart)
+}
+verifyP4D3CrashF.configure {
+    dependsOn(runP4D3CrashFServer)
+}
+runP4D3CrashFRestartServer.configure {
+    dependsOn(verifyP4D3CrashF)
+}
+verifyP4D3CrashFRestart.configure {
+    dependsOn(runP4D3CrashFRestartServer)
+}
+runP4D3CrashGServer.configure {
+    dependsOn(verifyP4D3CrashFRestart)
+}
+verifyP4D3CrashG.configure {
+    dependsOn(runP4D3CrashGServer)
+}
+runP4D3CrashGRestartServer.configure {
+    dependsOn(verifyP4D3CrashG)
+}
+verifyP4D3CrashGRestart.configure {
+    dependsOn(runP4D3CrashGRestartServer)
+}
+runP4D3CrashHServer.configure {
+    dependsOn(verifyP4D3CrashGRestart)
+}
+verifyP4D3CrashH.configure {
+    dependsOn(runP4D3CrashHServer)
+}
+runP4D3CrashHRestartServer.configure {
+    dependsOn(verifyP4D3CrashH)
+}
+verifyP4D3CrashHRestart.configure {
+    dependsOn(runP4D3CrashHRestartServer)
+}
+runP4D3CrashIServer.configure {
+    dependsOn(verifyP4D3CrashHRestart)
+}
+verifyP4D3CrashI.configure {
+    dependsOn(runP4D3CrashIServer)
+}
+runP4D3CrashIRestartServer.configure {
+    dependsOn(verifyP4D3CrashI)
+}
+verifyP4D3CrashIRestart.configure {
+    dependsOn(runP4D3CrashIRestartServer)
+}
+runP4D3CrashJ1Server.configure {
+    dependsOn(verifyP4D3CrashIRestart)
+}
+verifyP4D3CrashJ1.configure {
+    dependsOn(runP4D3CrashJ1Server)
+}
+runP4D3CrashJ1RestartServer.configure {
+    dependsOn(verifyP4D3CrashJ1)
+}
+verifyP4D3CrashJ1Restart.configure {
+    dependsOn(runP4D3CrashJ1RestartServer)
+}
+runP4D3CombinedHeapServer.configure {
+    dependsOn(verifyP4D3CrashJ1Restart)
+}
+verifyP4D3CombinedHeap.configure {
+    dependsOn(runP4D3CombinedHeapServer)
+}
+runP4D3CombinedHeapRestartServer.configure {
+    dependsOn(verifyP4D3CombinedHeap)
+}
+verifyP4D3CombinedHeapRestart.configure {
+    dependsOn(runP4D3CombinedHeapRestartServer)
+}
+
+tasks.register('p4D3FixedHeapGate') {
+    group = 'verification'
+    description = 'Runs all sixteen serialized P4-D3-B crash/restart and combined fixed-heap processes.'
+    dependsOn(verifyP4D3CombinedHeapRestart)
+}
+
 tasks.named('test', Test).configure {
     useJUnitPlatform()
 }
@@ -1213,6 +1681,12 @@ tasks.named(p4C2ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4C2GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4D3ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4D3GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 
@@ -1392,4 +1866,5 @@ tasks.named('check').configure {
     dependsOn verifyP4A3BConfiguration
     dependsOn verifyP4B2Configuration
     dependsOn verifyP4C2Configuration
+    dependsOn verifyP4D3Configuration
 }

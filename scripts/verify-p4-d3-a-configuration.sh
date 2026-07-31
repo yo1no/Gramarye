@@ -25,6 +25,8 @@ cd "${REPO_ROOT}"
 
 PRODUCTION_SOURCE_LIST=''
 UNIT_SOURCE_LIST=''
+D3_PROBE_SOURCE_LIST=''
+D3_GAME_SOURCE_LIST=''
 JAR_FILE_LIST=''
 JAR_LISTING=''
 HELPER_FIXTURE=''
@@ -34,6 +36,8 @@ cleanup() {
     for temporary in \
         "${PRODUCTION_SOURCE_LIST}" \
         "${UNIT_SOURCE_LIST}" \
+        "${D3_PROBE_SOURCE_LIST}" \
+        "${D3_GAME_SOURCE_LIST}" \
         "${JAR_FILE_LIST}" \
         "${JAR_LISTING}" \
         "${HELPER_FIXTURE}"; do
@@ -294,28 +298,19 @@ is_reviewed_d3a_production_path() {
 }
 
 verify_change_boundary() {
-    local changed=''
     local untracked=''
     local path=''
     local status=0
-    git diff --quiet HEAD -- build.gradle .github/workflows/build.yml src/main/resources \
-        || fail 'P4-D3-A must not modify Gradle, workflow, or production resources'
-    changed="$(git diff --name-only HEAD -- src/main/java)" || status=$?
-    [[ "${status}" -eq 0 ]] \
-        || fail "git failed while checking tracked production Java (exit ${status})"
-    while IFS= read -r path; do
-        [[ -z "${path}" ]] && continue
-        is_reviewed_d3a_production_path "${path}" \
-            || fail "production Java changed outside exact P4-D3-A allowlist: ${path}"
-    done <<< "${changed}"
+    git diff --quiet HEAD -- src/main/java src/main/resources \
+        || fail 'P4-D3-B must not modify production Java or resources'
     status=0
-    untracked="$(git ls-files --others --exclude-standard -- src/main/java)" || status=$?
+    untracked="$(git ls-files --others --exclude-standard -- \
+        src/main/java src/main/resources)" || status=$?
     [[ "${status}" -eq 0 ]] \
         || fail "git failed while checking untracked production Java (exit ${status})"
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
-        is_reviewed_d3a_production_path "${path}" \
-            || fail "untracked production Java escaped exact P4-D3-A allowlist: ${path}"
+        fail "P4-D3-B added an untracked production path: ${path}"
     done <<< "${untracked}"
 }
 
@@ -425,22 +420,33 @@ verify_ownership_and_phase_boundary() {
         forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" "${literal}" \
             "D3-B/P4-E/network/test surface appeared in production (${literal})"
     done
-    for literal in 'Runtime.getRuntime().halt' 'Runtime.halt('; do
-        forbid_fixed_in_file_list "${UNIT_SOURCE_LIST}" "${literal}" \
-            "D3-B interruption surface appeared in D3-A unit tests (${literal})"
-    done
     forbid_fixed "${recovery}" 'SkillDefinitionSubmissionService' \
         'D3-A recovery must not call the D2 submission facade'
     forbid_fixed "${recovery}" '.reclaim(' \
         'D3-A recovery must not invoke Store reclaim'
     forbid_fixed "${recovery}" '.sync(' \
         'D3-A recovery must remain server-only'
-    [[ ! -d src/p4D3Probe && ! -d src/p4D3GameTest ]] \
-        || fail 'P4-D3-B source sets must remain absent during D3-A'
-    forbid_fixed build.gradle 'p4D3' \
-        'P4-D3-A must not add Gradle tasks or source sets'
-    forbid_fixed .github/workflows/build.yml 'P4-D memory gates' \
-        'P4-D3-A must not add the D3-B CI memory job'
+    [[ -d src/p4D3Probe/java && -d src/p4D3GameTest/java ]] \
+        || fail 'P4-D3-B reviewed source-set roots are missing'
+    require_fixed_count build.gradle "sourceSets.create('p4D3" 2 \
+        'P4-D3-B must add exactly two reviewed source sets'
+    require_fixed build.gradle "sourceSets.create('p4D3Probe')" \
+        'P4-D3-B reviewed probe source set is missing'
+    require_fixed build.gradle "sourceSets.create('p4D3GameTest')" \
+        'P4-D3-B reviewed dedicated source set is missing'
+    require_fixed .github/workflows/build.yml '    name: P4-D memory gates' \
+        'P4-D3-B reviewed CI memory job is missing'
+
+    require_fixed_count \
+        'src/p4D3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4D3MemoryGameTests.java' \
+        'Runtime.getRuntime().halt(0)' 2 \
+        'P4-D3-B must own exactly two hard-halt syntax sites in its dedicated holder'
+    [[ "$(count_fixed_in_file_list "${D3_GAME_SOURCE_LIST}" \
+            'Runtime.getRuntime().halt(0)')" -eq 2 ]] \
+        || fail 'P4-D3-B hard-halt syntax sites escaped the dedicated holder'
+    [[ "$(count_fixed_in_file_list "${D3_PROBE_SOURCE_LIST}" \
+            'Runtime.getRuntime().halt(0)')" -eq 0 ]] \
+        || fail 'P4-D3-B hard halt appeared in probe sources'
 }
 
 verify_optional_jar_isolation() {
@@ -459,7 +465,12 @@ verify_optional_jar_isolation() {
         [[ "${status}" -eq 0 ]] || fail "jar failed while checking ${jar_path}"
         for fixture in \
             P4D3AApiGateTest \
+            P4D3BApiGateTest \
             P4D3PhaseTypes \
+            P4D3FixtureTest \
+            P4D3MemoryGameTests \
+            P4D3ProbeMain \
+            P4D3ProbeServerLifecycle \
             PlayerSkillLatestStateBatchTest \
             SkillDefinitionStorePendingRecoveryProjectionTest \
             SkillSubmissionRecoveryServiceTest; do
@@ -478,8 +489,14 @@ main() {
         || fail 'P4-D3-A verifier could not create production source list'
     UNIT_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-d3-a-tests.XXXXXX")" \
         || fail 'P4-D3-A verifier could not create unit source list'
+    D3_PROBE_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-d3-a-probe.XXXXXX")" \
+        || fail 'P4-D3-A verifier could not create D3-B probe source list'
+    D3_GAME_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-d3-a-game.XXXXXX")" \
+        || fail 'P4-D3-A verifier could not create D3-B dedicated source list'
     collect_java_files src/main/java "${PRODUCTION_SOURCE_LIST}"
     collect_java_files src/test/java "${UNIT_SOURCE_LIST}"
+    collect_java_files src/p4D3Probe/java "${D3_PROBE_SOURCE_LIST}"
+    collect_java_files src/p4D3GameTest/java "${D3_GAME_SOURCE_LIST}"
     verify_change_boundary
     verify_exact_surfaces
     verify_ownership_and_phase_boundary

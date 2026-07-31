@@ -137,3 +137,36 @@ jobs:
       - name: Run P4-C2-B fixed-heap playerdata lifecycle gates
         timeout-minutes: 26
         run: ./gradlew --no-daemon --console=plain p4C2FixedHeapGate
+
+  p4-d-memory-gates:
+    name: P4-D memory gates
+    needs:
+      - build
+      - p4-a3-memory-gates
+      - p4-b-memory-gates
+      - p4-c-memory-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify P4-D3-B task and isolation contracts
+        timeout-minutes: 3
+        run: ./gradlew --no-daemon --console=plain verifyP4D3Configuration
+
+      - name: Run P4-D3-B crash/restart and combined fixed-heap gates
+        timeout-minutes: 40
+        run: ./gradlew --no-daemon --console=plain p4D3FixedHeapGate

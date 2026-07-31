@@ -261,6 +261,9 @@ class P4C2BApiGateTest {
                 () -> assertFalse(production.contains("P4C2ProbeMain")),
                 () -> assertFalse(production.contains("P4C2MemoryGameTests")),
                 () -> assertFalse(production.contains("@GameTestHolder(\"gramarye_p4_c2\")")),
+                () -> assertFalse(production.contains("P4D3ProbeMain")),
+                () -> assertFalse(production.contains("P4D3MemoryGameTests")),
+                () -> assertFalse(production.contains("@GameTestHolder(\"gramarye_p4_d3\")")),
                 () -> assertEquals(12, occurrences(production, "@GameTest(")));
     }
 

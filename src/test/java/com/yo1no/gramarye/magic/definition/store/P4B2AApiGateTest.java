@@ -466,7 +466,11 @@ class P4B2AApiGateTest {
                 () -> assertFalse(allMain.contains("P4C2ProbeMain")),
                 () -> assertFalse(allMain.contains("P4C2MemoryGameTests")),
                 () -> assertFalse(allMain.contains(
-                        "@GameTestHolder(\"gramarye_p4_c2\")")));
+                        "@GameTestHolder(\"gramarye_p4_c2\")")),
+                () -> assertFalse(allMain.contains("P4D3ProbeMain")),
+                () -> assertFalse(allMain.contains("P4D3MemoryGameTests")),
+                () -> assertFalse(allMain.contains(
+                        "@GameTestHolder(\"gramarye_p4_d3\")")));
     }
 
     private static Set<String> publicDeclaredMethodNames(Class<?> type) {

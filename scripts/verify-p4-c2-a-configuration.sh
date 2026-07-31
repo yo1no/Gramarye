@@ -383,7 +383,9 @@ verify_production_jar() {
                 "com/yo1no/gramarye/magic/definition/player/${class_name}.class" \
                 "P4-C2-A production JAR lacks reviewed class ${class_name}"
         done
-        for literal in p4C2Probe p4C2GameTest gramarye_p4_c2; do
+        for literal in \
+            p4C2Probe p4C2GameTest gramarye_p4_c2 \
+            P4D3 p4D3Probe p4D3GameTest gramarye_p4_d3; do
             forbid_fixed "${JAR_LISTING}" "${literal}" \
                 "P4-C2-B fixture leaked into production JAR (${literal})"
         done

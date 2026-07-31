@@ -455,12 +455,12 @@ verify_static_ownership_and_phase_bounds() {
         forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" "${literal}" \
             "P4-D2-B JUnit fixture leaked into production (${literal})"
     done
-    forbid_fixed build.gradle 'p4D' \
-        'P4-D2-B must not add a Gradle task or source set'
-    forbid_fixed .github/workflows/build.yml 'P4-D memory gates' \
-        'P4-D2-B must not add a CI memory Gate'
-    git diff --quiet HEAD -- build.gradle .github/workflows/build.yml \
-        || fail 'P4-D2-B must not modify Gradle or workflow configuration'
+    require_fixed build.gradle "sourceSets.create('p4D3Probe')" \
+        'P4-D3-B reviewed probe source set is missing'
+    require_fixed build.gradle "sourceSets.create('p4D3GameTest')" \
+        'P4-D3-B reviewed dedicated source set is missing'
+    require_fixed .github/workflows/build.yml '    name: P4-D memory gates' \
+        'P4-D3-B reviewed CI memory Gate is missing'
 }
 
 verify_optional_jar_isolation() {
@@ -480,7 +480,14 @@ verify_optional_jar_isolation() {
         status=0
         jar tf "${jar_path}" > "${JAR_LISTING}" || status=$?
         [[ "${status}" -eq 0 ]] || fail "jar failed while checking ${jar_path}"
-        for fixture in P4D2BApiGateTest SkillDefinitionSubmissionServiceTest; do
+        for fixture in \
+            P4D2BApiGateTest \
+            SkillDefinitionSubmissionServiceTest \
+            P4D3BApiGateTest \
+            P4D3FixtureTest \
+            P4D3MemoryGameTests \
+            P4D3ProbeMain \
+            P4D3ProbeServerLifecycle; do
             forbid_fixed "${JAR_LISTING}" "${fixture}" \
                 "P4-D2-B JUnit fixture leaked into production JAR (${fixture})"
         done
@@ -500,7 +507,7 @@ main() {
     verify_static_ownership_and_phase_bounds
     verify_optional_jar_isolation
     printf '%s\n' \
-        'Verified P4-D2-B facade, exactly-once orchestration, root wiring, normal GameTests, and phase bounds.'
+        'Verified P4-D2-B facade, orchestration, roots, GameTests, and reviewed D3-B test configuration.'
 }
 
 main "$@"

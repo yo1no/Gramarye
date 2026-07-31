@@ -209,7 +209,8 @@ P4-D1 starts only after the documentation-only P4-D0 authority patch is complete
 only after D1 closure and the completed D2 read-only design review; P4-D2-B starts only after D2-A
 completes. D3-A starts only after D2-B normal submission and the D3 read-only design review pass;
 D3-B starts only after D3-A closure. P4-D completes only after D1, D2-A, D2-B, D3-A, D3-B, and the
-required single-process combined fixed-1-GiB remote Gate pass.
+required paired fixed-1-GiB combined first／restart remote Gate pass; the first JVM alone carries the
+complete simultaneous submission envelope.
 
 ## P4-B0 clarification ledger
 
@@ -939,12 +940,66 @@ normal required GameTests, and the existing P4-A3／P4-B／P4-C fixed-heap Gates
 reported remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all
 passed, so D3-A is complete and D3-B is ready for implementation.
 
-D3-B still owns crash cases D–J, the combined fixed-heap workload, Gradle wiring, and CI. Its approved
-combined workload uses an exact `66_060_348`-byte Store built specifically with 2,048 histories and
-4,095 revisions; it is not required to reproduce the earlier eight-history Store bit-for-bit. D3-B
-J1 persists an invalid target and expects bootstrap journal Unavailable. J2 is only a
-package-private defensive live target re-audit yielding `TargetInvalid`, not a currently natural
-production-restart path. P4-D remains incomplete and P4-E remains blocked.
+## P4-D3-B local implementation evidence ledger
+
+D3-B is confined to the isolated `p4D3Probe` and `p4D3GameTest` source sets with eleven and two
+exact-reviewed Java files respectively. The dedicated runtime contains only `main` plus those two
+outputs; no JUnit, ordinary `test`, or prior A3／B／C GameTest output enters it. Production Java and
+resources have no D3-B diff, and the production JAR remains free of all D3 fixtures.
+
+The production Store restore and A2／A3 encoder create the D3-specific starting carrier at exactly
+66,060,348 bytes, 2,048 histories, and 4,095 retained revisions, with SHA-256
+`21fbe23089d8cccc6fc835678e20e89ec23a3b4d686b94af50fcec110396c303`. Of those histories,
+2,047 have two revisions and one has one; the deterministic owner distribution remains within the
+256-per-owner and 4,096-global ceilings. The production journal model／writer creates 4,095 entries,
+1,048,324 bytes, and 4,095 roots with SHA-256
+`236be560c7610b3bc29c0d7dc22daab1dd27bfd8e1fc895d0d007d115545cea2`. One actual authenticated
+D2 submission adds the 4,096th route and produces exactly 1,048,538 bytes／4,096 roots, SHA-256
+`dec06aad3b931bb92d8f68122500006e35cb70105b0fd934f4208a1b0a79f687`, without handwritten
+Store data or journal padding.
+
+Paired worlds cover D through J1. D／E prove canonical disk states plus production ordering, not
+actual power-loss interruptions; both restart from expected playerdata and replay while retaining
+the pending journal. F loads a persisted final pointer and clears without Attachment publication.
+G hard-halts after replay but before playerdata save; H hard-halts after in-memory clear／dirty but
+before SavedData reaches disk. Their restarts respectively replay again and idempotently reclear the
+old disk journal. I retains all state on `THIRD_STATE`. J1 keeps an invalid persisted journal as
+bootstrap Unavailable while controlled Store reads／pins remain usable. Package-private J2 separately
+proves defensive post-bootstrap target re-audit maps to `TargetInvalid`; it is not a natural restart
+case. Exactly two `Runtime.halt(0)` call sites exist, both in the D3 dedicated holder. External
+verifiers strictly reload Store, journal, and playerdata against bounded 4 KiB manifests.
+
+The combined first JVM retains the current and prospective Store／carriers, current and prospective
+journals, roots, prospective inner carrier, platform whole-root deep copy behind the existing IO
+latch, P3-C plan／validated definition／warning-only report, current and prepared Attachment states,
+D1 prepared handle, and D2 dependencies while traversing the actual authenticated D2 facade. It
+neither constructs the plan／definition nor calls Store commit directly. With Xms 512 MiB, Xmx 1
+GiB, and ExitOnOOME, its sampled peak was 888,783,336 bytes, pool-peak sum 1,452,246,528 bytes, and
+elapsed time 6,785 ms. The committed Store was 66,060,980 bytes／2,049 histories／4,096 revisions and
+the journal was 1,048,538 bytes／4,096 entries／roots; Store and journal witnesses were
+`9441d813d3210b56` and `dec06aad3b931bb9`.
+
+The same fixed-heap restart clears the canonical-leading FINAL chain before replaying the BASE
+chain, then saves, removes, and reloads the same UUID so the now-final BASE chain clears without a
+second replay. Other owners remain pending. The final journal is 1,047,514 bytes／4,092 entries／roots
+and the Store remains 66,060,980 bytes with SHA-256
+`9441d813d3210b56243d4d777a3a008c21a2300fc0a00bb9dc8a2dfbfa81b06a`; the restart sampled
+806,879,232 bytes with a 1,201,683,760-byte pool-peak sum in 4,256 ms. Pool-peak sums are diagnostic,
+not a comparison-to-Xmx pass criterion.
+
+Gradle supplies exactly 16 fixed-heap server configurations, each followed by an external verifier,
+in one immediate-`dependsOn` chain beginning with world preparation. `p4D3FixedHeapGate` depends
+only on the last verifier, and the full local chain passed in seven minutes without OOME or timeout.
+The executable minimal-PATH portable verifier, `verifyP4D3Configuration`, JUnit API／phase gates,
+production no-diff scan, task-order scan, and JAR isolation scan lock the boundary. CI adds `P4-D
+memory gates`, dependent on `build` and the A3／B／C memory jobs, with a 45-minute timeout and no
+conditional or allow-failure escape. The remote P4-D memory job is PENDING, so D3-B is locally
+implemented but not closed, P4-D remains incomplete, and P4-E remains blocked.
+
+The post-change local regression also passed all 1,024 JUnit tests with zero failures, errors, or
+skips; all 12 normal required GameTests; the dedicated-server smoke; the P4-A3, P4-B (including the
+packaged runtime), and P4-C fixed-heap Gates; every phase configuration verifier; production-JAR
+isolation; warning-mode production compilation; and the final static／diff scans.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -960,7 +1015,7 @@ P4-D2-B             = COMPLETE
 P4-D2               = COMPLETE
 P4-D3 design review = COMPLETE
 P4-D3-A             = COMPLETE
-P4-D3-B             = READY FOR IMPLEMENTATION
+P4-D3-B             = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
 P4-D3               = INCOMPLETE
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED
@@ -978,6 +1033,7 @@ passed local regression and the existing fixed-heap Gates; and the externally re
 build／A3／B／C jobs passed. P4-D2 is complete. The P4-D3 design review is complete; D3-A's production
 commit is present at `HEAD`／`origin/main`, its local regression and existing fixed-heap Gates
 passed, and the externally reported remote build／A3／B／C jobs passed. D3-A is complete. D3-B is
-ready for implementation and still owns the crash D–J matrix, combined fixed-heap Gate, Gradle, and
-CI. P4-D remains incomplete and P4-E remains blocked.
+implemented locally with the crash D–J matrix, combined first／restart fixed-heap Gate, Gradle task
+graph, portable configuration verifier, and P4-D memory CI job; commit, push, and the remote P4-D
+memory result remain pending. P4-D remains incomplete and P4-E remains blocked.
 Branch-protection required-check configuration remains external governance unknown／pending.

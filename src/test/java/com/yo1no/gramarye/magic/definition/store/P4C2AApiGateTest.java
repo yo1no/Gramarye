@@ -316,6 +316,8 @@ class P4C2AApiGateTest {
                 () -> assertFalse(c2Source.contains(".sync(")),
                 () -> assertFalse(allProduction.contains("p4C2Probe")),
                 () -> assertFalse(allProduction.contains("p4C2GameTest")),
+                () -> assertFalse(allProduction.contains("P4D3ProbeMain")),
+                () -> assertFalse(allProduction.contains("P4D3MemoryGameTests")),
                 () -> assertTrue(build.contains("sourceSets.create('p4C2Probe')")),
                 () -> assertTrue(build.contains("sourceSets.create('p4C2GameTest')")),
                 () -> assertTrue(build.contains("p4C2FixedHeapGate")),

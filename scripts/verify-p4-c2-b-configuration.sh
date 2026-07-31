@@ -620,7 +620,9 @@ verify_compiled_outputs_and_jar() {
         if [[ "${status}" -ne 0 ]]; then
             fail "jar failed while checking ${jar_path} (exit ${status})"
         fi
-        for source in P4C2 p4C2Probe p4C2GameTest gramarye_p4_c2; do
+        for source in \
+            P4C2 p4C2Probe p4C2GameTest gramarye_p4_c2 \
+            P4D3 p4D3Probe p4D3GameTest gramarye_p4_d3; do
             forbid_fixed "${JAR_LISTING}" "${source}" \
                 "P4-C2-B fixture leaked into production JAR ${jar_path} (${source})"
         done

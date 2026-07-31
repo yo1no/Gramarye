@@ -329,7 +329,7 @@ final class P4D3AApiGateTest {
     }
 
     @Test
-    void mutationOwnersAndD3BLaterSurfacesRemainClosed() throws Exception {
+    void mutationOwnersRemainClosedAndD3BTestSurfacesStayIsolated() throws Exception {
         assertAll(
                 () -> assertEquals(Set.of("SkillDefinitionStoreSubmissionPort.java"),
                         relativeSourcesMatching(STORE_COMMIT_CALL)),
@@ -367,11 +367,17 @@ final class P4D3AApiGateTest {
         assertAll(
                 () -> assertFalse(allProduction.contains("Runtime.getRuntime()" + ".halt")),
                 () -> assertFalse(allUnitTests.contains("Runtime.getRuntime()" + ".halt")),
-                () -> assertFalse(Files.isDirectory(PROJECT_ROOT.resolve("src/p4D3Probe"))),
-                () -> assertFalse(Files.isDirectory(PROJECT_ROOT.resolve("src/p4D3GameTest"))),
-                () -> assertFalse(read(PROJECT_ROOT.resolve("build.gradle")).contains("p4D3")),
-                () -> assertFalse(read(PROJECT_ROOT.resolve(".github/workflows/build.yml"))
-                        .contains("P4-D memory gates")));
+                () -> assertTrue(Files.isDirectory(PROJECT_ROOT.resolve("src/p4D3Probe"))),
+                () -> assertTrue(Files.isDirectory(PROJECT_ROOT.resolve("src/p4D3GameTest"))),
+                () -> assertEquals(2, occurrences(
+                        read(PROJECT_ROOT.resolve("build.gradle")),
+                        "sourceSets.create('p4D3")),
+                () -> assertTrue(read(PROJECT_ROOT.resolve("build.gradle"))
+                        .contains("sourceSets.create('p4D3Probe')")),
+                () -> assertTrue(read(PROJECT_ROOT.resolve("build.gradle"))
+                        .contains("sourceSets.create('p4D3GameTest')")),
+                () -> assertTrue(read(PROJECT_ROOT.resolve(".github/workflows/build.yml"))
+                        .contains("    name: P4-D memory gates")));
     }
 
     private static boolean exposesRawPersistenceTruth(String typeName) {

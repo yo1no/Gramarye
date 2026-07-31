@@ -97,12 +97,13 @@ not claim to repair that missing Store target; P4-E later reconciles against Sto
 
 ## Fixed-heap and implementation gates
 
-P4-D completion requires one fixed
-`-Xms512m -Xmx1024m -XX:+ExitOnOutOfMemoryError` process containing the full current and prospective
-Store carriers, the largest valid 4,096-entry V0 journal, prospective inner carrier, SavedData deep
-copy, P3-C plan/report, prepared and current Attachment states, and journal root projection while it
-performs commit, save, restart, recovery, and clear. Separate earlier memory Gates cannot substitute
-for this combined workload.
+P4-D completion requires a paired fixed
+`-Xms512m -Xmx1024m -XX:+ExitOnOutOfMemoryError` first／restart workload. The first JVM alone must
+simultaneously retain the full current and prospective Store carriers, largest valid 4,096-entry V0
+journal, prospective inner carrier, SavedData deep copy, P3-C plan/report, prepared and current
+Attachment states, and journal root projection while it performs commit and save. The restart JVM
+must load that exact world and perform recovery, readback, and clear under the same heap. Separate
+earlier memory Gates cannot substitute for this combined pair.
 
 ## D1 implementation ledger
 
@@ -270,14 +271,79 @@ normal required GameTests, and the existing P4-A3／P4-B／P4-C fixed-heap Gates
 reported remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, and `P4-C memory gates` jobs all
 passed, so D3-A is complete and D3-B is ready for implementation.
 
-D3-B owns the remaining crash D–J matrix, combined fixed-heap workload, Gradle wiring, and CI job.
-Its approved combined fixture must use an exact `66_060_348`-byte Store with a D3-specific 2,048
-histories／4,095 revisions; it need not be bit-identical to the earlier eight-history Store fixture.
-In the future D3-B J matrix, J1 persisted invalid target is expected to become bootstrap journal
-Unavailable. J2 is only a package-private defensive live re-audit that yields `TargetInvalid`;
-current production restart does not naturally reach J2. P4-D remains incomplete, and P4-E remains
-blocked. Branch-protection required-check configuration remains external governance
-unknown／pending.
+## D3-B local implementation evidence ledger
+
+D3-B adds only the isolated `p4D3Probe` and `p4D3GameTest` source sets, eleven exact probe helpers,
+and two dedicated-runtime classes. The dedicated mod contains `main` plus those two source sets; it
+contains neither JUnit／`test` output nor the A3／B2／C2 GameTest outputs. The production JAR remains
+main-only, and `src/main/java`／`src/main/resources` have no D3-B diff. Bounded manifests are at most
+4 KiB and contain only case／phase codes, counts, hashes, bounded outcomes, and heap metrics.
+
+The deterministic fixture is produced through the existing Store restore and A2／A3 carrier path,
+not a second encoder. It is exactly 66,060,348 Store-carrier bytes with 2,048 histories and 4,095
+retained revisions: 2,047 histories have two revisions and one has one, while every owner remains
+within 256 skills. Its SHA-256 is
+`21fbe23089d8cccc6fc835678e20e89ec23a3b4d686b94af50fcec110396c303`. The production journal
+model／writer produces the current 4,095-entry, 1,048,324-byte canonical journal with SHA-256
+`236be560c7610b3bc29c0d7dc22daab1dd27bfd8e1fc895d0d007d115545cea2`. It contains 2,047
+two-step chains plus one single-step chain. One actual D2 submission appends a new single-step route,
+forming the maximum valid 4,096-entry, 1,048,538-byte journal with SHA-256
+`dec06aad3b931bb92d8f68122500006e35cb70105b0fd934f4208a1b0a79f687` and 4,096 roots; the
+encoded journal remains below the existing 1,048,576-byte ceiling. Production Store audit accepts
+all targets and no padding is added to the journal.
+
+The eight paired worlds cover D, E, F, G, H, I, J1, and the combined workload. D and E are
+canonical disk-state plus production-ordering evidence, not claims of an actual power-loss cut: on
+restart their expected playerdata replays to the target while the journal remains pending and the
+Store remains unchanged. F starts with the final Attachment persisted and clears the complete
+pending chain without `setData`. G executes one test-only hard halt after replay has changed the
+in-memory Attachment but before playerdata save; restart repeats the replay. H executes the other
+test-only hard halt after in-memory journal clear and dirty publication but before SavedData reaches
+disk; restart reloads the old pending journal and clears it idempotently. I preserves Store,
+journal, and playerdata on `THIRD_STATE`. J1 persists a missing／mismatched target, reaches bootstrap
+journal Unavailable on both starts, keeps controlled Store reads／pins available, and preserves the
+original journal bytes. J2 is separately locked as a package-private defensive post-bootstrap
+target re-audit yielding `TargetInvalid`; it is not part of the restart matrix and is not claimed to
+be naturally reachable in the current production restart path. The two `Runtime.halt(0)` syntax
+locations exist only in the D3 dedicated GameTest source.
+
+The combined first JVM uses the authenticated player, authoritative Draft, real P3-C pipeline,
+P4-C prepare／currentness, D1 preflight／commit, and the D2 facade; it does not construct a plan or
+validated definition and does not directly invoke Store commit. A test-only package seam retains
+the current and prospective Store／carriers, 4,095- and 4,096-entry journals, roots, inner carrier,
+P3-C plan／validated definition／warning-only report, prepared Attachment transition, D1 prepared
+handle, and dependencies while the existing platform SavedData save path has made a whole-root deep
+copy and its IO worker is latch-blocked. Under
+`-Xms512m -Xmx1024m -XX:+ExitOnOutOfMemoryError`, the accepted first sample was 888,783,336 bytes
+with a 1,452,246,528-byte pool-peak sum and 6,785 ms elapsed. The committed Store was 66,060,980
+bytes／2,049 histories／4,096 revisions and the journal was 1,048,538 bytes／4,096 entries／4,096
+roots; the Store witness was `9441d813d3210b56` and journal witness `dec06aad3b931bb9`.
+
+The same fixed-heap restart first clears the selected owner's canonical-leading FINAL chain, then
+replays its BASE chain. After `saveAll`, player removal, and same-UUID login, the now-final BASE
+chain clears without replay. Other owners remain pending. The final journal is 1,047,514 bytes with
+4,092 entries／roots, while the Store stays at 66,060,980 bytes with SHA-256
+`9441d813d3210b56243d4d777a3a008c21a2300fc0a00bb9dc8a2dfbfa81b06a`. The restart sampled
+806,879,232 bytes, recorded a 1,201,683,760-byte pool-peak sum, and completed in 4,256 ms. Strict
+external Store／journal／playerdata readback verifies every phase and never uses sleep or GC timing as
+a pass criterion.
+
+Gradle exposes exactly 16 fixed-heap server configurations in one immediate-`dependsOn` run／verify
+spine starting at `prepareP4D3Worlds`; `p4D3FixedHeapGate` depends only on the final verifier. The
+portable executable `scripts/verify-p4-d3-configuration.sh`, `verifyP4D3Configuration`, and exact
+JUnit phase/API gates lock source sets, runtime isolation, fixture constants, task order, timeouts,
+the two halt sites, production no-diff, and JAR isolation. The local 16-JVM aggregate completed in
+seven minutes without OOME or timeout. CI now defines required-on-failure `P4-D memory gates` after
+`build` and the A3／B／C memory jobs, with a 45-minute timeout and no conditional or allow-failure
+escape. The remote P4-D memory job has not run for this worktree and remains PENDING; repository
+contents do not establish branch-protection required-check configuration, which remains external
+governance unknown／pending. Therefore D3-B is locally implemented but not closed, P4-D remains
+incomplete, and P4-E remains blocked.
+
+The post-change local regression also passed all 1,024 JUnit tests with zero failures, errors, or
+skips; all 12 normal required GameTests; the dedicated-server smoke; the P4-A3, P4-B (including the
+packaged runtime), and P4-C fixed-heap Gates; every phase configuration verifier; production-JAR
+isolation; warning-mode production compilation; and the final static／diff scans.
 
 ```text
 P4-D0               = COMPLETE
@@ -288,7 +354,7 @@ P4-D2-B             = COMPLETE
 P4-D2               = COMPLETE
 P4-D3 design review = COMPLETE
 P4-D3-A             = COMPLETE
-P4-D3-B             = READY FOR IMPLEMENTATION
+P4-D3-B             = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
 P4-D3               = INCOMPLETE
 P4-D                = INCOMPLETE
 P4-E                = BLOCKED

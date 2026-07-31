@@ -200,12 +200,12 @@ verify_phase_boundary() {
             fail "later-phase production token appeared: ${token}"
         fi
     done
-    if grep -Fq -- 'p4D' build.gradle; then
-        fail 'P4-D must not add a Gradle task/source set'
-    fi
-    if grep -Fq -- 'P4-D memory gates' .github/workflows/build.yml; then
-        fail 'P4-D must not add a CI memory job'
-    fi
+    grep -Fq -- "sourceSets.create('p4D3Probe')" build.gradle \
+        || fail 'P4-D3-B reviewed probe source set is missing'
+    grep -Fq -- "sourceSets.create('p4D3GameTest')" build.gradle \
+        || fail 'P4-D3-B reviewed dedicated source set is missing'
+    grep -Fq -- '    name: P4-D memory gates' .github/workflows/build.yml \
+        || fail 'P4-D3-B reviewed CI memory job is missing'
 }
 
 main() {
@@ -215,7 +215,7 @@ main() {
     verify_d2a_sources_and_owners
     verify_phase_boundary
     printf '%s\n' \
-        'Verified exact P4-D1 ownership with reviewed P4-D2/D3-A composition and later-phase absence.'
+        'Verified exact P4-D1 ownership with reviewed P4-D2/D3-A production and D3-B test configuration.'
 }
 
 main "$@"

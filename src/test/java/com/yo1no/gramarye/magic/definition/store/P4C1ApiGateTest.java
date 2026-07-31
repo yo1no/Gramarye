@@ -349,7 +349,9 @@ class P4C1ApiGateTest {
                 "PacketDistributor",
                 "net.minecraft.client",
                 "P4C2Probe",
-                "P4C2MemoryGameTests")) {
+                "P4C2MemoryGameTests",
+                "P4D3Probe",
+                "P4D3MemoryGameTests")) {
             assertFalse(joined.contains(forbidden), () -> "P4-C1 source contains " + forbidden);
         }
         assertAll(

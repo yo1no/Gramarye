@@ -205,7 +205,8 @@ class P4A2ApiGateTest {
                 () -> assertTrue(List.of(
                                 "P4A3HeapProbeMain",
                                 "P4A3CarrierGameTests", "P4C2ProbeMain",
-                                "P4C2MemoryGameTests")
+                                "P4C2MemoryGameTests", "P4D3ProbeMain",
+                                "P4D3MemoryGameTests")
                         .stream().noneMatch(allSource::contains)),
                 () -> assertTrue(reviewedD1JournalOwners.containsAll(journalOwners),
                         () -> "Pending journal escaped exact D1 allowlist: " + journalOwners));
