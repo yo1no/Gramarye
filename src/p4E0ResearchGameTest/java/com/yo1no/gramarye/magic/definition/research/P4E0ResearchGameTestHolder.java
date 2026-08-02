@@ -16,7 +16,7 @@ public final class P4E0ResearchGameTestHolder {
     @GameTest(
             templateNamespace = "gramarye_p4_e0_research",
             template = "p4_e0_research_smoke",
-            timeoutTicks = 10_000)
+            timeoutTicks = 18_000)
     public static void runSyntheticResearchSmoke(GameTestHelper helper) {
         try {
             P4E0ResearchDedicatedCoordinator.run(helper.getLevel().getServer());

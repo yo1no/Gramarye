@@ -33,6 +33,7 @@ JAR_LISTING=''
 HELPER_FIXTURE=''
 RUNTIME_BLOCK=''
 HEAP_BLOCK=''
+R2_BLOCK=''
 
 cleanup() {
     local temporary=''
@@ -46,7 +47,8 @@ cleanup() {
         "${JAR_LISTING}" \
         "${HELPER_FIXTURE}" \
         "${RUNTIME_BLOCK}" \
-        "${HEAP_BLOCK}"; do
+        "${HEAP_BLOCK}" \
+        "${R2_BLOCK}"; do
         if [[ -n "${temporary}" ]]; then
             rm -f -- "${temporary}"
         fi
@@ -249,14 +251,27 @@ is_reviewed_research_path() {
     case "$1" in
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/player/P4E0ResearchAttachmentFixtures.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchCase.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchCombinedEnvelope.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchCombinedProfileFile.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchFixtureFactory.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchFixtureManifest.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchHashing.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchMain.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchMatrixFixtures.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchMatrixPlan.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchMatrixRunner.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchNbtMetrics.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchParameters.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2Main.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2PlanFactory.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchReportAggregator.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchResult.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchRunRecord.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchScenario.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchWireNbt.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchCombinedStoreSession.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchGzipAdapter.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchRootWorkloads.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchStoreJournalFixtures.java) return 0 ;;
         *) return 1 ;;
     esac
@@ -264,7 +279,9 @@ is_reviewed_research_path() {
 
 is_reviewed_game_path() {
     case "$1" in
+        src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchCombinedCoordinator.java | \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchDedicatedCoordinator.java | \
+        src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2DedicatedDriver.java | \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchGameTestHolder.java) return 0 ;;
         *) return 1 ;;
     esac
@@ -275,7 +292,9 @@ is_reviewed_test_path() {
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchConfigurationTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchFixtureTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchMetricsTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchPhaseTypes.java) return 0 ;;
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchPhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2MatrixTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchReportAggregationTest.java) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -340,8 +359,8 @@ verify_exact_source_allowlists() {
             || fail "unreviewed P4-E0-R1 research source: ${relative}"
         count=$((count + 1))
     done < "${RESEARCH_SOURCE_LIST}"
-    [[ "${count}" -eq 11 ]] \
-        || fail "P4-E0-R1 research source count must be eleven (found ${count})"
+    [[ "${count}" -eq 24 ]] \
+        || fail "P4-E0-R2 research source count must be twenty-four (found ${count})"
 
     count=0
     while IFS= read -r -d '' file; do
@@ -350,8 +369,8 @@ verify_exact_source_allowlists() {
             || fail "unreviewed P4-E0-R1 dedicated source: ${relative}"
         count=$((count + 1))
     done < "${GAME_SOURCE_LIST}"
-    [[ "${count}" -eq 2 ]] \
-        || fail "P4-E0-R1 dedicated source count must be two (found ${count})"
+    [[ "${count}" -eq 4 ]] \
+        || fail "P4-E0-R2 dedicated source count must be four (found ${count})"
 
     count=0
     while IFS= read -r -d '' file; do
@@ -360,8 +379,8 @@ verify_exact_source_allowlists() {
             || fail "unreviewed P4-E0-R1 unit/configuration source: ${relative}"
         count=$((count + 1))
     done < "${TEST_SOURCE_LIST}"
-    [[ "${count}" -eq 4 ]] \
-        || fail "P4-E0-R1 unit/configuration source count must be four (found ${count})"
+    [[ "${count}" -eq 6 ]] \
+        || fail "P4-E0-R2 unit/configuration source count must be six (found ${count})"
 
     count=0
     while IFS= read -r -d '' file; do
@@ -532,6 +551,185 @@ verify_build_contract() {
     done
 }
 
+verify_r2_build_contract() {
+    local marker=''
+    local profile=''
+    local heap=''
+    local run_name=''
+    local run_count=0
+
+    require_fixed build.gradle \
+        'def p4E0ResearchR2HeapGridMiB = [1024, 1280, 1536, 1792, 2048]' \
+        'P4-E0-R2 fixed heap grid changed'
+    require_fixed build.gradle \
+        'def p4E0ResearchR2FirstCombinedRunIndex = 360' \
+        'P4-E0-R2 combined run index origin changed'
+    require_fixed_count build.gradle \
+        "def researchRunIndex = coordinate['researchIndex'] as int" 2 \
+        'P4-E0-R2 must bind both loops through exact coordinate records'
+    require_fixed_count build.gradle \
+        'p4E0ResearchR2CombinedCoordinates.each { coordinate ->' 2 \
+        'P4-E0-R2 run and task loops must share the exact coordinate records'
+    require_fixed_count build.gradle '[researchIndex:' 15 \
+        'P4-E0-R2 exact coordinate list must contain fifteen records'
+    require_fixed build.gradle \
+        'def p4E0ResearchR2ExpectedCombinedCoordinateSignatures = [' \
+        'P4-E0-R2 exact coordinate signature allowlist is missing'
+    require_fixed build.gradle \
+        "} != p4E0ResearchR2ExpectedCombinedCoordinateSignatures) {" \
+        'P4-E0-R2 exact coordinate signature assertion is missing'
+    require_fixed_count build.gradle 'researchRunIndex.toString()' 2 \
+        'P4-E0-R2 run and classifier coordinates are not independently bound'
+    forbid_fixed build.gradle \
+        'def runIndex = p4E0ResearchR2FirstCombinedRunIndex' \
+        'P4-E0-R2 run index is shadowed by the NeoForge runs DSL delegate'
+    forbid_fixed build.gradle 'runIndex.toString()' \
+        'P4-E0-R2 uses the shadow-prone run index expression'
+    forbid_fixed build.gradle 'p4E0ResearchR2Profiles.eachWithIndex' \
+        'P4-E0-R2 run indices must not depend on Groovy closure index binding'
+    require_fixed build.gradle \
+        'def prepareRunTaskName = "prepareP4E0ResearchCombined${token}Run"' \
+        'P4-E0-R2 prepare-task name binding is missing'
+    require_fixed build.gradle \
+        'tasks.named(prepareRunTaskName).configure {' \
+        'P4-E0-R2 does not configure exact ModDev prepare tasks'
+    require_fixed build.gradle \
+        $'tasks.named(prepareRunTaskName).configure {\n            outputs.upToDateWhen { false }\n        }' \
+        'P4-E0-R2 launcher metadata must regenerate before every dedicated run'
+    require_fixed build.gradle \
+        ".gradleProperty('p4E0ResearchDiskBudgetBytes')" \
+        'P4-E0-R2 disk budget is not the required Gradle property'
+    forbid_fixed build.gradle \
+        ".systemProperty('gramarye.p4e0.research.diskBudgetBytes')" \
+        'P4-E0-R2 disk budget must use -P, not a JVM system property'
+    require_fixed build.gradle ".getOrElse('12884901888')" \
+        'P4-E0-R2 default disk budget changed'
+    require_fixed build.gradle "commandLine('git', 'rev-parse', 'HEAD')" \
+        'P4-E0-R2 does not bind reports to the current Git commit'
+
+    run_count=360
+    for marker in \
+        BALANCED:Balanced \
+        DIRECTORY_HEAVY:DirectoryHeavy \
+        SINGLE_FILE_HEAVY:SingleFileHeavy; do
+        profile="${marker%%:*}"
+        run_name="${marker#*:}"
+        for heap in 1024 1280 1536 1792 2048; do
+            require_fixed build.gradle \
+                "'${run_count}:${profile}:${run_name}:${heap}'" \
+                'P4-E0-R2 exact index/profile/heap mapping changed'
+            run_count=$((run_count + 1))
+        done
+    done
+    [[ "${run_count}" -eq 375 ]] \
+        || fail 'P4-E0-R2 verifier did not enumerate indices 360 through 374'
+
+    for profile in BALANCED DIRECTORY_HEAVY SINGLE_FILE_HEAVY; do
+        require_fixed build.gradle "[id: '${profile}'" \
+            "P4-E0-R2 is missing dedicated profile ${profile}"
+    done
+    run_count=0
+    for heap in 1024 1280 1536 1792 2048; do
+        for profile in Balanced DirectoryHeavy SingleFileHeavy; do
+            run_name="p4E0ResearchCombined${profile}${heap}"
+            require_fixed build.gradle "'${run_name}'" \
+                "P4-E0-R2 is missing exact dedicated run ${run_name}"
+            run_count=$((run_count + 1))
+        done
+    done
+    [[ "${run_count}" -eq 15 ]] \
+        || fail 'P4-E0-R2 verifier did not enumerate exactly fifteen runs'
+    [[ "$((7 + run_count * 2))" -eq 37 ]] \
+        || fail 'P4-E0-R2 task graph must contain exactly thirty-seven R2 tasks'
+    require_ere_count build.gradle \
+        "^[[:space:]]*'p4E0ResearchCombined(Balanced|DirectoryHeavy|SingleFileHeavy)(1024|1280|1536|1792|2048)',?$" \
+        15 'P4-E0-R2 exact dedicated run allowlist must contain fifteen names'
+
+    for marker in \
+        "systemProperty 'gramarye.p4e0.research.runMode', 'r2-combined'" \
+        "systemProperty 'gramarye.p4e0.research.runIndex'" \
+        "systemProperty 'gramarye.p4e0.research.heapMiB'" \
+        "systemProperty 'gramarye.p4e0.research.profile'" \
+        "systemProperty 'gramarye.p4e0.research.diskBudgetBytes'" \
+        "systemProperty 'gramarye.p4e0.gitHead'" \
+        "systemProperty 'gramarye.p4e0.research.childReport'" \
+        "systemProperty 'gramarye.p4e0.research.runningMarker'" \
+        "systemProperty 'gramarye.p4e0.research.exitFile'" \
+        "systemProperty 'gramarye.p4e0.research.watchdogSeconds', '870'" \
+        "'-Xms512m'" \
+        '"-Xmx${heapMiB}m"' \
+        "'-XX:+ExitOnOutOfMemoryError'" \
+        "name.startsWith('p4E0ResearchCombined')" \
+        'P4-E0-R2 dedicated run coordinate drift'; do
+        require_fixed build.gradle "${marker}" \
+            "P4-E0-R2 dedicated configuration is missing ${marker}"
+    done
+
+    R2_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2-block.XXXXXX")" \
+        || fail 'P4-E0-R2 verifier could not create task block'
+    sed -n \
+        '/^def p4E0ResearchR2FixtureDirectory =$/,/^tasks.named('\''test'\'', Test).configure/p' \
+        build.gradle > "${R2_BLOCK}"
+    [[ -s "${R2_BLOCK}" ]] || fail 'P4-E0-R2 task block is missing'
+
+    for marker in \
+        "layout.buildDirectory.dir('p4-e0-research')" \
+        'P4E0ResearchR2Main' \
+        'def p4E0ResearchR2CombinedTimeoutSeconds = 900' \
+        'def p4E0ResearchR2WatchdogSeconds = 870' \
+        "layout.buildDirectory.dir('p4-e0-research/r2/combined-worlds')" \
+        'target.parent != root' \
+        'java.nio.file.LinkOption.NOFOLLOW_LINKS' \
+        'java.nio.file.Files.walk(target)' \
+        'java.util.Comparator.reverseOrder()' \
+        'P4-E0-R2 refused a non-isolated combined-world deletion' \
+        'combinedWorldDirectory.get().asFile, true' \
+        'combinedWorldDirectory.get().asFile, false' \
+        "'prepareP4E0ResearchMatrixFixtures'" \
+        "'verifyP4E0ResearchMatrixFixtures'" \
+        "'p4E0ResearchMatrix'" \
+        "'p4E0ResearchCombined'" \
+        "'aggregateP4E0ResearchReports'" \
+        "'verifyP4E0ResearchReportSchema'" \
+        "tasks.register('p4E0ResearchStudy')" \
+        "'prepare-plan'" \
+        "'verify-fixtures'" \
+        "'matrix'" \
+        "'classify-combined'" \
+        "'aggregate'" \
+        "'validate'" \
+        'dependsOn(verifyP4E0ResearchConfiguration)' \
+        'dependsOn(prepareP4E0ResearchMatrixFixtures)' \
+        'dependsOn(verifyP4E0ResearchMatrixFixtures)' \
+        'dependsOn(prerequisiteTask)' \
+        'dependsOn(runTask)' \
+        'dependsOn(previousP4E0ResearchR2Task)' \
+        'dependsOn(p4E0ResearchCombined)' \
+        'dependsOn(aggregateP4E0ResearchReports)' \
+        'dependsOn(verifyP4E0ResearchReportSchema)' \
+        'ignoreExitValue = true' \
+        'executionResult.get().exitValue' \
+        'outputs.upToDateWhen { false }' \
+        'combined-child/${evidenceStem}.json' \
+        '${researchRunIndex}.exit-code.txt' \
+        'combined-running/${evidenceStem}.marker'; do
+        require_fixed "${R2_BLOCK}" "${marker}" \
+            "P4-E0-R2 hard-serial task contract is missing ${marker}"
+    done
+    forbid_fixed "${R2_BLOCK}" 'mustRunAfter' \
+        'P4-E0-R2 must use hard dependsOn edges, not ordering hints'
+    forbid_fixed "${R2_BLOCK}" 'dependsOn(runTask, ' \
+        'P4-E0-R2 classifier introduced sibling dependencies'
+    require_fixed_count "${R2_BLOCK}" \
+        'combinedWorldDirectory.get().asFile, true' 1 \
+        'P4-E0-R2 must reset each exact world once before its run'
+    require_fixed_count "${R2_BLOCK}" \
+        'combinedWorldDirectory.get().asFile, false' 1 \
+        'P4-E0-R2 must delete each exact world once after successful classification'
+    forbid_fixed .github/workflows/build.yml 'p4-e0-research' \
+        'P4-E0-R2 must remain outside CI'
+}
+
 verify_fixture_and_metric_contract() {
     local marker=''
     local factory='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchFixtureFactory.java'
@@ -646,6 +844,149 @@ verify_fixture_and_metric_contract() {
     forbid_fixed "${result}" \
         'process.addProperty("exit_code", 0)' \
         'P4-E0-R1 process exit code must not be hard-coded'
+}
+
+verify_r2_research_contract() {
+    local marker=''
+    local plan='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2PlanFactory.java'
+    local matrix='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchMatrixPlan.java'
+    local aggregator='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchReportAggregator.java'
+    local roots='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchRootWorkloads.java'
+    local combined='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchCombinedEnvelope.java'
+    local store='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchCombinedStoreSession.java'
+    local r2main='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2Main.java'
+    local driver='src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2DedicatedDriver.java'
+
+    for marker in \
+        'List.of(1024, 1280, 1536, 1792, 2048)' \
+        'PLAIN_TIMEOUT_SECONDS = 600' \
+        'DEDICATED_TIMEOUT_SECONDS = 900' \
+        'EXPLORATORY_NON_NORMATIVE' \
+        'Observed pass/fail frontiers are machine-, fixture- and ' \
+        'implementation-specific evidence. They do not become Gramarye authority until ' \
+        'explicitly approved in P4-E0-B.'; do
+        require_fixed "${matrix}" "${marker}" \
+            "P4-E0-R2 matrix authority boundary is missing ${marker}"
+    done
+
+    for marker in \
+        'List.of(64L, 256L, 1_024L, 4_096L, 16_384L, 32_768L, 65_536L)' \
+        '1L, 4L, 16L, 32L, 64L, 96L, 128L' \
+        'List.of(16L, 32L, 64L, 128L, 256L)' \
+        'List.of(64L, 128L, 256L, 512L, 513L)' \
+        'List.of(65_536L, 262_144L, 1_048_576L)' \
+        'List.of(65_536L, 262_144L, 1_048_576L, 4_194_304L)' \
+        'List.of(64L, 256L, 512L, 1_024L)' \
+        'List.of(256L, 512L, 1_024L, 2_048L)' \
+        'EXACT_ALL_DISTINCT' \
+        'OVER_LIMIT_ALL_DISTINCT' \
+        'EXACT_NINETY_PERCENT_DUPLICATES' \
+        'OVER_LIMIT_NINETY_PERCENT_DUPLICATES' \
+        'PLAYER_ROOTS_PLUS_MAXIMUM_JOURNAL' \
+        'FIRST_MISSING_BEGINNING' \
+        'FIRST_MISSING_MIDDLE' \
+        'FIRST_MISSING_END' \
+        'BALANCED", "DIRECTORY_HEAVY", "SINGLE_FILE_HEAVY' \
+        '"raw_root_attempt", 65_537L' \
+        '"journal_entries", 4_096L' \
+        '"store_bytes", 66_060_348L'; do
+        require_fixed "${plan}" "${marker}" \
+            "P4-E0-R2 plan lost required coordinate ${marker}"
+    done
+
+    for marker in \
+        'runs.jsonl' \
+        'candidate-frontiers.csv' \
+        'summary.md' \
+        'fixture-manifest.json' \
+        '"largest_observed_completed", "smallest_observed_failed"' \
+        '"smallest_observed_rejected", "smallest_observed_oome_or_timeout"' \
+        'DISCLAIMER'; do
+        require_fixed "${aggregator}" "${marker}" \
+            "P4-E0-R2 report contract is missing ${marker}"
+    done
+
+    for marker in \
+        'EXACT_ROOT_COUNT = 65_536' \
+        'OVER_LIMIT_ROOT_COUNT = 65_537' \
+        'OVER_LIMIT_NINETY_PERCENT_DUPLICATES' \
+        'FIRST_MISSING_BEGINNING' \
+        'FIRST_MISSING_MIDDLE' \
+        'FIRST_MISSING_END' \
+        'combinedPlayerAndJournalOverLimit'; do
+        require_fixed "${roots}" "${marker}" \
+            "P4-E0-R2 root workload is missing ${marker}"
+    done
+    for marker in \
+        'BALANCED' \
+        'DIRECTORY_HEAVY' \
+        'SINGLE_FILE_HEAVY' \
+        'beginHeldPlatformSave' \
+        'OVER_LIMIT_ROOT_COUNT' \
+        'journalRootCount() != 4_096'; do
+        require_fixed "${combined}" "${marker}" \
+            "P4-E0-R2 combined envelope is missing ${marker}"
+    done
+    for marker in \
+        'exact 66,060,348-byte carrier' \
+        'P4D3StoreJournalFixture.STORE_BYTES' \
+        'P4D3StoreJournalFixture.PROSPECTIVE_JOURNAL_ENTRIES' \
+        'P4D3StoreJournalFixture.PROSPECTIVE_JOURNAL_BYTES' \
+        'beginHeldSave' \
+        'retainAtPeak'; do
+        require_fixed "${store}" "${marker}" \
+            "P4-E0-R2 combined Store session is missing ${marker}"
+    done
+
+    for marker in \
+        'prepare-plan' \
+        'verify-fixtures' \
+        'classify-combined' \
+        'new ProcessBuilder(' \
+        '.inheritIO()' \
+        'destroyForcibly()' \
+        'matrix-child-active-v0.lock' \
+        'spec.coordinate() > 16_384L' \
+        'record.elapsedMillis() < (spec.timeoutSeconds() * 1_000L) / 4L' \
+        'Files.getFileStore(matrixRoot(fixtureRoot))' \
+        '.getUsableSpace() >= conservative' \
+        'OOME_EXIT' \
+        'TIMEOUT' \
+        'FIXTURE_INVALID' \
+        'INSTRUMENTATION_FAILURE' \
+        'CHILD_EXIT_FAILURE'; do
+        require_fixed "${r2main}" "${marker}" \
+            "P4-E0-R2 supervisor/classifier is missing ${marker}"
+    done
+    for marker in \
+        'gramarye.p4e0.research.runIndex' \
+        'gramarye.p4e0.research.heapMiB' \
+        'gramarye.p4e0.research.runningMarker' \
+        'TIMEOUT_EXIT_CODE = 124' \
+        'Runtime.getRuntime().halt(TIMEOUT_EXIT_CODE)' \
+        'P4E0ResearchCombinedCoordinator.run'; do
+        require_fixed "${driver}" "${marker}" \
+            "P4-E0-R2 dedicated driver is missing ${marker}"
+    done
+
+    for marker in \
+        'child.getInputStream(' \
+        'child.getErrorStream(' \
+        '.readLine(' \
+        'System.gc(' \
+        'Thread.sleep(' \
+        'Files.readAllBytes' \
+        'NbtAccounter.unlimitedHeap' \
+        '.reclaim('; do
+        forbid_fixed "${r2main}" "${marker}" \
+            "P4-E0-R2 supervisor contains forbidden ${marker}"
+    done
+    for marker in recommended_max safe_max production_limit authority_value; do
+        forbid_fixed_in_file_list "${RESEARCH_SOURCE_LIST}" "${marker}" \
+            "P4-E0-R2 source could emit forbidden vocabulary ${marker}"
+        forbid_fixed_in_file_list "${GAME_SOURCE_LIST}" "${marker}" \
+            "P4-E0-R2 dedicated source could emit forbidden vocabulary ${marker}"
+    done
 }
 
 verify_phase_boundary() {
@@ -779,11 +1120,13 @@ main() {
     verify_prohibited_paths_unchanged
     verify_exact_source_allowlists
     verify_build_contract
+    verify_r2_build_contract
     verify_fixture_and_metric_contract
+    verify_r2_research_contract
     verify_phase_boundary
     verify_jar_isolation
     printf '%s\n' \
-        'Verified exact P4-E0-R1 research source sets, metrics, tasks, boundaries, and JAR isolation.'
+        'Verified exact P4-E0-R1/R2 research sources, matrix tasks, boundaries, and JAR isolation.'
 }
 
 main "$@"

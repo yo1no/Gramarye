@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import net.minecraft.gametest.framework.GameTestServer;
 import net.minecraft.server.MinecraftServer;
 
-/** Dedicated-only coordinator for one bounded, synthetic R1 observation. */
+/** Dedicated-only dispatcher for isolated R1 smoke and R2 Matrix-F observations. */
 final class P4E0ResearchDedicatedCoordinator {
     private P4E0ResearchDedicatedCoordinator() {
     }
@@ -14,12 +14,16 @@ final class P4E0ResearchDedicatedCoordinator {
         if (!(server instanceof GameTestServer)) {
             throw new IllegalStateException("research dedicated smoke did not run on GameTestServer");
         }
-        var fixtureRoot = requiredPath("gramarye.p4e0.research.fixtureRoot");
-        var reportRoot = requiredPath("gramarye.p4e0.research.reportRoot");
-        if (!"dedicated-smoke".equals(
-                System.getProperty("gramarye.p4e0.research.runMode"))) {
+        var runMode = System.getProperty("gramarye.p4e0.research.runMode");
+        if ("r2-combined".equals(runMode)) {
+            P4E0ResearchR2DedicatedDriver.run(server);
+            return;
+        }
+        if (!"dedicated-smoke".equals(runMode)) {
             throw new IllegalStateException("research dedicated scenario is not selected");
         }
+        var fixtureRoot = requiredPath("gramarye.p4e0.research.fixtureRoot");
+        var reportRoot = requiredPath("gramarye.p4e0.research.reportRoot");
         P4E0ResearchMain.markDedicatedRunning(reportRoot);
         P4E0ResearchMain.runDedicated(fixtureRoot, reportRoot);
     }

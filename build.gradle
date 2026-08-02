@@ -61,6 +61,98 @@ def p4E0ResearchFixedHeapJvmArgs = [
         "-Xmx${p4E0ResearchHeapMiB}m",
         '-XX:+ExitOnOutOfMemoryError',
 ]
+def p4E0ResearchR2HeapGridMiB = [1024, 1280, 1536, 1792, 2048]
+def p4E0ResearchR2Profiles = [
+        [id: 'BALANCED', token: 'Balanced'],
+        [id: 'DIRECTORY_HEAVY', token: 'DirectoryHeavy'],
+        [id: 'SINGLE_FILE_HEAVY', token: 'SingleFileHeavy'],
+]
+def p4E0ResearchR2ExpectedCombinedRunNames = [
+        'p4E0ResearchCombinedBalanced1024',
+        'p4E0ResearchCombinedBalanced1280',
+        'p4E0ResearchCombinedBalanced1536',
+        'p4E0ResearchCombinedBalanced1792',
+        'p4E0ResearchCombinedBalanced2048',
+        'p4E0ResearchCombinedDirectoryHeavy1024',
+        'p4E0ResearchCombinedDirectoryHeavy1280',
+        'p4E0ResearchCombinedDirectoryHeavy1536',
+        'p4E0ResearchCombinedDirectoryHeavy1792',
+        'p4E0ResearchCombinedDirectoryHeavy2048',
+        'p4E0ResearchCombinedSingleFileHeavy1024',
+        'p4E0ResearchCombinedSingleFileHeavy1280',
+        'p4E0ResearchCombinedSingleFileHeavy1536',
+        'p4E0ResearchCombinedSingleFileHeavy1792',
+        'p4E0ResearchCombinedSingleFileHeavy2048',
+]
+def p4E0ResearchR2CombinedCoordinates = [
+        [researchIndex: 360, profileId: 'BALANCED',
+                profileToken: 'Balanced', heapMiB: 1024],
+        [researchIndex: 361, profileId: 'BALANCED',
+                profileToken: 'Balanced', heapMiB: 1280],
+        [researchIndex: 362, profileId: 'BALANCED',
+                profileToken: 'Balanced', heapMiB: 1536],
+        [researchIndex: 363, profileId: 'BALANCED',
+                profileToken: 'Balanced', heapMiB: 1792],
+        [researchIndex: 364, profileId: 'BALANCED',
+                profileToken: 'Balanced', heapMiB: 2048],
+        [researchIndex: 365, profileId: 'DIRECTORY_HEAVY',
+                profileToken: 'DirectoryHeavy', heapMiB: 1024],
+        [researchIndex: 366, profileId: 'DIRECTORY_HEAVY',
+                profileToken: 'DirectoryHeavy', heapMiB: 1280],
+        [researchIndex: 367, profileId: 'DIRECTORY_HEAVY',
+                profileToken: 'DirectoryHeavy', heapMiB: 1536],
+        [researchIndex: 368, profileId: 'DIRECTORY_HEAVY',
+                profileToken: 'DirectoryHeavy', heapMiB: 1792],
+        [researchIndex: 369, profileId: 'DIRECTORY_HEAVY',
+                profileToken: 'DirectoryHeavy', heapMiB: 2048],
+        [researchIndex: 370, profileId: 'SINGLE_FILE_HEAVY',
+                profileToken: 'SingleFileHeavy', heapMiB: 1024],
+        [researchIndex: 371, profileId: 'SINGLE_FILE_HEAVY',
+                profileToken: 'SingleFileHeavy', heapMiB: 1280],
+        [researchIndex: 372, profileId: 'SINGLE_FILE_HEAVY',
+                profileToken: 'SingleFileHeavy', heapMiB: 1536],
+        [researchIndex: 373, profileId: 'SINGLE_FILE_HEAVY',
+                profileToken: 'SingleFileHeavy', heapMiB: 1792],
+        [researchIndex: 374, profileId: 'SINGLE_FILE_HEAVY',
+                profileToken: 'SingleFileHeavy', heapMiB: 2048],
+]
+def p4E0ResearchR2ExpectedCombinedCoordinateSignatures = [
+        '360:BALANCED:Balanced:1024',
+        '361:BALANCED:Balanced:1280',
+        '362:BALANCED:Balanced:1536',
+        '363:BALANCED:Balanced:1792',
+        '364:BALANCED:Balanced:2048',
+        '365:DIRECTORY_HEAVY:DirectoryHeavy:1024',
+        '366:DIRECTORY_HEAVY:DirectoryHeavy:1280',
+        '367:DIRECTORY_HEAVY:DirectoryHeavy:1536',
+        '368:DIRECTORY_HEAVY:DirectoryHeavy:1792',
+        '369:DIRECTORY_HEAVY:DirectoryHeavy:2048',
+        '370:SINGLE_FILE_HEAVY:SingleFileHeavy:1024',
+        '371:SINGLE_FILE_HEAVY:SingleFileHeavy:1280',
+        '372:SINGLE_FILE_HEAVY:SingleFileHeavy:1536',
+        '373:SINGLE_FILE_HEAVY:SingleFileHeavy:1792',
+        '374:SINGLE_FILE_HEAVY:SingleFileHeavy:2048',
+]
+if (p4E0ResearchR2CombinedCoordinates.collect { coordinate ->
+            "${coordinate.researchIndex}:${coordinate.profileId}:${coordinate.profileToken}:${coordinate.heapMiB}"
+                    .toString()
+        } != p4E0ResearchR2ExpectedCombinedCoordinateSignatures) {
+    throw new GradleException('P4-E0-R2 exact combined coordinate mapping changed')
+}
+if (p4E0ResearchR2CombinedCoordinates.collect { coordinate ->
+            "p4E0ResearchCombined${coordinate.profileToken}${coordinate.heapMiB}"
+                    .toString()
+        } != p4E0ResearchR2ExpectedCombinedRunNames) {
+    throw new GradleException('P4-E0-R2 exact combined coordinates changed')
+}
+def p4E0ResearchR2ConfiguredCombinedRunNames = []
+def p4E0ResearchR2FirstCombinedRunIndex = 360
+def p4E0ResearchDiskBudgetBytes = providers
+        .gradleProperty('p4E0ResearchDiskBudgetBytes')
+        .getOrElse('12884901888')
+def p4E0ResearchGitHead = providers.exec {
+    commandLine('git', 'rev-parse', 'HEAD')
+}.standardOutput.asText.map { output -> output.trim() }
 def p4A3GameTestResources = tasks.register('generateP4A3GameTestResources', Sync) {
     dependsOn('createMinecraftArtifacts')
     from(zipTree(layout.buildDirectory.file(
@@ -639,6 +731,67 @@ neoForge {
             taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
         }
 
+        p4E0ResearchR2CombinedCoordinates.each { coordinate ->
+                def researchRunIndex = coordinate['researchIndex'] as int
+                def profileId = coordinate['profileId'] as String
+                def profileToken = coordinate['profileToken'] as String
+                def heapMiB = coordinate['heapMiB'] as int
+                def runName =
+                        "p4E0ResearchCombined${profileToken}${heapMiB}".toString()
+                def evidenceStem = String.format(
+                        java.util.Locale.ROOT,
+                        '%04d-f-combined-%s-%d',
+                        researchRunIndex,
+                        profileId.toLowerCase(java.util.Locale.ROOT),
+                        heapMiB)
+                p4E0ResearchR2ConfiguredCombinedRunNames.add(runName)
+                create(runName) {
+                    type = 'gameTestServer'
+                    sourceSet = p4E0ResearchGameTestSourceSet
+                    gameDirectory = layout.buildDirectory.dir(
+                            "p4-e0-research/r2/combined-worlds/${profileId}-${heapMiB}")
+                            .get().asFile
+                    systemProperty 'neoforge.enabledGameTestNamespaces',
+                            'gramarye_p4_e0_research'
+                    systemProperty 'gramarye.p4e0.research.fixtureRoot',
+                            layout.buildDirectory.dir('p4-e0-research')
+                                    .get().asFile.absolutePath
+                    systemProperty 'gramarye.p4e0.research.reportRoot',
+                            layout.buildDirectory.dir('reports/p4-e0-research')
+                                    .get().asFile.absolutePath
+                    systemProperty 'gramarye.p4e0.research.runMode', 'r2-combined'
+                    systemProperty 'gramarye.p4e0.research.runIndex',
+                            researchRunIndex.toString()
+                    systemProperty 'gramarye.p4e0.research.heapMiB', heapMiB.toString()
+                    systemProperty 'gramarye.p4e0.research.profile', profileId
+                    systemProperty 'gramarye.p4e0.research.diskBudgetBytes',
+                            p4E0ResearchDiskBudgetBytes
+                    systemProperty 'gramarye.p4e0.gitHead',
+                            p4E0ResearchGitHead.get()
+                    systemProperty 'gramarye.p4e0.research.childReport',
+                            layout.buildDirectory.file(
+                                    "reports/p4-e0-research/combined-child/${evidenceStem}.json")
+                                    .get().asFile.absolutePath
+                    systemProperty 'gramarye.p4e0.research.runningMarker',
+                            layout.buildDirectory.file(
+                                    "reports/p4-e0-research/combined-running/${evidenceStem}.marker")
+                                    .get().asFile.absolutePath
+                    systemProperty 'gramarye.p4e0.research.exitFile',
+                            layout.buildDirectory.file(
+                                    "reports/p4-e0-research/process/"
+                                            + "${researchRunIndex}.exit-code.txt")
+                                    .get().asFile.absolutePath
+                    systemProperty 'gramarye.p4e0.research.watchdogSeconds', '870'
+                    jvmArguments.addAll([
+                            '-Xms512m',
+                            "-Xmx${heapMiB}m",
+                            '-XX:+ExitOnOutOfMemoryError',
+                    ])
+                    disableIdeRun()
+                    taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
+                }
+        }
+
         data {
             data()
 
@@ -656,7 +809,8 @@ neoForge {
                     : name.startsWith('p4B2') ? p4B2ProbeMod
                     : name.startsWith('p4C2') ? p4C2ProbeMod
                     : name.startsWith('p4D3') ? p4D3ProbeMod
-                    : name == 'p4E0ResearchDedicatedSmoke'
+                    : (name == 'p4E0ResearchDedicatedSmoke'
+                            || name.startsWith('p4E0ResearchCombined'))
                             ? p4E0ResearchMod : productionMod])
 
             // Recommended logging data for a userdev environment
@@ -678,6 +832,11 @@ neoForge {
         testedMod = p4A3ProbeTestMod
         loadedMods.set([p4A3ProbeTestMod])
     }
+}
+
+if (p4E0ResearchR2ConfiguredCombinedRunNames
+        != p4E0ResearchR2ExpectedCombinedRunNames) {
+    throw new GradleException('P4-E0-R2 dedicated run coordinate drift')
 }
 
 // The dedicated-server smoke harness sends the normal `stop` command through stdin.
@@ -1882,6 +2041,202 @@ tasks.register('p4E0ResearchSmoke') {
     group = 'verification'
     description = 'Runs the isolated P4-E0 research correctness smoke; it establishes no ceiling.'
     dependsOn(verifyP4E0ResearchSmokeOutput)
+}
+
+def p4E0ResearchR2FixtureDirectory =
+        layout.buildDirectory.dir('p4-e0-research')
+def p4E0ResearchR2CombinedWorldRoot =
+        layout.buildDirectory.dir('p4-e0-research/r2/combined-worlds')
+def p4E0ResearchR2MainClass =
+        'com.yo1no.gramarye.magic.definition.research.P4E0ResearchR2Main'
+def p4E0ResearchR2CombinedTimeoutSeconds = 900
+def p4E0ResearchR2WatchdogSeconds = 870
+if (p4E0ResearchR2CombinedTimeoutSeconds > 900
+        || p4E0ResearchR2WatchdogSeconds >= p4E0ResearchR2CombinedTimeoutSeconds) {
+    throw new GradleException('P4-E0-R2 dedicated timeout/watchdog is not fail-closed')
+}
+def resetExactP4E0ResearchR2CombinedWorld = {
+        directory, recreate ->
+    def root = p4E0ResearchR2CombinedWorldRoot.get().asFile.toPath()
+            .toAbsolutePath().normalize()
+    def target = directory.toPath().toAbsolutePath().normalize()
+    if (target.parent != root || target.fileName.toString().isBlank()) {
+        throw new GradleException(
+                'P4-E0-R2 refused a non-isolated combined-world deletion')
+    }
+    if (java.nio.file.Files.exists(
+            target, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+        def paths = java.nio.file.Files.walk(target)
+        try {
+            paths.sorted(java.util.Comparator.reverseOrder()).forEach { candidate ->
+                java.nio.file.Files.delete(candidate)
+            }
+        } finally {
+            paths.close()
+        }
+    }
+    if (recreate) {
+        java.nio.file.Files.createDirectories(target)
+    }
+}
+
+def registerP4E0ResearchR2Command = {
+        String taskName, String command, String description, List<Object> commandArgs ->
+    tasks.register(taskName, JavaExec) { researchTask ->
+        researchTask.group = 'verification'
+        researchTask.description = description
+        dependsOn(tasks.named(p4E0ResearchSourceSet.classesTaskName))
+        javaLauncher.set(p4A3JavaLauncher)
+        classpath = p4E0ResearchSourceSet.runtimeClasspath
+        mainClass.set(p4E0ResearchR2MainClass)
+        workingDir(p4E0ResearchCommandWorkingDirectory)
+        args(command)
+        args(commandArgs)
+        systemProperty 'gramarye.p4e0.gitHead', p4E0ResearchGitHead.get()
+        systemProperty 'gramarye.p4e0.research.diskBudgetBytes',
+                p4E0ResearchDiskBudgetBytes
+        jvmArgs('-Xms512m', '-Xmx1024m', '-XX:+ExitOnOutOfMemoryError')
+        doFirst {
+            p4E0ResearchCommandWorkingDirectory.get().asFile.mkdirs()
+        }
+        outputs.upToDateWhen { false }
+    }
+}
+
+def p4E0ResearchR2CommonArgs = [
+        p4E0ResearchR2FixtureDirectory.get().asFile.absolutePath,
+        p4E0ResearchReportDirectory.get().asFile.absolutePath,
+        p4E0ResearchDiskBudgetBytes,
+]
+def prepareP4E0ResearchMatrixFixtures = registerP4E0ResearchR2Command(
+        'prepareP4E0ResearchMatrixFixtures',
+        'prepare-plan',
+        'Writes the deterministic P4-E0-R2 matrix plan and bounded fixture controls.',
+        p4E0ResearchR2CommonArgs)
+prepareP4E0ResearchMatrixFixtures.configure {
+    dependsOn(verifyP4E0ResearchConfiguration)
+}
+
+def verifyP4E0ResearchMatrixFixtures = registerP4E0ResearchR2Command(
+        'verifyP4E0ResearchMatrixFixtures',
+        'verify-fixtures',
+        'Strictly verifies the P4-E0-R2 plan and deterministic fixture controls.',
+        p4E0ResearchR2CommonArgs)
+verifyP4E0ResearchMatrixFixtures.configure {
+    dependsOn(prepareP4E0ResearchMatrixFixtures)
+}
+
+def p4E0ResearchMatrix = registerP4E0ResearchR2Command(
+        'p4E0ResearchMatrix',
+        'matrix',
+        'Runs every plain P4-E0-R2 child serially across the fixed heap grid.',
+        p4E0ResearchR2CommonArgs)
+p4E0ResearchMatrix.configure {
+    dependsOn(verifyP4E0ResearchMatrixFixtures)
+}
+
+def previousP4E0ResearchR2Task = p4E0ResearchMatrix
+p4E0ResearchR2CombinedCoordinates.each { coordinate ->
+        def researchRunIndex = coordinate['researchIndex'] as int
+        def profileId = coordinate['profileId'] as String
+        def profileToken = coordinate['profileToken'] as String
+        def heapMiB = coordinate['heapMiB'] as int
+        def token = "${profileToken}${heapMiB}"
+        def evidenceStem = String.format(
+                java.util.Locale.ROOT,
+                '%04d-f-combined-%s-%d',
+                researchRunIndex,
+                profileId.toLowerCase(java.util.Locale.ROOT),
+                heapMiB)
+        def runTaskName = "runP4E0ResearchCombined${token}"
+        def prepareRunTaskName = "prepareP4E0ResearchCombined${token}Run"
+        def classifyTaskName = "classifyP4E0ResearchCombined${token}"
+        def childReport = layout.buildDirectory.file(
+                "reports/p4-e0-research/combined-child/${evidenceStem}.json")
+        def exitFile = layout.buildDirectory.file(
+                "reports/p4-e0-research/process/"
+                        + "${researchRunIndex}.exit-code.txt")
+        def runningMarker = layout.buildDirectory.file(
+                "reports/p4-e0-research/combined-running/${evidenceStem}.marker")
+        def combinedWorldDirectory = layout.buildDirectory.dir(
+                "p4-e0-research/r2/combined-worlds/${profileId}-${heapMiB}")
+        def prerequisiteTask = previousP4E0ResearchR2Task
+        tasks.named(prepareRunTaskName).configure {
+            outputs.upToDateWhen { false }
+        }
+        def runTask = tasks.named(runTaskName, JavaExec)
+        runTask.configure {
+            dependsOn(prerequisiteTask)
+            javaLauncher.set(p4A3JavaLauncher)
+            timeout.set(java.time.Duration.ofSeconds(
+                    p4E0ResearchR2CombinedTimeoutSeconds))
+            ignoreExitValue = true
+            doFirst {
+                resetExactP4E0ResearchR2CombinedWorld(
+                        combinedWorldDirectory.get().asFile, true)
+                [childReport, exitFile, runningMarker].each { output ->
+                    output.get().asFile.delete()
+                    output.get().asFile.parentFile.mkdirs()
+                }
+            }
+            doLast {
+                exitFile.get().asFile.setText(
+                        executionResult.get().exitValue.toString()
+                                + System.lineSeparator(),
+                        'US-ASCII')
+            }
+            outputs.upToDateWhen { false }
+        }
+        def classifyTask = registerP4E0ResearchR2Command(
+                classifyTaskName,
+                'classify-combined',
+                "Classifies P4-E0-R2 ${profileId} at ${heapMiB} MiB from disk evidence.",
+                [
+                        researchRunIndex.toString(),
+                        p4E0ResearchR2FixtureDirectory.get().asFile.absolutePath,
+                        p4E0ResearchReportDirectory.get().asFile.absolutePath,
+                        exitFile.get().asFile.absolutePath,
+                        runningMarker.get().asFile.absolutePath,
+                        p4E0ResearchDiskBudgetBytes,
+                ])
+        classifyTask.configure {
+            dependsOn(runTask)
+            doLast {
+                resetExactP4E0ResearchR2CombinedWorld(
+                        combinedWorldDirectory.get().asFile, false)
+            }
+        }
+        previousP4E0ResearchR2Task = classifyTask
+}
+
+def p4E0ResearchCombined = tasks.register('p4E0ResearchCombined') {
+    group = 'verification'
+    description = 'Completes all fifteen hard-serialized P4-E0-R2 dedicated profiles.'
+    dependsOn(previousP4E0ResearchR2Task)
+}
+
+def aggregateP4E0ResearchReports = registerP4E0ResearchR2Command(
+        'aggregateP4E0ResearchReports',
+        'aggregate',
+        'Aggregates immutable P4-E0-R2 run evidence into the four bounded reports.',
+        p4E0ResearchR2CommonArgs)
+aggregateP4E0ResearchReports.configure {
+    dependsOn(p4E0ResearchCombined)
+}
+
+def verifyP4E0ResearchReportSchema = registerP4E0ResearchR2Command(
+        'verifyP4E0ResearchReportSchema',
+        'validate',
+        'Strictly validates P4-E0-R2 JSONL, CSV, Markdown, and fixture-manifest output.',
+        p4E0ResearchR2CommonArgs)
+verifyP4E0ResearchReportSchema.configure {
+    dependsOn(aggregateP4E0ResearchReports)
+}
+
+tasks.register('p4E0ResearchStudy') {
+    group = 'verification'
+    description = 'Runs the complete non-authoritative P4-E0-R2 empirical study serially.'
+    dependsOn(verifyP4E0ResearchReportSchema)
 }
 
 tasks.named('test', Test).configure {
