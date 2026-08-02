@@ -1,0 +1,21 @@
+{
+  "schema_version": 0,
+  "scenario": "CORRECTNESS_SMOKE",
+  "heap_mib": 1024,
+  "directory_entries": 16,
+  "relevant_records": 9,
+  "compressed_target_bytes": 0,
+  "decompressed_target_bytes": 0,
+  "target_depth": 513,
+  "target_compound_entries": 32,
+  "target_list_elements": 128,
+  "target_array_elements": 4096,
+  "root_claims": 65537,
+  "ready_record_ratio": 0.125,
+  "preserved_raw_record_count": 1,
+  "seed": 88201651008049,
+  "compressed_guard_bytes": 67108864,
+  "decompressed_guard_bytes": 100663296,
+  "nbt_quota_bytes": 134217728,
+  "authority": "NON_AUTHORITATIVE_RESEARCH_SMOKE"
+}

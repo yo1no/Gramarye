@@ -413,7 +413,9 @@ verify_b2_build_contracts() {
         "mods.named('p4B2HeapProbe')" \
         "name.startsWith('p4B2') ? p4B2ProbeMod" \
         "name.startsWith('p4C2') ? p4C2ProbeMod" \
-        "name.startsWith('p4D3') ? p4D3ProbeMod : productionMod" \
+        "name.startsWith('p4D3') ? p4D3ProbeMod" \
+        "name == 'p4E0ResearchDedicatedSmoke'" \
+        "? p4E0ResearchMod : productionMod" \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)' \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)' \
         'add(p4B2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)' \
@@ -509,8 +511,8 @@ verify_b2_build_contracts() {
     require_ere_count \
         build.gradle \
         'timeout\.set\(java\.time\.Duration\.ofSeconds\(600\)\)' \
-        8 \
-        'Reviewed A3/B/C and D3 preparation/server chains must retain eight 600-second timeout declarations'
+        9 \
+        'Reviewed A3/B/C/D3 chains plus the isolated E0 research command must retain nine 600-second timeout declarations'
     require_ere_count \
         build.gradle \
         'timeout\.set\(java\.time\.Duration\.ofSeconds\(300\)\)' \

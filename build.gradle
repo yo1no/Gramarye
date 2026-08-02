@@ -35,6 +35,8 @@ def p4C2ProbeSourceSet = sourceSets.create('p4C2Probe')
 def p4C2GameTestSourceSet = sourceSets.create('p4C2GameTest')
 def p4D3ProbeSourceSet = sourceSets.create('p4D3Probe')
 def p4D3GameTestSourceSet = sourceSets.create('p4D3GameTest')
+def p4E0ResearchSourceSet = sourceSets.create('p4E0Research')
+def p4E0ResearchGameTestSourceSet = sourceSets.create('p4E0ResearchGameTest')
 def p4B2FixedHeapJvmArgs = [
         '-Xms512m',
         '-Xmx1024m',
@@ -48,6 +50,15 @@ def p4C2FixedHeapJvmArgs = [
 def p4D3FixedHeapJvmArgs = [
         '-Xms512m',
         '-Xmx1024m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
+def p4E0ResearchDefaultHeapMiB = '1024'
+def p4E0ResearchHeapMiB = providers
+        .systemProperty('gramarye.p4e0.research.heapMiB')
+        .getOrElse(p4E0ResearchDefaultHeapMiB)
+def p4E0ResearchFixedHeapJvmArgs = [
+        '-Xms512m',
+        "-Xmx${p4E0ResearchHeapMiB}m",
         '-XX:+ExitOnOutOfMemoryError',
 ]
 def p4A3GameTestResources = tasks.register('generateP4A3GameTestResources', Sync) {
@@ -102,6 +113,22 @@ def p4D3GameTestResources = tasks.register('generateP4D3GameTestResources', Sync
     into(layout.buildDirectory.dir('generated/p4D3GameTestResources'))
 }
 p4D3GameTestSourceSet.resources.srcDir(p4D3GameTestResources)
+def p4E0ResearchGameTestResources =
+        tasks.register('generateP4E0ResearchGameTestResources', Sync) {
+    dependsOn('createMinecraftArtifacts')
+    from(zipTree(layout.buildDirectory.file(
+            "moddev/artifacts/neoforge-${neo_version}-client-extra-aka-minecraft-resources.jar"))) {
+        include 'data/minecraft/structure/bastion/blocks/air.nbt'
+        eachFile { details ->
+            details.path =
+                    'data/gramarye_p4_e0_research/structure/p4_e0_research_smoke.nbt'
+        }
+        includeEmptyDirs = false
+    }
+    into(layout.buildDirectory.dir(
+            'p4-e0-research/generated-gametest-resources'))
+}
+p4E0ResearchGameTestSourceSet.resources.srcDir(p4E0ResearchGameTestResources)
 
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
@@ -132,6 +159,8 @@ neoForge {
     addModdingDependenciesTo(p4C2GameTestSourceSet)
     addModdingDependenciesTo(p4D3ProbeSourceSet)
     addModdingDependenciesTo(p4D3GameTestSourceSet)
+    addModdingDependenciesTo(p4E0ResearchSourceSet)
+    addModdingDependenciesTo(p4E0ResearchGameTestSourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -147,6 +176,7 @@ neoForge {
             sourceSet(p4B2ProbeSourceSet)
             sourceSet(p4C2ProbeSourceSet)
             sourceSet(p4D3ProbeSourceSet)
+            sourceSet(p4E0ResearchSourceSet)
         }
 
         // Userdev treats this name only as a source-folder group. The main resources in this
@@ -176,6 +206,17 @@ neoForge {
             sourceSet(p4D3ProbeSourceSet)
             sourceSet(p4D3GameTestSourceSet)
         }
+
+        // Research-only source group. It is never used by production runs or the published JAR.
+        p4E0ResearchHarness {
+            sourceSet(sourceSets.main)
+            sourceSet(p4A3ProbeSourceSet)
+            sourceSet(p4B2ProbeSourceSet)
+            sourceSet(p4C2ProbeSourceSet)
+            sourceSet(p4D3ProbeSourceSet)
+            sourceSet(p4E0ResearchSourceSet)
+            sourceSet(p4E0ResearchGameTestSourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
@@ -184,6 +225,7 @@ neoForge {
     def p4B2ProbeMod = mods.named('p4B2HeapProbe').get()
     def p4C2ProbeMod = mods.named('p4C2HeapProbe').get()
     def p4D3ProbeMod = mods.named('p4D3HeapProbe').get()
+    def p4E0ResearchMod = mods.named('p4E0ResearchHarness').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -580,6 +622,23 @@ neoForge {
             taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
         }
 
+        p4E0ResearchDedicatedSmoke {
+            type = 'gameTestServer'
+            sourceSet = p4E0ResearchGameTestSourceSet
+            gameDirectory = layout.buildDirectory.dir(
+                    'p4-e0-research/dedicated-smoke').get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces',
+                    'gramarye_p4_e0_research'
+            systemProperty 'gramarye.p4e0.research.fixtureRoot',
+                    layout.buildDirectory.dir('p4-e0-research/smoke').get().asFile.absolutePath
+            systemProperty 'gramarye.p4e0.research.reportRoot',
+                    layout.buildDirectory.dir('reports/p4-e0-research').get().asFile.absolutePath
+            systemProperty 'gramarye.p4e0.research.runMode', 'dedicated-smoke'
+            jvmArguments.addAll(p4E0ResearchFixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
+        }
+
         data {
             data()
 
@@ -596,7 +655,9 @@ neoForge {
                     ? p4A3ProbeMod
                     : name.startsWith('p4B2') ? p4B2ProbeMod
                     : name.startsWith('p4C2') ? p4C2ProbeMod
-                    : name.startsWith('p4D3') ? p4D3ProbeMod : productionMod])
+                    : name.startsWith('p4D3') ? p4D3ProbeMod
+                    : name == 'p4E0ResearchDedicatedSmoke'
+                            ? p4E0ResearchMod : productionMod])
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -672,10 +733,24 @@ dependencies {
     add(p4D3GameTestSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
     add(p4D3GameTestSourceSet.implementationConfigurationName, p4C2ProbeSourceSet.output)
     add(p4D3GameTestSourceSet.implementationConfigurationName, p4D3ProbeSourceSet.output)
+    add(p4E0ResearchSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4E0ResearchSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
+    add(p4E0ResearchSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
+    add(p4E0ResearchSourceSet.implementationConfigurationName, p4C2ProbeSourceSet.output)
+    add(p4E0ResearchSourceSet.implementationConfigurationName, p4D3ProbeSourceSet.output)
+    add(p4E0ResearchSourceSet.implementationConfigurationName, commonsCompressCoordinate)
+    add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
+    add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
+    add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, p4C2ProbeSourceSet.output)
+    add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, p4D3ProbeSourceSet.output)
+    add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, p4E0ResearchSourceSet.output)
+    add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, commonsCompressCoordinate)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
     testImplementation p4C2ProbeSourceSet.output
     testImplementation p4D3ProbeSourceSet.output
+    testImplementation p4E0ResearchSourceSet.output
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.4'
@@ -1614,6 +1689,201 @@ tasks.register('p4D3FixedHeapGate') {
     dependsOn(verifyP4D3CombinedHeapRestart)
 }
 
+def p4E0ResearchSmokeDirectory =
+        layout.buildDirectory.dir('p4-e0-research/smoke')
+def p4E0ResearchReportDirectory =
+        layout.buildDirectory.dir('reports/p4-e0-research')
+def p4E0ResearchCommandWorkingDirectory =
+        layout.buildDirectory.dir('p4-e0-research/command-work')
+def p4E0ResearchMainClass =
+        'com.yo1no.gramarye.magic.definition.research.P4E0ResearchMain'
+def p4E0ResearchChildTimeoutSeconds = 540
+def p4E0ResearchChildTerminationBudgetSeconds = 30
+def p4E0ResearchSupervisorTimeoutSeconds = 600
+if (p4E0ResearchSupervisorTimeoutSeconds < 600
+        || p4E0ResearchSupervisorTimeoutSeconds
+        <= p4E0ResearchChildTimeoutSeconds + p4E0ResearchChildTerminationBudgetSeconds) {
+    throw new GradleException('P4-E0 research supervisor timeout is not fail-closed')
+}
+def p4E0ResearchOverrideProperties = [
+        'gramarye.p4e0.research.scenario',
+        'gramarye.p4e0.research.heapMiB',
+        'gramarye.p4e0.research.directoryEntries',
+        'gramarye.p4e0.research.relevantRecords',
+        'gramarye.p4e0.research.compressedTargetBytes',
+        'gramarye.p4e0.research.decompressedTargetBytes',
+        'gramarye.p4e0.research.targetDepth',
+        'gramarye.p4e0.research.targetCompoundEntries',
+        'gramarye.p4e0.research.targetListElements',
+        'gramarye.p4e0.research.targetArrayElements',
+        'gramarye.p4e0.research.rootClaims',
+        'gramarye.p4e0.research.readyRecordRatio',
+        'gramarye.p4e0.research.preservedRawRecordCount',
+        'gramarye.p4e0.research.seed',
+        'gramarye.p4e0.research.compressedGuardBytes',
+        'gramarye.p4e0.research.decompressedGuardBytes',
+        'gramarye.p4e0.research.nbtQuotaBytes',
+]
+
+def cleanP4E0ResearchLauncherLogs = tasks.register(
+        'cleanP4E0ResearchLauncherLogs', Delete) {
+    group = 'verification'
+    description = 'Removes transient root launcher logs before the fail-closed R1 path audit.'
+    dependsOn(
+            tasks.named('jar'),
+            tasks.named(p4E0ResearchSourceSet.classesTaskName),
+            tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
+    delete(layout.projectDirectory.dir('logs'))
+}
+
+def verifyP4E0ResearchConfiguration = tasks.register(
+        'verifyP4E0ResearchConfiguration', Exec) {
+    group = 'verification'
+    description = 'Verifies the isolated, non-authoritative P4-E0 research harness configuration.'
+    dependsOn(cleanP4E0ResearchLauncherLogs)
+    inputs.file(layout.projectDirectory.file('build.gradle'))
+    inputs.file(layout.projectDirectory.file('.github/workflows/build.yml'))
+    inputs.file(layout.projectDirectory.file(
+            'scripts/verify-p4-e0-r-configuration.sh'))
+    inputs.file(layout.projectDirectory.file(
+            'src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java'))
+    inputs.files(fileTree('src/main/java') { include '**/*.java' })
+    inputs.files(fileTree('src/main/resources'))
+    inputs.files(fileTree('src/p4E0Research/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4E0Research/resources'))
+    inputs.files(fileTree('src/p4E0ResearchGameTest/java') { include '**/*.java' })
+    inputs.files(fileTree('src/test/java') { include '**/*.java' })
+    inputs.files(fileTree('docs/codex-spec') { include '**/*.md' })
+    inputs.files(fileTree('docs/architecture') { include '**/*.md' })
+    workingDir(layout.projectDirectory)
+    commandLine(
+            'bash',
+            layout.projectDirectory.file(
+                    'scripts/verify-p4-e0-r-configuration.sh').asFile.absolutePath)
+}
+
+def registerP4E0ResearchCommand = {
+        String taskName, String command, String description, int timeoutSeconds ->
+    tasks.register(taskName, JavaExec) { researchTask ->
+        researchTask.group = 'verification'
+        researchTask.description = description
+        dependsOn(tasks.named(p4E0ResearchSourceSet.classesTaskName))
+        javaLauncher.set(p4A3JavaLauncher)
+        classpath = p4E0ResearchSourceSet.runtimeClasspath
+        mainClass.set(p4E0ResearchMainClass)
+        workingDir(p4E0ResearchCommandWorkingDirectory)
+        args(
+                command,
+                p4E0ResearchSmokeDirectory.get().asFile.absolutePath,
+                p4E0ResearchReportDirectory.get().asFile.absolutePath)
+        p4E0ResearchOverrideProperties.each { propertyName ->
+            def override = providers.systemProperty(propertyName)
+            if (override.isPresent()) {
+                systemProperty(propertyName, override.get())
+            }
+        }
+        jvmArgs(p4E0ResearchFixedHeapJvmArgs)
+        timeout.set(java.time.Duration.ofSeconds(timeoutSeconds))
+        doFirst {
+            p4E0ResearchCommandWorkingDirectory.get().asFile.mkdirs()
+        }
+        outputs.upToDateWhen { false }
+    }
+}
+
+def prepareP4E0ResearchSmoke = registerP4E0ResearchCommand(
+        'prepareP4E0ResearchSmoke',
+        'prepare',
+        'Builds deterministic, synthetic P4-E0 research smoke fixtures.',
+        p4E0ResearchSupervisorTimeoutSeconds)
+prepareP4E0ResearchSmoke.configure {
+    dependsOn(verifyP4E0ResearchConfiguration)
+}
+
+def runP4E0ResearchSmoke = registerP4E0ResearchCommand(
+        'runP4E0ResearchSmoke',
+        'run',
+        'Runs the standalone, non-authoritative P4-E0 research smoke.',
+        p4E0ResearchSupervisorTimeoutSeconds)
+runP4E0ResearchSmoke.configure {
+    dependsOn(prepareP4E0ResearchSmoke)
+}
+
+def runP4E0ResearchDedicatedSmoke =
+        tasks.named('runP4E0ResearchDedicatedSmoke', JavaExec)
+def p4E0ResearchDedicatedChildReport =
+        layout.buildDirectory.file('reports/p4-e0-research/dedicated-child.json')
+def p4E0ResearchDedicatedReport =
+        layout.buildDirectory.file('reports/p4-e0-research/dedicated.json')
+def p4E0ResearchDedicatedExitFile =
+        layout.buildDirectory.file('reports/p4-e0-research/dedicated-exit-code.txt')
+def p4E0ResearchDedicatedRunningMarker =
+        layout.buildDirectory.file('reports/p4-e0-research/dedicated-running-v0.txt')
+def cleanP4E0ResearchPostRunLogs = tasks.register(
+        'cleanP4E0ResearchPostRunLogs', Delete) {
+    group = 'verification'
+    description = 'Removes transient root launcher logs after the R1 dedicated smoke.'
+    delete(layout.projectDirectory.dir('logs'))
+}
+def classifyP4E0ResearchDedicatedSmoke = registerP4E0ResearchCommand(
+        'classifyP4E0ResearchDedicatedSmoke',
+        'classify-dedicated',
+        'Classifies the dedicated research child from its bounded report and process exit.',
+        60)
+classifyP4E0ResearchDedicatedSmoke.configure {
+    mustRunAfter(runP4E0ResearchDedicatedSmoke)
+}
+runP4E0ResearchDedicatedSmoke.configure {
+    dependsOn(runP4E0ResearchSmoke)
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    ignoreExitValue = true
+    p4E0ResearchOverrideProperties.each { propertyName ->
+        def override = providers.systemProperty(propertyName)
+        if (override.isPresent()) {
+            systemProperty(propertyName, override.get())
+        }
+    }
+    doFirst {
+        [
+                p4E0ResearchDedicatedChildReport,
+                p4E0ResearchDedicatedReport,
+                p4E0ResearchDedicatedExitFile,
+                p4E0ResearchDedicatedRunningMarker,
+        ].each { output ->
+            output.get().asFile.delete()
+        }
+    }
+    doLast {
+        def exitFile = p4E0ResearchDedicatedExitFile.get().asFile
+        exitFile.parentFile.mkdirs()
+        exitFile.setText(
+                executionResult.get().exitValue.toString() + System.lineSeparator(),
+                'US-ASCII')
+    }
+    finalizedBy(classifyP4E0ResearchDedicatedSmoke)
+    finalizedBy(cleanP4E0ResearchPostRunLogs)
+}
+cleanP4E0ResearchPostRunLogs.configure {
+    mustRunAfter(classifyP4E0ResearchDedicatedSmoke)
+}
+
+def verifyP4E0ResearchSmokeOutput = registerP4E0ResearchCommand(
+        'verifyP4E0ResearchSmokeOutput',
+        'verify',
+        'Strictly verifies bounded P4-E0 research smoke reports and fixture hashes.',
+        p4E0ResearchSupervisorTimeoutSeconds)
+verifyP4E0ResearchSmokeOutput.configure {
+    dependsOn(runP4E0ResearchDedicatedSmoke)
+    dependsOn(classifyP4E0ResearchDedicatedSmoke)
+}
+
+tasks.register('p4E0ResearchSmoke') {
+    group = 'verification'
+    description = 'Runs the isolated P4-E0 research correctness smoke; it establishes no ceiling.'
+    dependsOn(verifyP4E0ResearchSmokeOutput)
+}
+
 tasks.named('test', Test).configure {
     useJUnitPlatform()
 }
@@ -1687,6 +1957,12 @@ tasks.named(p4D3ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4D3GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4E0ResearchSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4E0ResearchGameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 
@@ -1867,4 +2143,5 @@ tasks.named('check').configure {
     dependsOn verifyP4B2Configuration
     dependsOn verifyP4C2Configuration
     dependsOn verifyP4D3Configuration
+    dependsOn verifyP4E0ResearchConfiguration
 }
