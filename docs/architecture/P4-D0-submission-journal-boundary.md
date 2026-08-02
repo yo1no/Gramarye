@@ -350,7 +350,7 @@ preflight／commit／publication, authenticated submission and report identity, 
 prefix clear／replay, and the D–J1 paired-restart／J2 defensive verification boundary. D3-B, D3, and
 P4-D are complete. P4-E is ready only for read-only design review; no P4-E implementation, offline
 root-completeness proof, Store-reclaim composition, or general reconciliation exists. P4-D does not
-claim a cross-SavedData／playerdata transaction or fsync durability.
+claim a cross-SavedData／playerdata transaction or fsync durability. 
 
 ```text
 P4-D0               = COMPLETE
