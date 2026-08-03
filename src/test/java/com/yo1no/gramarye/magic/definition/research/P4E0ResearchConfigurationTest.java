@@ -14,7 +14,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
-/** Exact source-set, task, phase-boundary, and portable-verifier gate for P4-E0-R1/R2. */
+/** Exact source-set, task, phase-boundary, and portable-verifier gate for P4-E0-R1/R2/R2Q. */
 final class P4E0ResearchConfigurationTest {
     private static final Path PROJECT_ROOT = projectRoot();
     private static final Path RESEARCH_ROOT =
@@ -59,6 +59,7 @@ final class P4E0ResearchConfigurationTest {
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var runtime = bracedBlock(build, "        p4E0ResearchHarness {");
         var run = bracedBlock(build, "        p4E0ResearchDedicatedSmoke {");
+        var r2qRun = bracedBlock(build, "        p4E0R2QDedicatedSmoke {");
 
         for (var required : List.of(
                 "sourceSets.create('p4E0Research')",
@@ -122,6 +123,15 @@ final class P4E0ResearchConfigurationTest {
                                 + "'dedicated-smoke'")),
                 () -> assertTrue(run.contains(
                         "jvmArguments.addAll(p4E0ResearchFixedHeapJvmArgs)")));
+        assertAll(
+                () -> assertTrue(r2qRun.contains(
+                        "sourceSet = p4E0ResearchGameTestSourceSet")),
+                () -> assertTrue(r2qRun.contains("'gramarye_p4_e0_research'")),
+                () -> assertTrue(r2qRun.contains(
+                        "systemProperty 'gramarye.p4e0.research.runMode', "
+                                + "'r2q-smoke'")),
+                () -> assertTrue(r2qRun.contains(
+                        "jvmArguments.addAll(p4E0R2QSmokeJvmArgs)")));
     }
 
     @Test
@@ -471,7 +481,9 @@ final class P4E0ResearchConfigurationTest {
 
         assertAll(
                 () -> assertFalse(production.contains("P4E0Research")),
+                () -> assertFalse(production.contains("P4E0R2Q")),
                 () -> assertFalse(production.contains("p4-e0-research")),
+                () -> assertFalse(production.contains("p4-e0-r2q")),
                 () -> assertFalse(read(PROJECT_ROOT.resolve(
                                 "src/main/java/com/yo1no/gramarye/magic/limits/"
                                         + "MagicSafetyCeilings.java"))
@@ -487,6 +499,9 @@ final class P4E0ResearchConfigurationTest {
         var scriptPath = PROJECT_ROOT.resolve(
                 "scripts/verify-p4-e0-r-configuration.sh");
         var script = read(scriptPath);
+        var r2qScriptPath = PROJECT_ROOT.resolve(
+                "scripts/verify-p4-e0-r2q-configuration.sh");
+        var r2qScript = read(r2qScriptPath);
 
         assertAll(
                 () -> assertTrue(Files.isRegularFile(scriptPath)),
@@ -505,14 +520,30 @@ final class P4E0ResearchConfigurationTest {
                 () -> assertFalse(script.contains("logs/latest")),
                 () -> assertFalse(script.matches(
                         "(?s).*(^|[;&|()<>`\\s])([^;&|()<>`\\s]*/)?r[g]"
+                                + "([;&|()<>`\\s]|$).*")),
+                () -> assertTrue(Files.isRegularFile(r2qScriptPath)),
+                () -> assertFalse(Files.isSymbolicLink(r2qScriptPath)),
+                () -> assertTrue(Files.isExecutable(r2qScriptPath)),
+                () -> assertTrue(r2qScript.startsWith(
+                        "#!/usr/bin/env bash\nset -euo pipefail\n")),
+                () -> assertTrue(r2qScript.contains("PATH='/usr/bin:/bin'")),
+                () -> assertTrue(r2qScript.contains("${BASH_SOURCE[0]}")),
+                () -> assertTrue(r2qScript.contains("EXPECTED_MISSING")),
+                () -> assertTrue(r2qScript.contains("EXPECTED_FORBIDDEN")),
+                () -> assertTrue(r2qScript.contains("grep failed while checking")),
+                () -> assertFalse(r2qScript.matches(
+                        "(?s).*(^|[;&|()<>`\\s])([^;&|()<>`\\s]*/)?r[g]"
                                 + "([;&|()<>`\\s]|$).*")));
     }
 
     private static Set<String> relativeP4E0UnitSources() throws IOException {
         try (var paths = Files.walk(TEST_ROOT)) {
             return paths.filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString()
-                            .startsWith("P4E0Research"))
+                    .filter(path -> {
+                        var fileName = path.getFileName().toString();
+                        return fileName.startsWith("P4E0Research")
+                                || fileName.startsWith("P4E0R2Q");
+                    })
                     .filter(path -> path.getFileName().toString().endsWith(".java"))
                     .map(TEST_ROOT::relativize)
                     .map(Path::toString)

@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
-/** Exact P4-E0-R1/R2 research-only source, resource, task, and schema allowlists. */
+/** Exact P4-E0-R1/R2/R2Q research-only source, resource, task, and schema allowlists. */
 final class P4E0ResearchPhaseTypes {
     static final Set<String> RESEARCH_SOURCE_PATHS = Set.of(
             "com/yo1no/gramarye/magic/definition/player/"
@@ -37,13 +37,24 @@ final class P4E0ResearchPhaseTypes {
                     + "P4E0ResearchRunRecord.java",
             "com/yo1no/gramarye/magic/definition/research/P4E0ResearchScenario.java",
             "com/yo1no/gramarye/magic/definition/research/P4E0ResearchWireNbt.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QAuditBudget.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QCasePlan.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QFixturePlan.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QJointRecords.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QMain.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QModifiedUtf.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QPositiveWitnesses.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QProfile.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QStudyIdentity.java",
             "com/yo1no/gramarye/magic/definition/store/"
                     + "P4E0ResearchCombinedStoreSession.java",
             "com/yo1no/gramarye/magic/definition/store/P4E0ResearchGzipAdapter.java",
             "com/yo1no/gramarye/magic/definition/store/"
                     + "P4E0ResearchRootWorkloads.java",
             "com/yo1no/gramarye/magic/definition/store/"
-                    + "P4E0ResearchStoreJournalFixtures.java");
+                    + "P4E0ResearchStoreJournalFixtures.java",
+            "com/yo1no/gramarye/magic/definition/store/"
+                    + "P4E0R2QStoreJournalFixtures.java");
 
     static final Set<String> GAME_TEST_SOURCE_PATHS = Set.of(
             "com/yo1no/gramarye/magic/definition/research/"
@@ -53,10 +64,13 @@ final class P4E0ResearchPhaseTypes {
             "com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0ResearchR2DedicatedDriver.java",
             "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0R2QDedicatedDriver.java",
+            "com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0ResearchGameTestHolder.java");
 
     static final Set<String> RESOURCE_PATHS = Set.of(
-            "p4-e0-research-smoke-v0.json");
+            "p4-e0-research-smoke-v0.json",
+            "p4-e0-r2q-profile-v0.json");
 
     static final Set<String> UNIT_SOURCE_PATHS = Set.of(
             "com/yo1no/gramarye/magic/definition/research/"
@@ -70,6 +84,28 @@ final class P4E0ResearchPhaseTypes {
             "com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0ResearchR2MatrixTest.java",
             "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QApiGateTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QAuditBudgetTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QExactGzipWitnessTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QFixtureTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QModifiedUtfTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QJointRecordsTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QPositiveWitnessTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QProfileTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QStudyIdentityTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0R2QRootProjectionTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0R2QNegativeFixtureTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0ResearchReportAggregationTest.java");
 
     static final Set<String> PUBLIC_RESEARCH_TYPE_NAMES = Set.of(
@@ -79,12 +115,15 @@ final class P4E0ResearchPhaseTypes {
                     + "P4E0ResearchCombinedEnvelope",
             "com.yo1no.gramarye.magic.definition.research.P4E0ResearchMain",
             "com.yo1no.gramarye.magic.definition.research.P4E0ResearchR2Main",
+            "com.yo1no.gramarye.magic.definition.research.P4E0R2QMain",
             "com.yo1no.gramarye.magic.definition.store."
                     + "P4E0ResearchCombinedStoreSession",
             "com.yo1no.gramarye.magic.definition.store.P4E0ResearchGzipAdapter",
             "com.yo1no.gramarye.magic.definition.store.P4E0ResearchRootWorkloads",
             "com.yo1no.gramarye.magic.definition.store."
-                    + "P4E0ResearchStoreJournalFixtures");
+                    + "P4E0ResearchStoreJournalFixtures",
+            "com.yo1no.gramarye.magic.definition.store."
+                    + "P4E0R2QStoreJournalFixtures");
 
     static final Set<String> CASE_NAMES = Set.of(
             "ZERO_ROOT_MINIMAL",
@@ -192,13 +231,25 @@ final class P4E0ResearchPhaseTypes {
             "verifyP4E0ResearchReportSchema",
             "p4E0ResearchStudy");
 
+    private static final List<String> R2Q_TASK_NAMES = List.of(
+            "prepareP4E0R2Q",
+            "verifyP4E0R2QPreflightTests",
+            "verifyP4E0R2QProfile",
+            "runP4E0R2QSmoke",
+            "runP4E0R2QDedicatedSmoke",
+            "verifyP4E0R2QSmokeOutput",
+            "verifyP4E0R2QConfiguration",
+            "p4E0R2QSmoke",
+            "p4E0R2QStudy");
+
     static final List<String> TASK_NAMES = Stream.of(
                     BASE_TASK_NAMES.stream(),
                     R2_COMBINED_TOKENS.stream()
                             .map(token -> "runP4E0ResearchCombined" + token),
                     R2_COMBINED_TOKENS.stream()
                             .map(token -> "classifyP4E0ResearchCombined" + token),
-                    R2_AGGREGATE_TASK_NAMES.stream())
+                    R2_AGGREGATE_TASK_NAMES.stream(),
+                    R2Q_TASK_NAMES.stream())
             .flatMap(stream -> stream)
             .toList();
 

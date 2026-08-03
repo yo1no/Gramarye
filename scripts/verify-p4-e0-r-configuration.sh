@@ -269,10 +269,20 @@ is_reviewed_research_path() {
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchRunRecord.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchScenario.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchWireNbt.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QAuditBudget.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QCasePlan.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFixturePlan.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QJointRecords.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QMain.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QModifiedUtf.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QPositiveWitnesses.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QProfile.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QStudyIdentity.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchCombinedStoreSession.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchGzipAdapter.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchRootWorkloads.java | \
-        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchStoreJournalFixtures.java) return 0 ;;
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0ResearchStoreJournalFixtures.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0R2QStoreJournalFixtures.java) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -282,6 +292,7 @@ is_reviewed_game_path() {
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchCombinedCoordinator.java | \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchDedicatedCoordinator.java | \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2DedicatedDriver.java | \
+        src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QDedicatedDriver.java | \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchGameTestHolder.java) return 0 ;;
         *) return 1 ;;
     esac
@@ -294,6 +305,17 @@ is_reviewed_test_path() {
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchMetricsTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchPhaseTypes.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2MatrixTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QAuditBudgetTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QExactGzipWitnessTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFixtureTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QJointRecordsTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QModifiedUtfTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QPositiveWitnessTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QProfileTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QStudyIdentityTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QNegativeFixtureTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QRootProjectionTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchReportAggregationTest.java) return 0 ;;
         *) return 1 ;;
     esac
@@ -304,7 +326,9 @@ is_reviewed_changed_path() {
         build.gradle | \
         scripts/verify-p4-b2-b-configuration.sh | \
         scripts/verify-p4-e0-r-configuration.sh | \
-        src/p4E0Research/resources/p4-e0-research-smoke-v0.json) return 0 ;;
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        src/p4E0Research/resources/p4-e0-research-smoke-v0.json | \
+        src/p4E0Research/resources/p4-e0-r2q-profile-v0.json) return 0 ;;
     esac
     is_reviewed_research_path "$1" \
         || is_reviewed_game_path "$1" \
@@ -359,8 +383,8 @@ verify_exact_source_allowlists() {
             || fail "unreviewed P4-E0-R1 research source: ${relative}"
         count=$((count + 1))
     done < "${RESEARCH_SOURCE_LIST}"
-    [[ "${count}" -eq 24 ]] \
-        || fail "P4-E0-R2 research source count must be twenty-four (found ${count})"
+    [[ "${count}" -eq 34 ]] \
+        || fail "P4-E0-R2Q research source count must be thirty-four (found ${count})"
 
     count=0
     while IFS= read -r -d '' file; do
@@ -369,8 +393,8 @@ verify_exact_source_allowlists() {
             || fail "unreviewed P4-E0-R1 dedicated source: ${relative}"
         count=$((count + 1))
     done < "${GAME_SOURCE_LIST}"
-    [[ "${count}" -eq 4 ]] \
-        || fail "P4-E0-R2 dedicated source count must be four (found ${count})"
+    [[ "${count}" -eq 5 ]] \
+        || fail "P4-E0-R2Q dedicated source count must be five (found ${count})"
 
     count=0
     while IFS= read -r -d '' file; do
@@ -379,19 +403,21 @@ verify_exact_source_allowlists() {
             || fail "unreviewed P4-E0-R1 unit/configuration source: ${relative}"
         count=$((count + 1))
     done < "${TEST_SOURCE_LIST}"
-    [[ "${count}" -eq 6 ]] \
-        || fail "P4-E0-R2 unit/configuration source count must be six (found ${count})"
+    [[ "${count}" -eq 17 ]] \
+        || fail "P4-E0-R2Q unit/configuration source count must be seventeen (found ${count})"
 
     count=0
     while IFS= read -r -d '' file; do
         relative="${file#./}"
-        [[ "${relative}" == \
-            'src/p4E0Research/resources/p4-e0-research-smoke-v0.json' ]] \
-            || fail "unreviewed P4-E0-R1 resource: ${relative}"
+        case "${relative}" in
+            src/p4E0Research/resources/p4-e0-research-smoke-v0.json | \
+            src/p4E0Research/resources/p4-e0-r2q-profile-v0.json) ;;
+            *) fail "unreviewed P4-E0 research resource: ${relative}" ;;
+        esac
         count=$((count + 1))
     done < "${RESOURCE_LIST}"
-    [[ "${count}" -eq 1 ]] \
-        || fail "P4-E0-R1 source resource count must be one (found ${count})"
+    [[ "${count}" -eq 2 ]] \
+        || fail "P4-E0-R2Q source resource count must be two (found ${count})"
 }
 
 verify_build_contract() {
@@ -545,6 +571,7 @@ verify_build_contract() {
 
     for marker in \
         "name == 'p4E0ResearchDedicatedSmoke'" \
+        "name == 'p4E0R2QDedicatedSmoke'" \
         '? p4E0ResearchMod : productionMod'; do
         require_fixed scripts/verify-p4-b2-b-configuration.sh "${marker}" \
             "P4-E0-R1 exact B2 runtime allowlist is missing ${marker}"
@@ -1076,8 +1103,10 @@ verify_jar_isolation() {
             forbid_fixed "${JAR_LISTING}" "${class_path}" \
                 "P4-E0-R1 dedicated class leaked into production JAR: ${class_path}"
         done < "${GAME_SOURCE_LIST}"
-        forbid_fixed "${JAR_LISTING}" 'p4-e0-research-smoke-v0.json' \
-            'P4-E0-R1 research resource leaked into production JAR'
+        while IFS= read -r -d '' source_path; do
+            forbid_fixed "${JAR_LISTING}" "${source_path#src/p4E0Research/resources/}" \
+                'P4-E0 research resource leaked into production JAR'
+        done < "${RESOURCE_LIST}"
     done < "${JAR_FILE_LIST}"
 }
 
@@ -1112,7 +1141,8 @@ main() {
     collect_java_files src/p4E0Research/java "${RESEARCH_SOURCE_LIST}"
     collect_java_files src/p4E0ResearchGameTest/java "${GAME_SOURCE_LIST}"
     collect_java_files src/main/java "${PRODUCTION_SOURCE_LIST}"
-    LC_ALL=C find src/test/java -type f -name 'P4E0Research*.java' -print0 \
+    LC_ALL=C find src/test/java -type f \
+        \( -name 'P4E0Research*.java' -o -name 'P4E0R2Q*.java' \) -print0 \
         > "${TEST_SOURCE_LIST}"
     LC_ALL=C find src/p4E0Research/resources -type f -print0 > "${RESOURCE_LIST}"
 

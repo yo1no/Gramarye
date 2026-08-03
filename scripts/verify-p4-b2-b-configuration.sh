@@ -415,6 +415,7 @@ verify_b2_build_contracts() {
         "name.startsWith('p4C2') ? p4C2ProbeMod" \
         "name.startsWith('p4D3') ? p4D3ProbeMod" \
         "name == 'p4E0ResearchDedicatedSmoke'" \
+        "name == 'p4E0R2QDedicatedSmoke'" \
         "? p4E0ResearchMod : productionMod" \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)' \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)' \

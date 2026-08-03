@@ -1,0 +1,178 @@
+{
+  "schema_version": 0,
+  "authority": "EXPLORATORY_NON_NORMATIVE",
+  "profile_name": "BALANCED_V0_1536_QUALIFICATION",
+  "candidate_values": {
+    "directory_entries": 4096,
+    "relevant_records": 2048,
+    "compressed_bytes_per_file": 33559514,
+    "decompressed_bytes_per_file": 268435456,
+    "container_depth_per_file": 512,
+    "compound_containers_per_file": 1024,
+    "compound_field_entries_per_file": 65537,
+    "list_elements_per_file": 65536,
+    "byte_array_elements_per_file": 268435384,
+    "int_array_elements_per_file": 65536,
+    "long_array_elements_per_file": 65536,
+    "modified_utf8_bytes_per_file": 67107692,
+    "scalar_tags_per_file": 65537,
+    "compressed_bytes_total": 268440533,
+    "decompressed_bytes_total": 536870912,
+    "compound_containers_total": 131072,
+    "compound_field_entries_total": 524288,
+    "list_elements_total": 131072,
+    "byte_array_elements_total": 456524705,
+    "int_array_elements_total": 131072,
+    "long_array_elements_total": 131072,
+    "modified_utf8_bytes_total": 75497472,
+    "scalar_tags_total": 458752,
+    "attachment_admissions": 1024,
+    "raw_root_claims": 65536,
+    "accepted_data_version": 3955,
+    "max_dfu_records": 0
+  },
+  "counter_coordinates": {
+    "directory_entries": {
+      "measure": "Each immediate filesystem directory-entry occurrence in the synthetic fixture directory.",
+      "checkpoint": "Before source selection, attribute reads, or file opens."
+    },
+    "relevant_records": {
+      "measure": "Each selected canonical player record after primary/old physical-source selection.",
+      "checkpoint": "Immediately after source selection and before compressed ingress."
+    },
+    "compressed_bytes_per_file": {
+      "measure": "Selected file bytes from the first gzip header byte through physical EOF.",
+      "checkpoint": "Bounded channel ingress before gzip classification."
+    },
+    "decompressed_bytes_per_file": {
+      "measure": "Unnamed Compound type byte, zero-length UTF root name, complete Compound payload, EndTag, and exact decompressed EOF.",
+      "checkpoint": "Bounded decompressed stream before bytes are returned to the NBT scanner."
+    },
+    "container_depth_per_file": {
+      "measure": "Container nesting with the unnamed root Compound at depth 1.",
+      "checkpoint": "Before entering each CompoundTag or ListTag payload."
+    },
+    "compound_containers_per_file": {
+      "measure": "Every CompoundTag instance, including the unnamed root Compound.",
+      "checkpoint": "Before materializing the Compound container."
+    },
+    "compound_field_entries_per_file": {
+      "measure": "Every Compound child entry; EndTag is excluded.",
+      "checkpoint": "Immediately after the child type byte and before reading the UTF length prefix or materializing the field name."
+    },
+    "list_elements_per_file": {
+      "measure": "Every ListTag payload element; the list header is excluded.",
+      "checkpoint": "At the non-negative list-length prefix before element materialization."
+    },
+    "byte_array_elements_per_file": {
+      "measure": "Every byte-array payload element; the length field is excluded.",
+      "checkpoint": "At the non-negative array-length prefix before payload allocation."
+    },
+    "int_array_elements_per_file": {
+      "measure": "Every int-array payload element; the length field is excluded.",
+      "checkpoint": "At the non-negative array-length prefix before payload allocation."
+    },
+    "long_array_elements_per_file": {
+      "measure": "Every long-array payload element; the length field is excluded.",
+      "checkpoint": "At the non-negative array-length prefix before payload allocation."
+    },
+    "modified_utf8_bytes_per_file": {
+      "measure": "Java modified-UTF encoded bytes in Compound field names and StringTag payloads; each two-byte length prefix is excluded.",
+      "checkpoint": "At each unsigned UTF byte-length prefix before byte/character allocation or String construction."
+    },
+    "scalar_tags_per_file": {
+      "measure": "Byte, Short, Int, Long, Float, Double, and String tags; End, Compound, List, ByteArray, IntArray, and LongArray are excluded.",
+      "checkpoint": "At scalar tag-kind dispatch before payload materialization."
+    },
+    "compressed_bytes_total": {
+      "measure": "Checked sum of selected-file compressed coordinates.",
+      "checkpoint": "Before adding each selected file to the aggregate."
+    },
+    "decompressed_bytes_total": {
+      "measure": "Checked sum of complete unnamed-Compound decompressed coordinates.",
+      "checkpoint": "For each returned decompressed chunk after the per-file check and before NBT consumes the bytes."
+    },
+    "compound_containers_total": {
+      "measure": "Checked sum of per-file CompoundTag instance counts.",
+      "checkpoint": "Before accepting each next Compound container event."
+    },
+    "compound_field_entries_total": {
+      "measure": "Checked sum of per-file Compound child-entry counts.",
+      "checkpoint": "At each field event before field-name materialization."
+    },
+    "list_elements_total": {
+      "measure": "Checked sum of all ListTag payload elements.",
+      "checkpoint": "At each list-length prefix before element materialization."
+    },
+    "byte_array_elements_total": {
+      "measure": "Checked sum of all byte-array payload elements.",
+      "checkpoint": "At each array-length prefix before payload allocation."
+    },
+    "int_array_elements_total": {
+      "measure": "Checked sum of all int-array payload elements.",
+      "checkpoint": "At each array-length prefix before payload allocation."
+    },
+    "long_array_elements_total": {
+      "measure": "Checked sum of all long-array payload elements.",
+      "checkpoint": "At each array-length prefix before payload allocation."
+    },
+    "modified_utf8_bytes_total": {
+      "measure": "Checked sum of modified-UTF bytes in field names and StringTag payloads.",
+      "checkpoint": "At each unsigned UTF byte-length prefix before per-file/aggregate state publication."
+    },
+    "scalar_tags_total": {
+      "measure": "Checked sum of included scalar tag-kind events.",
+      "checkpoint": "At each scalar tag-kind dispatch before payload materialization."
+    },
+    "attachment_admissions": {
+      "measure": "Each non-null gramarye:player_skills Tag delivered once to the shared P4-C admission core; Ready, PreservedRaw, and OversizeMarker are attempts.",
+      "checkpoint": "After P4-C admission completes and before accepting the next selected record."
+    },
+    "raw_root_claims": {
+      "measure": "Online/offline latest and equipped references plus journal targets before any deduplication.",
+      "checkpoint": "At raw claim capture before SkillRetentionRootSnapshot construction."
+    }
+  },
+  "dependency_edges": [
+    {"lower": "attachment_admissions", "upper": "relevant_records"},
+    {"lower": "relevant_records", "upper": "directory_entries"},
+    {"lower": "compressed_bytes_per_file", "upper": "compressed_bytes_total"},
+    {"lower": "decompressed_bytes_per_file", "upper": "decompressed_bytes_total"},
+    {"lower": "compound_containers_per_file", "upper": "compound_containers_total"},
+    {"lower": "compound_field_entries_per_file", "upper": "compound_field_entries_total"},
+    {"lower": "list_elements_per_file", "upper": "list_elements_total"},
+    {"lower": "byte_array_elements_per_file", "upper": "byte_array_elements_total"},
+    {"lower": "int_array_elements_per_file", "upper": "int_array_elements_total"},
+    {"lower": "long_array_elements_per_file", "upper": "long_array_elements_total"},
+    {"lower": "modified_utf8_bytes_per_file", "upper": "modified_utf8_bytes_total"},
+    {"lower": "scalar_tags_per_file", "upper": "scalar_tags_total"}
+  ],
+  "failure_precedence": [
+    "journal_readiness",
+    "directory_entries",
+    "source_selection",
+    "relevant_records",
+    "per_file_compressed",
+    "aggregate_compressed_checked_add",
+    "gzip_framing",
+    "per_file_decompressed",
+    "aggregate_decompressed_checked_add",
+    "compound_field_checkpoint",
+    "depth_container_scalar_kind",
+    "list_length",
+    "typed_array_length",
+    "modified_utf_prefix",
+    "data_version",
+    "p4c_admission",
+    "attachment_admission_counter",
+    "raw_root_capture",
+    "store_reference_owner_audit"
+  ],
+  "heap": {
+    "qualification_mib": 1536
+  },
+  "disk_budget": {
+    "bytes": 12884901888
+  },
+  "overrun_policy": "INCOMPLETE_AND_CONTINUE"
+}

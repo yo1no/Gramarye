@@ -61,6 +61,14 @@ def p4E0ResearchFixedHeapJvmArgs = [
         "-Xmx${p4E0ResearchHeapMiB}m",
         '-XX:+ExitOnOutOfMemoryError',
 ]
+def p4E0R2QSmokeJvmArgs = [
+        '-Xms512m',
+        '-Xmx1024m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
+def p4E0R2QSmokeTimeoutSeconds = 600
+def p4E0R2QDedicatedGameDirectory =
+        layout.buildDirectory.dir('p4-e0-r2q/dedicated-smoke')
 def p4E0ResearchR2HeapGridMiB = [1024, 1280, 1536, 1792, 2048]
 def p4E0ResearchR2Profiles = [
         [id: 'BALANCED', token: 'Balanced'],
@@ -731,6 +739,24 @@ neoForge {
             taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
         }
 
+        p4E0R2QDedicatedSmoke {
+            type = 'gameTestServer'
+            sourceSet = p4E0ResearchGameTestSourceSet
+            gameDirectory = p4E0R2QDedicatedGameDirectory.get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces',
+                    'gramarye_p4_e0_research'
+            systemProperty 'gramarye.p4e0.research.fixtureRoot',
+                    layout.buildDirectory.dir(
+                            'p4-e0-r2q/smoke').get().asFile.absolutePath
+            systemProperty 'gramarye.p4e0.research.reportRoot',
+                    layout.buildDirectory.dir(
+                            'reports/p4-e0-r2q/smoke').get().asFile.absolutePath
+            systemProperty 'gramarye.p4e0.research.runMode', 'r2q-smoke'
+            jvmArguments.addAll(p4E0R2QSmokeJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
+        }
+
         p4E0ResearchR2CombinedCoordinates.each { coordinate ->
                 def researchRunIndex = coordinate['researchIndex'] as int
                 def profileId = coordinate['profileId'] as String
@@ -810,6 +836,7 @@ neoForge {
                     : name.startsWith('p4C2') ? p4C2ProbeMod
                     : name.startsWith('p4D3') ? p4D3ProbeMod
                     : (name == 'p4E0ResearchDedicatedSmoke'
+                            || name == 'p4E0R2QDedicatedSmoke'
                             || name.startsWith('p4E0ResearchCombined'))
                             ? p4E0ResearchMod : productionMod])
 
@@ -2239,6 +2266,158 @@ tasks.register('p4E0ResearchStudy') {
     dependsOn(verifyP4E0ResearchReportSchema)
 }
 
+def p4E0R2QFixtureDirectory =
+        layout.buildDirectory.dir('p4-e0-r2q/smoke')
+def p4E0R2QReportDirectory =
+        layout.buildDirectory.dir('reports/p4-e0-r2q/smoke')
+def p4E0R2QCommandWorkingDirectory =
+        layout.buildDirectory.dir('p4-e0-r2q/command-work')
+def p4E0R2QMainClass =
+        'com.yo1no.gramarye.magic.definition.research.P4E0R2QMain'
+
+def verifyP4E0R2QConfiguration = tasks.register(
+        'verifyP4E0R2QConfiguration', Exec) {
+    group = 'verification'
+    description = 'Verifies the isolated P4-E0-R2Q qualification-harness configuration.'
+    dependsOn(verifyP4E0ResearchConfiguration)
+    inputs.file(layout.projectDirectory.file('build.gradle'))
+    inputs.file(layout.projectDirectory.file(
+            'scripts/verify-p4-e0-r2q-configuration.sh'))
+    inputs.files(fileTree('src/p4E0Research/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4E0Research/resources'))
+    inputs.files(fileTree('src/p4E0ResearchGameTest/java') { include '**/*.java' })
+    inputs.files(fileTree('src/test/java') { include '**/*.java' })
+    workingDir(layout.projectDirectory)
+    commandLine(
+            'bash',
+            layout.projectDirectory.file(
+                    'scripts/verify-p4-e0-r2q-configuration.sh').asFile.absolutePath)
+}
+
+def registerP4E0R2QCommand = {
+        String taskName, String command, String description ->
+    tasks.register(taskName, JavaExec) { researchTask ->
+        researchTask.group = 'verification'
+        researchTask.description = description
+        dependsOn(tasks.named(p4E0ResearchSourceSet.classesTaskName))
+        javaLauncher.set(p4A3JavaLauncher)
+        classpath = p4E0ResearchSourceSet.runtimeClasspath
+        mainClass.set(p4E0R2QMainClass)
+        workingDir(p4E0R2QCommandWorkingDirectory)
+        args(
+                command,
+                p4E0R2QFixtureDirectory.get().asFile.absolutePath,
+                p4E0R2QReportDirectory.get().asFile.absolutePath,
+                p4E0R2QDedicatedGameDirectory.get().dir('world')
+                        .asFile.absolutePath)
+        jvmArgs(p4E0R2QSmokeJvmArgs)
+        timeout.set(java.time.Duration.ofSeconds(p4E0R2QSmokeTimeoutSeconds))
+        doFirst {
+            p4E0R2QCommandWorkingDirectory.get().asFile.mkdirs()
+        }
+        outputs.upToDateWhen { false }
+    }
+}
+
+def verifyP4E0R2QPreflightTests = tasks.register(
+        'verifyP4E0R2QPreflightTests') {
+    group = 'verification'
+    description = 'Runs every pure R2Q-A arithmetic, fixture, scanner, and phase preflight.'
+    dependsOn(verifyP4E0R2QConfiguration)
+    dependsOn(tasks.named('test'))
+}
+
+def prepareP4E0R2Q = registerP4E0R2QCommand(
+        'prepareP4E0R2Q',
+        'prepare',
+        'Builds bounded, deterministic P4-E0-R2Q smoke controls.')
+prepareP4E0R2Q.configure {
+    dependsOn(verifyP4E0R2QPreflightTests)
+    doFirst {
+        p4E0R2QDedicatedGameDirectory.get().asFile.deleteDir()
+    }
+}
+
+def verifyP4E0R2QProfile = registerP4E0R2QCommand(
+        'verifyP4E0R2QProfile',
+        'verify-profile',
+        'Verifies the locked R2Q profile, case plan, and exact arithmetic without formal children.')
+verifyP4E0R2QProfile.configure {
+    dependsOn(prepareP4E0R2Q)
+}
+
+def runP4E0R2QSmoke = registerP4E0R2QCommand(
+        'runP4E0R2QSmoke',
+        'run-smoke',
+        'Runs the reduced standalone P4-E0-R2Q smoke; it is not qualification evidence.')
+runP4E0R2QSmoke.configure {
+    dependsOn(verifyP4E0R2QProfile)
+}
+
+def runP4E0R2QDedicatedSmoke =
+        tasks.named('runP4E0R2QDedicatedSmoke', JavaExec)
+runP4E0R2QDedicatedSmoke.configure {
+    dependsOn(runP4E0R2QSmoke)
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(p4E0R2QSmokeTimeoutSeconds))
+    finalizedBy(cleanP4E0ResearchPostRunLogs)
+}
+
+def verifyP4E0R2QSmokeOutput = registerP4E0R2QCommand(
+        'verifyP4E0R2QSmokeOutput',
+        'verify-smoke',
+        'Strictly verifies bounded standalone and dedicated R2Q smoke output.')
+verifyP4E0R2QSmokeOutput.configure {
+    dependsOn(runP4E0R2QDedicatedSmoke)
+}
+
+tasks.register('p4E0R2QSmoke') {
+    group = 'verification'
+    description = 'Runs only the reduced R2Q-A smoke; no formal qualification child is started.'
+    dependsOn(verifyP4E0R2QSmokeOutput)
+}
+
+def p4E0R2QFormalMode = providers.gradleProperty('p4E0R2QFormal')
+def p4E0R2QGitStatus = providers.exec {
+    commandLine('git', 'status', '--porcelain=v2', '--untracked-files=all')
+}.standardOutput.asText.map { output -> output.trim() }
+def p4E0R2QGitHead = providers.exec {
+    commandLine('git', 'rev-parse', 'HEAD')
+}.standardOutput.asText.map { output -> output.trim() }
+def p4E0R2QGitTree = providers.exec {
+    commandLine('git', 'rev-parse', 'HEAD^{tree}')
+}.standardOutput.asText.map { output -> output.trim() }
+def p4E0R2QOriginMain = providers.exec {
+    commandLine('git', 'rev-parse', 'origin/main')
+}.standardOutput.asText.map { output -> output.trim() }
+
+tasks.register('p4E0R2QStudy') {
+    group = 'verification'
+    description = 'Reserved fail-closed R2Q-B entry point; R2Q-A starts no formal children.'
+    doFirst {
+        if (!p4E0R2QFormalMode.isPresent()
+                || p4E0R2QFormalMode.get() != 'true') {
+            throw new GradleException(
+                    'P4-E0-R2Q formal mode requires -Pp4E0R2QFormal=true')
+        }
+        if (!p4E0R2QGitStatus.get().isEmpty()) {
+            throw new GradleException(
+                    'P4-E0-R2Q formal mode requires a clean worktree')
+        }
+        def head = p4E0R2QGitHead.get()
+        def tree = p4E0R2QGitTree.get()
+        def originMain = p4E0R2QOriginMain.get()
+        if (!(head ==~ /[0-9a-f]{40}/)
+                || !(tree ==~ /[0-9a-f]{40}/)
+                || head != originMain) {
+            throw new GradleException(
+                    'P4-E0-R2Q formal mode requires committed HEAD/tree at origin/main')
+        }
+        throw new GradleException(
+                'P4-E0-R2Q formal execution is reserved for R2Q-B')
+    }
+}
+
 tasks.named('test', Test).configure {
     useJUnitPlatform()
 }
@@ -2499,4 +2678,5 @@ tasks.named('check').configure {
     dependsOn verifyP4C2Configuration
     dependsOn verifyP4D3Configuration
     dependsOn verifyP4E0ResearchConfiguration
+    dependsOn verifyP4E0R2QConfiguration
 }
