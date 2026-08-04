@@ -3,11 +3,13 @@ package com.yo1no.gramarye.magic.definition.research;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -119,9 +121,12 @@ final class P4E0ResearchR2QFormalContractTest {
                 () -> assertTrue(build.contains(
                         "layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/runtime')")),
                 () -> assertTrue(build.contains(
-                        "layout.buildDirectory.dir('reports/p4-e0-r2q-runner-smoke/runner')")),
+                        "layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/supervisor')")),
+                () -> assertTrue(build.contains(
+                        "layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/supervisor/runner')")),
                 () -> assertFalse(build.contains(
                         "layout.buildDirectory.dir('reports/p4-e0-r2q/smoke')")),
+                () -> assertFalse(build.contains("reports/p4-e0-r2q-runner-smoke")),
                 () -> assertTrue(build.contains("runP4E0R2QSupervisorSmoke")),
                 () -> assertTrue(build.contains("runP4E0R2QRunnerDedicatedSmoke")),
                 () -> assertTrue(build.contains("verifyP4E0R2QSupervisorSmoke")));
@@ -171,6 +176,110 @@ final class P4E0ResearchR2QFormalContractTest {
                             || block.contains("P4E0R2QCase"),
                     () -> "normal task owns formal dependency: " + marker);
         }
+
+        for (var marker : List.of(
+                "prepareP4E0R2QFormalStudy.configure {",
+                "aggregateP4E0R2QFormal.configure {",
+                "verifyP4E0R2QFormalArtifacts.configure {",
+                "tasks.register('p4E0R2QStudy') {")) {
+            var block = bracedBlock(build, marker);
+            assertFalse(block.contains("runP4E0R2QSmoke")
+                            || block.contains("runP4E0R2QDedicatedSmoke")
+                            || block.contains("runP4E0R2QSupervisorSmoke")
+                            || block.contains("runP4E0R2QRunnerDedicatedSmoke"),
+                    () -> "formal task owns smoke dependency: " + marker);
+        }
+    }
+
+    @Test
+    void formalOfficialSmokeAndWorkRootsRejectEqualityAndBothAncestorDirections()
+            throws Exception {
+        var siblings = List.of(
+                temporaryDirectory.resolve("work"),
+                temporaryDirectory.resolve("official"),
+                temporaryDirectory.resolve("smoke"));
+        P4E0R2QFormalMain.requirePairwiseDisjointRoots(
+                siblings.get(0), siblings.get(1), siblings.get(2));
+
+        for (var left = 0; left < siblings.size(); left++) {
+            for (var right = left + 1; right < siblings.size(); right++) {
+                var equal = new ArrayList<>(siblings);
+                equal.set(right, equal.get(left));
+                assertThrows(IOException.class, () -> P4E0R2QFormalMain
+                        .requirePairwiseDisjointRoots(equal.get(0), equal.get(1), equal.get(2)));
+
+                var leftAncestor = new ArrayList<>(siblings);
+                leftAncestor.set(right, leftAncestor.get(left).resolve("child"));
+                assertThrows(IOException.class, () -> P4E0R2QFormalMain
+                        .requirePairwiseDisjointRoots(
+                                leftAncestor.get(0), leftAncestor.get(1), leftAncestor.get(2)));
+
+                var rightAncestor = new ArrayList<>(siblings);
+                rightAncestor.set(left, rightAncestor.get(right).resolve("child"));
+                assertThrows(IOException.class, () -> P4E0R2QFormalMain
+                        .requirePairwiseDisjointRoots(
+                                rightAncestor.get(0), rightAncestor.get(1), rightAncestor.get(2)));
+            }
+        }
+    }
+
+    @Test
+    void generatedSkeletonAcceptsOnlyExactCasesGamesAndExactMetadata() throws Exception {
+        var repository = temporaryDirectory.resolve("owned-repository");
+        var work = createGeneratedSkeleton(repository);
+        Files.writeString(work.resolve(".DS_Store"), "root metadata");
+        Files.writeString(work.resolve("cases/.DS_Store"), "cases metadata");
+        for (var index = 0; index < P4E0R2QCasePlan.CASE_COUNT; index++) {
+            var token = String.format(java.util.Locale.ROOT, "%02d", index);
+            Files.writeString(work.resolve("cases").resolve(token).resolve(".DS_Store"),
+                    "case metadata");
+            Files.writeString(work.resolve("cases").resolve(token).resolve("game/.DS_Store"),
+                    "game metadata");
+        }
+
+        P4E0R2QFormalMain.removeGeneratedSkeleton(repository, work);
+        assertFalse(Files.exists(work));
+
+        var outside = temporaryDirectory.resolve("outside/formal");
+        Files.createDirectories(outside);
+        assertThrows(IOException.class,
+                () -> P4E0R2QFormalMain.removeGeneratedSkeleton(repository, outside));
+        assertTrue(Files.isDirectory(outside));
+    }
+
+    @Test
+    void generatedSkeletonRejectsResultMarkerUnknownAndSymlinkWithoutPartialDeletion()
+            throws Exception {
+        var forbiddenNames = List.of(
+                "child-result.json", "verified-result.json", "running.marker",
+                "exit-code.txt", "timeout.marker", "parent-deadline.marker", ".unknown");
+        for (var index = 0; index < forbiddenNames.size(); index++) {
+            var repository = temporaryDirectory.resolve("invalid-" + index);
+            var work = createGeneratedSkeleton(repository);
+            var forbidden = work.resolve("cases/28/game").resolve(forbiddenNames.get(index));
+            Files.writeString(forbidden, "must be preserved");
+            var before = treeEntryCount(work);
+            assertThrows(IOException.class,
+                    () -> P4E0R2QFormalMain.removeGeneratedSkeleton(repository, work));
+            assertAll(
+                    () -> assertEquals(before, treeEntryCount(work)),
+                    () -> assertTrue(Files.isRegularFile(forbidden)),
+                    () -> assertTrue(Files.isDirectory(work.resolve("cases/00/game"))));
+        }
+
+        var symlinkRepository = temporaryDirectory.resolve("invalid-symlink");
+        var symlinkWork = createGeneratedSkeleton(symlinkRepository);
+        var target = temporaryDirectory.resolve("symlink-target");
+        Files.writeString(target, "target");
+        var link = symlinkWork.resolve("cases/28/game/link");
+        Files.createSymbolicLink(link, target);
+        var before = treeEntryCount(symlinkWork);
+        assertThrows(IOException.class, () ->
+                P4E0R2QFormalMain.removeGeneratedSkeleton(symlinkRepository, symlinkWork));
+        assertAll(
+                () -> assertEquals(before, treeEntryCount(symlinkWork)),
+                () -> assertTrue(Files.isSymbolicLink(link)),
+                () -> assertTrue(Files.isDirectory(symlinkWork.resolve("cases/00/game"))));
     }
 
     @Test
@@ -259,6 +368,21 @@ final class P4E0ResearchR2QFormalContractTest {
                                 "P4E0R2QFormalResult.java",
                                 "P4E0R2QFormalWorkload.java"),
                         formalResearchNames()));
+    }
+
+    private static Path createGeneratedSkeleton(Path repository) throws IOException {
+        var work = repository.resolve("build/p4-e0-r2q/formal");
+        for (var index = 0; index < P4E0R2QCasePlan.CASE_COUNT; index++) {
+            var token = String.format(java.util.Locale.ROOT, "%02d", index);
+            Files.createDirectories(work.resolve("cases").resolve(token).resolve("game"));
+        }
+        return work;
+    }
+
+    private static long treeEntryCount(Path root) throws IOException {
+        try (var paths = Files.walk(root)) {
+            return paths.count();
+        }
     }
 
     private static Set<String> formalResearchNames() throws IOException {

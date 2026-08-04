@@ -97,14 +97,32 @@ def p4E0R2QFormalWorkDirectory =
         layout.buildDirectory.dir('p4-e0-r2q/formal')
 def p4E0R2QFormalReportDirectory =
         layout.buildDirectory.dir('reports/p4-e0-r2q')
+def p4E0R2QSmokeReportRootDirectory =
+        layout.buildDirectory.dir('reports/p4-e0-r2q-smoke')
 def p4E0R2QFormalCommandWorkingDirectory =
         layout.buildDirectory.dir('p4-e0-r2q/formal-command-work')
 def p4E0R2QRunnerSmokeDirectory =
         layout.buildDirectory.dir('p4-e0-r2q/runner-smoke')
 def p4E0R2QRunnerSmokeReportDirectory =
-        layout.buildDirectory.dir('reports/p4-e0-r2q-runner-smoke')
+        layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/supervisor')
 def p4E0R2QRunnerDedicatedReportDirectory =
-        layout.buildDirectory.dir('reports/p4-e0-r2q-runner-smoke/runner')
+        layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/supervisor/runner')
+def p4E0R2QConfiguredRootPaths = [
+        p4E0R2QFormalWorkDirectory.get().asFile.toPath().toAbsolutePath().normalize(),
+        p4E0R2QFormalReportDirectory.get().asFile.toPath().toAbsolutePath().normalize(),
+        p4E0R2QSmokeReportRootDirectory.get().asFile.toPath().toAbsolutePath().normalize(),
+]
+for (def leftIndex = 0; leftIndex < p4E0R2QConfiguredRootPaths.size(); leftIndex++) {
+    for (def rightIndex = leftIndex + 1;
+            rightIndex < p4E0R2QConfiguredRootPaths.size(); rightIndex++) {
+        def left = p4E0R2QConfiguredRootPaths[leftIndex]
+        def right = p4E0R2QConfiguredRootPaths[rightIndex]
+        if (left == right || left.startsWith(right) || right.startsWith(left)) {
+            throw new GradleException(
+                    'P4-E0-R2Q official, smoke, and work roots must be pairwise disjoint')
+        }
+    }
+}
 def p4E0ResearchR2HeapGridMiB = [1024, 1280, 1536, 1792, 2048]
 def p4E0ResearchR2Profiles = [
         [id: 'BALANCED', token: 'Balanced'],

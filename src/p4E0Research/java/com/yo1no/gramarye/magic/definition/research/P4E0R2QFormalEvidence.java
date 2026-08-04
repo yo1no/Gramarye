@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /** Bounded formal controls, case evidence, archives, and all-or-nothing publication. */
@@ -43,6 +44,7 @@ final class P4E0R2QFormalEvidence {
     static final String SUMMARY_FILE = "summary.md";
     static final String PROVENANCE_FILE = "PROVENANCE.txt";
     static final String CHECKSUMS_FILE = "SHA256SUMS.txt";
+    static final String MACOS_METADATA_FILE = ".DS_Store";
     static final Set<String> OFFICIAL_FILES = Set.of(
             RUNS_FILE,
             PROFILE_FILE,
@@ -50,6 +52,27 @@ final class P4E0R2QFormalEvidence {
             SUMMARY_FILE,
             PROVENANCE_FILE,
             CHECKSUMS_FILE);
+
+    enum OfficialOutputClassification {
+        ABSENT,
+        EMPTY_OR_METADATA_ONLY,
+        VALID_OFFICIAL_SET,
+        MALFORMED_NONEMPTY_OUTPUT
+    }
+
+    record OfficialOutputInspection(
+            OfficialOutputClassification classification,
+            Optional<StudyControl> validatedControl) {
+        OfficialOutputInspection {
+            Objects.requireNonNull(classification, "classification");
+            Objects.requireNonNull(validatedControl, "validatedControl");
+            if ((classification == OfficialOutputClassification.VALID_OFFICIAL_SET)
+                    != validatedControl.isPresent()) {
+                throw new IllegalArgumentException(
+                        "only valid official output may carry a validated control");
+            }
+        }
+    }
 
     private P4E0R2QFormalEvidence() {
     }
@@ -349,6 +372,67 @@ final class P4E0R2QFormalEvidence {
         }
     }
 
+    static OfficialOutputInspection inspectOfficialOutput(Path officialRoot)
+            throws IOException {
+        var official = safeRoot(officialRoot);
+        if (!Files.exists(official, LinkOption.NOFOLLOW_LINKS)) {
+            return new OfficialOutputInspection(
+                    OfficialOutputClassification.ABSENT, Optional.empty());
+        }
+        if (!Files.isDirectory(official, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(official)) {
+            return new OfficialOutputInspection(
+                    OfficialOutputClassification.MALFORMED_NONEMPTY_OUTPUT,
+                    Optional.empty());
+        }
+        var names = directoryEntryNames(official);
+        if (names.isEmpty()
+                || (names.equals(Set.of(MACOS_METADATA_FILE))
+                        && isRegularNonSymlink(official.resolve(MACOS_METADATA_FILE)))) {
+            return new OfficialOutputInspection(
+                    OfficialOutputClassification.EMPTY_OR_METADATA_ONLY,
+                    Optional.empty());
+        }
+        if (!names.equals(OFFICIAL_FILES) || !hasExactOfficialFileShape(official)) {
+            return new OfficialOutputInspection(
+                    OfficialOutputClassification.MALFORMED_NONEMPTY_OUTPUT,
+                    Optional.empty());
+        }
+        try {
+            return new OfficialOutputInspection(
+                    OfficialOutputClassification.VALID_OFFICIAL_SET,
+                    Optional.of(readOfficialControl(official)));
+        } catch (IOException exception) {
+            return new OfficialOutputInspection(
+                    OfficialOutputClassification.MALFORMED_NONEMPTY_OUTPUT,
+                    Optional.empty());
+        }
+    }
+
+    static void removeEmptyOrMetadataOnlyOfficial(
+            Path repositoryRoot,
+            Path officialRoot,
+            OfficialOutputInspection expectedInspection) throws IOException {
+        var repository = safeRoot(repositoryRoot);
+        var official = safeRoot(officialRoot);
+        var expectedOwnedRoot = repository.resolve("build/reports/p4-e0-r2q").normalize();
+        if (!official.equals(expectedOwnedRoot)
+                || expectedInspection.classification()
+                        != OfficialOutputClassification.EMPTY_OR_METADATA_ONLY) {
+            throw new IOException("formal metadata cleanup is outside its owned build root");
+        }
+        var current = inspectOfficialOutput(official);
+        if (current.classification()
+                != OfficialOutputClassification.EMPTY_OR_METADATA_ONLY) {
+            throw new IOException("formal metadata-only output changed before cleanup");
+        }
+        var metadata = official.resolve(MACOS_METADATA_FILE);
+        if (Files.exists(metadata, LinkOption.NOFOLLOW_LINKS)) {
+            Files.delete(metadata);
+        }
+        Files.delete(official);
+    }
+
     static void aggregateAndPublish(
             Path workRoot,
             Path officialRoot,
@@ -383,6 +467,9 @@ final class P4E0R2QFormalEvidence {
             writeNewBounded(staging.resolve(CHECKSUMS_FILE), checksums(staging),
                     MAXIMUM_CONTROL_BYTES, false);
             requireOfficialDirectory(staging, control);
+            if (Files.exists(official, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("official R2Q evidence appeared before publication");
+            }
             mover.move(staging, official);
             requireOfficialDirectory(official, control);
             completed = true;
@@ -483,7 +570,7 @@ final class P4E0R2QFormalEvidence {
                 throw new IOException("stale formal archive file set changed");
             }
         }
-        if (!readOfficialControl(directory).equals(previous)) {
+        if (!readProvenanceControl(directory).equals(previous)) {
             throw new IOException("stale formal archive identity changed");
         }
         var stale = readBounded(directory.resolve("STALE_PROVENANCE.txt"),
@@ -803,6 +890,16 @@ final class P4E0R2QFormalEvidence {
     }
 
     static StudyControl readOfficialControl(Path directory) throws IOException {
+        var official = safeRoot(directory);
+        if (!hasExactOfficialFileShape(official)) {
+            throw new IOException("official formal evidence file set is incomplete");
+        }
+        var control = readProvenanceControl(official);
+        requireOfficialDirectory(official, control);
+        return control;
+    }
+
+    private static StudyControl readProvenanceControl(Path directory) throws IOException {
         var text = readBounded(directory.resolve(PROVENANCE_FILE), MAXIMUM_CONTROL_BYTES);
         if (!text.endsWith("\n") || text.indexOf('\r') >= 0) {
             throw new IOException("formal provenance framing changed");
@@ -1056,6 +1153,37 @@ final class P4E0R2QFormalEvidence {
                 + "\nmaximum=" + maximumBytes
                 + "\nsha256=" + checksum + "\n";
         writeNewBounded(target, facts, MAXIMUM_CONTROL_BYTES, true);
+    }
+
+    private static Set<String> directoryEntryNames(Path directory) throws IOException {
+        var names = new HashSet<String>();
+        try (var entries = Files.newDirectoryStream(directory)) {
+            for (var entry : entries) {
+                if (!names.add(entry.getFileName().toString())) {
+                    throw new IOException("formal evidence directory contains duplicate entries");
+                }
+            }
+        }
+        return Set.copyOf(names);
+    }
+
+    private static boolean hasExactOfficialFileShape(Path directory) throws IOException {
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(directory)
+                || !directoryEntryNames(directory).equals(OFFICIAL_FILES)) {
+            return false;
+        }
+        for (var name : OFFICIAL_FILES) {
+            if (!isRegularNonSymlink(directory.resolve(name))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isRegularNonSymlink(Path path) {
+        return Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+                && !Files.isSymbolicLink(path);
     }
 
     private static void requireOfficialDirectory(Path directory, StudyControl control)

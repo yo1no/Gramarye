@@ -34,6 +34,9 @@ FORMAL_TASK_LOOP_BLOCK=''
 COUNTER_BLOCK=''
 CASE_KIND_BLOCK=''
 RUNTIME_BLOCK=''
+OFFICIAL_CLASSIFICATION_BLOCK=''
+SMOKE_TASK_BLOCK=''
+FORMAL_ENTRY_BLOCK=''
 
 cleanup() {
     local temporary=''
@@ -49,7 +52,10 @@ cleanup() {
         "${FORMAL_TASK_LOOP_BLOCK}" \
         "${COUNTER_BLOCK}" \
         "${CASE_KIND_BLOCK}" \
-        "${RUNTIME_BLOCK}"; do
+        "${RUNTIME_BLOCK}" \
+        "${OFFICIAL_CLASSIFICATION_BLOCK}" \
+        "${SMOKE_TASK_BLOCK}" \
+        "${FORMAL_ENTRY_BLOCK}"; do
         if [[ -n "${temporary}" ]]; then
             rm -f -- "${temporary}"
         fi
@@ -436,9 +442,14 @@ verify_build_and_formal_gate() {
         'def p4E0R2QSmokeTimeoutSeconds = 600' \
         "layout.buildDirectory.dir('p4-e0-r2q/dedicated-smoke')" \
         "layout.buildDirectory.dir('p4-e0-r2q/runner-dedicated-smoke')" \
+        "layout.buildDirectory.dir('reports/p4-e0-r2q-smoke')" \
         "layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/runtime')" \
-        "layout.buildDirectory.dir('reports/p4-e0-r2q-runner-smoke/runner')" \
+        "layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/supervisor')" \
+        "layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/supervisor/runner')" \
         "layout.buildDirectory.dir('reports/p4-e0-r2q')" \
+        'p4E0R2QConfiguredRootPaths = [' \
+        'left == right || left.startsWith(right) || right.startsWith(left)' \
+        'P4-E0-R2Q official, smoke, and work roots must be pairwise disjoint' \
         'p4E0R2QDedicatedGameDirectory.get().asFile.deleteDir()' \
         "sourceSet = p4E0ResearchGameTestSourceSet" \
         "systemProperty 'gramarye.p4e0.research.runMode', 'r2q-smoke'" \
@@ -515,6 +526,39 @@ verify_build_and_formal_gate() {
     forbid_fixed build.gradle \
         "layout.buildDirectory.dir('reports/p4-e0-r2q/smoke')" \
         'P4-E0-R2Q smoke must not write below the official artifact root'
+    forbid_fixed build.gradle \
+        'reports/p4-e0-r2q-runner-smoke' \
+        'P4-E0-R2Q must not retain the obsolete runner-smoke namespace'
+
+    SMOKE_TASK_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-smoke-tasks.XXXXXX")" \
+        || fail 'P4-E0-R2Q verifier could not create smoke-task block'
+    sed -n "/^def prepareP4E0R2Q =/,/^def p4E0R2QGitStatus =/p" \
+        build.gradle > "${SMOKE_TASK_BLOCK}"
+    [[ -s "${SMOKE_TASK_BLOCK}" ]] \
+        || fail 'P4-E0-R2Q smoke task block is missing'
+    for marker in \
+        'prepareP4E0R2QFormalStudy' \
+        'aggregateP4E0R2QFormal' \
+        'verifyP4E0R2QFormalArtifacts' \
+        "tasks.register('p4E0R2QStudy')"; do
+        forbid_fixed "${SMOKE_TASK_BLOCK}" "${marker}" \
+            "P4-E0-R2Q smoke graph depends on formal task ${marker}"
+    done
+
+    FORMAL_ENTRY_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-formal-entry.XXXXXX")" \
+        || fail 'P4-E0-R2Q verifier could not create formal-entry block'
+    sed -n "/^def p4E0R2QGitStatus =/,/^tasks.named('test', Test).configure/p" \
+        build.gradle > "${FORMAL_ENTRY_BLOCK}"
+    [[ -s "${FORMAL_ENTRY_BLOCK}" ]] \
+        || fail 'P4-E0-R2Q formal-only task spine is missing'
+    for marker in \
+        'runP4E0R2QSmoke' \
+        'runP4E0R2QDedicatedSmoke' \
+        'runP4E0R2QSupervisorSmoke' \
+        'runP4E0R2QRunnerDedicatedSmoke'; do
+        forbid_fixed "${FORMAL_ENTRY_BLOCK}" "${marker}" \
+            "P4-E0-R2Q formal spine depends on smoke task ${marker}"
+    done
 
     FORMAL_RUN_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-runs.XXXXXX")" \
         || fail 'P4-E0-R2Q verifier could not create formal-run block'
@@ -810,6 +854,24 @@ verify_formal_model_contract() {
     local driver='src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalDedicatedDriver.java'
     local marker=''
 
+    OFFICIAL_CLASSIFICATION_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-official-classification.XXXXXX")" \
+        || fail 'P4-E0-R2Q verifier could not create official-classification block'
+    sed -n '/^    enum OfficialOutputClassification {$/,/^    }$/p' \
+        "${evidence}" > "${OFFICIAL_CLASSIFICATION_BLOCK}"
+    [[ -s "${OFFICIAL_CLASSIFICATION_BLOCK}" ]] \
+        || fail 'P4-E0-R2Q official-output classification is missing'
+    require_ere_count "${OFFICIAL_CLASSIFICATION_BLOCK}" \
+        '^[[:space:]]+(ABSENT|EMPTY_OR_METADATA_ONLY|VALID_OFFICIAL_SET|MALFORMED_NONEMPTY_OUTPUT)[,]?$' \
+        4 'P4-E0-R2Q official-output classification must contain exactly four values'
+    for marker in \
+        'ABSENT,' \
+        'EMPTY_OR_METADATA_ONLY,' \
+        'VALID_OFFICIAL_SET,' \
+        'MALFORMED_NONEMPTY_OUTPUT'; do
+        require_count "${OFFICIAL_CLASSIFICATION_BLOCK}" "${marker}" 1 \
+            "P4-E0-R2Q official-output classification changed: ${marker}"
+    done
+
     for marker in \
         'MAXIMUM_JSON_BYTES = 65_536' \
         'enum ProcessClassification {' \
@@ -863,6 +925,21 @@ verify_formal_model_contract() {
         'SUMMARY_FILE = "summary.md"' \
         'PROVENANCE_FILE = "PROVENANCE.txt"' \
         'CHECKSUMS_FILE = "SHA256SUMS.txt"' \
+        'MACOS_METADATA_FILE = ".DS_Store"' \
+        'inspectOfficialOutput(Path officialRoot)' \
+        'removeEmptyOrMetadataOnlyOfficial(' \
+        'repository.resolve("build/reports/p4-e0-r2q").normalize()' \
+        'names.equals(Set.of(MACOS_METADATA_FILE))' \
+        'hasExactOfficialFileShape(official)' \
+        'Optional.of(readOfficialControl(official))' \
+        'if (!hasExactOfficialFileShape(official))' \
+        'var control = readProvenanceControl(official)' \
+        'requireOfficialDirectory(official, control)' \
+        '!readProvenanceControl(directory).equals(previous)' \
+        'formal metadata-only output changed before cleanup' \
+        'Files.delete(metadata)' \
+        'Files.delete(official)' \
+        'official R2Q evidence appeared before publication' \
         'results.size() != P4E0R2QCasePlan.CASE_COUNT' \
         'PublicationMover mover' \
         'mover.move(staging, official)' \
@@ -882,6 +959,10 @@ verify_formal_model_contract() {
         'P4-E0-R2Q formal evidence must never replace an artifact or archive'
     forbid_fixed "${evidence}" 'Files.move(source, target)' \
         'P4-E0-R2Q formal publication must not fall back to a non-atomic move'
+    forbid_fixed "${evidence}" 'Files.isHidden(' \
+        'P4-E0-R2Q formal evidence must not ignore arbitrary hidden files'
+    forbid_ere "${evidence}" 'deleteTree[[:space:]]*\([[:space:]]*official(Root)?[[:space:]]*\)' \
+        'P4-E0-R2Q metadata cleanup must not recursively delete the official root'
 
     for marker in \
         'var staging = parent.resolve(".p4-e0-r2q-" + control.studyId() + ".staging")' \
@@ -930,6 +1011,19 @@ verify_formal_model_contract() {
     done
 
     for marker in \
+        'requirePairwiseDisjointRoots(workRoot, officialRoot, smokeRoot)' \
+        'left.equals(right) || left.startsWith(right) || right.startsWith(left)' \
+        'case ABSENT -> {' \
+        'case EMPTY_OR_METADATA_ONLY ->' \
+        'case VALID_OFFICIAL_SET -> {' \
+        'case MALFORMED_NONEMPTY_OUTPUT -> throw new IOException(' \
+        'malformed nonempty formal output is preserved' \
+        'official formal publication root must be absent' \
+        'removeGeneratedSkeleton(repository, workRoot)' \
+        'formal skeleton cleanup is outside its owned build root' \
+        'name.equals(P4E0R2QFormalEvidence.MACOS_METADATA_FILE)' \
+        'formal skeleton metadata is not a regular file' \
+        'formal skeleton contains unknown state' \
         'classifyParentEvidence(' \
         'readExitCode(' \
         'marker(' \
@@ -947,6 +1041,41 @@ verify_formal_model_contract() {
         'P4-E0-R2Q dedicated watchdog must have exactly one hard-halt site'
     require_fixed "${driver}" 'WATCHDOG_SECONDS = 870L' \
         'P4-E0-R2Q dedicated watchdog lost its exact timeout'
+
+    for marker in \
+        'officialOutputClassifiesAbsentEmptyAndExactMetadataWithoutGuessing' \
+        'metadataOnlyCleanupRequiresTheExactResearchOwnedBuildRoot' \
+        'partialUnknownHiddenAndSymlinkOfficialOutputIsMalformedAndPreserved' \
+        'exactSixFileOfficialSetIsValidAndOnlyThenArchived' \
+        'atomicPublicationRequiresTheOfficialRootToRemainAbsent'; do
+        require_fixed \
+            src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalEvidenceTest.java \
+            "${marker}" \
+            "P4-E0-R2Q official-output test matrix is missing ${marker}"
+    done
+    for marker in \
+        'formalAndSmokeOutputsArePhysicallyDisjoint' \
+        'normalVerificationEntriesDoNotDependOnFormalStudyTasks' \
+        'formalOfficialSmokeAndWorkRootsRejectEqualityAndBothAncestorDirections' \
+        'generatedSkeletonAcceptsOnlyExactCasesGamesAndExactMetadata' \
+        'generatedSkeletonRejectsResultMarkerUnknownAndSymlinkWithoutPartialDeletion'; do
+        require_fixed \
+            src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalContractTest.java \
+            "${marker}" \
+            "P4-E0-R2Q formal-root contract test matrix is missing ${marker}"
+    done
+    require_fixed \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalGateNegativeTest.java \
+        'cleanPrepareAcceptsAbsentEmptyAndExactMetadataOnlyOfficialRoots' \
+        'P4-E0-R2Q clean absent/empty/metadata preflight matrix is missing'
+    require_fixed \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalGateNegativeTest.java \
+        'malformedLegacySmokeOutputIsPreservedBeforeCaseZero' \
+        'P4-E0-R2Q malformed preflight negative control is missing'
+    require_fixed \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalGateNegativeTest.java \
+        'partialOfficialSetIsPreservedBeforeCaseZero' \
+        'P4-E0-R2Q partial official-set preflight negative control is missing'
 }
 
 verify_jar_isolation() {

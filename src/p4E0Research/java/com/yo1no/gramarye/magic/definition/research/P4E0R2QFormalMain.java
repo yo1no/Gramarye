@@ -9,6 +9,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -43,6 +44,7 @@ final class P4E0R2QFormalMain {
         var workRoot = normalized(arguments[arguments.length - 3]);
         var officialRoot = normalized(arguments[arguments.length - 2]);
         var smokeRoot = normalized(arguments[arguments.length - 1]);
+        requirePairwiseDisjointRoots(workRoot, officialRoot, smokeRoot);
         switch (command) {
             case "prepare-study" -> prepareStudy(workRoot, officialRoot);
             case "prepare-case" -> prepareCase(workRoot, exactCase(arguments));
@@ -90,18 +92,32 @@ final class P4E0R2QFormalMain {
                 || Files.exists(staleRoot.resolve(control.gitHead()), LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("formal study identity already has archived evidence");
         }
-        if (Files.exists(officialRoot, LinkOption.NOFOLLOW_LINKS)) {
-            var previous = P4E0R2QFormalEvidence.readOfficialControl(officialRoot);
-            if (previous.studyId().equals(control.studyId())
-                    || previous.gitHead().equals(control.gitHead())) {
-                throw new IOException("formal study identity cannot be reused");
+        var officialInspection = P4E0R2QFormalEvidence.inspectOfficialOutput(officialRoot);
+        switch (officialInspection.classification()) {
+            case ABSENT -> {
+                // Publication already has the required absent target.
             }
-            P4E0R2QFormalEvidence.archiveStaleOfficial(
-                    officialRoot,
-                    staleRoot,
-                    previous.studyId());
+            case EMPTY_OR_METADATA_ONLY ->
+                    P4E0R2QFormalEvidence.removeEmptyOrMetadataOnlyOfficial(
+                            repository, officialRoot, officialInspection);
+            case VALID_OFFICIAL_SET -> {
+                var previous = officialInspection.validatedControl().orElseThrow();
+                if (previous.studyId().equals(control.studyId())
+                        || previous.gitHead().equals(control.gitHead())) {
+                    throw new IOException("formal study identity cannot be reused");
+                }
+                P4E0R2QFormalEvidence.archiveStaleOfficial(
+                        officialRoot,
+                        staleRoot,
+                        previous.studyId());
+            }
+            case MALFORMED_NONEMPTY_OUTPUT -> throw new IOException(
+                    "malformed nonempty formal output is preserved");
         }
-        removeGeneratedSkeleton(workRoot);
+        if (Files.exists(officialRoot, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("official formal publication root must be absent");
+        }
+        removeGeneratedSkeleton(repository, workRoot);
         if (Files.exists(workRoot, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("formal work root already exists");
         }
@@ -441,17 +457,15 @@ final class P4E0R2QFormalMain {
                 }
             }
         }
-        var officialCount = 0;
-        for (var name : P4E0R2QFormalEvidence.OFFICIAL_FILES.stream().sorted().toList()) {
-            var path = officialRoot.resolve(name);
-            if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-                if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
-                        || Files.isSymbolicLink(path)
-                        || Files.size(path)
-                                > P4E0R2QFormalEvidence.maximumOfficialFileBytes(name)) {
-                    throw new IOException("runner smoke found invalid official evidence");
-                }
-                officialCount++;
+        var officialInspection = P4E0R2QFormalEvidence.inspectOfficialOutput(officialRoot);
+        canonical.append("official_classification=")
+                .append(officialInspection.classification()).append('\n');
+        var officialCount = officialInspection.classification()
+                        == P4E0R2QFormalEvidence.OfficialOutputClassification.VALID_OFFICIAL_SET
+                ? P4E0R2QFormalEvidence.OFFICIAL_FILES.size() : 0;
+        if (officialCount > 0) {
+            for (var name : P4E0R2QFormalEvidence.OFFICIAL_FILES.stream().sorted().toList()) {
+                var path = officialRoot.resolve(name);
                 canonical.append("official=").append(name).append(':')
                         .append(Files.size(path)).append(':')
                         .append(P4E0ResearchHashing.sha256(path)).append('\n');
@@ -621,7 +635,30 @@ final class P4E0R2QFormalMain {
         return value;
     }
 
-    private static void removeGeneratedSkeleton(Path workRoot) throws IOException {
+    static void requirePairwiseDisjointRoots(Path workRoot, Path officialRoot, Path smokeRoot)
+            throws IOException {
+        var roots = List.of(
+                workRoot.toAbsolutePath().normalize(),
+                officialRoot.toAbsolutePath().normalize(),
+                smokeRoot.toAbsolutePath().normalize());
+        for (var leftIndex = 0; leftIndex < roots.size(); leftIndex++) {
+            for (var rightIndex = leftIndex + 1; rightIndex < roots.size(); rightIndex++) {
+                var left = roots.get(leftIndex);
+                var right = roots.get(rightIndex);
+                if (left.equals(right) || left.startsWith(right) || right.startsWith(left)) {
+                    throw new IOException(
+                            "formal official, smoke, and work roots are not disjoint");
+                }
+            }
+        }
+    }
+
+    static void removeGeneratedSkeleton(Path repositoryRoot, Path workRoot) throws IOException {
+        var repository = repositoryRoot.toAbsolutePath().normalize();
+        var normalizedWork = workRoot.toAbsolutePath().normalize();
+        if (!normalizedWork.equals(repository.resolve("build/p4-e0-r2q/formal"))) {
+            throw new IOException("formal skeleton cleanup is outside its owned build root");
+        }
         if (!Files.exists(workRoot, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
@@ -629,26 +666,25 @@ final class P4E0R2QFormalMain {
                 || Files.isSymbolicLink(workRoot)) {
             throw new IOException("formal work skeleton is not a directory");
         }
-        var rootChildren = directoryChildren(workRoot);
-        if (!rootChildren.equals(List.of("cases"))) {
-            throw new IOException("formal work root contains non-skeleton state");
-        }
+        var metadataFiles = new ArrayList<Path>();
+        requireSkeletonDirectory(workRoot, Set.of("cases"), metadataFiles);
         var cases = workRoot.resolve("cases");
-        var expected = new ArrayList<String>();
+        var expected = new HashSet<String>();
         for (var index = 0; index < P4E0R2QCasePlan.CASE_COUNT; index++) {
             expected.add(String.format(java.util.Locale.ROOT, "%02d", index));
         }
-        if (!directoryChildren(cases).equals(expected)) {
-            throw new IOException("formal generated case skeleton is incomplete");
-        }
+        requireSkeletonDirectory(cases, Set.copyOf(expected), metadataFiles);
         for (var token : expected) {
             var caseRoot = cases.resolve(token);
-            if (!directoryChildren(caseRoot).equals(List.of("game"))
-                    || !directoryChildren(caseRoot.resolve("game")).isEmpty()) {
-                throw new IOException("formal generated game skeleton is not empty");
-            }
+            requireSkeletonDirectory(caseRoot, Set.of("game"), metadataFiles);
+            requireSkeletonDirectory(caseRoot.resolve("game"), Set.of(), metadataFiles);
         }
-        for (var token : expected.reversed()) {
+        for (var metadata : metadataFiles) {
+            Files.delete(metadata);
+        }
+        var ordered = new ArrayList<>(expected);
+        ordered.sort(String::compareTo);
+        for (var token : ordered.reversed()) {
             Files.delete(cases.resolve(token).resolve("game"));
             Files.delete(cases.resolve(token));
         }
@@ -656,23 +692,35 @@ final class P4E0R2QFormalMain {
         Files.delete(workRoot);
     }
 
-    private static List<String> directoryChildren(Path directory) throws IOException {
+    private static void requireSkeletonDirectory(
+            Path directory, Set<String> expectedDirectories, List<Path> metadataFiles)
+            throws IOException {
         if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
                 || Files.isSymbolicLink(directory)) {
             throw new IOException("formal skeleton contains a non-directory");
         }
-        var children = new ArrayList<String>();
+        var observedDirectories = new HashSet<String>();
         try (var stream = Files.newDirectoryStream(directory)) {
             for (var child : stream) {
-                if (Files.isSymbolicLink(child)
-                        || !Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) {
-                    throw new IOException("formal skeleton contains a file or symlink");
+                var name = child.getFileName().toString();
+                if (name.equals(P4E0R2QFormalEvidence.MACOS_METADATA_FILE)) {
+                    if (Files.isSymbolicLink(child)
+                            || !Files.isRegularFile(child, LinkOption.NOFOLLOW_LINKS)) {
+                        throw new IOException("formal skeleton metadata is not a regular file");
+                    }
+                    metadataFiles.add(child);
+                } else if (expectedDirectories.contains(name)
+                        && !Files.isSymbolicLink(child)
+                        && Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) {
+                    observedDirectories.add(name);
+                } else {
+                    throw new IOException("formal skeleton contains unknown state");
                 }
-                children.add(child.getFileName().toString());
             }
         }
-        children.sort(String::compareTo);
-        return List.copyOf(children);
+        if (!observedDirectories.equals(expectedDirectories)) {
+            throw new IOException("formal generated skeleton is incomplete");
+        }
     }
 
     private static int readExitCode(Path path) throws IOException {

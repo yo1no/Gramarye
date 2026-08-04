@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.definition.research;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -148,6 +149,72 @@ final class P4E0ResearchR2QFormalGateNegativeTest {
                 () -> assertNoFormalOutput(missingBudget));
     }
 
+    @Test
+    void cleanPrepareAcceptsAbsentEmptyAndExactMetadataOnlyOfficialRoots() throws Throwable {
+        for (var shape : List.of("absent", "empty", "metadata")) {
+            var invocation = invocation("clean-" + shape, RepositoryMutation.NONE);
+            if (!shape.equals("absent")) {
+                Files.createDirectories(invocation.officialRoot());
+            }
+            if (shape.equals("metadata")) {
+                Files.writeString(invocation.officialRoot().resolve(".DS_Store"),
+                        "finder metadata");
+            }
+
+            withProperties("true", EXACT_BUDGET, invocation.repository(),
+                    () -> P4E0R2QFormalMain.main(invocation.arguments("prepare-study")));
+
+            assertAll(
+                    () -> assertFalse(Files.exists(invocation.officialRoot())),
+                    () -> assertTrue(Files.isRegularFile(
+                            invocation.workRoot().resolve("study-control.json"))),
+                    () -> assertFalse(Files.exists(invocation.firstCaseRoot())),
+                    () -> assertFalse(Files.exists(invocation.failedEvidenceRoot())),
+                    () -> assertFalse(Files.exists(invocation.staleEvidenceRoot())));
+        }
+    }
+
+    @Test
+    void malformedLegacySmokeOutputIsPreservedBeforeCaseZero() throws Throwable {
+        var invocation = invocation("legacy-smoke-output", RepositoryMutation.NONE);
+        Files.createDirectories(invocation.officialRoot().resolve("smoke"));
+        var smoke = invocation.officialRoot().resolve("smoke/standalone-smoke-v0.json");
+        Files.writeString(smoke, "legacy smoke\n");
+        Files.writeString(invocation.officialRoot().resolve(".DS_Store"), "finder metadata");
+
+        var failure = invokeRejectedPrepare(invocation);
+
+        assertAll(
+                () -> assertTrue(failure.getMessage().contains(
+                        "malformed nonempty formal output is preserved")),
+                () -> assertEquals("legacy smoke\n", Files.readString(smoke)),
+                () -> assertTrue(Files.isRegularFile(
+                        invocation.officialRoot().resolve(".DS_Store"))),
+                () -> assertFalse(Files.exists(invocation.workRoot())),
+                () -> assertFalse(Files.exists(invocation.firstCaseRoot())),
+                () -> assertFalse(Files.exists(invocation.failedEvidenceRoot())),
+                () -> assertFalse(Files.exists(invocation.staleEvidenceRoot())));
+    }
+
+    @Test
+    void partialOfficialSetIsPreservedBeforeCaseZero() throws Throwable {
+        var invocation = invocation("partial-official-output", RepositoryMutation.NONE);
+        Files.createDirectories(invocation.officialRoot());
+        var partial = invocation.officialRoot().resolve("PROVENANCE.txt");
+        Files.writeString(partial, "partial official evidence\n");
+
+        var failure = invokeRejectedPrepare(invocation);
+
+        assertAll(
+                () -> assertTrue(failure.getMessage().contains(
+                        "malformed nonempty formal output is preserved")),
+                () -> assertEquals("partial official evidence\n", Files.readString(partial)),
+                () -> assertFalse(Files.exists(invocation.workRoot())),
+                () -> assertFalse(Files.exists(invocation.firstCaseRoot())),
+                () -> assertFalse(Files.exists(invocation.failedEvidenceRoot())),
+                () -> assertFalse(Files.exists(invocation.staleEvidenceRoot())));
+    }
+
     private IOException invokeRejectedPrepare(Invocation invocation) throws Throwable {
         return assertThrows(IOException.class,
                 () -> withProperties("true", EXACT_BUDGET, invocation.repository(),
@@ -163,15 +230,16 @@ final class P4E0ResearchR2QFormalGateNegativeTest {
         git(repository, "config", "user.email", "r2q-b1-gate@example.invalid");
         git(repository, "symbolic-ref", "HEAD", "refs/heads/main");
         Files.writeString(repository.resolve("tracked.txt"), "base\n");
-        git(repository, "add", "tracked.txt");
+        Files.writeString(repository.resolve(".gitignore"), "/build/\n");
+        git(repository, "add", "tracked.txt", ".gitignore");
         git(repository, "commit", "-m", "base");
         git(repository, "update-ref", "refs/remotes/origin/main", "HEAD");
         mutation.apply(repository);
         return new Invocation(
                 repository,
-                root.resolve("formal-work"),
-                root.resolve("official-evidence"),
-                root.resolve("runner-smoke"));
+                repository.resolve("build/p4-e0-r2q/formal"),
+                repository.resolve("build/reports/p4-e0-r2q"),
+                repository.resolve("build/reports/p4-e0-r2q-smoke/supervisor"));
     }
 
     private static void assertNoFormalOutput(Invocation invocation) {

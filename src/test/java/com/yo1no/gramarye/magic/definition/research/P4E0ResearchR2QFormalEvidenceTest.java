@@ -374,6 +374,132 @@ final class P4E0ResearchR2QFormalEvidenceTest {
                         failedRoot.resolve("." + control.studyId() + ".staging"))));
     }
 
+    @Test
+    void officialOutputClassifiesAbsentEmptyAndExactMetadataWithoutGuessing() throws Exception {
+        var official = temporaryDirectory.resolve("classification-official");
+        assertEquals(
+                P4E0R2QFormalEvidence.OfficialOutputClassification.ABSENT,
+                P4E0R2QFormalEvidence.inspectOfficialOutput(official).classification());
+
+        Files.createDirectory(official);
+        assertEquals(
+                P4E0R2QFormalEvidence.OfficialOutputClassification.EMPTY_OR_METADATA_ONLY,
+                P4E0R2QFormalEvidence.inspectOfficialOutput(official).classification());
+
+        Files.writeString(official.resolve(".DS_Store"), "finder metadata");
+        assertEquals(
+                P4E0R2QFormalEvidence.OfficialOutputClassification.EMPTY_OR_METADATA_ONLY,
+                P4E0R2QFormalEvidence.inspectOfficialOutput(official).classification());
+    }
+
+    @Test
+    void metadataOnlyCleanupRequiresTheExactResearchOwnedBuildRoot() throws Exception {
+        var repository = temporaryDirectory.resolve("repository");
+        var official = repository.resolve("build/reports/p4-e0-r2q");
+        Files.createDirectories(official);
+        Files.writeString(official.resolve(".DS_Store"), "finder metadata");
+        var inspection = P4E0R2QFormalEvidence.inspectOfficialOutput(official);
+
+        P4E0R2QFormalEvidence.removeEmptyOrMetadataOnlyOfficial(
+                repository, official, inspection);
+        assertFalse(Files.exists(official));
+
+        var outside = repository.resolve("other/official");
+        Files.createDirectories(outside);
+        Files.writeString(outside.resolve(".DS_Store"), "preserve me");
+        var outsideInspection = P4E0R2QFormalEvidence.inspectOfficialOutput(outside);
+        assertThrows(IOException.class, () ->
+                P4E0R2QFormalEvidence.removeEmptyOrMetadataOnlyOfficial(
+                        repository, outside, outsideInspection));
+        assertEquals("preserve me", Files.readString(outside.resolve(".DS_Store")));
+    }
+
+    @Test
+    void partialUnknownHiddenAndSymlinkOfficialOutputIsMalformedAndPreserved()
+            throws Exception {
+        var partial = temporaryDirectory.resolve("partial");
+        Files.createDirectory(partial);
+        Files.writeString(partial.resolve("runs.jsonl"), "partial\n");
+
+        var hidden = temporaryDirectory.resolve("hidden");
+        Files.createDirectory(hidden);
+        Files.writeString(hidden.resolve(".unknown"), "hidden\n");
+
+        var legacySmoke = temporaryDirectory.resolve("legacy-smoke");
+        Files.createDirectories(legacySmoke.resolve("smoke"));
+        Files.writeString(legacySmoke.resolve("smoke/standalone-smoke-v0.json"), "{}\n");
+        Files.writeString(legacySmoke.resolve(".DS_Store"), "finder metadata");
+
+        var symlinkRoot = temporaryDirectory.resolve("symlink-root");
+        Files.createSymbolicLink(symlinkRoot, partial);
+
+        for (var root : List.of(partial, hidden, legacySmoke, symlinkRoot)) {
+            var before = Files.isSymbolicLink(root)
+                    ? Files.readSymbolicLink(root).toString()
+                    : regularOrDirectoryNames(root).toString();
+            assertEquals(
+                    P4E0R2QFormalEvidence.OfficialOutputClassification
+                            .MALFORMED_NONEMPTY_OUTPUT,
+                    P4E0R2QFormalEvidence.inspectOfficialOutput(root).classification());
+            var after = Files.isSymbolicLink(root)
+                    ? Files.readSymbolicLink(root).toString()
+                    : regularOrDirectoryNames(root).toString();
+            assertEquals(before, after, () -> "malformed output changed: " + root);
+        }
+    }
+
+    @Test
+    void exactSixFileOfficialSetIsValidAndOnlyThenArchived() throws Exception {
+        var control = control();
+        var work = temporaryDirectory.resolve("valid-work");
+        var official = temporaryDirectory.resolve("valid-official");
+        writeVerifiedResults(work, successfulResults(control));
+        P4E0R2QFormalEvidence.aggregateAndPublish(
+                work, official, control, P4E0R2QFormalEvidence.atomicDirectoryMover());
+
+        var inspection = P4E0R2QFormalEvidence.inspectOfficialOutput(official);
+        assertAll(
+                () -> assertEquals(
+                        P4E0R2QFormalEvidence.OfficialOutputClassification.VALID_OFFICIAL_SET,
+                        inspection.classification()),
+                () -> assertEquals(control, inspection.validatedControl().orElseThrow()));
+
+        var staleRoot = temporaryDirectory.resolve("stale");
+        var archived = P4E0R2QFormalEvidence.archiveStaleOfficial(
+                official, staleRoot, control.studyId());
+        assertAll(
+                () -> assertFalse(Files.exists(official)),
+                () -> assertTrue(Files.isDirectory(archived)),
+                () -> assertTrue(Files.isRegularFile(archived.resolve("STALE_PROVENANCE.txt"))));
+
+        var secondWork = temporaryDirectory.resolve("second-work");
+        var secondOfficial = temporaryDirectory.resolve("six-plus-metadata");
+        writeVerifiedResults(secondWork, successfulResults(control));
+        P4E0R2QFormalEvidence.aggregateAndPublish(
+                secondWork, secondOfficial, control,
+                P4E0R2QFormalEvidence.atomicDirectoryMover());
+        Files.writeString(secondOfficial.resolve(".DS_Store"), "must not be ignored");
+        assertEquals(
+                P4E0R2QFormalEvidence.OfficialOutputClassification
+                        .MALFORMED_NONEMPTY_OUTPUT,
+                P4E0R2QFormalEvidence.inspectOfficialOutput(secondOfficial).classification());
+        assertTrue(Files.isRegularFile(secondOfficial.resolve(".DS_Store")));
+    }
+
+    @Test
+    void atomicPublicationRequiresTheOfficialRootToRemainAbsent() throws Exception {
+        var control = control();
+        var work = temporaryDirectory.resolve("publication-work");
+        var official = temporaryDirectory.resolve("existing-empty-official");
+        writeVerifiedResults(work, successfulResults(control));
+        Files.createDirectory(official);
+
+        assertThrows(IOException.class, () -> P4E0R2QFormalEvidence.aggregateAndPublish(
+                work, official, control, P4E0R2QFormalEvidence.atomicDirectoryMover()));
+        assertTrue(Files.isDirectory(official));
+        assertTrue(regularOrDirectoryNames(official).isEmpty());
+    }
+
     private static long count(
             List<P4E0R2QFormalResult> results,
             P4E0R2QFormalResult.QualificationResult qualification) {
