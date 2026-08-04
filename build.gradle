@@ -2500,13 +2500,43 @@ verifyP4E0R2QFreshJvmDataVersion.configure {
     }
 }
 
+def verifyP4E0R2QCase04Preparation = registerP4E0R2QCommand(
+        'verifyP4E0R2QCase04Preparation',
+        'verify-case04-preparation',
+        'Runs the non-formal fresh-JVM case-04 physical preparation regression.')
+verifyP4E0R2QCase04Preparation.configure {
+    dependsOn(verifyP4E0R2QFreshJvmDataVersion)
+    timeout.set(java.time.Duration.ofSeconds(1_800))
+    doFirst {
+        p4E0R2QDedicatedGameDirectory.get()
+                .dir('case04-preparation-world').asFile.deleteDir()
+        p4E0R2QReportDirectory.get()
+                .file('case04-preparation-v0.json').asFile.delete()
+    }
+}
+
+def verifyP4E0R2QCounterPreparations = registerP4E0R2QCommand(
+        'verifyP4E0R2QCounterPreparations',
+        'verify-counter-preparations',
+        'Sequentially verifies all 25 non-formal physical counter preparations.')
+verifyP4E0R2QCounterPreparations.configure {
+    dependsOn(verifyP4E0R2QCase04Preparation)
+    timeout.set(java.time.Duration.ofSeconds(3_600))
+    doFirst {
+        p4E0R2QDedicatedGameDirectory.get()
+                .dir('counter-preparation-world').asFile.deleteDir()
+        p4E0R2QReportDirectory.get()
+                .file('counter-preparation-v0.json').asFile.delete()
+    }
+}
+
 def prepareP4E0R2Q = registerP4E0R2QCommand(
         'prepareP4E0R2Q',
         'prepare',
         'Builds bounded, deterministic P4-E0-R2Q smoke controls.')
 prepareP4E0R2Q.configure {
     dependsOn(verifyP4E0R2QPreflightTests)
-    dependsOn(verifyP4E0R2QFreshJvmDataVersion)
+    dependsOn(verifyP4E0R2QCounterPreparations)
     doFirst {
         p4E0R2QDedicatedGameDirectory.get().asFile.deleteDir()
     }

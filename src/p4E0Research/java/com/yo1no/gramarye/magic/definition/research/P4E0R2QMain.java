@@ -43,8 +43,40 @@ public final class P4E0R2QMain {
     private static final String DEDICATED_RESULT = "dedicated-smoke-v0.json";
     private static final String FRESH_JVM_DATA_VERSION_RESULT =
             "fresh-jvm-dataversion-v0.json";
+    private static final String CASE04_PREPARATION_RESULT =
+            "case04-preparation-v0.json";
+    private static final String COUNTER_PREPARATION_RESULT =
+            "counter-preparation-v0.json";
     private static final Set<String> FRESH_JVM_DATA_VERSION_FIELDS = Set.of(
             "schema_version", "tag_type", "data_version", "write_path");
+    private static final Set<String> PREPARATION_RESULT_FIELDS = Set.of(
+            "schema_version",
+            "authority",
+            "mode",
+            "profile_manifest_sha256",
+            "case_plan_sha256",
+            "cases_verified",
+            "case04_index",
+            "case04_id",
+            "case04_target_counter",
+            "case04_maximum",
+            "case04_observed_at_least",
+            "expected_failure_code",
+            "expected_stage",
+            "strict_data_version_checks",
+            "owner_guard_classifications",
+            "data_version_tag_type",
+            "data_version",
+            "complete_strict_wire_fixtures",
+            "strict_single_gzip_member",
+            "exact_unnamed_compound",
+            "decompressed_eof_exact",
+            "compressed_eof_exact",
+            "max_simultaneous_case_worlds",
+            "formal_children_started",
+            "official_artifacts_published",
+            "sequence_sha256",
+            "result");
     private static final Set<String> RESULT_FIELDS = Set.of(
             "schema_version",
             "authority",
@@ -103,7 +135,9 @@ public final class P4E0R2QMain {
     public static void main(String[] args) throws Exception {
         if (args.length != 4) {
             throw new IllegalArgumentException(
-                    "usage: prepare|verify-profile|verify-version-init|run-smoke|verify-smoke"
+                    "usage: prepare|verify-profile|verify-version-init|"
+                            + "verify-case04-preparation|verify-counter-preparations|"
+                            + "run-smoke|verify-smoke"
                             + " <fixture-root> <report-root> <synthetic-world-root>");
         }
         SharedConstants.tryDetectVersion();
@@ -115,6 +149,12 @@ public final class P4E0R2QMain {
             case "verify-profile" -> verifyProfile(fixtureRoot, syntheticWorldRoot, true);
             case "verify-version-init" -> verifyFreshJvmDataVersion(
                     reportRoot, syntheticWorldRoot.resolveSibling("version-init-world"));
+            case "verify-case04-preparation" -> verifyCase04Preparation(
+                    reportRoot,
+                    syntheticWorldRoot.resolveSibling("case04-preparation-world"));
+            case "verify-counter-preparations" -> verifyCounterPreparations(
+                    reportRoot,
+                    syntheticWorldRoot.resolveSibling("counter-preparation-world"));
             case "run-smoke" -> runStandaloneSmoke(
                     fixtureRoot, reportRoot, syntheticWorldRoot);
             case "verify-smoke" -> verifySmoke(fixtureRoot, reportRoot, syntheticWorldRoot);
@@ -139,6 +179,24 @@ public final class P4E0R2QMain {
                 reportRoot.resolve(FRESH_JVM_DATA_VERSION_RESULT),
                 result + System.lineSeparator());
         fixture.retainAtPeak();
+    }
+
+    private static void verifyCase04Preparation(Path reportRoot, Path worldRoot)
+            throws IOException {
+        var facts = P4E0R2QFormalWorkload.verifyCase04Preparation(worldRoot);
+        requireNoFormalArtifacts(officialReportRoot(reportRoot));
+        writePreparationResult(
+                reportRoot.resolve(CASE04_PREPARATION_RESULT),
+                preparationResult("CASE_04_PRECHILD_REGRESSION", facts));
+    }
+
+    private static void verifyCounterPreparations(Path reportRoot, Path worldRoot)
+            throws IOException {
+        var facts = P4E0R2QFormalWorkload.verifyAllCounterPreparations(worldRoot);
+        requireNoFormalArtifacts(officialReportRoot(reportRoot));
+        writePreparationResult(
+                reportRoot.resolve(COUNTER_PREPARATION_RESULT),
+                preparationResult("ALL_25_COUNTER_PRECHILD_REGRESSION", facts));
     }
 
     /** Called only by the isolated research GameTest holder on the server logic thread. */
@@ -221,6 +279,14 @@ public final class P4E0R2QMain {
             Path fixtureRoot, Path reportRoot, Path syntheticWorldRoot) throws IOException {
         verifyProfile(fixtureRoot, syntheticWorldRoot, false);
         requireFreshJvmDataVersionResult(reportRoot);
+        requirePreparationResult(
+                reportRoot.resolve(CASE04_PREPARATION_RESULT),
+                "CASE_04_PRECHILD_REGRESSION",
+                1);
+        requirePreparationResult(
+                reportRoot.resolve(COUNTER_PREPARATION_RESULT),
+                "ALL_25_COUNTER_PRECHILD_REGRESSION",
+                P4E0R2QProfile.COUNTER_COUNT);
         var standalone = readResult(reportRoot.resolve(STANDALONE_RESULT));
         var dedicated = readResult(reportRoot.resolve(DEDICATED_RESULT));
         requireResult(standalone, "standalone", fixtureRoot, 0);
@@ -263,6 +329,111 @@ public final class P4E0R2QMain {
                 || !result.get("write_path").getAsString()
                         .equals("P4E0R2QStoreJournalFixtures.writePrimary")) {
             throw new IOException("R2Q fresh-JVM DataVersion result changed");
+        }
+    }
+
+    private static JsonObject preparationResult(
+            String mode,
+            P4E0R2QFormalWorkload.CounterPreparationRegression facts) {
+        var case04 = P4E0R2QCasePlan.standard().cases().get(4);
+        var failure = case04.expectedFailure().orElseThrow();
+        var result = new JsonObject();
+        result.addProperty("schema_version", 0);
+        result.addProperty("authority", AUTHORITY);
+        result.addProperty("mode", mode);
+        result.addProperty("profile_manifest_sha256", P4E0R2QProfile.manifestHash());
+        result.addProperty("case_plan_sha256", P4E0R2QCasePlan.standard().planHash());
+        result.addProperty("cases_verified", facts.casesVerified());
+        result.addProperty("case04_index", case04.index());
+        result.addProperty("case04_id", case04.caseId());
+        result.addProperty(
+                "case04_target_counter", case04.targetCounter().orElseThrow().slug());
+        result.addProperty("case04_maximum", case04.maximum());
+        result.addProperty("case04_observed_at_least", facts.case04DecompressedBytesPerFile());
+        result.addProperty("expected_failure_code", failure.code().name());
+        result.addProperty("expected_stage", failure.stage().slug());
+        result.addProperty("strict_data_version_checks", facts.strictDataVersionChecks());
+        result.addProperty(
+                "owner_guard_classifications", facts.ownerGuardClassifications());
+        result.addProperty("data_version_tag_type", Tag.TAG_INT);
+        result.addProperty("data_version", P4E0R2QProfile.locked().acceptedDataVersion());
+        result.addProperty("complete_strict_wire_fixtures", true);
+        result.addProperty("strict_single_gzip_member", true);
+        result.addProperty("exact_unnamed_compound", true);
+        result.addProperty("decompressed_eof_exact", true);
+        result.addProperty("compressed_eof_exact", true);
+        result.addProperty("max_simultaneous_case_worlds", 1);
+        result.addProperty("formal_children_started", facts.formalChildrenStarted());
+        result.addProperty("official_artifacts_published", 0);
+        result.addProperty("sequence_sha256", facts.sequenceChecksum());
+        result.addProperty("result", "COMPLETED_NON_FORMAL_PRECHILD_REGRESSION");
+        return result;
+    }
+
+    private static void writePreparationResult(Path path, JsonObject result)
+            throws IOException {
+        Files.createDirectories(path.getParent());
+        var text = result + System.lineSeparator();
+        if (text.getBytes(StandardCharsets.UTF_8).length > MAXIMUM_RESULT_BYTES
+                || !result.keySet().equals(PREPARATION_RESULT_FIELDS)) {
+            throw new IOException("R2Q pre-child regression result exceeded its bound");
+        }
+        P4E0ResearchRunRecord.atomicCreate(path, text);
+    }
+
+    private static void requirePreparationResult(
+            Path path, String expectedMode, int expectedCases) throws IOException {
+        var text = readBounded(path, MAXIMUM_RESULT_BYTES);
+        final JsonObject result;
+        try {
+            result = JsonParser.parseString(text.stripTrailing()).getAsJsonObject();
+        } catch (RuntimeException exception) {
+            throw new IOException("R2Q pre-child regression result is malformed", exception);
+        }
+        var case04 = P4E0R2QCasePlan.standard().cases().get(4);
+        var failure = case04.expectedFailure().orElseThrow();
+        try {
+            if (!text.endsWith(System.lineSeparator())
+                    || text.indexOf('\r') >= 0
+                    || !result.keySet().equals(PREPARATION_RESULT_FIELDS)
+                    || result.get("schema_version").getAsInt() != 0
+                    || !result.get("authority").getAsString().equals(AUTHORITY)
+                    || !result.get("mode").getAsString().equals(expectedMode)
+                    || !result.get("profile_manifest_sha256").getAsString()
+                            .equals(P4E0R2QProfile.manifestHash())
+                    || !result.get("case_plan_sha256").getAsString()
+                            .equals(P4E0R2QCasePlan.standard().planHash())
+                    || result.get("cases_verified").getAsInt() != expectedCases
+                    || result.get("case04_index").getAsInt() != 4
+                    || !result.get("case04_id").getAsString().equals(case04.caseId())
+                    || !result.get("case04_target_counter").getAsString()
+                            .equals(P4E0R2QProfile.Counter.DECOMPRESSED_BYTES_PER_FILE.slug())
+                    || result.get("case04_maximum").getAsLong() != 268_435_456L
+                    || result.get("case04_observed_at_least").getAsLong() != 268_435_457L
+                    || !result.get("expected_failure_code").getAsString()
+                            .equals(failure.code().name())
+                    || !result.get("expected_stage").getAsString()
+                            .equals(failure.stage().slug())
+                    || result.get("strict_data_version_checks").getAsInt() != expectedCases
+                    || result.get("owner_guard_classifications").getAsInt()
+                            != expectedCases
+                    || result.get("data_version_tag_type").getAsInt() != Tag.TAG_INT
+                    || result.get("data_version").getAsInt() != 3_955
+                    || !result.get("complete_strict_wire_fixtures").getAsBoolean()
+                    || !result.get("strict_single_gzip_member").getAsBoolean()
+                    || !result.get("exact_unnamed_compound").getAsBoolean()
+                    || !result.get("decompressed_eof_exact").getAsBoolean()
+                    || !result.get("compressed_eof_exact").getAsBoolean()
+                    || result.get("max_simultaneous_case_worlds").getAsInt() != 1
+                    || result.get("formal_children_started").getAsInt() != 0
+                    || result.get("official_artifacts_published").getAsInt() != 0
+                    || !result.get("sequence_sha256").getAsString().matches("[0-9a-f]{64}")
+                    || !result.get("result").getAsString()
+                            .equals("COMPLETED_NON_FORMAL_PRECHILD_REGRESSION")) {
+                throw new IOException("R2Q pre-child regression result changed");
+            }
+        } catch (RuntimeException exception) {
+            throw new IOException("R2Q pre-child regression result values are invalid", exception);
         }
     }
 
@@ -682,6 +853,11 @@ public final class P4E0R2QMain {
                 }
             }
         }
+    }
+
+    private static Path officialReportRoot(Path smokeReportRoot) {
+        return Objects.requireNonNull(smokeReportRoot.getParent(), "smoke report parent")
+                .resolveSibling("p4-e0-r2q");
     }
 
     private static Path boundedRoot(Path path) throws IOException {

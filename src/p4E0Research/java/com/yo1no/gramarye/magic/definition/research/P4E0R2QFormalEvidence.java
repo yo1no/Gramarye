@@ -616,6 +616,8 @@ final class P4E0R2QFormalEvidence {
                 preserveResultIfPresent(sourceCase, targetCase, control, index, "child-result.json");
                 preserveResultIfPresent(
                         sourceCase, targetCase, control, index, "verified-result.json");
+                preserveResultIfPresent(
+                        sourceCase, targetCase, control, index, "prepare-failure.json");
                 preserveMarkerIfPresent(
                         sourceCase, targetCase, "running.marker", 4_096,
                         Set.of("RUNNING\n", "COMPLETED\n", "FAILED\n"));
@@ -1003,7 +1005,8 @@ final class P4E0R2QFormalEvidence {
             maximum = maximumOfficialFileBytes(RUNS_FILE);
         } else if (relative.equals(SUMMARY_FILE)) {
             maximum = MAXIMUM_TEXT_ARTIFACT_BYTES;
-        } else if (relative.matches("cases/[0-2][0-9]/(?:child-result|verified-result)\\.json")
+        } else if (relative.matches(
+                        "cases/[0-2][0-9]/(?:child-result|verified-result|prepare-failure)\\.json")
                 || relative.matches("cases/[0-2][0-9]/case-manifest\\.json")) {
             maximum = P4E0R2QFormalResult.MAXIMUM_JSON_BYTES;
         } else if (relative.matches("cases/[0-2][0-9]/.*\\.marker")

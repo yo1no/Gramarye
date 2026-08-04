@@ -76,7 +76,7 @@ final class P4E0R2QJointRecords {
     }
 
     private static Plan createNegative(P4E0R2QProfile.Counter target) throws IOException {
-        return measurePlans(negativePlans(target));
+        return measurePlans(negativePlans(target), target);
     }
 
     static void requireNegativeShape(P4E0R2QProfile.Counter target) {
@@ -86,6 +86,35 @@ final class P4E0R2QJointRecords {
             throw new IllegalArgumentException(
                     "R2Q negative shape is infeasible: " + target.name(), exception);
         }
+    }
+
+    /** Proves the corrected case-04 writer reaches its exact target at the old guard boundary. */
+    static ConstructionDiagnostic diagnoseDecompressedPerFileConstruction()
+            throws IOException {
+        var target = P4E0R2QProfile.Counter.DECOMPRESSED_BYTES_PER_FILE;
+        var expected = Math.addExact(
+                P4E0R2QProfile.locked().maximum(target), 1L);
+        try {
+            P4E0ResearchWireNbt.measure(
+                    P4E0ResearchWireNbt.HeaderOptions.canonical(),
+                    COMPRESSION_LEVEL,
+                    MAXIMUM_PHYSICAL_BYTES,
+                    MAXIMUM_DECOMPRESSED_BYTES,
+                    targetWriter(target));
+        } catch (P4E0ResearchWireNbt.ResearchLimitException exception) {
+            if (!exception.coordinate().equals("decompressed_bytes")) {
+                throw exception;
+            }
+            var output = exception.requireOutputDiagnostic();
+            return new ConstructionDiagnostic(
+                    ConstructionDiagnosticCode.COMPLETE_TARGET_REACHED_AT_MAX_PLUS_ONE,
+                    output.countBeforeWrite(),
+                    output.requestedWriteWidth(),
+                    output.measurementCeiling(),
+                    expected,
+                    output.projectedCountAfterWrite());
+        }
+        throw new IOException("R2Q case-04 qualification ceiling was not reached");
     }
 
     private static List<UnmeasuredRecord> negativePlans(P4E0R2QProfile.Counter target) {
@@ -184,14 +213,25 @@ final class P4E0R2QJointRecords {
     }
 
     private static Plan measurePlans(List<UnmeasuredRecord> plans) throws IOException {
+        return measurePlans(plans, null);
+    }
+
+    private static Plan measurePlans(
+            List<UnmeasuredRecord> plans, P4E0R2QProfile.Counter target)
+            throws IOException {
         var measured = new ArrayList<MeasuredRecord>(RECORD_COUNT);
         for (var index = 0; index < plans.size(); index++) {
             var plan = plans.get(index);
+            var constructionDecompressedCeiling =
+                    target == P4E0R2QProfile.Counter.DECOMPRESSED_BYTES_PER_FILE
+                                    && index == targetReplacementIndex(target)
+                            ? Math.addExact(MAXIMUM_DECOMPRESSED_BYTES, 1L)
+                            : MAXIMUM_DECOMPRESSED_BYTES;
             var wire = P4E0ResearchWireNbt.measure(
                     P4E0ResearchWireNbt.HeaderOptions.canonical(),
                     COMPRESSION_LEVEL,
                     MAXIMUM_PHYSICAL_BYTES,
-                    MAXIMUM_DECOMPRESSED_BYTES,
+                    constructionDecompressedCeiling,
                     plan.writer());
             if (wire.decompressedBytes() != plan.facts().decompressedBytes()) {
                 throw new IOException(
@@ -202,7 +242,8 @@ final class P4E0R2QJointRecords {
                     plan.code(),
                     plan.facts(),
                     plan.writer(),
-                    wire.physicalBytes()));
+                    wire.physicalBytes(),
+                    constructionDecompressedCeiling));
         }
         return new Plan(measured, aggregate(plans));
     }
@@ -463,7 +504,7 @@ final class P4E0R2QJointRecords {
             case DECOMPRESSED_BYTES_PER_FILE -> new RecordFacts(
                     268_435_457L, 1, 1, 4, 0, 268_435_384L, 4, 0, 27, 2);
             case CONTAINER_DEPTH_PER_FILE -> new RecordFacts(
-                    2_581L, 513, 513, 513, 0, 0, 0, 0, 11, 1);
+                    2_581L, 513, 513, 513, 0, 0, 0, 0, 522, 1);
             case COMPOUND_CONTAINERS_PER_FILE -> new RecordFacts(
                     1_058L, 3, 1_025, 3, 1_023, 0, 0, 0, 12, 1);
             case COMPOUND_FIELD_ENTRIES_PER_FILE -> new RecordFacts(
@@ -491,7 +532,7 @@ final class P4E0R2QJointRecords {
                 startAndDataVersion(output);
                 writeUuid(output);
                 output.writeByte(Tag.TAG_BYTE_ARRAY);
-                output.writeUTF("research_payl");
+                output.writeUTF("research_pay");
                 output.writeInt(268_435_384);
                 writeRepeated(output, 268_435_384, 0x5a);
                 output.writeByte(Tag.TAG_SHORT);
@@ -501,10 +542,12 @@ final class P4E0R2QJointRecords {
             };
             case CONTAINER_DEPTH_PER_FILE -> output -> {
                 startAndDataVersion(output);
-                for (var level = 0; level < 512; level++) {
+                for (var level = 1; level < 512; level++) {
                     output.writeByte(Tag.TAG_COMPOUND);
-                    output.writeUTF("");
+                    output.writeUTF("d");
                 }
+                output.writeByte(Tag.TAG_COMPOUND);
+                output.writeUTF("");
                 for (var level = 0; level < 513; level++) {
                     output.writeByte(Tag.TAG_END);
                 }
@@ -845,6 +888,14 @@ final class P4E0R2QJointRecords {
             if (records.size() != RECORD_COUNT) {
                 throw new IllegalArgumentException("R2Q joint measured record count changed");
             }
+            var relaxed = records.stream()
+                    .filter(record -> record.constructionDecompressedCeiling()
+                            == MAXIMUM_DECOMPRESSED_BYTES + 1L)
+                    .count();
+            if (relaxed > 1L) {
+                throw new IllegalArgumentException(
+                        "R2Q joint plan relaxed more than one construction record");
+            }
         }
 
         List<Long> canonicalPhysicalBytes() {
@@ -860,7 +911,7 @@ final class P4E0R2QJointRecords {
                     header,
                     COMPRESSION_LEVEL,
                     maximumPhysicalBytes,
-                    MAXIMUM_DECOMPRESSED_BYTES,
+                    record.constructionDecompressedCeiling(),
                     record.writer());
         }
 
@@ -884,7 +935,7 @@ final class P4E0R2QJointRecords {
                     header,
                     COMPRESSION_LEVEL,
                     maximumPhysicalBytes,
-                    MAXIMUM_DECOMPRESSED_BYTES,
+                    record.constructionDecompressedCeiling(),
                     record.writer());
         }
     }
@@ -894,13 +945,46 @@ final class P4E0R2QJointRecords {
             String code,
             RecordFacts facts,
             P4E0ResearchWireNbt.PayloadWriter writer,
-            long canonicalPhysicalBytes) {
+            long canonicalPhysicalBytes,
+            long constructionDecompressedCeiling) {
         MeasuredRecord {
             if (index < 0 || code == null || code.isBlank()
                     || facts == null || writer == null
                     || canonicalPhysicalBytes <= 0
-                    || canonicalPhysicalBytes > MAXIMUM_PHYSICAL_BYTES) {
+                    || canonicalPhysicalBytes > MAXIMUM_PHYSICAL_BYTES
+                    || (constructionDecompressedCeiling != MAXIMUM_DECOMPRESSED_BYTES
+                            && constructionDecompressedCeiling
+                                    != MAXIMUM_DECOMPRESSED_BYTES + 1L)
+                    || (constructionDecompressedCeiling
+                                    == MAXIMUM_DECOMPRESSED_BYTES + 1L
+                            && facts.decompressedBytes()
+                                    != MAXIMUM_DECOMPRESSED_BYTES + 1L)) {
                 throw new IllegalArgumentException("invalid measured R2Q joint record");
+            }
+        }
+    }
+
+    enum ConstructionDiagnosticCode {
+        COMPLETE_TARGET_REACHED_AT_MAX_PLUS_ONE
+    }
+
+    record ConstructionDiagnostic(
+            ConstructionDiagnosticCode code,
+            long countBeforeWrite,
+            long requestedWriteWidth,
+            long measurementCeiling,
+            long expectedObservedValue,
+            long projectedCountAfterWrite) {
+        ConstructionDiagnostic {
+            Objects.requireNonNull(code, "code");
+            if (countBeforeWrite < 0L
+                    || requestedWriteWidth <= 0L
+                    || measurementCeiling != MAXIMUM_DECOMPRESSED_BYTES
+                    || expectedObservedValue != MAXIMUM_DECOMPRESSED_BYTES + 1L
+                    || projectedCountAfterWrite != expectedObservedValue
+                    || projectedCountAfterWrite
+                            != Math.addExact(countBeforeWrite, requestedWriteWidth)) {
+                throw new IllegalArgumentException("invalid R2Q construction diagnostic");
             }
         }
     }

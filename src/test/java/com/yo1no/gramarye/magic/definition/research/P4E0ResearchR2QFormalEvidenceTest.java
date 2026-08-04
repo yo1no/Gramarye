@@ -293,6 +293,11 @@ final class P4E0ResearchR2QFormalEvidenceTest {
                         .resolve("verified-result.json"),
                 successfulResult(control, P4E0R2QCasePlan.standard().cases().get(0)));
         P4E0R2QFormalEvidence.writeResult(
+                P4E0R2QFormalEvidence.caseDirectory(work, 2)
+                        .resolve("prepare-failure.json"),
+                processFailure(control, 2,
+                        P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID));
+        P4E0R2QFormalEvidence.writeResult(
                 P4E0R2QFormalEvidence.caseDirectory(work, 1)
                         .resolve("child-result.json"),
                 processFailure(control, 1,
@@ -321,6 +326,11 @@ final class P4E0ResearchR2QFormalEvidenceTest {
                         archived.resolve("study-control.json"))),
                 () -> assertTrue(Files.isRegularFile(
                         archived.resolve("cases/00/verified-result.json"))),
+                () -> assertEquals(
+                        P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID,
+                        P4E0R2QFormalEvidence.readResult(
+                                archived.resolve("cases/02/prepare-failure.json"))
+                                .processClassification()),
                 () -> assertTrue(Files.isRegularFile(
                         archived.resolve("cases/01/case-manifest.status"))),
                 () -> assertEquals(
@@ -333,6 +343,8 @@ final class P4E0ResearchR2QFormalEvidenceTest {
                 () -> assertTrue(checksums.contains("  FAILURE.txt\n")),
                 () -> assertTrue(checksums.contains(
                         "  cases/00/verified-result.json\n")),
+                () -> assertTrue(checksums.contains(
+                        "  cases/02/prepare-failure.json\n")),
                 () -> assertTrue(checksums.contains(
                         "  cases/01/case-manifest.status\n")),
                 () -> assertTrue(checksums.contains(

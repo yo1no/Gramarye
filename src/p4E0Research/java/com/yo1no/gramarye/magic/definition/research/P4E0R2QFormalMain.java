@@ -141,21 +141,24 @@ final class P4E0R2QFormalMain {
                     workRoot,
                     control,
                     caseIndex,
-                    P4E0R2QFormalResult.ProcessClassification.REJECTED_BY_RESEARCH_GUARD);
+                    P4E0R2QFormalResult.ProcessClassification.REJECTED_BY_RESEARCH_GUARD,
+                    exception);
             throw exception;
         } catch (IOException exception) {
             preservePrepareFailure(
                     workRoot,
                     control,
                     caseIndex,
-                    P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID);
+                    P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID,
+                    exception);
             throw exception;
         } catch (RuntimeException exception) {
             preservePrepareFailure(
                     workRoot,
                     control,
                     caseIndex,
-                    P4E0R2QFormalResult.ProcessClassification.INSTRUMENTATION_FAILURE);
+                    P4E0R2QFormalResult.ProcessClassification.INSTRUMENTATION_FAILURE,
+                    exception);
             throw exception;
         }
     }
@@ -164,22 +167,37 @@ final class P4E0R2QFormalMain {
             Path workRoot,
             P4E0R2QFormalEvidence.StudyControl control,
             int caseIndex,
-            P4E0R2QFormalResult.ProcessClassification classification) throws IOException {
-        var caseRoot = P4E0R2QFormalEvidence.caseDirectory(workRoot, caseIndex);
-        Files.createDirectories(caseRoot);
-        var result = P4E0R2QFormalWorkload.failedResult(
-                control,
-                caseIndex,
-                classification,
-                classification == P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID
-                        ? P4E0R2QFormalWorkload.FixtureInvalidException.class.getName()
-                        : "java.lang.IllegalStateException",
-                manifestChecksumOrFallback(caseRoot, control, caseIndex));
-        var verified = caseRoot.resolve(P4E0R2QFormalWorkload.VERIFIED_RESULT);
-        if (!Files.exists(verified, LinkOption.NOFOLLOW_LINKS)) {
-            P4E0R2QFormalEvidence.writeResult(verified, result);
+            P4E0R2QFormalResult.ProcessClassification classification,
+            Exception primaryFailure) {
+        preservePrepareFailureBoundedly(
+                workRoot, control, caseIndex, classification, primaryFailure);
+    }
+
+    static void preservePrepareFailureBoundedly(
+            Path workRoot,
+            P4E0R2QFormalEvidence.StudyControl control,
+            int caseIndex,
+            P4E0R2QFormalResult.ProcessClassification classification,
+            Exception primaryFailure) {
+        try {
+            var caseRoot = P4E0R2QFormalEvidence.caseDirectory(workRoot, caseIndex);
+            Files.createDirectories(caseRoot);
+            var result = P4E0R2QFormalWorkload.failedResult(
+                    control,
+                    caseIndex,
+                    classification,
+                    primaryFailure.getClass().getName(),
+                    manifestChecksumOrFallback(caseRoot, control, caseIndex));
+            var failure = caseRoot.resolve(P4E0R2QFormalWorkload.PREPARE_FAILURE);
+            if (!Files.exists(failure, LinkOption.NOFOLLOW_LINKS)) {
+                P4E0R2QFormalEvidence.writeResult(failure, result);
+            }
+            preserveFailure(workRoot, control, classification.name());
+        } catch (IOException | RuntimeException archiveFailure) {
+            if (archiveFailure != primaryFailure) {
+                primaryFailure.addSuppressed(archiveFailure);
+            }
         }
-        preserveFailure(workRoot, control, classification.name());
     }
 
     private static void verifyCase(Path workRoot, int caseIndex) throws IOException {
@@ -441,6 +459,7 @@ final class P4E0R2QFormalMain {
             for (var name : List.of(
                     P4E0R2QFormalWorkload.CHILD_RESULT,
                     P4E0R2QFormalWorkload.VERIFIED_RESULT,
+                    P4E0R2QFormalWorkload.PREPARE_FAILURE,
                     P4E0R2QFormalWorkload.RUNNING_MARKER,
                     P4E0R2QFormalWorkload.EXIT_MARKER,
                     P4E0R2QFormalWorkload.TIMEOUT_MARKER,

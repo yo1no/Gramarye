@@ -1,5 +1,6 @@
 package com.yo1no.gramarye.magic.definition.research;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,6 +22,83 @@ final class P4E0ResearchR2QJointRecordsTest {
 
     @TempDir
     Path temporary;
+
+    @Test
+    void case04IdentityArithmeticAndConstructionCeilingStayExact() throws Exception {
+        var spec = P4E0R2QCasePlan.standard().cases().get(4);
+        var target = P4E0R2QProfile.Counter.DECOMPRESSED_BYTES_PER_FILE;
+        var failure = spec.expectedFailure().orElseThrow();
+        var diagnostic = P4E0R2QJointRecords.diagnoseDecompressedPerFileConstruction();
+        var plan = P4E0R2QJointRecords.buildNegative(target);
+        var relaxedRecords = plan.records().stream()
+                .filter(record -> record.constructionDecompressedCeiling()
+                        == MAXIMUM_DECOMPRESSED_BYTES + 1L)
+                .toList();
+
+        assertAll(
+                () -> assertEquals(4, spec.index()),
+                () -> assertEquals(
+                        "p4-e0-r2q-balanced-v0-1536-over-decompressed-bytes-per-file",
+                        spec.caseId()),
+                () -> assertEquals(target, spec.targetCounter().orElseThrow()),
+                () -> assertEquals(MAXIMUM_DECOMPRESSED_BYTES, spec.maximum()),
+                () -> assertEquals(MAXIMUM_DECOMPRESSED_BYTES + 1L,
+                        spec.observedAtLeast()),
+                () -> assertEquals(
+                        P4E0R2QCasePlan.FailureCode.COUNTER_CAPACITY_EXCEEDED,
+                        failure.code()),
+                () -> assertEquals(
+                        P4E0R2QCasePlan.FailureStage.PER_FILE_DECOMPRESSED,
+                        failure.stage()),
+                () -> assertEquals(
+                        "6a6f4541f4c23b9aefad465eb29ec0420d3a4f635f06b528ca07239a93f99418",
+                        P4E0R2QProfile.manifestHash()),
+                () -> assertEquals(
+                        "23408739f292d2a5696c56c39b8b4b3978b3840af383930293efbe6b824f5035",
+                        P4E0R2QCasePlan.standard().planHash()),
+                () -> assertEquals(
+                        P4E0R2QJointRecords.ConstructionDiagnosticCode
+                                .COMPLETE_TARGET_REACHED_AT_MAX_PLUS_ONE,
+                        diagnostic.code()),
+                () -> assertEquals(268_435_456L, diagnostic.countBeforeWrite()),
+                () -> assertEquals(1L, diagnostic.requestedWriteWidth()),
+                () -> assertEquals(268_435_456L, diagnostic.measurementCeiling()),
+                () -> assertEquals(268_435_457L, diagnostic.expectedObservedValue()),
+                () -> assertEquals(268_435_457L, diagnostic.projectedCountAfterWrite()),
+                () -> assertEquals(1, relaxedRecords.size()),
+                () -> assertEquals(268_435_457L,
+                        relaxedRecords.getFirst().facts().decompressedBytes()),
+                () -> assertTrue(plan.records().stream()
+                        .filter(record -> record != relaxedRecords.getFirst())
+                        .allMatch(record -> record.constructionDecompressedCeiling()
+                                == MAXIMUM_DECOMPRESSED_BYTES)));
+    }
+
+    @Test
+    void depthNegativeInsertsOneEmptyNamedCompoundWithoutRenamingTheBaselineChain() {
+        var baseline = P4E0R2QFixturePlan.locked().jointRecords().records().get(2).facts();
+        var negative = P4E0R2QJointRecords.buildNegative(
+                P4E0R2QProfile.Counter.CONTAINER_DEPTH_PER_FILE)
+                .records().get(2).facts();
+
+        assertAll(
+                () -> assertEquals(2_577L, baseline.decompressedBytes()),
+                () -> assertEquals(2_581L, negative.decompressedBytes()),
+                () -> assertEquals(512, baseline.containerDepth()),
+                () -> assertEquals(513, negative.containerDepth()),
+                () -> assertEquals(
+                        baseline.compoundContainers() + 1L,
+                        negative.compoundContainers()),
+                () -> assertEquals(
+                        baseline.compoundFieldEntries() + 1L,
+                        negative.compoundFieldEntries()),
+                () -> assertEquals(522L, baseline.modifiedUtf8Bytes()),
+                () -> assertEquals(
+                        baseline.modifiedUtf8Bytes(), negative.modifiedUtf8Bytes()),
+                () -> assertEquals(
+                        baseline.decompressedBytes() + 4L,
+                        negative.decompressedBytes()));
+    }
 
     @Test
     void samePhysicalWritersDeriveAllStructuralTotalsAndCanonicalGzipBaselines()

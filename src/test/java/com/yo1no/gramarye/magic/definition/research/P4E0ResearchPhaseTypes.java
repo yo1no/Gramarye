@@ -275,6 +275,9 @@ final class P4E0ResearchPhaseTypes {
     private static final List<String> R2Q_TASK_NAMES = List.of(
             "prepareP4E0R2Q",
             "verifyP4E0R2QPreflightTests",
+            "verifyP4E0R2QFreshJvmDataVersion",
+            "verifyP4E0R2QCase04Preparation",
+            "verifyP4E0R2QCounterPreparations",
             "verifyP4E0R2QProfile",
             "runP4E0R2QSmoke",
             "runP4E0R2QDedicatedSmoke",

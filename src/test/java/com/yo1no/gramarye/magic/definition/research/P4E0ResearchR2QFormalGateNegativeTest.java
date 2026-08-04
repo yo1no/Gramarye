@@ -233,7 +233,7 @@ final class P4E0ResearchR2QFormalGateNegativeTest {
                                 invocation.arguments("prepare-case", "0"))));
         var archive = invocation.failedEvidenceRoot().resolve(control.studyId());
         var result = P4E0R2QFormalEvidence.readResult(
-                archive.resolve("cases/00/verified-result.json"));
+                archive.resolve("cases/00/prepare-failure.json"));
         List<String> archivedNames;
         try (var paths = Files.walk(archive)) {
             archivedNames = paths.filter(Files::isRegularFile)
@@ -254,16 +254,125 @@ final class P4E0ResearchR2QFormalGateNegativeTest {
                 () -> assertEquals(
                         P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID,
                         result.processClassification()),
+                () -> assertEquals(IOException.class.getName(),
+                        result.boundedExceptionClass()),
                 () -> assertTrue(Files.readString(archive.resolve("FAILURE.txt"))
                         .contains("code=FIXTURE_INVALID\n")),
                 () -> assertTrue(Files.isRegularFile(archive.resolve("SHA256SUMS.txt"))),
                 () -> assertFalse(archivedNames.stream().anyMatch(name ->
                         name.endsWith("child-result.json")
+                                || name.endsWith("verified-result.json")
                                 || name.endsWith("running.marker")
                                 || name.endsWith("exit-code.txt")
                                 || name.endsWith("timeout.marker")
                                 || name.endsWith("parent-deadline.marker"))),
                 () -> assertEquals(5, archivedNames.size()));
+    }
+
+    @Test
+    void runtimePrepareFailureUsesDistinctBoundedParentEvidence() throws Exception {
+        var control = P4E0R2QFormalEvidence.createControl(
+                "11".repeat(20), "22".repeat(20),
+                P4E0R2QFormalEvidence.FORMAL_DISK_BUDGET_BYTES);
+        var work = temporaryDirectory.resolve("runtime-prepare/formal");
+        P4E0R2QFormalEvidence.writeControl(work.resolve("study-control.json"), control);
+        var primary = new IllegalStateException("bounded test failure");
+
+        P4E0R2QFormalMain.preservePrepareFailureBoundedly(
+                work,
+                control,
+                4,
+                P4E0R2QFormalResult.ProcessClassification.INSTRUMENTATION_FAILURE,
+                primary);
+
+        var archive = work.resolveSibling("failed-evidence").resolve(control.studyId());
+        var result = P4E0R2QFormalEvidence.readResult(
+                archive.resolve("cases/04/prepare-failure.json"));
+        assertAll(
+                () -> assertFalse(Files.exists(work)),
+                () -> assertEquals(0, primary.getSuppressed().length),
+                () -> assertEquals(
+                        P4E0R2QFormalResult.ProcessClassification.INSTRUMENTATION_FAILURE,
+                        result.processClassification()),
+                () -> assertEquals(IllegalStateException.class.getName(),
+                        result.boundedExceptionClass()),
+                () -> assertFalse(Files.exists(
+                        archive.resolve("cases/04/verified-result.json"))),
+                () -> assertFalse(Files.exists(
+                        archive.resolve("cases/04/child-result.json"))));
+    }
+
+    @Test
+    void measurementPrepareFailureUsesDistinctBoundedParentEvidence() throws Exception {
+        var control = P4E0R2QFormalEvidence.createControl(
+                "55".repeat(20), "66".repeat(20),
+                P4E0R2QFormalEvidence.FORMAL_DISK_BUDGET_BYTES);
+        var work = temporaryDirectory.resolve("measurement-prepare/formal");
+        P4E0R2QFormalEvidence.writeControl(work.resolve("study-control.json"), control);
+        var primary = new P4E0ResearchWireNbt.ResearchLimitException(
+                "decompressed_bytes",
+                268_435_456L,
+                1L,
+                268_435_456L,
+                268_435_457L);
+
+        P4E0R2QFormalMain.preservePrepareFailureBoundedly(
+                work,
+                control,
+                4,
+                P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID,
+                primary);
+
+        var archive = work.resolveSibling("failed-evidence").resolve(control.studyId());
+        var result = P4E0R2QFormalEvidence.readResult(
+                archive.resolve("cases/04/prepare-failure.json"));
+        assertAll(
+                () -> assertFalse(Files.exists(work)),
+                () -> assertEquals(0, primary.getSuppressed().length),
+                () -> assertEquals(
+                        P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID,
+                        result.processClassification()),
+                () -> assertEquals(
+                        P4E0ResearchWireNbt.ResearchLimitException.class.getName(),
+                        result.boundedExceptionClass()),
+                () -> assertFalse(Files.exists(
+                        archive.resolve("cases/04/verified-result.json"))),
+                () -> assertFalse(Files.exists(
+                        archive.resolve("cases/04/child-result.json"))));
+    }
+
+    @Test
+    void prepareArchiveCollisionIsSuppressedWithoutReplacingPrimaryFailure() throws Exception {
+        var control = P4E0R2QFormalEvidence.createControl(
+                "33".repeat(20), "44".repeat(20),
+                P4E0R2QFormalEvidence.FORMAL_DISK_BUDGET_BYTES);
+        var work = temporaryDirectory.resolve("archive-collision/formal");
+        var failed = work.resolveSibling("failed-evidence").resolve(control.studyId());
+        P4E0R2QFormalEvidence.writeControl(work.resolve("study-control.json"), control);
+        Files.createDirectories(failed);
+        Files.writeString(failed.resolve("sentinel.txt"), "preserve me\n");
+        var primary = new IOException("primary prepare failure");
+
+        P4E0R2QFormalMain.preservePrepareFailureBoundedly(
+                work,
+                control,
+                0,
+                P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID,
+                primary);
+
+        assertAll(
+                () -> assertTrue(Files.isDirectory(work)),
+                () -> assertTrue(Files.isRegularFile(
+                        work.resolve("cases/00/prepare-failure.json"))),
+                () -> assertFalse(Files.exists(
+                        work.resolve("cases/00/verified-result.json"))),
+                () -> assertEquals("preserve me\n",
+                        Files.readString(failed.resolve("sentinel.txt"))),
+                () -> assertEquals(1, primary.getSuppressed().length),
+                () -> assertEquals(IOException.class,
+                        primary.getSuppressed()[0].getClass()),
+                () -> assertTrue(primary.getSuppressed()[0].getMessage().contains(
+                        "failed evidence cannot be preserved without overwrite")));
     }
 
     private IOException invokeRejectedPrepare(Invocation invocation) throws Throwable {

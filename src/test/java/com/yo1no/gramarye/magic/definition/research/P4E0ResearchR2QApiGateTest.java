@@ -159,9 +159,18 @@ final class P4E0ResearchR2QApiGateTest {
                         + "        'verify-version-init'",
                 "verifyP4E0R2QFreshJvmDataVersion.configure {\n"
                         + "    dependsOn(verifyP4E0R2QConfiguration)",
+                "'verifyP4E0R2QCase04Preparation',\n"
+                        + "        'verify-case04-preparation'",
+                "verifyP4E0R2QCase04Preparation.configure {\n"
+                        + "    dependsOn(verifyP4E0R2QFreshJvmDataVersion)",
+                "'verifyP4E0R2QCounterPreparations',\n"
+                        + "        'verify-counter-preparations'",
+                "verifyP4E0R2QCounterPreparations.configure {\n"
+                        + "    dependsOn(verifyP4E0R2QCase04Preparation)",
                 "prepareP4E0R2Q.configure {\n"
                         + "    dependsOn(verifyP4E0R2QPreflightTests)",
                 "    dependsOn(verifyP4E0R2QFreshJvmDataVersion)",
+                "    dependsOn(verifyP4E0R2QCounterPreparations)",
                 "verifyP4E0R2QProfile.configure {\n"
                         + "    dependsOn(prepareP4E0R2Q)",
                 "runP4E0R2QSmoke.configure {\n"
@@ -172,6 +181,18 @@ final class P4E0ResearchR2QApiGateTest {
                         + "    dependsOn(runP4E0R2QDedicatedSmoke)",
                 "tasks.register('p4E0R2QSmoke') {")) {
             assertTrue(build.contains(edge), () -> "missing R2Q smoke edge: " + edge);
+        }
+
+        for (var task : List.of(
+                "verifyP4E0R2QCase04Preparation.configure {",
+                "verifyP4E0R2QCounterPreparations.configure {")) {
+            var block = bracedBlock(build, task);
+            assertAll(
+                    () -> assertFalse(block.contains("P4E0R2QFormal")
+                            || block.contains("p4E0R2QStudy")
+                            || block.contains("P4E0R2QCase00")),
+                    () -> assertTrue(block.contains(".asFile.deleteDir()")),
+                    () -> assertTrue(block.contains(".asFile.delete()")));
         }
     }
 
@@ -293,9 +314,13 @@ final class P4E0ResearchR2QApiGateTest {
                         "(?s).*catch\\s*\\([^)]*OutOfMemoryError.*")));
 
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
+        var verifier = read(PROJECT_ROOT.resolve(
+                "scripts/verify-p4-e0-r2q-configuration.sh"));
         assertAll(
                 () -> assertTrue(build.contains(
                         "layout.buildDirectory.dir('reports/p4-e0-r2q')")),
+                () -> assertTrue(verifier.contains(
+                        "forbid_fixed \"${JAR_CONTENTS}\" 'P4E0Research'")),
                 () -> assertTrue(combined.contains("runs.jsonl")),
                 () -> assertTrue(combined.contains("r2q-profile.json")),
                 () -> assertTrue(combined.contains("r2q-case-plan.json")),

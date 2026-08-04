@@ -195,6 +195,8 @@ final class P4E0ResearchR2QFormalContractTest {
                 "tasks.register('p4E0R2QStudy') {")) {
             var block = bracedBlock(build, marker);
             assertFalse(block.contains("runP4E0R2QSmoke")
+                            || block.contains("verifyP4E0R2QCase04Preparation")
+                            || block.contains("verifyP4E0R2QCounterPreparations")
                             || block.contains("runP4E0R2QDedicatedSmoke")
                             || block.contains("runP4E0R2QSupervisorSmoke")
                             || block.contains("runP4E0R2QRunnerDedicatedSmoke"),
@@ -206,6 +208,8 @@ final class P4E0ResearchR2QFormalContractTest {
     void everyFreshPrepareCaseInitializesTheDetectedVersionInsideFailurePreservation() {
         var formal = read(FORMAL_MAIN);
         var prepareCase = bracedBlock(formal, "private static void prepareCase(");
+        var preservation = bracedBlock(
+                formal, "static void preservePrepareFailureBoundedly(");
         var initialization = prepareCase.indexOf("SharedConstants.tryDetectVersion();");
         var materialization = prepareCase.indexOf("P4E0R2QFormalWorkload.prepareCase(");
 
@@ -218,6 +222,15 @@ final class P4E0ResearchR2QFormalContractTest {
                 () -> assertTrue(prepareCase.contains("preservePrepareFailure(")),
                 () -> assertFalse(prepareCase.matches(
                         "(?s).*catch\\s*\\([^)]*(Error|OutOfMemoryError).*")),
+                () -> assertTrue(preservation.contains(
+                        "catch (IOException | RuntimeException archiveFailure)")),
+                () -> assertTrue(preservation.contains("primaryFailure.addSuppressed(")),
+                () -> assertTrue(preservation.contains(
+                        "P4E0R2QFormalWorkload.PREPARE_FAILURE")),
+                () -> assertFalse(preservation.contains(
+                        "P4E0R2QFormalWorkload.VERIFIED_RESULT")),
+                () -> assertFalse(preservation.matches(
+                        "(?s).*catch\\s*\\([^)]*(Error|OutOfMemoryError).*")),
                 () -> assertFalse(formal.contains("WorldVersion")),
                 () -> assertFalse(formal.contains("setCurrentVersion")));
     }
@@ -228,6 +241,8 @@ final class P4E0ResearchR2QFormalContractTest {
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var freshTask = bracedBlock(
                 build, "verifyP4E0R2QFreshJvmDataVersion.configure {");
+        var case04Task = bracedBlock(
+                build, "verifyP4E0R2QCase04Preparation.configure {");
         var prepareTask = bracedBlock(build, "prepareP4E0R2Q.configure {");
         var main = read(R2Q_MAIN);
         var fixtures = read(STORE_FIXTURES);
@@ -242,8 +257,10 @@ final class P4E0ResearchR2QFormalContractTest {
                 () -> assertFalse(freshTask.contains("P4E0R2QFormal")
                         || freshTask.contains("p4E0R2QStudy")
                         || freshTask.contains("P4E0R2QCase")),
-                () -> assertTrue(prepareTask.contains(
+                () -> assertTrue(case04Task.contains(
                         "dependsOn(verifyP4E0R2QFreshJvmDataVersion)")),
+                () -> assertTrue(prepareTask.contains(
+                        "dependsOn(verifyP4E0R2QCounterPreparations)")),
                 () -> assertTrue(main.contains(
                         "case \"verify-version-init\" -> verifyFreshJvmDataVersion(")),
                 () -> assertTrue(main.contains("fixture.writePrimary(worldRoot, true);")),
@@ -256,6 +273,60 @@ final class P4E0ResearchR2QFormalContractTest {
                         "SkillSavedDataPersistenceSchema.FINITE_WHOLE_ROOT_NBT_QUOTA")),
                 () -> assertFalse(main.contains("WorldVersion")),
                 () -> assertFalse(fixtures.contains("NbtAccounter.unlimitedHeap")));
+    }
+
+    @Test
+    void freshJvmCounterPreparationUsesTheFormalFixturePathWithoutStartingAChild()
+            throws Exception {
+        var build = read(PROJECT_ROOT.resolve("build.gradle"));
+        var main = read(R2Q_MAIN);
+        var workload = read(FORMAL_WORKLOAD);
+        var case04Task = bracedBlock(
+                build, "verifyP4E0R2QCase04Preparation.configure {");
+        var countersTask = bracedBlock(
+                build, "verifyP4E0R2QCounterPreparations.configure {");
+
+        assertAll(
+                () -> assertTrue(build.contains(
+                        "'verifyP4E0R2QCase04Preparation',\n"
+                                + "        'verify-case04-preparation'")),
+                () -> assertTrue(build.contains(
+                        "'verifyP4E0R2QCounterPreparations',\n"
+                                + "        'verify-counter-preparations'")),
+                () -> assertTrue(case04Task.contains(
+                        "dependsOn(verifyP4E0R2QFreshJvmDataVersion)")),
+                () -> assertTrue(countersTask.contains(
+                        "dependsOn(verifyP4E0R2QCase04Preparation)")),
+                () -> assertFalse(case04Task.contains("P4E0R2QFormal")
+                        || case04Task.contains("p4E0R2QStudy")),
+                () -> assertFalse(countersTask.contains("P4E0R2QFormal")
+                        || countersTask.contains("p4E0R2QStudy")),
+                () -> assertTrue(main.contains("SharedConstants.tryDetectVersion();")),
+                () -> assertTrue(main.contains(
+                        "case \"verify-case04-preparation\" -> verifyCase04Preparation(")),
+                () -> assertTrue(main.contains(
+                        "case \"verify-counter-preparations\" -> verifyCounterPreparations(")),
+                () -> assertTrue(main.contains(
+                        "\"formal_children_started\", facts.formalChildrenStarted()")),
+                () -> assertTrue(main.contains(
+                        "result.addProperty(\"official_artifacts_published\", 0)")),
+                () -> assertTrue(workload.contains(
+                        "materializeCounter(caseRoot, spec);")),
+                () -> assertTrue(workload.contains(
+                        "observeFullPhysicalCounter(caseRoot, spec, new HeapTracker())")),
+                () -> assertTrue(workload.contains(
+                        "executeStrictCounter(caseRoot, spec, new HeapTracker())")),
+                () -> assertTrue(workload.contains(
+                        "P4E0R2QStoreJournalFixtures.requireStrictPrimaryDataVersion(")),
+                () -> assertTrue(workload.contains(
+                        "observed.decompressedBytesPerFile() != 268_435_457L")),
+                () -> assertTrue(workload.contains(
+                        "counter != target && observed.value(counter) > profile.maximum(counter)")),
+                () -> assertTrue(workload.contains(
+                        "try (var caseCleanup = new RegressionRootCleanup(caseRoot))")),
+                () -> assertFalse(workload.matches(
+                        "(?s).*verifyCounterPreparations.*catch\\s*\\([^)]*"
+                                + "(Error|OutOfMemoryError).*")));
     }
 
     @Test

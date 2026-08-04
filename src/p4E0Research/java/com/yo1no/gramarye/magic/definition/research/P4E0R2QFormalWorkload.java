@@ -36,6 +36,7 @@ final class P4E0R2QFormalWorkload {
     static final String CASE_MANIFEST = "case-manifest.json";
     static final String CHILD_RESULT = "child-result.json";
     static final String VERIFIED_RESULT = "verified-result.json";
+    static final String PREPARE_FAILURE = "prepare-failure.json";
     static final String RUNNING_MARKER = "running.marker";
     static final String EXIT_MARKER = "exit-code.txt";
     static final String TIMEOUT_MARKER = "timeout.marker";
@@ -240,6 +241,153 @@ final class P4E0R2QFormalWorkload {
                 new P4E0R2QFormalResult.HeapFacts(
                         CONFIGURED_XMS_BYTES, CONFIGURED_XMX_BYTES, 0L, 0L, 0L),
                 0L, exceptionClass);
+    }
+
+    /**
+     * Exercises case 04's complete parent-side physical preparation and strict measurement in a
+     * caller-owned, non-formal fresh-JVM root. No formal child or result publication is involved.
+     */
+    static CounterPreparationRegression verifyCase04Preparation(Path runRoot)
+            throws IOException {
+        var case04 = caseSpec(4);
+        if (case04.targetCounter().orElseThrow()
+                        != P4E0R2QProfile.Counter.DECOMPRESSED_BYTES_PER_FILE
+                || case04.maximum() != 268_435_456L
+                || case04.observedAtLeast() != 268_435_457L) {
+            throw new IOException("R2Q case 04 identity changed before preparation regression");
+        }
+        return verifyCounterPreparations(runRoot, List.of(case04));
+    }
+
+    /**
+     * Sequentially materializes, strictly measures, and removes every counter-negative physical
+     * fixture. At most one case world exists at a time and no dedicated child is started.
+     */
+    static CounterPreparationRegression verifyAllCounterPreparations(Path runRoot)
+            throws IOException {
+        var counters = P4E0R2QCasePlan.standard().cases().stream()
+                .filter(spec -> spec.kind() == P4E0R2QCasePlan.CaseKind.COUNTER_MAX_PLUS_ONE)
+                .toList();
+        if (counters.size() != P4E0R2QProfile.COUNTER_COUNT) {
+            throw new IOException("R2Q counter preparation coverage changed");
+        }
+        return verifyCounterPreparations(runRoot, counters);
+    }
+
+    private static CounterPreparationRegression verifyCounterPreparations(
+            Path runRoot, List<P4E0R2QCasePlan.CaseSpec> cases) throws IOException {
+        var root = normalized(runRoot);
+        if (Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("R2Q pre-child regression root already exists");
+        }
+        Files.createDirectories(root);
+        var case04Observed = 0L;
+        var strictDataVersionChecks = 0;
+        var ownerGuardClassifications = 0;
+        var sequence = new StringBuilder("p4-e0-r2q-counter-preparation-v0\n");
+        try (var rootCleanup = new RegressionRootCleanup(root)) {
+            for (var spec : cases) {
+                var caseRoot = root.resolve(String.format(
+                        java.util.Locale.ROOT, "case-%02d", spec.index()));
+                Files.createDirectory(caseRoot);
+                try (var caseCleanup = new RegressionRootCleanup(caseRoot)) {
+                    try {
+                        materializeCounter(caseRoot, spec);
+                    } catch (IllegalStateException exception) {
+                        throw new IOException(
+                                "R2Q pre-child materialization failed for "
+                                        + spec.targetCounter().orElseThrow().slug(),
+                                exception);
+                    }
+                    var worldRoot = caseRoot.resolve(GAME_DIRECTORY).resolve(WORLD_DIRECTORY);
+                    P4E0R2QStoreJournalFixtures.requireStrictPrimaryDataVersion(
+                            worldRoot, P4E0R2QProfile.locked().acceptedDataVersion());
+                    strictDataVersionChecks++;
+
+                    var fixture = P4E0R2QFixturePlan.negativeFixture(spec);
+                    var preflight = P4E0R2QCasePlan.standard()
+                            .preflightNegative(spec, fixture);
+                    var observed = observeFullPhysicalCounter(caseRoot, spec, new HeapTracker());
+                    var guardFailure = executeStrictCounter(caseRoot, spec, new HeapTracker());
+                    requireCounterPreparation(
+                            spec, preflight, fixture, observed, guardFailure);
+                    ownerGuardClassifications++;
+                    requireNoPrechildArtifacts(caseRoot);
+                    var physicalChecksum = physicalFixtureChecksum(caseRoot, spec);
+                    sequence.append(spec.index()).append('|')
+                            .append(spec.caseId()).append('|')
+                            .append(preflight.targetCounter().slug()).append('|')
+                            .append(observed.value(preflight.targetCounter())).append('|')
+                            .append(preflight.firstFailureStage().slug()).append('|')
+                            .append(physicalChecksum).append('\n');
+                    if (spec.index() == 4) {
+                        case04Observed = observed.decompressedBytesPerFile();
+                    }
+                }
+                if (Files.exists(caseRoot, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException("R2Q pre-child case cleanup was incomplete");
+                }
+            }
+        }
+        if (Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("R2Q pre-child regression cleanup was incomplete");
+        }
+        return new CounterPreparationRegression(
+                cases.size(), case04Observed, strictDataVersionChecks,
+                ownerGuardClassifications, 0,
+                P4E0ResearchHashing.sha256(sequence.toString()));
+    }
+
+    private static void requireCounterPreparation(
+            P4E0R2QCasePlan.CaseSpec spec,
+            P4E0R2QCasePlan.NegativePreflight preflight,
+            P4E0R2QFixturePlan.NegativeFixture fixture,
+            P4E0R2QProfile.CounterValues observed,
+            P4E0R2QAuditBudget.AuditFailure guardFailure) throws IOException {
+        var target = spec.targetCounter().orElseThrow();
+        var expectedFailure = spec.expectedFailure().orElseThrow();
+        if (!observed.equals(fixture.observedCounters())
+                || preflight.targetCounter() != target
+                || preflight.observedAtLeast() != Math.addExact(preflight.maximum(), 1L)
+                || observed.value(target) != preflight.observedAtLeast()
+                || expectedFailure.code()
+                        != P4E0R2QCasePlan.FailureCode.COUNTER_CAPACITY_EXCEEDED
+                || expectedFailure.stage() != preflight.firstFailureStage()
+                || expectedFailure.counter().orElseThrow() != target
+                || guardFailure.code()
+                        != P4E0R2QAuditBudget.FailureCode.COUNTER_CAPACITY_EXCEEDED
+                || guardFailure.stage() != preflight.firstFailureStage()
+                || guardFailure.counter().orElseThrow() != target
+                || guardFailure.maximum() != preflight.maximum()
+                || guardFailure.observedAtLeast() != preflight.observedAtLeast()
+                || !preflight.allOtherCountersWithinLimit()) {
+            throw new IOException("R2Q pre-child counter identity or strict vector changed");
+        }
+        var profile = P4E0R2QProfile.locked();
+        for (var counter : P4E0R2QProfile.Counter.values()) {
+            if (counter != target && observed.value(counter) > profile.maximum(counter)) {
+                throw new IOException("R2Q pre-child fixture has a second counter overrun");
+            }
+        }
+        if (spec.index() == 4
+                && (target != P4E0R2QProfile.Counter.DECOMPRESSED_BYTES_PER_FILE
+                        || observed.decompressedBytesPerFile() != 268_435_457L)) {
+            throw new IOException("R2Q case 04 complete strict measurement changed");
+        }
+    }
+
+    private static void requireNoPrechildArtifacts(Path caseRoot) throws IOException {
+        for (var name : List.of(
+                CHILD_RESULT,
+                VERIFIED_RESULT,
+                PREPARE_FAILURE,
+                RUNNING_MARKER,
+                EXIT_MARKER,
+                TIMEOUT_MARKER)) {
+            if (Files.exists(caseRoot.resolve(name), LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("R2Q pre-child regression created a child artifact");
+            }
+        }
     }
 
     static void cleanupLargeCaseData(Path caseRoot) throws IOException {
@@ -1238,6 +1386,42 @@ final class P4E0R2QFormalWorkload {
                     || fixtureChecksum == null || !fixtureChecksum.matches("[0-9a-f]{64}")) {
                 throw new IllegalArgumentException("invalid formal materialized fixture facts");
             }
+        }
+    }
+
+    record CounterPreparationRegression(
+            int casesVerified,
+            long case04DecompressedBytesPerFile,
+            int strictDataVersionChecks,
+            int ownerGuardClassifications,
+            int formalChildrenStarted,
+            String sequenceChecksum) {
+        CounterPreparationRegression {
+            if ((casesVerified != 1 && casesVerified != P4E0R2QProfile.COUNTER_COUNT)
+                    || (casesVerified == 1 && case04DecompressedBytesPerFile != 268_435_457L)
+                    || (casesVerified == P4E0R2QProfile.COUNTER_COUNT
+                            && case04DecompressedBytesPerFile != 268_435_457L)
+                    || strictDataVersionChecks != casesVerified
+                    || ownerGuardClassifications != casesVerified
+                    || formalChildrenStarted != 0
+                    || sequenceChecksum == null
+                    || !sequenceChecksum.matches("[0-9a-f]{64}")) {
+                throw new IllegalArgumentException(
+                        "invalid R2Q counter preparation regression facts");
+            }
+        }
+    }
+
+    private static final class RegressionRootCleanup implements AutoCloseable {
+        private final Path root;
+
+        private RegressionRootCleanup(Path root) {
+            this.root = normalized(root);
+        }
+
+        @Override
+        public void close() throws IOException {
+            deleteTreeIfPresent(root);
         }
     }
 

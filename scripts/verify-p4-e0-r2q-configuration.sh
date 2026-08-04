@@ -514,6 +514,10 @@ verify_build_and_formal_gate() {
         "'verifyP4E0R2QPreflightTests')" \
         "'verifyP4E0R2QFreshJvmDataVersion'," \
         "'verify-version-init'," \
+        "'verifyP4E0R2QCase04Preparation'," \
+        "'verify-case04-preparation'," \
+        "'verifyP4E0R2QCounterPreparations'," \
+        "'verify-counter-preparations'," \
         "'verifyP4E0R2QProfile'" \
         "'runP4E0R2QSmoke'" \
         "tasks.named('runP4E0R2QDedicatedSmoke', JavaExec)" \
@@ -534,6 +538,8 @@ verify_build_and_formal_gate() {
         'dependsOn(verifyP4E0R2QConfiguration)' \
         'dependsOn(verifyP4E0R2QPreflightTests)' \
         'dependsOn(verifyP4E0R2QFreshJvmDataVersion)' \
+        'dependsOn(verifyP4E0R2QCase04Preparation)' \
+        'dependsOn(verifyP4E0R2QCounterPreparations)' \
         'dependsOn(prepareP4E0R2Q)' \
         'dependsOn(verifyP4E0R2QProfile)' \
         'dependsOn(runP4E0R2QSmoke)' \
@@ -596,9 +602,21 @@ verify_build_and_formal_gate() {
         'dependsOn(verifyP4E0R2QConfiguration)' \
         "dir('version-init-world').asFile.deleteDir()" \
         "file('fresh-jvm-dataversion-v0.json').asFile.delete()" \
-        'dependsOn(verifyP4E0R2QFreshJvmDataVersion)'; do
+        "'verifyP4E0R2QCase04Preparation'," \
+        "'verify-case04-preparation'," \
+        'verifyP4E0R2QCase04Preparation.configure {' \
+        'dependsOn(verifyP4E0R2QFreshJvmDataVersion)' \
+        "dir('case04-preparation-world').asFile.deleteDir()" \
+        "file('case04-preparation-v0.json').asFile.delete()" \
+        "'verifyP4E0R2QCounterPreparations'," \
+        "'verify-counter-preparations'," \
+        'verifyP4E0R2QCounterPreparations.configure {' \
+        'dependsOn(verifyP4E0R2QCase04Preparation)' \
+        "dir('counter-preparation-world').asFile.deleteDir()" \
+        "file('counter-preparation-v0.json').asFile.delete()" \
+        'dependsOn(verifyP4E0R2QCounterPreparations)'; do
         require_count "${SMOKE_TASK_BLOCK}" "${marker}" 1 \
-            "P4-E0-R2Q fresh-JVM smoke gate changed: ${marker}"
+            "P4-E0-R2Q fresh-JVM pre-child gate changed: ${marker}"
     done
 
     FORMAL_ENTRY_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-formal-entry.XXXXXX")" \
@@ -613,7 +631,11 @@ verify_build_and_formal_gate() {
         'runP4E0R2QSupervisorSmoke' \
         'runP4E0R2QRunnerDedicatedSmoke' \
         'verifyP4E0R2QFreshJvmDataVersion' \
-        'verify-version-init'; do
+        'verify-version-init' \
+        'verifyP4E0R2QCase04Preparation' \
+        'verify-case04-preparation' \
+        'verifyP4E0R2QCounterPreparations' \
+        'verify-counter-preparations'; do
         forbid_fixed "${FORMAL_ENTRY_BLOCK}" "${marker}" \
             "P4-E0-R2Q formal spine depends on smoke task ${marker}"
     done
@@ -918,9 +940,13 @@ verify_formal_model_contract() {
     local evidence='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalEvidence.java'
     local main_source='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalMain.java'
     local smoke_main='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QMain.java'
+    local workload='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalWorkload.java'
+    local joint_records='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QJointRecords.java'
+    local wire='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchWireNbt.java'
     local store_fixtures='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0R2QStoreJournalFixtures.java'
     local contract_test='src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalContractTest.java'
     local gate_test='src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalGateNegativeTest.java'
+    local joint_test='src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QJointRecordsTest.java'
     local driver='src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalDedicatedDriver.java'
     local marker=''
 
@@ -958,6 +984,73 @@ verify_formal_model_contract() {
         'P4-E0-R2Q all formal case indices must dispatch through the common initialized prepare path'
 
     for marker in \
+        'case "verify-case04-preparation" -> verifyCase04Preparation(' \
+        'case "verify-counter-preparations" -> verifyCounterPreparations(' \
+        'CASE_04_PRECHILD_REGRESSION' \
+        'ALL_25_COUNTER_PRECHILD_REGRESSION' \
+        '"owner_guard_classifications"' \
+        '"formal_children_started"' \
+        '"official_artifacts_published"' \
+        '"complete_strict_wire_fixtures"' \
+        '"strict_single_gzip_member"' \
+        '"exact_unnamed_compound"' \
+        '"decompressed_eof_exact"' \
+        '"compressed_eof_exact"' \
+        '"max_simultaneous_case_worlds"'; do
+        require_fixed "${smoke_main}" "${marker}" \
+            "P4-E0-R2Q pre-child result contract changed: ${marker}"
+    done
+    for marker in \
+        'verifyCase04Preparation(Path runRoot)' \
+        'verifyAllCounterPreparations(Path runRoot)' \
+        'materializeCounter(caseRoot, spec);' \
+        'observeFullPhysicalCounter(caseRoot, spec, new HeapTracker())' \
+        'executeStrictCounter(caseRoot, spec, new HeapTracker())' \
+        'P4E0R2QStoreJournalFixtures.requireStrictPrimaryDataVersion(' \
+        'observed.decompressedBytesPerFile() != 268_435_457L' \
+        'counter != target && observed.value(counter) > profile.maximum(counter)' \
+        'try (var caseCleanup = new RegressionRootCleanup(caseRoot))' \
+        'formalChildrenStarted != 0'; do
+        require_fixed "${workload}" "${marker}" \
+            "P4-E0-R2Q full physical pre-child regression changed: ${marker}"
+    done
+    forbid_ere "${workload}" \
+        'catch[[:space:]]*\([^)]*(OutOfMemoryError|Error)' \
+        'P4-E0-R2Q pre-child regression must not catch Error/OOME'
+
+    for marker in \
+        'diagnoseDecompressedPerFileConstruction()' \
+        'new ConstructionDiagnostic(' \
+        'COMPLETE_TARGET_REACHED_AT_MAX_PLUS_ONE' \
+        'output.writeUTF("research_pay");' \
+        '2_581L, 513, 513, 513, 0, 0, 0, 0, 522, 1' \
+        'output.writeUTF("d");' \
+        'MAXIMUM_DECOMPRESSED_BYTES + 1L'; do
+        require_fixed "${joint_records}" "${marker}" \
+            "P4-E0-R2Q case-04 arithmetic/construction proof changed: ${marker}"
+    done
+    forbid_fixed "${joint_records}" 'output.writeUTF("research_payl");' \
+        'P4-E0-R2Q case-04 off-by-one field name returned'
+    for marker in \
+        'OutputLimitDiagnostic' \
+        'countBeforeWrite' \
+        'requestedWriteWidth' \
+        'measurementCeiling' \
+        'projectedCountAfterWrite'; do
+        require_fixed "${wire}" "${marker}" \
+            "P4-E0-R2Q bounded construction diagnostic changed: ${marker}"
+    done
+    for marker in \
+        'case04IdentityArithmeticAndConstructionCeilingStayExact' \
+        'depthNegativeInsertsOneEmptyNamedCompoundWithoutRenamingTheBaselineChain' \
+        '268_435_456L, diagnostic.countBeforeWrite()' \
+        '1L, diagnostic.requestedWriteWidth()' \
+        '268_435_457L, diagnostic.projectedCountAfterWrite()'; do
+        require_fixed "${joint_test}" "${marker}" \
+            "P4-E0-R2Q case-04 scalar proof is missing: ${marker}"
+    done
+
+    for marker in \
         'case "verify-version-init" -> verifyFreshJvmDataVersion(' \
         'var fixture = P4E0R2QStoreJournalFixtures.buildExact();' \
         'fixture.writePrimary(worldRoot, true);' \
@@ -988,6 +1081,7 @@ verify_formal_model_contract() {
     for marker in \
         'everyFreshPrepareCaseInitializesTheDetectedVersionInsideFailurePreservation' \
         'freshJvmRegressionUsesTheActualBoundedPrimaryWriterAndStrictIntDataVersion' \
+        'freshJvmCounterPreparationUsesTheFormalFixturePathWithoutStartingAChild' \
         'assertEquals(3_955, P4E0R2QProfile.locked().acceptedDataVersion())'; do
         require_fixed "${contract_test}" "${marker}" \
             "P4-E0-R2Q fresh-JVM contract test is missing ${marker}"
@@ -995,6 +1089,13 @@ verify_formal_model_contract() {
     require_fixed "${gate_test}" \
         'prepareCaseFailureIsBoundedlyArchivedBeforeAnyChildOrOfficialArtifact' \
         'P4-E0-R2Q bounded prepare-case archive regression is missing'
+    for marker in \
+        'measurementPrepareFailureUsesDistinctBoundedParentEvidence' \
+        'runtimePrepareFailureUsesDistinctBoundedParentEvidence' \
+        'prepareArchiveCollisionIsSuppressedWithoutReplacingPrimaryFailure'; do
+        require_fixed "${gate_test}" "${marker}" \
+            "P4-E0-R2Q prepare-failure regression is missing: ${marker}"
+    done
 
     OFFICIAL_CLASSIFICATION_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-official-classification.XXXXXX")" \
         || fail 'P4-E0-R2Q verifier could not create official-classification block'
@@ -1121,9 +1222,12 @@ verify_formal_model_contract() {
         'control.toJsonLine()' \
         'preserveManifestIfPresent(sourceCase, targetCase, control, index)' \
         'preserveResultIfPresent(sourceCase, targetCase, control, index, "child-result.json")' \
+        'preserveResultIfPresent(' \
+        'sourceCase, targetCase, control, index, "prepare-failure.json")' \
         '"case-manifest.json"' \
         '"child-result.json"' \
         '"verified-result.json"' \
+        '"prepare-failure.json"' \
         '"running.marker"' \
         '"exit-code.txt"' \
         '"timeout.marker"' \
@@ -1132,6 +1236,18 @@ verify_formal_model_contract() {
         require_fixed "${evidence}" "${marker}" \
             "P4-E0-R2Q stale/failed evidence topology changed: ${marker}"
     done
+    for marker in \
+        'static void preservePrepareFailureBoundedly(' \
+        'P4E0R2QFormalWorkload.PREPARE_FAILURE' \
+        'primaryFailure.getClass().getName()' \
+        'catch (IOException | RuntimeException archiveFailure)' \
+        'primaryFailure.addSuppressed(archiveFailure)'; do
+        require_fixed "${main_source}" "${marker}" \
+            "P4-E0-R2Q bounded prepare-failure preservation changed: ${marker}"
+    done
+    forbid_ere "${main_source}" \
+        'catch[[:space:]]*\([^)]*(OutOfMemoryError|Error)' \
+        'P4-E0-R2Q parent failure preservation must not catch Error/OOME'
     require_count "${evidence}" 'atomicMove(staging, target)' 2 \
         'P4-E0-R2Q stale and failed archives must each publish by one atomic staging move'
     forbid_fixed "${evidence}" 'atomicMove(official, target)' \
@@ -1251,6 +1367,8 @@ verify_jar_isolation() {
         done < "${R2Q_GAME_LIST}"
         forbid_fixed "${JAR_CONTENTS}" 'P4E0R2Q' \
             'P4-E0-R2Q nested/orphan class leaked into production JAR'
+        forbid_fixed "${JAR_CONTENTS}" 'P4E0Research' \
+            'P4-E0 research nested/orphan class leaked into production JAR'
         forbid_fixed "${JAR_CONTENTS}" 'p4-e0-r2q-profile-v0.json' \
             'P4-E0-R2Q profile resource leaked into production JAR'
     done < "${JAR_LIST}"

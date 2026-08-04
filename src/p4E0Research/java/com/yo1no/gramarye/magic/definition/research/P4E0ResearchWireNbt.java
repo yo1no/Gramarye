@@ -623,14 +623,66 @@ final class P4E0ResearchWireNbt {
 
     static final class ResearchLimitException extends IOException {
         private final String coordinate;
+        private final OutputLimitDiagnostic outputDiagnostic;
 
         ResearchLimitException(String coordinate) {
+            this(coordinate, null);
+        }
+
+        ResearchLimitException(
+                String coordinate,
+                long countBeforeWrite,
+                long requestedWriteWidth,
+                long measurementCeiling,
+                long projectedCountAfterWrite) {
+            this(
+                    coordinate,
+                    new OutputLimitDiagnostic(
+                            OutputLimitCode.CONSTRUCTION_CEILING_REACHED,
+                            countBeforeWrite,
+                            requestedWriteWidth,
+                            measurementCeiling,
+                            projectedCountAfterWrite));
+        }
+
+        private ResearchLimitException(
+                String coordinate, OutputLimitDiagnostic outputDiagnostic) {
             super("research observation limit reached");
             this.coordinate = Objects.requireNonNull(coordinate, "coordinate");
+            this.outputDiagnostic = outputDiagnostic;
         }
 
         String coordinate() {
             return coordinate;
+        }
+
+        OutputLimitDiagnostic requireOutputDiagnostic() {
+            if (outputDiagnostic == null) {
+                throw new IllegalStateException("research limit has no output diagnostic");
+            }
+            return outputDiagnostic;
+        }
+    }
+
+    enum OutputLimitCode {
+        CONSTRUCTION_CEILING_REACHED
+    }
+
+    record OutputLimitDiagnostic(
+            OutputLimitCode code,
+            long countBeforeWrite,
+            long requestedWriteWidth,
+            long measurementCeiling,
+            long projectedCountAfterWrite) {
+        OutputLimitDiagnostic {
+            Objects.requireNonNull(code, "code");
+            if (countBeforeWrite < 0L
+                    || requestedWriteWidth <= 0L
+                    || measurementCeiling <= 0L
+                    || projectedCountAfterWrite
+                            != Math.addExact(countBeforeWrite, requestedWriteWidth)) {
+                throw new IllegalArgumentException("invalid bounded output diagnostic");
+            }
         }
     }
 
@@ -1187,31 +1239,35 @@ final class P4E0ResearchWireNbt {
     private static final class PayloadOutput extends OutputStream {
         private final OutputStream delegate;
         private final CRC32 crc;
+        private final long maximum;
         private final long observationLimit;
         private long count;
 
         private PayloadOutput(OutputStream delegate, CRC32 crc, long maximum) {
             this.delegate = delegate;
             this.crc = crc;
+            this.maximum = maximum;
             this.observationLimit = Math.addExact(maximum, 1L);
         }
 
         @Override
         public void write(int value) throws IOException {
             if (count == observationLimit) {
-                throw new ResearchLimitException("decompressed_bytes");
+                throw outputLimit(1L);
             }
+            var before = count;
             delegate.write(value);
             crc.update(value);
             count = Math.addExact(count, 1L);
             if (count == observationLimit) {
-                throw new ResearchLimitException("decompressed_bytes");
+                throw outputLimit(before, 1L);
             }
         }
 
         @Override
         public void write(byte[] bytes, int offset, int length) throws IOException {
             Objects.checkFromIndexSize(offset, length, bytes.length);
+            var before = count;
             var permitted = (int) Math.min((long) length, observationLimit - count);
             if (permitted > 0) {
                 delegate.write(bytes, offset, permitted);
@@ -1219,7 +1275,7 @@ final class P4E0ResearchWireNbt {
                 count = Math.addExact(count, permitted);
             }
             if (permitted != length || count == observationLimit) {
-                throw new ResearchLimitException("decompressed_bytes");
+                throw outputLimit(before, length);
             }
         }
 
@@ -1230,6 +1286,20 @@ final class P4E0ResearchWireNbt {
 
         private long count() {
             return count;
+        }
+
+        private ResearchLimitException outputLimit(long requestedWriteWidth) {
+            return outputLimit(count, requestedWriteWidth);
+        }
+
+        private ResearchLimitException outputLimit(
+                long countBeforeWrite, long requestedWriteWidth) {
+            return new ResearchLimitException(
+                    "decompressed_bytes",
+                    countBeforeWrite,
+                    requestedWriteWidth,
+                    maximum,
+                    Math.addExact(countBeforeWrite, requestedWriteWidth));
         }
     }
 
