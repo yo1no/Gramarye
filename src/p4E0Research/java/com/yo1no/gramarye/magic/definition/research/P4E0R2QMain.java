@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.zip.Deflater;
 import net.minecraft.SharedConstants;
@@ -40,6 +41,10 @@ public final class P4E0R2QMain {
     private static final String WIRE_FIXTURE = "r2q-reduced-wire-v0.dat";
     private static final String STANDALONE_RESULT = "standalone-smoke-v0.json";
     private static final String DEDICATED_RESULT = "dedicated-smoke-v0.json";
+    private static final String FRESH_JVM_DATA_VERSION_RESULT =
+            "fresh-jvm-dataversion-v0.json";
+    private static final Set<String> FRESH_JVM_DATA_VERSION_FIELDS = Set.of(
+            "schema_version", "tag_type", "data_version", "write_path");
     private static final Set<String> RESULT_FIELDS = Set.of(
             "schema_version",
             "authority",
@@ -98,7 +103,7 @@ public final class P4E0R2QMain {
     public static void main(String[] args) throws Exception {
         if (args.length != 4) {
             throw new IllegalArgumentException(
-                    "usage: prepare|verify-profile|run-smoke|verify-smoke"
+                    "usage: prepare|verify-profile|verify-version-init|run-smoke|verify-smoke"
                             + " <fixture-root> <report-root> <synthetic-world-root>");
         }
         SharedConstants.tryDetectVersion();
@@ -108,11 +113,32 @@ public final class P4E0R2QMain {
         switch (args[0]) {
             case "prepare" -> prepare(fixtureRoot, reportRoot, syntheticWorldRoot);
             case "verify-profile" -> verifyProfile(fixtureRoot, syntheticWorldRoot, true);
+            case "verify-version-init" -> verifyFreshJvmDataVersion(
+                    reportRoot, syntheticWorldRoot.resolveSibling("version-init-world"));
             case "run-smoke" -> runStandaloneSmoke(
                     fixtureRoot, reportRoot, syntheticWorldRoot);
             case "verify-smoke" -> verifySmoke(fixtureRoot, reportRoot, syntheticWorldRoot);
             default -> throw new IllegalArgumentException("unknown R2Q-A smoke command");
         }
+    }
+
+    private static void verifyFreshJvmDataVersion(Path reportRoot, Path worldRoot)
+            throws IOException {
+        Files.createDirectories(reportRoot);
+        Files.createDirectories(worldRoot);
+        var fixture = P4E0R2QStoreJournalFixtures.buildExact();
+        fixture.writePrimary(worldRoot, true);
+        var expected = P4E0R2QProfile.locked().acceptedDataVersion();
+        P4E0R2QStoreJournalFixtures.requireStrictPrimaryDataVersion(worldRoot, expected);
+        var result = new JsonObject();
+        result.addProperty("schema_version", 0);
+        result.addProperty("tag_type", Tag.TAG_INT);
+        result.addProperty("data_version", expected);
+        result.addProperty("write_path", "P4E0R2QStoreJournalFixtures.writePrimary");
+        P4E0ResearchRunRecord.atomicCreate(
+                reportRoot.resolve(FRESH_JVM_DATA_VERSION_RESULT),
+                result + System.lineSeparator());
+        fixture.retainAtPeak();
     }
 
     /** Called only by the isolated research GameTest holder on the server logic thread. */
@@ -194,6 +220,7 @@ public final class P4E0R2QMain {
     private static void verifySmoke(
             Path fixtureRoot, Path reportRoot, Path syntheticWorldRoot) throws IOException {
         verifyProfile(fixtureRoot, syntheticWorldRoot, false);
+        requireFreshJvmDataVersionResult(reportRoot);
         var standalone = readResult(reportRoot.resolve(STANDALONE_RESULT));
         var dedicated = readResult(reportRoot.resolve(DEDICATED_RESULT));
         requireResult(standalone, "standalone", fixtureRoot, 0);
@@ -211,7 +238,32 @@ public final class P4E0R2QMain {
                 throw new IOException("R2Q-A smoke modes disagree on bounded fixture evidence");
             }
         }
-        requireNoFormalArtifacts(reportRoot.getParent(), fixtureRoot.getParent());
+        requireNoFormalArtifacts(
+                Objects.requireNonNull(reportRoot.getParent(), "smoke report parent")
+                        .resolveSibling("p4-e0-r2q"),
+                Objects.requireNonNull(fixtureRoot.getParent(), "smoke fixture parent")
+                        .resolve("formal"));
+    }
+
+    private static void requireFreshJvmDataVersionResult(Path reportRoot) throws IOException {
+        var text = readBounded(
+                reportRoot.resolve(FRESH_JVM_DATA_VERSION_RESULT), MAXIMUM_CONTROL_BYTES);
+        final JsonObject result;
+        try {
+            result = JsonParser.parseString(text.stripTrailing()).getAsJsonObject();
+        } catch (RuntimeException exception) {
+            throw new IOException("R2Q fresh-JVM DataVersion result is malformed", exception);
+        }
+        if (!text.endsWith(System.lineSeparator())
+                || !result.keySet().equals(FRESH_JVM_DATA_VERSION_FIELDS)
+                || result.get("schema_version").getAsInt() != 0
+                || result.get("tag_type").getAsInt() != Tag.TAG_INT
+                || result.get("data_version").getAsInt()
+                        != P4E0R2QProfile.locked().acceptedDataVersion()
+                || !result.get("write_path").getAsString()
+                        .equals("P4E0R2QStoreJournalFixtures.writePrimary")) {
+            throw new IOException("R2Q fresh-JVM DataVersion result changed");
+        }
     }
 
     private static void requireProfileArithmetic() {
@@ -619,14 +671,12 @@ public final class P4E0R2QMain {
                 "summary.md",
                 "PROVENANCE.txt",
                 "SHA256SUMS.txt");
-        for (var ownedRoot : ownedRoots) {
-            if (ownedRoot == null || !Files.exists(ownedRoot, LinkOption.NOFOLLOW_LINKS)) {
+        for (var artifactRoot : ownedRoots) {
+            if (artifactRoot == null) {
                 continue;
             }
-            try (var paths = Files.walk(ownedRoot)) {
-                if (paths.filter(Files::isRegularFile)
-                        .map(path -> path.getFileName().toString())
-                        .anyMatch(forbidden::contains)) {
+            for (var artifact : forbidden) {
+                if (Files.exists(artifactRoot.resolve(artifact), LinkOption.NOFOLLOW_LINKS)) {
                     throw new IOException(
                             "R2Q-A must not publish formal qualification evidence");
                 }

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.nbt.IntTag;
 import net.minecraft.server.MinecraftServer;
 
 /**
@@ -122,6 +123,23 @@ public final class P4E0R2QStoreJournalFixtures {
             throw new AssertionError("R2Q current Store checksum changed");
         }
         return fixture;
+    }
+
+    /** Strictly reads the exact primary and requires its platform DataVersion IntTag. */
+    public static void requireStrictPrimaryDataVersion(Path worldRoot, int expected)
+            throws IOException {
+        var observed = P4E0ResearchGzipAdapter.read(
+                P4D3StoreJournalFixture.primary(
+                        Objects.requireNonNull(worldRoot, "worldRoot")),
+                com.yo1no.gramarye.magic.limits.MagicSafetyCeilings
+                        .MAX_SKILL_SAVED_DATA_FILE_BYTES,
+                SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES,
+                SkillSavedDataPersistenceSchema.FINITE_WHOLE_ROOT_NBT_QUOTA);
+        var dataVersion = observed.decodedRoot().get(
+                SkillSavedDataPersistenceSchema.DATA_VERSION_FIELD);
+        if (!(dataVersion instanceof IntTag version) || version.getAsInt() != expected) {
+            throw new IOException("R2Q strict primary DataVersion changed");
+        }
     }
 
     public static SkillOwnerId owner(int index) {

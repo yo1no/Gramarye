@@ -2486,12 +2486,27 @@ def verifyP4E0R2QPreflightTests = tasks.register(
     dependsOn(tasks.named('test'))
 }
 
+def verifyP4E0R2QFreshJvmDataVersion = registerP4E0R2QCommand(
+        'verifyP4E0R2QFreshJvmDataVersion',
+        'verify-version-init',
+        'Runs the non-formal fresh-JVM writePrimary DataVersion regression.')
+verifyP4E0R2QFreshJvmDataVersion.configure {
+    dependsOn(verifyP4E0R2QConfiguration)
+    doFirst {
+        p4E0R2QDedicatedGameDirectory.get()
+                .dir('version-init-world').asFile.deleteDir()
+        p4E0R2QReportDirectory.get()
+                .file('fresh-jvm-dataversion-v0.json').asFile.delete()
+    }
+}
+
 def prepareP4E0R2Q = registerP4E0R2QCommand(
         'prepareP4E0R2Q',
         'prepare',
         'Builds bounded, deterministic P4-E0-R2Q smoke controls.')
 prepareP4E0R2Q.configure {
     dependsOn(verifyP4E0R2QPreflightTests)
+    dependsOn(verifyP4E0R2QFreshJvmDataVersion)
     doFirst {
         p4E0R2QDedicatedGameDirectory.get().asFile.deleteDir()
     }

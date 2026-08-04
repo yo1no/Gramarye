@@ -215,6 +215,57 @@ final class P4E0ResearchR2QFormalGateNegativeTest {
                 () -> assertFalse(Files.exists(invocation.staleEvidenceRoot())));
     }
 
+    @Test
+    void prepareCaseFailureIsBoundedlyArchivedBeforeAnyChildOrOfficialArtifact()
+            throws Throwable {
+        var invocation = invocation("prepare-case-failure", RepositoryMutation.NONE);
+        withProperties("true", EXACT_BUDGET, invocation.repository(),
+                () -> P4E0R2QFormalMain.main(invocation.arguments("prepare-study")));
+        var control = P4E0R2QFormalEvidence.readControl(
+                invocation.workRoot().resolve("study-control.json"));
+        Files.createDirectories(invocation.firstCaseRoot());
+        Files.writeString(invocation.firstCaseRoot().resolve("case-manifest.json"),
+                "invalid pre-existing prepare evidence\n");
+
+        var failure = assertThrows(IOException.class,
+                () -> withProperties("true", EXACT_BUDGET, invocation.repository(),
+                        () -> P4E0R2QFormalMain.main(
+                                invocation.arguments("prepare-case", "0"))));
+        var archive = invocation.failedEvidenceRoot().resolve(control.studyId());
+        var result = P4E0R2QFormalEvidence.readResult(
+                archive.resolve("cases/00/verified-result.json"));
+        List<String> archivedNames;
+        try (var paths = Files.walk(archive)) {
+            archivedNames = paths.filter(Files::isRegularFile)
+                    .map(path -> archive.relativize(path).toString())
+                    .sorted()
+                    .toList();
+        }
+
+        assertAll(
+                () -> assertTrue(failure.getMessage().contains(
+                        "formal case manifest already exists")),
+                () -> assertFalse(Files.exists(invocation.workRoot())),
+                () -> assertFalse(Files.exists(invocation.officialRoot())),
+                () -> assertTrue(Files.isRegularFile(
+                        archive.resolve("study-control.json"))),
+                () -> assertTrue(Files.isRegularFile(
+                        archive.resolve("cases/00/case-manifest.status"))),
+                () -> assertEquals(
+                        P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID,
+                        result.processClassification()),
+                () -> assertTrue(Files.readString(archive.resolve("FAILURE.txt"))
+                        .contains("code=FIXTURE_INVALID\n")),
+                () -> assertTrue(Files.isRegularFile(archive.resolve("SHA256SUMS.txt"))),
+                () -> assertFalse(archivedNames.stream().anyMatch(name ->
+                        name.endsWith("child-result.json")
+                                || name.endsWith("running.marker")
+                                || name.endsWith("exit-code.txt")
+                                || name.endsWith("timeout.marker")
+                                || name.endsWith("parent-deadline.marker"))),
+                () -> assertEquals(5, archivedNames.size()));
+    }
+
     private IOException invokeRejectedPrepare(Invocation invocation) throws Throwable {
         return assertThrows(IOException.class,
                 () -> withProperties("true", EXACT_BUDGET, invocation.repository(),

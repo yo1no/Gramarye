@@ -31,6 +31,7 @@ FORMAL_BLOCK=''
 FORMAL_PROFILE_BLOCK=''
 FORMAL_RUN_BLOCK=''
 FORMAL_TASK_LOOP_BLOCK=''
+PREPARE_CASE_BLOCK=''
 COUNTER_BLOCK=''
 CASE_KIND_BLOCK=''
 RUNTIME_BLOCK=''
@@ -50,6 +51,7 @@ cleanup() {
         "${FORMAL_PROFILE_BLOCK}" \
         "${FORMAL_RUN_BLOCK}" \
         "${FORMAL_TASK_LOOP_BLOCK}" \
+        "${PREPARE_CASE_BLOCK}" \
         "${COUNTER_BLOCK}" \
         "${CASE_KIND_BLOCK}" \
         "${RUNTIME_BLOCK}" \
@@ -140,6 +142,38 @@ require_ere_count() {
         || fail "${message} (expected ${expected}, found ${actual})"
 }
 
+require_fixed_before() {
+    local file="$1"
+    local first_needle="$2"
+    local second_needle="$3"
+    local message="$4"
+    local first_match=''
+    local second_match=''
+    local first_line=''
+    local second_line=''
+    local status=0
+    first_match="$(LC_ALL=C grep -Fn -- "${first_needle}" "${file}")" || status=$?
+    case "${status}" in
+        0) ;;
+        1) fail "${message} (first marker is missing)" ;;
+        *) grep_failed "${file}" "${status}" ;;
+    esac
+    status=0
+    second_match="$(LC_ALL=C grep -Fn -- "${second_needle}" "${file}")" || status=$?
+    case "${status}" in
+        0) ;;
+        1) fail "${message} (second marker is missing)" ;;
+        *) grep_failed "${file}" "${status}" ;;
+    esac
+    [[ "${first_match}" != *$'\n'* && "${second_match}" != *$'\n'* ]] \
+        || fail "${message} (ordering marker is not unique)"
+    first_line="${first_match%%:*}"
+    second_line="${second_match%%:*}"
+    [[ "${first_line}" =~ ^[0-9]+$ && "${second_line}" =~ ^[0-9]+$ \
+            && "${first_line}" -lt "${second_line}" ]] \
+        || fail "${message}"
+}
+
 null_record_count() {
     local file="$1"
     local count=0
@@ -159,11 +193,13 @@ verify_helpers() {
     local status=0
     HELPER_FIXTURE="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-helper.XXXXXX")" \
         || fail 'P4-E0-R2Q verifier could not create helper fixture'
-    printf '%s\n' 'present contract' > "${HELPER_FIXTURE}"
+    printf '%s\n' 'present contract' 'later contract' > "${HELPER_FIXTURE}"
     require_fixed "${HELPER_FIXTURE}" 'present contract' \
         'P4-E0-R2Q self-test lost required matching'
     forbid_fixed "${HELPER_FIXTURE}" 'absent contract' \
         'P4-E0-R2Q self-test misclassified an absent pattern'
+    require_fixed_before "${HELPER_FIXTURE}" 'present contract' 'later contract' \
+        'P4-E0-R2Q self-test lost fixed-marker ordering'
 
     output="$({ require_fixed "${HELPER_FIXTURE}" missing EXPECTED_MISSING; } 2>&1)" \
         || status=$?
@@ -179,6 +215,12 @@ verify_helpers() {
         || status=$?
     [[ "${status}" -eq 1 && "${output}" == EXPECTED_COUNT* ]] \
         || fail 'P4-E0-R2Q verifier cannot distinguish an exact-count mismatch'
+    status=0
+    output="$({ require_fixed_before "${HELPER_FIXTURE}" \
+            'later contract' 'present contract' EXPECTED_ORDER; } 2>&1)" \
+        || status=$?
+    [[ "${status}" -eq 1 && "${output}" == 'EXPECTED_ORDER' ]] \
+        || fail 'P4-E0-R2Q verifier cannot distinguish reversed marker order'
     status=0
     output="$({ require_fixed "${HELPER_FIXTURE}.missing" present WRONG_MISSING; } 2>&1)" \
         || status=$?
@@ -470,6 +512,8 @@ verify_build_and_formal_gate() {
         "systemProperty 'gramarye.p4e0.r2q.formal.diskBudgetBytes'" \
         "'prepareP4E0R2Q'" \
         "'verifyP4E0R2QPreflightTests')" \
+        "'verifyP4E0R2QFreshJvmDataVersion'," \
+        "'verify-version-init'," \
         "'verifyP4E0R2QProfile'" \
         "'runP4E0R2QSmoke'" \
         "tasks.named('runP4E0R2QDedicatedSmoke', JavaExec)" \
@@ -489,6 +533,7 @@ verify_build_and_formal_gate() {
         "tasks.register('p4E0R2QStudy')" \
         'dependsOn(verifyP4E0R2QConfiguration)' \
         'dependsOn(verifyP4E0R2QPreflightTests)' \
+        'dependsOn(verifyP4E0R2QFreshJvmDataVersion)' \
         'dependsOn(prepareP4E0R2Q)' \
         'dependsOn(verifyP4E0R2QProfile)' \
         'dependsOn(runP4E0R2QSmoke)' \
@@ -532,7 +577,7 @@ verify_build_and_formal_gate() {
 
     SMOKE_TASK_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-smoke-tasks.XXXXXX")" \
         || fail 'P4-E0-R2Q verifier could not create smoke-task block'
-    sed -n "/^def prepareP4E0R2Q =/,/^def p4E0R2QGitStatus =/p" \
+    sed -n "/^def verifyP4E0R2QFreshJvmDataVersion =/,/^def p4E0R2QGitStatus =/p" \
         build.gradle > "${SMOKE_TASK_BLOCK}"
     [[ -s "${SMOKE_TASK_BLOCK}" ]] \
         || fail 'P4-E0-R2Q smoke task block is missing'
@@ -543,6 +588,17 @@ verify_build_and_formal_gate() {
         "tasks.register('p4E0R2QStudy')"; do
         forbid_fixed "${SMOKE_TASK_BLOCK}" "${marker}" \
             "P4-E0-R2Q smoke graph depends on formal task ${marker}"
+    done
+    for marker in \
+        "'verifyP4E0R2QFreshJvmDataVersion'," \
+        "'verify-version-init'," \
+        'verifyP4E0R2QFreshJvmDataVersion.configure {' \
+        'dependsOn(verifyP4E0R2QConfiguration)' \
+        "dir('version-init-world').asFile.deleteDir()" \
+        "file('fresh-jvm-dataversion-v0.json').asFile.delete()" \
+        'dependsOn(verifyP4E0R2QFreshJvmDataVersion)'; do
+        require_count "${SMOKE_TASK_BLOCK}" "${marker}" 1 \
+            "P4-E0-R2Q fresh-JVM smoke gate changed: ${marker}"
     done
 
     FORMAL_ENTRY_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-formal-entry.XXXXXX")" \
@@ -555,7 +611,9 @@ verify_build_and_formal_gate() {
         'runP4E0R2QSmoke' \
         'runP4E0R2QDedicatedSmoke' \
         'runP4E0R2QSupervisorSmoke' \
-        'runP4E0R2QRunnerDedicatedSmoke'; do
+        'runP4E0R2QRunnerDedicatedSmoke' \
+        'verifyP4E0R2QFreshJvmDataVersion' \
+        'verify-version-init'; do
         forbid_fixed "${FORMAL_ENTRY_BLOCK}" "${marker}" \
             "P4-E0-R2Q formal spine depends on smoke task ${marker}"
     done
@@ -690,6 +748,7 @@ verify_build_and_formal_gate() {
         'p4E0R2QConfiguredFormalPrepareTaskNames.add(prepareCaseTaskName)' \
         'p4E0R2QConfiguredFormalVerifyTaskNames.add(verifyCaseTaskName)' \
         'p4E0R2QConfiguredFormalFailureTaskNames.add(captureFailureTaskName)' \
+        "'prepare-case'" \
         'dependsOn(prerequisiteVerifier)' \
         'def runCaseTask = tasks.named(runCaseTaskName, JavaExec)' \
         'timeout.set(java.time.Duration.ofSeconds(p4E0R2QFormalTimeoutSeconds))' \
@@ -766,7 +825,8 @@ verify_source_boundary() {
                 'NbtAccounter.unlimitedHeap' 'java.lang.reflect' \
                 'setAccessible(' 'sun.misc.Unsafe' '.reclaim(' \
                 'RootIndex' 'Reconciliation' 'CustomPacketPayload' \
-                'net.minecraft.client'; do
+                'net.minecraft.client' 'WorldVersion' \
+                'SharedConstants.setVersion(' 'setCurrentVersion('; do
                 forbid_fixed "${file}" "${forbidden}" \
                     "P4-E0-R2Q source contains forbidden ${forbidden}: ${file}"
             done
@@ -837,7 +897,9 @@ verify_source_boundary() {
         'P4E0R2QStoreJournalFixtures.buildExact()' \
         'installExactSubmission(server)' \
         'P4D3ProbeSupport.observeLive(server)' \
-        'Files.walk(ownedRoot)' \
+        '.resolveSibling("p4-e0-r2q")' \
+        '.resolve("formal")' \
+        'artifactRoot.resolve(artifact), LinkOption.NOFOLLOW_LINKS' \
         'exact_store_journal_root_preflight' \
         'exact_d2_prospective_observed'; do
         require_fixed \
@@ -845,14 +907,94 @@ verify_source_boundary() {
             "${marker}" \
             "P4-E0-R2Q exact preflight/smoke is missing ${marker}"
     done
+    forbid_fixed \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QMain.java \
+        'Files.walk(ownedRoot)' \
+        'P4-E0-R2Q smoke must not mistake bounded failed-evidence for official artifacts'
 }
 
 verify_formal_model_contract() {
     local result='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalResult.java'
     local evidence='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalEvidence.java'
     local main_source='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalMain.java'
+    local smoke_main='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QMain.java'
+    local store_fixtures='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0R2QStoreJournalFixtures.java'
+    local contract_test='src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalContractTest.java'
+    local gate_test='src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalGateNegativeTest.java'
     local driver='src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalDedicatedDriver.java'
     local marker=''
+
+    PREPARE_CASE_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-prepare-case.XXXXXX")" \
+        || fail 'P4-E0-R2Q verifier could not create prepare-case block'
+    sed -n '/^    private static void prepareCase(/,/^    private static void preservePrepareFailure(/p' \
+        "${main_source}" > "${PREPARE_CASE_BLOCK}"
+    [[ -s "${PREPARE_CASE_BLOCK}" ]] \
+        || fail 'P4-E0-R2Q common formal prepare-case method is missing'
+    require_count "${PREPARE_CASE_BLOCK}" 'SharedConstants.tryDetectVersion();' 1 \
+        'P4-E0-R2Q every fresh prepare-case JVM must initialize the detected game version once'
+    require_count "${PREPARE_CASE_BLOCK}" 'P4E0R2QFormalWorkload.prepareCase(' 1 \
+        'P4-E0-R2Q common prepare-case workload invocation changed'
+    require_fixed_before \
+        "${PREPARE_CASE_BLOCK}" \
+        'SharedConstants.tryDetectVersion();' \
+        'P4E0R2QFormalWorkload.prepareCase(' \
+        'P4-E0-R2Q game-version initialization must precede every formal fixture materialization'
+    for marker in \
+        'catch (P4E0R2QFormalEvidence.ResearchGuardException exception)' \
+        'catch (IOException exception)' \
+        'catch (RuntimeException exception)' \
+        'P4E0R2QFormalResult.ProcessClassification.REJECTED_BY_RESEARCH_GUARD' \
+        'P4E0R2QFormalResult.ProcessClassification.FIXTURE_INVALID' \
+        'P4E0R2QFormalResult.ProcessClassification.INSTRUMENTATION_FAILURE' \
+        'preservePrepareFailure('; do
+        require_fixed "${PREPARE_CASE_BLOCK}" "${marker}" \
+            "P4-E0-R2Q bounded prepare-case failure preservation changed: ${marker}"
+    done
+    forbid_ere "${PREPARE_CASE_BLOCK}" \
+        'catch[[:space:]]*\([^)]*(OutOfMemoryError|Error)' \
+        'P4-E0-R2Q prepare-case must not catch Error/OOME'
+    require_fixed "${main_source}" \
+        'case "prepare-case" -> prepareCase(workRoot, exactCase(arguments));' \
+        'P4-E0-R2Q all formal case indices must dispatch through the common initialized prepare path'
+
+    for marker in \
+        'case "verify-version-init" -> verifyFreshJvmDataVersion(' \
+        'var fixture = P4E0R2QStoreJournalFixtures.buildExact();' \
+        'fixture.writePrimary(worldRoot, true);' \
+        'P4E0R2QStoreJournalFixtures.requireStrictPrimaryDataVersion(worldRoot, expected);' \
+        'var expected = P4E0R2QProfile.locked().acceptedDataVersion();' \
+        'result.addProperty("tag_type", Tag.TAG_INT);' \
+        'result.addProperty("data_version", expected);' \
+        'requireFreshJvmDataVersionResult(reportRoot);' \
+        'result.get("tag_type").getAsInt() != Tag.TAG_INT' \
+        'P4E0R2QProfile.locked().acceptedDataVersion()'; do
+        require_fixed "${smoke_main}" "${marker}" \
+            "P4-E0-R2Q fresh-JVM DataVersion command changed: ${marker}"
+    done
+    for marker in \
+        'public static void requireStrictPrimaryDataVersion(Path worldRoot, int expected)' \
+        'P4E0ResearchGzipAdapter.read(' \
+        '.MAX_SKILL_SAVED_DATA_FILE_BYTES' \
+        'SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES' \
+        'SkillSavedDataPersistenceSchema.FINITE_WHOLE_ROOT_NBT_QUOTA' \
+        'SkillSavedDataPersistenceSchema.DATA_VERSION_FIELD' \
+        'dataVersion instanceof IntTag version' \
+        'version.getAsInt() != expected'; do
+        require_fixed "${store_fixtures}" "${marker}" \
+            "P4-E0-R2Q bounded strict primary DataVersion read changed: ${marker}"
+    done
+    forbid_fixed "${store_fixtures}" 'NbtAccounter.unlimitedHeap' \
+        'P4-E0-R2Q fresh-JVM strict read must remain finitely accounted'
+    for marker in \
+        'everyFreshPrepareCaseInitializesTheDetectedVersionInsideFailurePreservation' \
+        'freshJvmRegressionUsesTheActualBoundedPrimaryWriterAndStrictIntDataVersion' \
+        'assertEquals(3_955, P4E0R2QProfile.locked().acceptedDataVersion())'; do
+        require_fixed "${contract_test}" "${marker}" \
+            "P4-E0-R2Q fresh-JVM contract test is missing ${marker}"
+    done
+    require_fixed "${gate_test}" \
+        'prepareCaseFailureIsBoundedlyArchivedBeforeAnyChildOrOfficialArtifact' \
+        'P4-E0-R2Q bounded prepare-case archive regression is missing'
 
     OFFICIAL_CLASSIFICATION_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-official-classification.XXXXXX")" \
         || fail 'P4-E0-R2Q verifier could not create official-classification block'

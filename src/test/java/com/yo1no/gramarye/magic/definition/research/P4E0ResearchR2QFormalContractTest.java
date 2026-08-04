@@ -25,6 +25,10 @@ final class P4E0ResearchR2QFormalContractTest {
     private static final Path FORMAL_EVIDENCE = research("P4E0R2QFormalEvidence.java");
     private static final Path FORMAL_WORKLOAD = research("P4E0R2QFormalWorkload.java");
     private static final Path FORMAL_DRIVER = dedicated("P4E0R2QFormalDedicatedDriver.java");
+    private static final Path R2Q_MAIN = research("P4E0R2QMain.java");
+    private static final Path STORE_FIXTURES = required(PROJECT_ROOT.resolve(
+            "src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/"
+                    + "P4E0R2QStoreJournalFixtures.java"));
 
     @TempDir
     Path temporaryDirectory;
@@ -115,6 +119,7 @@ final class P4E0ResearchR2QFormalContractTest {
     @Test
     void formalAndSmokeOutputsArePhysicallyDisjoint() {
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
+        var smokeMain = read(R2Q_MAIN);
         assertAll(
                 () -> assertTrue(build.contains(
                         "layout.buildDirectory.dir('reports/p4-e0-r2q')")),
@@ -129,7 +134,13 @@ final class P4E0ResearchR2QFormalContractTest {
                 () -> assertFalse(build.contains("reports/p4-e0-r2q-runner-smoke")),
                 () -> assertTrue(build.contains("runP4E0R2QSupervisorSmoke")),
                 () -> assertTrue(build.contains("runP4E0R2QRunnerDedicatedSmoke")),
-                () -> assertTrue(build.contains("verifyP4E0R2QSupervisorSmoke")));
+                () -> assertTrue(build.contains("verifyP4E0R2QSupervisorSmoke")),
+                () -> assertTrue(smokeMain.contains(
+                        ".resolveSibling(\"p4-e0-r2q\")")),
+                () -> assertTrue(smokeMain.contains(".resolve(\"formal\")")),
+                () -> assertFalse(smokeMain.contains("Files.walk(ownedRoot)")),
+                () -> assertTrue(smokeMain.contains(
+                        "artifactRoot.resolve(artifact), LinkOption.NOFOLLOW_LINKS")));
     }
 
     @Test
@@ -189,6 +200,62 @@ final class P4E0ResearchR2QFormalContractTest {
                             || block.contains("runP4E0R2QRunnerDedicatedSmoke"),
                     () -> "formal task owns smoke dependency: " + marker);
         }
+    }
+
+    @Test
+    void everyFreshPrepareCaseInitializesTheDetectedVersionInsideFailurePreservation() {
+        var formal = read(FORMAL_MAIN);
+        var prepareCase = bracedBlock(formal, "private static void prepareCase(");
+        var initialization = prepareCase.indexOf("SharedConstants.tryDetectVersion();");
+        var materialization = prepareCase.indexOf("P4E0R2QFormalWorkload.prepareCase(");
+
+        assertAll(
+                () -> assertEquals(1, occurrences(
+                        prepareCase, "SharedConstants.tryDetectVersion();")),
+                () -> assertTrue(initialization >= 0 && initialization < materialization),
+                () -> assertTrue(prepareCase.contains("catch (IOException exception)")),
+                () -> assertTrue(prepareCase.contains("catch (RuntimeException exception)")),
+                () -> assertTrue(prepareCase.contains("preservePrepareFailure(")),
+                () -> assertFalse(prepareCase.matches(
+                        "(?s).*catch\\s*\\([^)]*(Error|OutOfMemoryError).*")),
+                () -> assertFalse(formal.contains("WorldVersion")),
+                () -> assertFalse(formal.contains("setCurrentVersion")));
+    }
+
+    @Test
+    void freshJvmRegressionUsesTheActualBoundedPrimaryWriterAndStrictIntDataVersion()
+            throws Exception {
+        var build = read(PROJECT_ROOT.resolve("build.gradle"));
+        var freshTask = bracedBlock(
+                build, "verifyP4E0R2QFreshJvmDataVersion.configure {");
+        var prepareTask = bracedBlock(build, "prepareP4E0R2Q.configure {");
+        var main = read(R2Q_MAIN);
+        var fixtures = read(STORE_FIXTURES);
+
+        assertAll(
+                () -> assertEquals(3_955, P4E0R2QProfile.locked().acceptedDataVersion()),
+                () -> assertTrue(build.contains(
+                        "'verifyP4E0R2QFreshJvmDataVersion',\n"
+                                + "        'verify-version-init'")),
+                () -> assertTrue(freshTask.contains(
+                        "dependsOn(verifyP4E0R2QConfiguration)")),
+                () -> assertFalse(freshTask.contains("P4E0R2QFormal")
+                        || freshTask.contains("p4E0R2QStudy")
+                        || freshTask.contains("P4E0R2QCase")),
+                () -> assertTrue(prepareTask.contains(
+                        "dependsOn(verifyP4E0R2QFreshJvmDataVersion)")),
+                () -> assertTrue(main.contains(
+                        "case \"verify-version-init\" -> verifyFreshJvmDataVersion(")),
+                () -> assertTrue(main.contains("fixture.writePrimary(worldRoot, true);")),
+                () -> assertTrue(main.contains(
+                        "P4E0R2QStoreJournalFixtures.requireStrictPrimaryDataVersion(")),
+                () -> assertTrue(main.contains("result.addProperty(\"tag_type\", Tag.TAG_INT)")),
+                () -> assertTrue(fixtures.contains("P4E0ResearchGzipAdapter.read(")),
+                () -> assertTrue(fixtures.contains("instanceof IntTag version")),
+                () -> assertTrue(fixtures.contains(
+                        "SkillSavedDataPersistenceSchema.FINITE_WHOLE_ROOT_NBT_QUOTA")),
+                () -> assertFalse(main.contains("WorldVersion")),
+                () -> assertFalse(fixtures.contains("NbtAccounter.unlimitedHeap")));
     }
 
     @Test

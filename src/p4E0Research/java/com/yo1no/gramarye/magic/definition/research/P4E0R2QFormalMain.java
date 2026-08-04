@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import net.minecraft.SharedConstants;
 
 /** Bounded parent supervisor for the isolated R2Q formal children. */
 final class P4E0R2QFormalMain {
@@ -130,6 +131,7 @@ final class P4E0R2QFormalMain {
         requireFormalProperties();
         var control = P4E0R2QFormalEvidence.readControl(workRoot.resolve(CONTROL_FILE));
         try {
+            SharedConstants.tryDetectVersion();
             P4E0R2QFormalWorkload.prepareCase(
                     P4E0R2QFormalEvidence.caseDirectory(workRoot, caseIndex),
                     control,

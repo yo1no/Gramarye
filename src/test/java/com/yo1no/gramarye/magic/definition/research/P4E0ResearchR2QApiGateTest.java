@@ -155,8 +155,13 @@ final class P4E0ResearchR2QApiGateTest {
 
         for (var edge : List.of(
                 "verifyP4E0R2QPreflightTests = tasks.register(",
+                "'verifyP4E0R2QFreshJvmDataVersion',\n"
+                        + "        'verify-version-init'",
+                "verifyP4E0R2QFreshJvmDataVersion.configure {\n"
+                        + "    dependsOn(verifyP4E0R2QConfiguration)",
                 "prepareP4E0R2Q.configure {\n"
                         + "    dependsOn(verifyP4E0R2QPreflightTests)",
+                "    dependsOn(verifyP4E0R2QFreshJvmDataVersion)",
                 "verifyP4E0R2QProfile.configure {\n"
                         + "    dependsOn(prepareP4E0R2Q)",
                 "runP4E0R2QSmoke.configure {\n"
