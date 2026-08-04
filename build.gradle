@@ -69,6 +69,42 @@ def p4E0R2QSmokeJvmArgs = [
 def p4E0R2QSmokeTimeoutSeconds = 600
 def p4E0R2QDedicatedGameDirectory =
         layout.buildDirectory.dir('p4-e0-r2q/dedicated-smoke')
+def p4E0R2QRunnerDedicatedGameDirectory =
+        layout.buildDirectory.dir('p4-e0-r2q/runner-dedicated-smoke')
+def p4E0R2QFormalJvmArgs = [
+        '-Xms512m',
+        '-Xmx1536m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
+def p4E0R2QFormalTimeoutSeconds = 900
+def p4E0R2QFormalWatchdogSeconds = 870
+def p4E0R2QFormalDiskBudgetBytes = '12884901888'
+def p4E0R2QFormalCaseIndices = (0..<29).toList()
+if (p4E0R2QFormalJvmArgs
+                != ['-Xms512m', '-Xmx1536m', '-XX:+ExitOnOutOfMemoryError']
+        || p4E0R2QFormalTimeoutSeconds != 900
+        || p4E0R2QFormalWatchdogSeconds != 870
+        || p4E0R2QFormalWatchdogSeconds >= p4E0R2QFormalTimeoutSeconds
+        || p4E0R2QFormalDiskBudgetBytes != '12884901888'
+        || p4E0R2QFormalCaseIndices != (0..<29).toList()) {
+    throw new GradleException('P4-E0-R2Q exact formal execution profile changed')
+}
+def p4E0R2QConfiguredFormalRunNames = []
+def p4E0R2QConfiguredFormalPrepareTaskNames = []
+def p4E0R2QConfiguredFormalVerifyTaskNames = []
+def p4E0R2QConfiguredFormalFailureTaskNames = []
+def p4E0R2QFormalWorkDirectory =
+        layout.buildDirectory.dir('p4-e0-r2q/formal')
+def p4E0R2QFormalReportDirectory =
+        layout.buildDirectory.dir('reports/p4-e0-r2q')
+def p4E0R2QFormalCommandWorkingDirectory =
+        layout.buildDirectory.dir('p4-e0-r2q/formal-command-work')
+def p4E0R2QRunnerSmokeDirectory =
+        layout.buildDirectory.dir('p4-e0-r2q/runner-smoke')
+def p4E0R2QRunnerSmokeReportDirectory =
+        layout.buildDirectory.dir('reports/p4-e0-r2q-runner-smoke')
+def p4E0R2QRunnerDedicatedReportDirectory =
+        layout.buildDirectory.dir('reports/p4-e0-r2q-runner-smoke/runner')
 def p4E0ResearchR2HeapGridMiB = [1024, 1280, 1536, 1792, 2048]
 def p4E0ResearchR2Profiles = [
         [id: 'BALANCED', token: 'Balanced'],
@@ -750,11 +786,63 @@ neoForge {
                             'p4-e0-r2q/smoke').get().asFile.absolutePath
             systemProperty 'gramarye.p4e0.research.reportRoot',
                     layout.buildDirectory.dir(
-                            'reports/p4-e0-r2q/smoke').get().asFile.absolutePath
+                            'reports/p4-e0-r2q-smoke/runtime').get().asFile.absolutePath
             systemProperty 'gramarye.p4e0.research.runMode', 'r2q-smoke'
             jvmArguments.addAll(p4E0R2QSmokeJvmArgs)
             disableIdeRun()
             taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
+        }
+
+        p4E0R2QRunnerDedicatedSmoke {
+            type = 'gameTestServer'
+            sourceSet = p4E0ResearchGameTestSourceSet
+            gameDirectory = p4E0R2QRunnerDedicatedGameDirectory.get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces',
+                    'gramarye_p4_e0_research'
+            systemProperty 'gramarye.p4e0.research.runMode', 'r2q-runner-smoke'
+            systemProperty 'gramarye.p4e0.r2q.runnerSmokeRoot',
+                    p4E0R2QRunnerSmokeDirectory.get().asFile.absolutePath
+            systemProperty 'gramarye.p4e0.r2q.runnerSmokeReportRoot',
+                    p4E0R2QRunnerDedicatedReportDirectory.get().asFile.absolutePath
+            jvmArguments.addAll(p4E0R2QSmokeJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
+        }
+
+        p4E0R2QFormalCaseIndices.each { formalCaseIndex ->
+                def formalCaseToken = String.format(
+                        java.util.Locale.ROOT, '%02d', formalCaseIndex)
+                def formalRunName = "p4E0R2QCase${formalCaseToken}".toString()
+                def formalCaseDirectory = p4E0R2QFormalWorkDirectory.get().dir(
+                        "cases/${formalCaseToken}")
+                p4E0R2QConfiguredFormalRunNames.add(formalRunName)
+                create(formalRunName) {
+                    type = 'gameTestServer'
+                    sourceSet = p4E0ResearchGameTestSourceSet
+                    gameDirectory = formalCaseDirectory.dir('game').asFile
+                    systemProperty 'neoforge.enabledGameTestNamespaces',
+                            'gramarye_p4_e0_research'
+                    systemProperty 'gramarye.p4e0.research.runMode', 'r2q-formal'
+                    systemProperty 'gramarye.p4e0.r2q.formal.enabled', 'true'
+                    systemProperty 'gramarye.p4e0.r2q.formal.caseIndex',
+                            formalCaseIndex.toString()
+                    systemProperty 'gramarye.p4e0.r2q.formal.studyControl',
+                            p4E0R2QFormalWorkDirectory.get()
+                                    .file('study-control.json').asFile.absolutePath
+                    systemProperty 'gramarye.p4e0.r2q.formal.caseRoot',
+                            formalCaseDirectory.asFile.absolutePath
+                    systemProperty 'gramarye.p4e0.r2q.formal.childResult',
+                            formalCaseDirectory.file('child-result.json').asFile.absolutePath
+                    systemProperty 'gramarye.p4e0.r2q.formal.runningMarker',
+                            formalCaseDirectory.file('running.marker').asFile.absolutePath
+                    systemProperty 'gramarye.p4e0.r2q.formal.watchdogSeconds',
+                            p4E0R2QFormalWatchdogSeconds.toString()
+                    systemProperty 'gramarye.p4e0.r2q.formal.diskBudgetBytes',
+                            p4E0R2QFormalDiskBudgetBytes
+                    jvmArguments.addAll(p4E0R2QFormalJvmArgs)
+                    disableIdeRun()
+                    taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
+                }
         }
 
         p4E0ResearchR2CombinedCoordinates.each { coordinate ->
@@ -837,7 +925,9 @@ neoForge {
                     : name.startsWith('p4D3') ? p4D3ProbeMod
                     : (name == 'p4E0ResearchDedicatedSmoke'
                             || name == 'p4E0R2QDedicatedSmoke'
-                            || name.startsWith('p4E0ResearchCombined'))
+                            || name == 'p4E0R2QRunnerDedicatedSmoke'
+                            || name.startsWith('p4E0ResearchCombined')
+                            || p4E0R2QConfiguredFormalRunNames.contains(name))
                             ? p4E0ResearchMod : productionMod])
 
             // Recommended logging data for a userdev environment
@@ -864,6 +954,15 @@ neoForge {
 if (p4E0ResearchR2ConfiguredCombinedRunNames
         != p4E0ResearchR2ExpectedCombinedRunNames) {
     throw new GradleException('P4-E0-R2 dedicated run coordinate drift')
+}
+if (p4E0R2QConfiguredFormalRunNames
+        != p4E0R2QFormalCaseIndices.collect { formalCaseIndex ->
+            String.format(
+                    java.util.Locale.ROOT,
+                    'p4E0R2QCase%02d',
+                    formalCaseIndex)
+        }) {
+    throw new GradleException('P4-E0-R2Q dedicated formal run inventory drift')
 }
 
 // The dedicated-server smoke harness sends the normal `stop` command through stdin.
@@ -2269,11 +2368,13 @@ tasks.register('p4E0ResearchStudy') {
 def p4E0R2QFixtureDirectory =
         layout.buildDirectory.dir('p4-e0-r2q/smoke')
 def p4E0R2QReportDirectory =
-        layout.buildDirectory.dir('reports/p4-e0-r2q/smoke')
+        layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/runtime')
 def p4E0R2QCommandWorkingDirectory =
         layout.buildDirectory.dir('p4-e0-r2q/command-work')
 def p4E0R2QMainClass =
         'com.yo1no.gramarye.magic.definition.research.P4E0R2QMain'
+def p4E0R2QFormalMainClass =
+        'com.yo1no.gramarye.magic.definition.research.P4E0R2QFormalMain'
 
 def verifyP4E0R2QConfiguration = tasks.register(
         'verifyP4E0R2QConfiguration', Exec) {
@@ -2314,6 +2415,46 @@ def registerP4E0R2QCommand = {
         timeout.set(java.time.Duration.ofSeconds(p4E0R2QSmokeTimeoutSeconds))
         doFirst {
             p4E0R2QCommandWorkingDirectory.get().asFile.mkdirs()
+        }
+        outputs.upToDateWhen { false }
+    }
+}
+
+def p4E0R2QFormalMode = providers.gradleProperty('p4E0R2QFormal')
+def p4E0R2QFormalDiskBudget =
+        providers.gradleProperty('p4E0ResearchDiskBudgetBytes')
+def p4E0R2QRepositoryRoot = layout.projectDirectory.asFile.absolutePath
+def registerP4E0R2QFormalCommand = {
+        String taskName, String command, String description, List<Object> commandArgs ->
+    tasks.register(taskName, JavaExec) { formalTask ->
+        formalTask.group = 'verification'
+        formalTask.description = description
+        dependsOn(tasks.named(p4E0ResearchSourceSet.classesTaskName))
+        javaLauncher.set(p4A3JavaLauncher)
+        classpath = p4E0ResearchSourceSet.runtimeClasspath
+        mainClass.set(p4E0R2QFormalMainClass)
+        workingDir(p4E0R2QFormalCommandWorkingDirectory)
+        args(command)
+        args(commandArgs)
+        args(
+                p4E0R2QFormalWorkDirectory.get().asFile.absolutePath,
+                p4E0R2QFormalReportDirectory.get().asFile.absolutePath,
+                p4E0R2QRunnerSmokeReportDirectory.get().asFile.absolutePath)
+        jvmArgs(p4E0R2QSmokeJvmArgs)
+        timeout.set(java.time.Duration.ofSeconds(p4E0R2QFormalTimeoutSeconds))
+        doFirst {
+            p4E0R2QFormalCommandWorkingDirectory.get().asFile.mkdirs()
+            formalTask.systemProperty(
+                    'gramarye.p4e0.r2q.formal.enabled',
+                    p4E0R2QFormalMode.isPresent()
+                            ? p4E0R2QFormalMode.get() : '')
+            formalTask.systemProperty(
+                    'gramarye.p4e0.r2q.formal.diskBudgetBytes',
+                    p4E0R2QFormalDiskBudget.isPresent()
+                            ? p4E0R2QFormalDiskBudget.get() : '')
+            formalTask.systemProperty(
+                    'gramarye.p4e0.r2q.formal.repositoryRoot',
+                    p4E0R2QRepositoryRoot)
         }
         outputs.upToDateWhen { false }
     }
@@ -2371,16 +2512,72 @@ verifyP4E0R2QSmokeOutput.configure {
     dependsOn(runP4E0R2QDedicatedSmoke)
 }
 
-tasks.register('p4E0R2QSmoke') {
-    group = 'verification'
-    description = 'Runs only the reduced R2Q-A smoke; no formal qualification child is started.'
+def runP4E0R2QSupervisorSmoke = registerP4E0R2QFormalCommand(
+        'runP4E0R2QSupervisorSmoke',
+        'run-runner-smoke',
+        'Runs the reduced non-formal R2Q-B supervisor smoke.',
+        [])
+runP4E0R2QSupervisorSmoke.configure {
     dependsOn(verifyP4E0R2QSmokeOutput)
+    timeout.set(java.time.Duration.ofSeconds(p4E0R2QSmokeTimeoutSeconds))
+    doFirst {
+        p4E0R2QRunnerSmokeReportDirectory.get().asFile.deleteDir()
+    }
 }
 
-def p4E0R2QFormalMode = providers.gradleProperty('p4E0R2QFormal')
+def cleanP4E0R2QRunnerPostRunLogs = tasks.register(
+        'cleanP4E0R2QRunnerPostRunLogs', Delete) {
+    group = 'verification'
+    description = 'Removes transient root launcher logs after the R2Q-B runner smoke.'
+    delete(layout.projectDirectory.dir('logs'))
+}
+
+def runP4E0R2QRunnerDedicatedSmoke =
+        tasks.named('runP4E0R2QRunnerDedicatedSmoke', JavaExec)
+runP4E0R2QRunnerDedicatedSmoke.configure {
+    dependsOn(runP4E0R2QSupervisorSmoke)
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(p4E0R2QSmokeTimeoutSeconds))
+    doFirst {
+        p4E0R2QRunnerDedicatedGameDirectory.get().asFile.deleteDir()
+    }
+    finalizedBy(cleanP4E0R2QRunnerPostRunLogs)
+}
+
+def verifyP4E0R2QSupervisorSmoke = registerP4E0R2QFormalCommand(
+        'verifyP4E0R2QSupervisorSmoke',
+        'verify-runner-smoke',
+        'Verifies standalone and dedicated reduced R2Q-B supervisor smoke output.',
+        [])
+verifyP4E0R2QSupervisorSmoke.configure {
+    dependsOn(runP4E0R2QRunnerDedicatedSmoke)
+    timeout.set(java.time.Duration.ofSeconds(p4E0R2QSmokeTimeoutSeconds))
+}
+
+tasks.register('p4E0R2QSmoke') {
+    group = 'verification'
+    description = 'Runs reduced R2Q smoke machinery; no formal qualification child is started.'
+    dependsOn(verifyP4E0R2QSupervisorSmoke)
+}
+
 def p4E0R2QGitStatus = providers.exec {
     commandLine('git', 'status', '--porcelain=v2', '--untracked-files=all')
 }.standardOutput.asText.map { output -> output.trim() }
+def p4E0R2QGitDiff = providers.exec {
+    commandLine('git', 'diff', '--exit-code')
+    ignoreExitValue = true
+}
+def p4E0R2QGitCachedDiff = providers.exec {
+    commandLine('git', 'diff', '--cached', '--exit-code')
+    ignoreExitValue = true
+}
+def p4E0R2QGitUntracked = providers.exec {
+    commandLine('git', 'ls-files', '--others', '--exclude-standard')
+}.standardOutput.asText.map { output -> output.trim() }
+def p4E0R2QGitBranch = providers.exec {
+    commandLine('git', 'symbolic-ref', '--quiet', '--short', 'HEAD')
+    ignoreExitValue = true
+}
 def p4E0R2QGitHead = providers.exec {
     commandLine('git', 'rev-parse', 'HEAD')
 }.standardOutput.asText.map { output -> output.trim() }
@@ -2391,31 +2588,242 @@ def p4E0R2QOriginMain = providers.exec {
     commandLine('git', 'rev-parse', 'origin/main')
 }.standardOutput.asText.map { output -> output.trim() }
 
+def requireP4E0R2QFormalGate = {
+    if (!p4E0R2QFormalMode.isPresent()
+            || p4E0R2QFormalMode.get() != 'true') {
+        throw new GradleException(
+                'P4-E0-R2Q formal mode requires -Pp4E0R2QFormal=true')
+    }
+    if (!p4E0R2QFormalDiskBudget.isPresent()
+            || p4E0R2QFormalDiskBudget.get() != p4E0R2QFormalDiskBudgetBytes) {
+        throw new GradleException(
+                'P4-E0-R2Q formal mode requires explicit '
+                        + '-Pp4E0ResearchDiskBudgetBytes=12884901888')
+    }
+    if (!p4E0R2QGitStatus.get().isEmpty()
+            || !p4E0R2QGitUntracked.get().isEmpty()
+            || p4E0R2QGitDiff.result.get().exitValue != 0
+            || p4E0R2QGitCachedDiff.result.get().exitValue != 0) {
+        throw new GradleException(
+                'P4-E0-R2Q formal mode requires a clean tracked tree, index, and untracked set')
+    }
+    if (p4E0R2QGitBranch.result.get().exitValue != 0
+            || p4E0R2QGitBranch.standardOutput.asText.get().trim() != 'main') {
+        throw new GradleException(
+                'P4-E0-R2Q formal mode requires HEAD attached to main')
+    }
+    def head = p4E0R2QGitHead.get()
+    def tree = p4E0R2QGitTree.get()
+    def originMain = p4E0R2QOriginMain.get()
+    if (!(head ==~ /[0-9a-f]{40}/)
+            || !(tree ==~ /[0-9a-f]{40}/)
+            || !(originMain ==~ /[0-9a-f]{40}/)
+            || head != originMain) {
+        throw new GradleException(
+                'P4-E0-R2Q formal mode requires committed HEAD/tree at origin/main')
+    }
+}
+
+def writeForcedP4E0R2QProcessMarker = { File target, String value ->
+    def path = target.toPath().toAbsolutePath().normalize()
+    java.nio.file.Files.createDirectories(path.parent)
+    def bytes = java.nio.charset.StandardCharsets.US_ASCII.encode(value)
+    def channel = java.nio.channels.FileChannel.open(
+            path,
+            java.nio.file.StandardOpenOption.CREATE_NEW,
+            java.nio.file.StandardOpenOption.WRITE)
+    try {
+        while (bytes.hasRemaining()) {
+            channel.write(bytes)
+        }
+        channel.force(true)
+    } finally {
+        channel.close()
+    }
+}
+
+def prepareP4E0R2QFormalStudy = registerP4E0R2QFormalCommand(
+        'prepareP4E0R2QFormalStudy',
+        'prepare-study',
+        'Gates, archives, and prepares one clean-revision formal R2Q study.',
+        [])
+prepareP4E0R2QFormalStudy.configure {
+    dependsOn(verifyP4E0R2QConfiguration)
+    doFirst {
+        requireP4E0R2QFormalGate()
+    }
+}
+
+def previousP4E0R2QFormalVerifier = prepareP4E0R2QFormalStudy
+p4E0R2QFormalCaseIndices.each { formalCaseIndex ->
+        def formalCaseToken = String.format(
+                java.util.Locale.ROOT, '%02d', formalCaseIndex)
+        def prepareCaseTaskName = "prepareP4E0R2QCase${formalCaseToken}".toString()
+        def runCaseTaskName = "runP4E0R2QCase${formalCaseToken}".toString()
+        def prepareRunTaskName = "prepareP4E0R2QCase${formalCaseToken}Run".toString()
+        def writeClasspathTaskName =
+                "writeP4E0R2QCase${formalCaseToken}LegacyClasspath".toString()
+        def verifyCaseTaskName = "verifyP4E0R2QCase${formalCaseToken}".toString()
+        def captureFailureTaskName =
+                "captureP4E0R2QCase${formalCaseToken}ParentFailure".toString()
+        def formalCaseDirectory = p4E0R2QFormalWorkDirectory.get().dir(
+                "cases/${formalCaseToken}")
+        def childResult = formalCaseDirectory.file('child-result.json')
+        def verifiedResult = formalCaseDirectory.file('verified-result.json')
+        def runningMarker = formalCaseDirectory.file('running.marker')
+        def exitFile = formalCaseDirectory.file('exit-code.txt')
+        def timeoutFile = formalCaseDirectory.file('timeout.marker')
+        def parentDeadlineFile = formalCaseDirectory.file('parent-deadline.marker')
+        def exitPathForFailureFinalizer =
+                exitFile.asFile.toPath().toAbsolutePath().normalize().toString()
+        def prerequisiteVerifier = previousP4E0R2QFormalVerifier
+        p4E0R2QConfiguredFormalPrepareTaskNames.add(prepareCaseTaskName)
+        p4E0R2QConfiguredFormalVerifyTaskNames.add(verifyCaseTaskName)
+        p4E0R2QConfiguredFormalFailureTaskNames.add(captureFailureTaskName)
+
+        def prepareCaseTask = registerP4E0R2QFormalCommand(
+                prepareCaseTaskName,
+                'prepare-case',
+                "Creates and preflights formal R2Q case ${formalCaseToken} fixtures.",
+                [formalCaseIndex.toString()])
+        prepareCaseTask.configure {
+            dependsOn(prerequisiteVerifier)
+        }
+
+        tasks.named(writeClasspathTaskName).configure {
+            dependsOn(prepareCaseTask)
+            outputs.upToDateWhen { false }
+        }
+        tasks.named(prepareRunTaskName).configure {
+            dependsOn(prepareCaseTask)
+            outputs.upToDateWhen { false }
+        }
+
+        def runCaseTask = tasks.named(runCaseTaskName, JavaExec)
+        runCaseTask.configure {
+            dependsOn(prepareCaseTask)
+            javaLauncher.set(p4A3JavaLauncher)
+            timeout.set(java.time.Duration.ofSeconds(p4E0R2QFormalTimeoutSeconds))
+            ignoreExitValue = true
+            doFirst {
+                requireP4E0R2QFormalGate()
+                def studyControl = p4E0R2QFormalWorkDirectory.get()
+                        .file('study-control.json').asFile.toPath()
+                if (!java.nio.file.Files.isRegularFile(
+                                studyControl,
+                                java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                        || java.nio.file.Files.isSymbolicLink(studyControl)
+                        || java.nio.file.Files.size(studyControl) > 131_072L) {
+                    throw new GradleException(
+                            'P4-E0-R2Q formal study control is absent or unbounded')
+                }
+                [childResult, verifiedResult, runningMarker, exitFile, timeoutFile,
+                        parentDeadlineFile]
+                        .each { output ->
+                    if (java.nio.file.Files.exists(
+                            output.asFile.toPath(),
+                            java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                        throw new GradleException(
+                                'P4-E0-R2Q refused stale per-case process evidence')
+                    }
+                    output.asFile.parentFile.mkdirs()
+                }
+                def parentDeadlineMillis = Math.addExact(
+                        System.currentTimeMillis(),
+                        Math.multiplyExact(
+                                p4E0R2QFormalTimeoutSeconds as long, 1_000L))
+                writeForcedP4E0R2QProcessMarker(
+                        parentDeadlineFile.asFile,
+                        "deadline_epoch_millis=${parentDeadlineMillis}\n".toString())
+            }
+            doLast {
+                writeForcedP4E0R2QProcessMarker(
+                        exitFile.asFile,
+                        executionResult.get().exitValue.toString()
+                                + '\n')
+            }
+            outputs.upToDateWhen { false }
+        }
+
+        def captureFailureTask = registerP4E0R2QFormalCommand(
+                captureFailureTaskName,
+                'capture-failure',
+                "Preserves bounded parent-failure evidence for formal R2Q case ${formalCaseToken}.",
+                [formalCaseIndex.toString(), 'AUTO_PARENT'])
+        captureFailureTask.configure {
+            onlyIf {
+                !java.nio.file.Files.exists(
+                        java.nio.file.Path.of(exitPathForFailureFinalizer),
+                        java.nio.file.LinkOption.NOFOLLOW_LINKS)
+            }
+        }
+        runCaseTask.configure {
+            finalizedBy(captureFailureTask)
+        }
+
+        def verifyCaseTask = registerP4E0R2QFormalCommand(
+                verifyCaseTaskName,
+                'verify-case',
+                "Classifies, preserves, and cleans formal R2Q case ${formalCaseToken}.",
+                [formalCaseIndex.toString()])
+        verifyCaseTask.configure {
+            dependsOn(runCaseTask)
+        }
+        previousP4E0R2QFormalVerifier = verifyCaseTask
+}
+
+def p4E0R2QExpectedFormalPrepareTaskNames =
+        p4E0R2QFormalCaseIndices.collect { formalCaseIndex ->
+            String.format(
+                    java.util.Locale.ROOT,
+                    'prepareP4E0R2QCase%02d',
+                    formalCaseIndex)
+        }
+def p4E0R2QExpectedFormalVerifyTaskNames =
+        p4E0R2QFormalCaseIndices.collect { formalCaseIndex ->
+            String.format(
+                    java.util.Locale.ROOT,
+                    'verifyP4E0R2QCase%02d',
+                    formalCaseIndex)
+        }
+def p4E0R2QExpectedFormalFailureTaskNames =
+        p4E0R2QFormalCaseIndices.collect { formalCaseIndex ->
+            String.format(
+                    java.util.Locale.ROOT,
+                    'captureP4E0R2QCase%02dParentFailure',
+                    formalCaseIndex)
+        }
+if (p4E0R2QConfiguredFormalPrepareTaskNames
+                != p4E0R2QExpectedFormalPrepareTaskNames
+        || p4E0R2QConfiguredFormalVerifyTaskNames
+                != p4E0R2QExpectedFormalVerifyTaskNames
+        || p4E0R2QConfiguredFormalFailureTaskNames
+                != p4E0R2QExpectedFormalFailureTaskNames) {
+    throw new GradleException('P4-E0-R2Q formal task inventory drift')
+}
+
+def aggregateP4E0R2QFormal = registerP4E0R2QFormalCommand(
+        'aggregateP4E0R2QFormal',
+        'aggregate',
+        'Aggregates exactly 29 verified R2Q formal case records into staging artifacts.',
+        [])
+aggregateP4E0R2QFormal.configure {
+    dependsOn(previousP4E0R2QFormalVerifier)
+}
+
+def verifyP4E0R2QFormalArtifacts = registerP4E0R2QFormalCommand(
+        'verifyP4E0R2QFormalArtifacts',
+        'verify-artifacts',
+        'Strictly verifies and atomically publishes six bounded formal R2Q artifacts.',
+        [])
+verifyP4E0R2QFormalArtifacts.configure {
+    dependsOn(aggregateP4E0R2QFormal)
+}
+
 tasks.register('p4E0R2QStudy') {
     group = 'verification'
-    description = 'Reserved fail-closed R2Q-B entry point; R2Q-A starts no formal children.'
-    doFirst {
-        if (!p4E0R2QFormalMode.isPresent()
-                || p4E0R2QFormalMode.get() != 'true') {
-            throw new GradleException(
-                    'P4-E0-R2Q formal mode requires -Pp4E0R2QFormal=true')
-        }
-        if (!p4E0R2QGitStatus.get().isEmpty()) {
-            throw new GradleException(
-                    'P4-E0-R2Q formal mode requires a clean worktree')
-        }
-        def head = p4E0R2QGitHead.get()
-        def tree = p4E0R2QGitTree.get()
-        def originMain = p4E0R2QOriginMain.get()
-        if (!(head ==~ /[0-9a-f]{40}/)
-                || !(tree ==~ /[0-9a-f]{40}/)
-                || head != originMain) {
-            throw new GradleException(
-                    'P4-E0-R2Q formal mode requires committed HEAD/tree at origin/main')
-        }
-        throw new GradleException(
-                'P4-E0-R2Q formal execution is reserved for R2Q-B')
-    }
+    description = 'Runs all 29 hard-serialized clean-revision R2Q dedicated children.'
+    dependsOn(verifyP4E0R2QFormalArtifacts)
 }
 
 tasks.named('test', Test).configure {

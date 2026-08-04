@@ -11,6 +11,8 @@ import java.util.Objects;
 final class P4E0R2QStudyIdentity {
     static final int SCHEMA_VERSION = 0;
     static final int CURRENT_IMPLEMENTATION_SCHEMA_VERSION = 0;
+    static final int FORMAL_SCHEMA_VERSION = 1;
+    static final int FORMAL_IMPLEMENTATION_SCHEMA_VERSION = 1;
 
     private final String gitHead;
     private final String gitTree;
@@ -18,6 +20,10 @@ final class P4E0R2QStudyIdentity {
     private final String casePlanHash;
     private final String fixtureRootHash;
     private final int researchImplementationSchemaVersion;
+    private final String formalRunOrderHash;
+    private final int qualificationHeapMiB;
+    private final long researchDiskBudgetBytes;
+    private final boolean formal;
     private final String canonicalPayload;
     private final String studyId;
 
@@ -28,6 +34,30 @@ final class P4E0R2QStudyIdentity {
             String casePlanHash,
             String fixtureRootHash,
             int researchImplementationSchemaVersion) {
+        this(
+                gitHead,
+                gitTree,
+                profileManifestHash,
+                casePlanHash,
+                fixtureRootHash,
+                researchImplementationSchemaVersion,
+                "",
+                0,
+                0L,
+                false);
+    }
+
+    private P4E0R2QStudyIdentity(
+            String gitHead,
+            String gitTree,
+            String profileManifestHash,
+            String casePlanHash,
+            String fixtureRootHash,
+            int researchImplementationSchemaVersion,
+            String formalRunOrderHash,
+            int qualificationHeapMiB,
+            long researchDiskBudgetBytes,
+            boolean formal) {
         this.gitHead = requireGitObjectId(gitHead, "gitHead");
         this.gitTree = requireGitObjectId(gitTree, "gitTree");
         this.profileManifestHash = requireSha256(profileManifestHash, "profileManifestHash");
@@ -38,6 +68,28 @@ final class P4E0R2QStudyIdentity {
                     "researchImplementationSchemaVersion must be non-negative");
         }
         this.researchImplementationSchemaVersion = researchImplementationSchemaVersion;
+        this.formal = formal;
+        if (formal) {
+            this.formalRunOrderHash = requireSha256(
+                    formalRunOrderHash, "formalRunOrderHash");
+            if (qualificationHeapMiB != 1_536
+                    || researchDiskBudgetBytes != 12_884_901_888L
+                    || researchImplementationSchemaVersion
+                            != FORMAL_IMPLEMENTATION_SCHEMA_VERSION) {
+                throw new IllegalArgumentException("formal R2Q execution tuple changed");
+            }
+            this.qualificationHeapMiB = qualificationHeapMiB;
+            this.researchDiskBudgetBytes = researchDiskBudgetBytes;
+        } else {
+            if (!formalRunOrderHash.isEmpty()
+                    || qualificationHeapMiB != 0
+                    || researchDiskBudgetBytes != 0L) {
+                throw new IllegalArgumentException("legacy R2Q-A identity carries formal facts");
+            }
+            this.formalRunOrderHash = "";
+            this.qualificationHeapMiB = 0;
+            this.researchDiskBudgetBytes = 0L;
+        }
         this.canonicalPayload = buildCanonicalPayload();
         this.studyId = P4E0ResearchHashing.sha256(canonicalPayload);
     }
@@ -56,6 +108,29 @@ final class P4E0R2QStudyIdentity {
                 casePlanHash,
                 fixtureRootHash,
                 researchImplementationSchemaVersion);
+    }
+
+    static P4E0R2QStudyIdentity calculateFormal(
+            String gitHead,
+            String gitTree,
+            String profileManifestHash,
+            String casePlanHash,
+            String fixtureRootHash,
+            String formalRunOrderHash,
+            int researchImplementationSchemaVersion,
+            int qualificationHeapMiB,
+            long researchDiskBudgetBytes) {
+        return new P4E0R2QStudyIdentity(
+                gitHead,
+                gitTree,
+                profileManifestHash,
+                casePlanHash,
+                fixtureRootHash,
+                researchImplementationSchemaVersion,
+                formalRunOrderHash,
+                qualificationHeapMiB,
+                researchDiskBudgetBytes,
+                true);
     }
 
     String gitHead() {
@@ -82,6 +157,22 @@ final class P4E0R2QStudyIdentity {
         return researchImplementationSchemaVersion;
     }
 
+    String formalRunOrderHash() {
+        return formalRunOrderHash;
+    }
+
+    int qualificationHeapMiB() {
+        return qualificationHeapMiB;
+    }
+
+    long researchDiskBudgetBytes() {
+        return researchDiskBudgetBytes;
+    }
+
+    boolean formal() {
+        return formal;
+    }
+
     String canonicalPayload() {
         return canonicalPayload;
     }
@@ -96,14 +187,23 @@ final class P4E0R2QStudyIdentity {
     }
 
     private String buildCanonicalPayload() {
-        return "{\"schema_version\":" + SCHEMA_VERSION
+        var schema = formal ? FORMAL_SCHEMA_VERSION : SCHEMA_VERSION;
+        var base = "{\"schema_version\":" + schema
                 + ",\"git_head\":\"" + gitHead + '"'
                 + ",\"git_tree\":\"" + gitTree + '"'
                 + ",\"profile_manifest_sha256\":\"" + profileManifestHash + '"'
                 + ",\"case_plan_sha256\":\"" + casePlanHash + '"'
                 + ",\"fixture_root_sha256\":\"" + fixtureRootHash + '"'
                 + ",\"research_implementation_schema_version\":"
-                + researchImplementationSchemaVersion + '}';
+                + researchImplementationSchemaVersion;
+        if (!formal) {
+            return base + '}';
+        }
+        return base
+                + ",\"formal_run_order_sha256\":\"" + formalRunOrderHash + '"'
+                + ",\"qualification_heap_mib\":" + qualificationHeapMiB
+                + ",\"research_disk_budget_bytes\":" + researchDiskBudgetBytes
+                + '}';
     }
 
     private static String requireGitObjectId(String value, String label) {

@@ -30,6 +30,8 @@ public final class P4E0R2QStoreJournalFixtures {
     public static final int CURRENT_HISTORIES = 2_048;
     public static final int CURRENT_REVISIONS = 4_095;
     public static final int CURRENT_STORE_BYTES = 66_060_348;
+    public static final String CURRENT_STORE_CHECKSUM =
+            "5ab54eaa05281ec0f055cc235dec6acbf5406d568497ded7dcf0538932986bd9";
     public static final int CURRENT_JOURNAL_ENTRIES = 4_095;
     public static final int CURRENT_JOURNAL_BYTES = 1_048_324;
     public static final int PROSPECTIVE_HISTORIES = 2_049;
@@ -107,7 +109,7 @@ public final class P4E0R2QStoreJournalFixtures {
         requireAudited(prospectiveAuditStore, prospectiveJournal, "prospective");
 
         var roots = roots(prospectiveAuditStore, prospectiveJournal);
-        return new Fixture(
+        var fixture = new Fixture(
                 current,
                 carrier,
                 currentJournal,
@@ -116,6 +118,10 @@ public final class P4E0R2QStoreJournalFixtures {
                 prospectiveJournal,
                 encodedProspective,
                 roots);
+        if (!fixture.facts().currentStoreChecksum().equals(CURRENT_STORE_CHECKSUM)) {
+            throw new AssertionError("R2Q current Store checksum changed");
+        }
+        return fixture;
     }
 
     public static SkillOwnerId owner(int index) {
@@ -402,11 +408,26 @@ public final class P4E0R2QStoreJournalFixtures {
 
         /** Writes the exact current pair through the sanctioned D3 SavedData fixture writer. */
         public void writePrimary(Path worldRoot) throws IOException {
+            writePrimary(worldRoot, false);
+        }
+
+        /** Writes the same pair with the reviewed D3 noncanonical Store-root field ordering. */
+        public void writePrimary(Path worldRoot, boolean nonCanonicalStore) throws IOException {
             P4D3StoreJournalFixture.writePrimary(
                     Objects.requireNonNull(worldRoot, "worldRoot"),
                     currentCarrier,
                     encodedCurrent,
-                    false);
+                    nonCanonicalStore);
+        }
+
+        /** Defensive immutable raw-root input for the formal Complete projection checkpoint. */
+        public List<SkillReference> exactRawRootClaims() {
+            return List.copyOf(roots.exactInput());
+        }
+
+        /** Defensive immutable raw-root input for the formal cap+1 projection checkpoint. */
+        public List<SkillReference> overRawRootClaims() {
+            return List.copyOf(roots.overInput());
         }
 
         public void retainAtPeak() {

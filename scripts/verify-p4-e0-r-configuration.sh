@@ -272,6 +272,10 @@ is_reviewed_research_path() {
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QAuditBudget.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QCasePlan.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFixturePlan.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalEvidence.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalMain.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalResult.java | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalWorkload.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QJointRecords.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QMain.java | \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QModifiedUtf.java | \
@@ -292,6 +296,7 @@ is_reviewed_game_path() {
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchCombinedCoordinator.java | \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchDedicatedCoordinator.java | \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2DedicatedDriver.java | \
+        src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalDedicatedDriver.java | \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QDedicatedDriver.java | \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchGameTestHolder.java) return 0 ;;
         *) return 1 ;;
@@ -309,6 +314,10 @@ is_reviewed_test_path() {
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QAuditBudgetTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QExactGzipWitnessTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFixtureTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalContractTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalEvidenceTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalGateNegativeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalResultTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QJointRecordsTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QModifiedUtfTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QPositiveWitnessTest.java | \
@@ -383,8 +392,8 @@ verify_exact_source_allowlists() {
             || fail "unreviewed P4-E0-R1 research source: ${relative}"
         count=$((count + 1))
     done < "${RESEARCH_SOURCE_LIST}"
-    [[ "${count}" -eq 34 ]] \
-        || fail "P4-E0-R2Q research source count must be thirty-four (found ${count})"
+    [[ "${count}" -eq 38 ]] \
+        || fail "P4-E0-R2Q research source count must be thirty-eight (found ${count})"
 
     count=0
     while IFS= read -r -d '' file; do
@@ -393,8 +402,8 @@ verify_exact_source_allowlists() {
             || fail "unreviewed P4-E0-R1 dedicated source: ${relative}"
         count=$((count + 1))
     done < "${GAME_SOURCE_LIST}"
-    [[ "${count}" -eq 5 ]] \
-        || fail "P4-E0-R2Q dedicated source count must be five (found ${count})"
+    [[ "${count}" -eq 6 ]] \
+        || fail "P4-E0-R2Q dedicated source count must be six (found ${count})"
 
     count=0
     while IFS= read -r -d '' file; do
@@ -403,8 +412,8 @@ verify_exact_source_allowlists() {
             || fail "unreviewed P4-E0-R1 unit/configuration source: ${relative}"
         count=$((count + 1))
     done < "${TEST_SOURCE_LIST}"
-    [[ "${count}" -eq 17 ]] \
-        || fail "P4-E0-R2Q unit/configuration source count must be seventeen (found ${count})"
+    [[ "${count}" -eq 21 ]] \
+        || fail "P4-E0-R2Q unit/configuration source count must be twenty-one (found ${count})"
 
     count=0
     while IFS= read -r -d '' file; do
@@ -558,8 +567,8 @@ verify_build_contract() {
             "P4-E0-R1 task/heap/output contract is missing: ${marker}"
     done
     require_fixed_count build.gradle \
-        "delete(layout.projectDirectory.dir('logs'))" 2 \
-        'P4-E0-R1 must clean transient root launcher logs before verification and after the dedicated run'
+        "delete(layout.projectDirectory.dir('logs'))" 3 \
+        'P4-E0 research must clean transient root launcher logs at all three reviewed lifecycle points'
     forbid_fixed build.gradle "'gramarye.p4e0.research.scenarioCase'," \
         'P4-E0-R1 retained the obsolete scenario override key'
     require_fixed_count build.gradle \
@@ -576,6 +585,10 @@ verify_build_contract() {
         require_fixed scripts/verify-p4-b2-b-configuration.sh "${marker}" \
             "P4-E0-R1 exact B2 runtime allowlist is missing ${marker}"
     done
+    forbid_fixed build.gradle "name.startsWith('p4E0R2QCase')" \
+        'P4-E0-R2Q formal cases must use exact generated loaded-mod membership'
+    forbid_fixed build.gradle "name.startsWith('p4E0R2Q')" \
+        'P4-E0-R2Q phase must not gain a broad loaded-mod prefix allowlist'
 }
 
 verify_r2_build_contract() {

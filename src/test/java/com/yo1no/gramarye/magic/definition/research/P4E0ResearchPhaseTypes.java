@@ -40,6 +40,10 @@ final class P4E0ResearchPhaseTypes {
             "com/yo1no/gramarye/magic/definition/research/P4E0R2QAuditBudget.java",
             "com/yo1no/gramarye/magic/definition/research/P4E0R2QCasePlan.java",
             "com/yo1no/gramarye/magic/definition/research/P4E0R2QFixturePlan.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalEvidence.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalMain.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalResult.java",
+            "com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalWorkload.java",
             "com/yo1no/gramarye/magic/definition/research/P4E0R2QJointRecords.java",
             "com/yo1no/gramarye/magic/definition/research/P4E0R2QMain.java",
             "com/yo1no/gramarye/magic/definition/research/P4E0R2QModifiedUtf.java",
@@ -63,6 +67,8 @@ final class P4E0ResearchPhaseTypes {
                     + "P4E0ResearchDedicatedCoordinator.java",
             "com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0ResearchR2DedicatedDriver.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0R2QFormalDedicatedDriver.java",
             "com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0R2QDedicatedDriver.java",
             "com/yo1no/gramarye/magic/definition/research/"
@@ -91,6 +97,14 @@ final class P4E0ResearchPhaseTypes {
                     + "P4E0ResearchR2QExactGzipWitnessTest.java",
             "com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0ResearchR2QFixtureTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QFormalContractTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QFormalEvidenceTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QFormalGateNegativeTest.java",
+            "com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0ResearchR2QFormalResultTest.java",
             "com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0ResearchR2QModifiedUtfTest.java",
             "com/yo1no/gramarye/magic/definition/research/"
@@ -148,6 +162,33 @@ final class P4E0ResearchPhaseTypes {
             "CHILD_EXIT_FAILURE",
             "TIMEOUT",
             "OOME_EXIT");
+
+    static final Set<String> R2Q_QUALIFICATION_NAMES = Set.of(
+            "ADMITTED_EXACT",
+            "REJECTED_EXPECTED_COUNTER",
+            "REJECTED_EXPECTED_DATA_VERSION",
+            "NOT_OBSERVED");
+
+    static final Set<String> R2Q_FORMAL_ARTIFACT_NAMES = Set.of(
+            "runs.jsonl",
+            "r2q-profile.json",
+            "r2q-case-plan.json",
+            "summary.md",
+            "PROVENANCE.txt",
+            "SHA256SUMS.txt");
+
+    static final Set<String> R2Q_FORMAL_RESULT_TOP_LEVEL_KEYS = Set.of(
+            "schema_version", "study_id", "case_id", "case_index", "git_head",
+            "git_tree", "profile_hash", "case_plan_hash", "fixture_hash",
+            "case_fixture_checksum", "run_order_hash", "implementation_schema_version",
+            "process_classification", "qualification_result", "target_counter",
+            "maximum", "observed_at_least", "expected_failure_code",
+            "observed_failure_code", "expected_stage", "observed_stage",
+            "all_other_counters_within_limit", "counter_values", "dfu_invocations",
+            "attachment_admissions", "raw_root_claims", "targets_audited",
+            "reclaim_invocations", "heap_xms", "heap_xmx", "initial_committed",
+            "sampled_peak_used", "heap_pool_peak_sum", "elapsed_millis",
+            "semantic_checksum", "exception_class");
 
     static final Set<String> R2_MATRIX_NAMES = Set.of(
             "A_DIRECTORY",
@@ -238,8 +279,14 @@ final class P4E0ResearchPhaseTypes {
             "runP4E0R2QSmoke",
             "runP4E0R2QDedicatedSmoke",
             "verifyP4E0R2QSmokeOutput",
+            "runP4E0R2QSupervisorSmoke",
+            "runP4E0R2QRunnerDedicatedSmoke",
+            "verifyP4E0R2QSupervisorSmoke",
             "verifyP4E0R2QConfiguration",
             "p4E0R2QSmoke",
+            "prepareP4E0R2QFormalStudy",
+            "aggregateP4E0R2QFormal",
+            "verifyP4E0R2QFormalArtifacts",
             "p4E0R2QStudy");
 
     static final List<String> TASK_NAMES = Stream.of(

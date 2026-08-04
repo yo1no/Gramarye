@@ -56,6 +56,14 @@ final class P4E0ResearchR2QApiGateTest {
             "src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0R2QFixturePlan.java",
             "src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0R2QFormalEvidence.java",
+            "src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0R2QFormalMain.java",
+            "src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0R2QFormalResult.java",
+            "src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/"
+                    + "P4E0R2QFormalWorkload.java",
+            "src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0R2QJointRecords.java",
             "src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/"
                     + "P4E0R2QMain.java",
@@ -72,6 +80,8 @@ final class P4E0ResearchR2QApiGateTest {
     private static final List<String> R2Q_GAME_PATHS = List.of(
             "src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/"
                     + "research/P4E0ResearchDedicatedCoordinator.java",
+            "src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/"
+                    + "research/P4E0R2QFormalDedicatedDriver.java",
             "src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/"
                     + "research/P4E0R2QDedicatedDriver.java");
 
@@ -98,7 +108,7 @@ final class P4E0ResearchR2QApiGateTest {
                         "jvmArguments.addAll(p4E0R2QSmokeJvmArgs)")),
                 () -> assertTrue(build.contains(
                         "def p4E0R2QSmokeTimeoutSeconds = 600")),
-                () -> assertEquals(2, occurrences(build,
+                () -> assertEquals(5, occurrences(build,
                         "Duration.ofSeconds(p4E0R2QSmokeTimeoutSeconds)")),
                 () -> assertTrue(build.contains(
                         "p4E0R2QDedicatedGameDirectory.get().asFile.deleteDir()")),
@@ -209,33 +219,54 @@ final class P4E0ResearchR2QApiGateTest {
     }
 
     @Test
-    void reservedFormalEntryFailsBeforeItCanOwnAnyChild() throws Exception {
+    void formalEntryOwnsTheExactDirectSerialDependencySpine() throws Exception {
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var formal = bracedBlock(build, "tasks.register('p4E0R2QStudy') {");
 
         assertAll(
-                () -> assertFalse(formal.contains("dependsOn")),
-                () -> assertTrue(formal.contains("doFirst")),
-                () -> assertTrue(formal.contains("p4E0R2QFormalMode")),
-                () -> assertTrue(formal.contains("p4E0R2QGitStatus")),
-                () -> assertTrue(formal.contains("p4E0R2QGitHead")),
-                () -> assertTrue(formal.contains("p4E0R2QGitTree")),
-                () -> assertTrue(formal.contains("p4E0R2QOriginMain")),
+                () -> assertTrue(formal.contains(
+                        "dependsOn(verifyP4E0R2QFormalArtifacts)")),
+                () -> assertFalse(formal.contains("doFirst")),
+                () -> assertTrue(build.contains(
+                        "def previousP4E0R2QFormalVerifier = "
+                                + "prepareP4E0R2QFormalStudy")),
+                () -> assertTrue(build.contains(
+                        "prepareCaseTask.configure {\n"
+                                + "            dependsOn(prerequisiteVerifier)")),
+                () -> assertTrue(build.contains(
+                        "runCaseTask.configure {\n"
+                                + "            dependsOn(prepareCaseTask)")),
+                () -> assertTrue(build.contains(
+                        "verifyCaseTask.configure {\n"
+                                + "            dependsOn(runCaseTask)")),
+                () -> assertTrue(build.contains(
+                        "aggregateP4E0R2QFormal.configure {\n"
+                                + "    dependsOn(previousP4E0R2QFormalVerifier)")),
+                () -> assertTrue(build.contains(
+                        "verifyP4E0R2QFormalArtifacts.configure {\n"
+                                + "    dependsOn(aggregateP4E0R2QFormal)")),
+                () -> assertEquals(1, occurrences(build,
+                        "def p4E0R2QFormalCaseIndices = (0..<29).toList()")),
+                () -> assertEquals(1, occurrences(build,
+                        "previousP4E0R2QFormalVerifier = verifyCaseTask")),
+                () -> assertTrue(build.contains("requireP4E0R2QFormalGate()")),
+                () -> assertTrue(build.contains("p4E0R2QGitStatus")),
+                () -> assertTrue(build.contains("p4E0R2QGitHead")),
+                () -> assertTrue(build.contains("p4E0R2QGitTree")),
+                () -> assertTrue(build.contains("p4E0R2QOriginMain")),
                 () -> assertTrue(build.contains(
                         "'--porcelain=v2', '--untracked-files=all'")),
-                () -> assertTrue(formal.contains(
+                () -> assertFalse(build.contains(
                         "formal execution is reserved for R2Q-B")),
-                () -> assertFalse(formal.contains("runIndex")),
-                () -> assertFalse(formal.contains("ProcessBuilder")),
-                () -> assertFalse(formal.contains("finalizedBy")),
-                () -> assertFalse(formal.contains("commandLine")),
-                () -> assertFalse(formal.contains("javaexec")),
-                () -> assertFalse(formal.contains("JavaExec")),
-                () -> assertFalse(formal.contains("Exec")));
+                () -> assertFalse(build.contains(
+                        "mustRunAfter(previousP4E0R2QFormalVerifier)")),
+                () -> assertFalse(build.contains(
+                        "shouldRunAfter(previousP4E0R2QFormalVerifier)")));
     }
 
     @Test
-    void r2qRemainsResearchOnlyAndPublishesNoFormalEvidence() throws Exception {
+    void r2qFormalInfrastructureRemainsResearchOnlyAndPublishesOnlyItsSixArtifacts()
+            throws Exception {
         var production = sources(PROJECT_ROOT.resolve("src/main"));
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
         var research = exactSources(R2Q_RESEARCH_PATHS);
@@ -257,13 +288,18 @@ final class P4E0ResearchR2QApiGateTest {
                         "(?s).*catch\\s*\\([^)]*OutOfMemoryError.*")));
 
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
-        var formal = bracedBlock(build, "tasks.register('p4E0R2QStudy') {");
         assertAll(
-                () -> assertFalse(formal.contains("runs.jsonl")),
-                () -> assertFalse(formal.contains("r2q-profile.json")),
-                () -> assertFalse(formal.contains("r2q-case-plan.json")),
-                () -> assertFalse(formal.contains("PROVENANCE.txt")),
-                () -> assertFalse(formal.contains("SHA256SUMS.txt")));
+                () -> assertTrue(build.contains(
+                        "layout.buildDirectory.dir('reports/p4-e0-r2q')")),
+                () -> assertTrue(combined.contains("runs.jsonl")),
+                () -> assertTrue(combined.contains("r2q-profile.json")),
+                () -> assertTrue(combined.contains("r2q-case-plan.json")),
+                () -> assertTrue(combined.contains("summary.md")),
+                () -> assertTrue(combined.contains("PROVENANCE.txt")),
+                () -> assertTrue(combined.contains("SHA256SUMS.txt")),
+                () -> assertFalse(combined.contains("authority approved")),
+                () -> assertFalse(combined.contains("minimum safe heap")),
+                () -> assertFalse(combined.contains("E0-B ready")));
     }
 
     private static String sources(Path root) throws IOException {

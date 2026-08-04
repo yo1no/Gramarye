@@ -28,6 +28,9 @@ R2Q_GAME_LIST=''
 JAR_LIST=''
 JAR_CONTENTS=''
 FORMAL_BLOCK=''
+FORMAL_PROFILE_BLOCK=''
+FORMAL_RUN_BLOCK=''
+FORMAL_TASK_LOOP_BLOCK=''
 COUNTER_BLOCK=''
 CASE_KIND_BLOCK=''
 RUNTIME_BLOCK=''
@@ -41,6 +44,9 @@ cleanup() {
         "${JAR_LIST}" \
         "${JAR_CONTENTS}" \
         "${FORMAL_BLOCK}" \
+        "${FORMAL_PROFILE_BLOCK}" \
+        "${FORMAL_RUN_BLOCK}" \
+        "${FORMAL_TASK_LOOP_BLOCK}" \
         "${COUNTER_BLOCK}" \
         "${CASE_KIND_BLOCK}" \
         "${RUNTIME_BLOCK}"; do
@@ -163,6 +169,11 @@ verify_helpers() {
     [[ "${status}" -eq 1 && "${output}" == 'EXPECTED_FORBIDDEN' ]] \
         || fail 'P4-E0-R2Q verifier cannot distinguish a forbidden contract'
     status=0
+    output="$({ require_count "${HELPER_FIXTURE}" present 2 EXPECTED_COUNT; } 2>&1)" \
+        || status=$?
+    [[ "${status}" -eq 1 && "${output}" == EXPECTED_COUNT* ]] \
+        || fail 'P4-E0-R2Q verifier cannot distinguish an exact-count mismatch'
+    status=0
     output="$({ require_fixed "${HELPER_FIXTURE}.missing" present WRONG_MISSING; } 2>&1)" \
         || status=$?
     if [[ "${status}" -ne 1 \
@@ -187,6 +198,10 @@ verify_paths_and_boundaries() {
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QProfile.java \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QStudyIdentity.java \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QCasePlan.java \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalEvidence.java \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalMain.java \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalResult.java \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalWorkload.java \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QModifiedUtf.java \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QPositiveWitnesses.java \
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFixturePlan.java \
@@ -195,6 +210,7 @@ verify_paths_and_boundaries() {
         src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0R2QStoreJournalFixtures.java \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchDedicatedCoordinator.java \
         src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QDedicatedDriver.java \
+        src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalDedicatedDriver.java \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QProfileTest.java \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QAuditBudgetTest.java \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QPositiveWitnessTest.java \
@@ -204,6 +220,10 @@ verify_paths_and_boundaries() {
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QModifiedUtfTest.java \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QExactGzipWitnessTest.java \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFixtureTest.java \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalContractTest.java \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalEvidenceTest.java \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalGateNegativeTest.java \
+        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QFormalResultTest.java \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QApiGateTest.java \
         src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchR2QStudyIdentityTest.java; do
         require_regular_file "${file}" "P4-E0-R2Q reviewed path is missing: ${file}"
@@ -221,6 +241,12 @@ verify_paths_and_boundaries() {
         || fail "P4-E0-R2Q added a prohibited path: ${untracked}"
     forbid_fixed .github/workflows/build.yml 'p4-e0-r2q' \
         'P4-E0-R2Q must not add a workflow job'
+    forbid_fixed .github/workflows/build.yml 'P4-E0-R2Q' \
+        'P4-E0-R2Q must not add a workflow display name'
+    forbid_fixed build.gradle "name.startsWith('p4E0R2QCase')" \
+        'P4-E0-R2Q formal loaded-mod selection must use the exact generated inventory'
+    forbid_fixed build.gradle "name.startsWith('p4E0R2Q')" \
+        'P4-E0-R2Q loaded-mod selection must not use a broad phase prefix'
 }
 
 verify_profile_manifest() {
@@ -367,23 +393,88 @@ verify_build_and_formal_gate() {
     require_fixed scripts/verify-p4-b2-b-configuration.sh \
         "name == 'p4E0R2QDedicatedSmoke'" \
         'P4-E0-R2Q dedicated run is absent from the exact B2 loaded-mod allowlist'
+    require_fixed scripts/verify-p4-b2-b-configuration.sh \
+        "name == 'p4E0R2QRunnerDedicatedSmoke'" \
+        'P4-E0-R2Q runner smoke is absent from the exact B2 loaded-mod allowlist'
+    require_fixed scripts/verify-p4-b2-b-configuration.sh \
+        "p4E0R2QConfiguredFormalRunNames.contains(name)" \
+        'P4-E0-R2Q formal cases are absent from the exact B2 loaded-mod allowlist'
+
+    FORMAL_PROFILE_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-profile.XXXXXX")" \
+        || fail 'P4-E0-R2Q verifier could not create formal-profile block'
+    sed -n '/^def p4E0R2QFormalJvmArgs = \[$/,/^def p4E0R2QConfiguredFormalRunNames = \[\]$/p' \
+        build.gradle > "${FORMAL_PROFILE_BLOCK}"
+    [[ -s "${FORMAL_PROFILE_BLOCK}" ]] \
+        || fail 'P4-E0-R2Q exact formal runtime profile block is missing'
+    require_ere_count "${FORMAL_PROFILE_BLOCK}" \
+        "^[[:space:]]+'-(Xms512m|Xmx1536m|XX:\+ExitOnOutOfMemoryError)'[,]?$" 3 \
+        'P4-E0-R2Q formal runtime must contain exactly three fixed JVM arguments'
+    for marker in \
+        "def p4E0R2QFormalJvmArgs = [" \
+        "        '-Xms512m'," \
+        "        '-Xmx1536m'," \
+        "        '-XX:+ExitOnOutOfMemoryError'," \
+        'def p4E0R2QFormalTimeoutSeconds = 900' \
+        'def p4E0R2QFormalWatchdogSeconds = 870' \
+        "def p4E0R2QFormalDiskBudgetBytes = '12884901888'" \
+        'def p4E0R2QFormalCaseIndices = (0..<29).toList()' \
+        "!= ['-Xms512m', '-Xmx1536m', '-XX:+ExitOnOutOfMemoryError']" \
+        'p4E0R2QFormalTimeoutSeconds != 900' \
+        'p4E0R2QFormalWatchdogSeconds != 870' \
+        'p4E0R2QFormalWatchdogSeconds >= p4E0R2QFormalTimeoutSeconds' \
+        "p4E0R2QFormalDiskBudgetBytes != '12884901888'" \
+        'p4E0R2QFormalCaseIndices != (0..<29).toList()'; do
+        require_count "${FORMAL_PROFILE_BLOCK}" "${marker}" 1 \
+            "P4-E0-R2Q exact formal runtime profile changed: ${marker}"
+    done
+    require_count build.gradle \
+        'def p4E0R2QFormalCaseIndices = (0..<29).toList()' 1 \
+        'P4-E0-R2Q must define the exact 29-case coordinate once'
     for marker in \
         'p4E0R2QDedicatedSmoke {' \
+        'p4E0R2QRunnerDedicatedSmoke {' \
         'def p4E0R2QSmokeTimeoutSeconds = 600' \
         "layout.buildDirectory.dir('p4-e0-r2q/dedicated-smoke')" \
+        "layout.buildDirectory.dir('p4-e0-r2q/runner-dedicated-smoke')" \
+        "layout.buildDirectory.dir('reports/p4-e0-r2q-smoke/runtime')" \
+        "layout.buildDirectory.dir('reports/p4-e0-r2q-runner-smoke/runner')" \
+        "layout.buildDirectory.dir('reports/p4-e0-r2q')" \
         'p4E0R2QDedicatedGameDirectory.get().asFile.deleteDir()' \
         "sourceSet = p4E0ResearchGameTestSourceSet" \
         "systemProperty 'gramarye.p4e0.research.runMode', 'r2q-smoke'" \
+        "systemProperty 'gramarye.p4e0.research.runMode', 'r2q-runner-smoke'" \
+        "systemProperty 'gramarye.p4e0.research.runMode', 'r2q-formal'" \
         'jvmArguments.addAll(p4E0R2QSmokeJvmArgs)' \
+        'jvmArguments.addAll(p4E0R2QFormalJvmArgs)' \
         'timeout.set(java.time.Duration.ofSeconds(p4E0R2QSmokeTimeoutSeconds))' \
+        'def p4E0R2QFormalTimeoutSeconds = 900' \
+        'def p4E0R2QFormalWatchdogSeconds = 870' \
+        "def p4E0R2QFormalDiskBudgetBytes = '12884901888'" \
+        'def p4E0R2QFormalCaseIndices = (0..<29).toList()' \
+        'p4E0R2QFormalCaseIndices.each { formalCaseIndex ->' \
+        "systemProperty 'gramarye.p4e0.r2q.formal.caseIndex'" \
+        "systemProperty 'gramarye.p4e0.r2q.formal.childResult'" \
+        "systemProperty 'gramarye.p4e0.r2q.formal.runningMarker'" \
+        "systemProperty 'gramarye.p4e0.r2q.formal.watchdogSeconds'" \
+        "systemProperty 'gramarye.p4e0.r2q.formal.diskBudgetBytes'" \
         "'prepareP4E0R2Q'" \
         "'verifyP4E0R2QPreflightTests')" \
         "'verifyP4E0R2QProfile'" \
         "'runP4E0R2QSmoke'" \
         "tasks.named('runP4E0R2QDedicatedSmoke', JavaExec)" \
         "'verifyP4E0R2QSmokeOutput'" \
+        "'runP4E0R2QSupervisorSmoke'" \
+        "tasks.named('runP4E0R2QRunnerDedicatedSmoke', JavaExec)" \
+        "'verifyP4E0R2QSupervisorSmoke'" \
         "'verifyP4E0R2QConfiguration', Exec" \
         "tasks.register('p4E0R2QSmoke')" \
+        "'prepareP4E0R2QFormalStudy'" \
+        '"prepareP4E0R2QCase${formalCaseToken}"' \
+        '"runP4E0R2QCase${formalCaseToken}"' \
+        '"verifyP4E0R2QCase${formalCaseToken}"' \
+        '"captureP4E0R2QCase${formalCaseToken}ParentFailure"' \
+        "'aggregateP4E0R2QFormal'" \
+        "'verifyP4E0R2QFormalArtifacts'" \
         "tasks.register('p4E0R2QStudy')" \
         'dependsOn(verifyP4E0R2QConfiguration)' \
         'dependsOn(verifyP4E0R2QPreflightTests)' \
@@ -392,14 +483,83 @@ verify_build_and_formal_gate() {
         'dependsOn(runP4E0R2QSmoke)' \
         'dependsOn(runP4E0R2QDedicatedSmoke)' \
         'dependsOn(verifyP4E0R2QSmokeOutput)' \
+        'dependsOn(verifyP4E0R2QSupervisorSmoke)' \
         ".gradleProperty('p4E0R2QFormal')" \
+        ".gradleProperty('p4E0ResearchDiskBudgetBytes')" \
         "commandLine('git', 'status', '--porcelain=v2', '--untracked-files=all')" \
+        "commandLine('git', 'diff', '--exit-code')" \
+        "commandLine('git', 'diff', '--cached', '--exit-code')" \
+        "commandLine('git', 'ls-files', '--others', '--exclude-standard')" \
+        "commandLine('git', 'symbolic-ref', '--quiet', '--short', 'HEAD')" \
         "commandLine('git', 'rev-parse', 'HEAD')" \
         "commandLine('git', 'rev-parse', 'HEAD^{tree}')" \
         "commandLine('git', 'rev-parse', 'origin/main')" \
-        'formal execution is reserved for R2Q-B'; do
+        'p4E0R2QFormalMode.get() != '"'"'true'"'"'' \
+        'p4E0R2QFormalDiskBudget.get() != p4E0R2QFormalDiskBudgetBytes' \
+        "p4E0R2QGitBranch.standardOutput.asText.get().trim() != 'main'" \
+        'head != originMain' \
+        'def previousP4E0R2QFormalVerifier = prepareP4E0R2QFormalStudy' \
+        'dependsOn(prerequisiteVerifier)' \
+        'dependsOn(prepareCaseTask)' \
+        'dependsOn(runCaseTask)' \
+        'finalizedBy(captureFailureTask)' \
+        'java.nio.file.StandardOpenOption.CREATE_NEW' \
+        'channel.force(true)' \
+        'previousP4E0R2QFormalVerifier = verifyCaseTask' \
+        'dependsOn(previousP4E0R2QFormalVerifier)' \
+        'dependsOn(aggregateP4E0R2QFormal)' \
+        'dependsOn(verifyP4E0R2QFormalArtifacts)'; do
         require_fixed build.gradle "${marker}" \
             "P4-E0-R2Q build contract is missing ${marker}"
+    done
+    forbid_fixed build.gradle \
+        "layout.buildDirectory.dir('reports/p4-e0-r2q/smoke')" \
+        'P4-E0-R2Q smoke must not write below the official artifact root'
+
+    FORMAL_RUN_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-runs.XXXXXX")" \
+        || fail 'P4-E0-R2Q verifier could not create formal-run block'
+    sed -n '/^        p4E0R2QFormalCaseIndices.each { formalCaseIndex ->$/,/^        }$/p' \
+        build.gradle > "${FORMAL_RUN_BLOCK}"
+    [[ -s "${FORMAL_RUN_BLOCK}" ]] \
+        || fail 'P4-E0-R2Q exact dedicated formal-run loop is missing'
+    for marker in \
+        'def formalCaseToken = String.format(' \
+        "'%02d', formalCaseIndex" \
+        'def formalRunName = "p4E0R2QCase${formalCaseToken}".toString()' \
+        'p4E0R2QConfiguredFormalRunNames.add(formalRunName)' \
+        'create(formalRunName) {' \
+        "type = 'gameTestServer'" \
+        'sourceSet = p4E0ResearchGameTestSourceSet' \
+        "systemProperty 'gramarye.p4e0.research.runMode', 'r2q-formal'" \
+        "systemProperty 'gramarye.p4e0.r2q.formal.enabled', 'true'" \
+        "systemProperty 'gramarye.p4e0.r2q.formal.caseIndex'," \
+        "systemProperty 'gramarye.p4e0.r2q.formal.studyControl'," \
+        "systemProperty 'gramarye.p4e0.r2q.formal.caseRoot'," \
+        "systemProperty 'gramarye.p4e0.r2q.formal.childResult'," \
+        "systemProperty 'gramarye.p4e0.r2q.formal.runningMarker'," \
+        "systemProperty 'gramarye.p4e0.r2q.formal.watchdogSeconds'," \
+        'p4E0R2QFormalWatchdogSeconds.toString()' \
+        "systemProperty 'gramarye.p4e0.r2q.formal.diskBudgetBytes'," \
+        'p4E0R2QFormalDiskBudgetBytes' \
+        'jvmArguments.addAll(p4E0R2QFormalJvmArgs)' \
+        'taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))'; do
+        require_count "${FORMAL_RUN_BLOCK}" "${marker}" 1 \
+            "P4-E0-R2Q dedicated formal-run contract changed: ${marker}"
+    done
+    require_ere_count "${FORMAL_RUN_BLOCK}" \
+        "^[[:space:]]+systemProperty 'gramarye[.]p4e0[.](research[.]runMode|r2q[.]formal[.](enabled|caseIndex|studyControl|caseRoot|childResult|runningMarker|watchdogSeconds|diskBudgetBytes))'[,]?" \
+        9 'P4-E0-R2Q dedicated formal child property inventory changed'
+
+    require_count build.gradle \
+        'p4E0R2QConfiguredFormalRunNames.contains(name)' 1 \
+        'P4-E0-R2Q exact formal loaded-mod membership must occur once'
+    for marker in \
+        'if (p4E0R2QConfiguredFormalRunNames' \
+        '!= p4E0R2QFormalCaseIndices.collect { formalCaseIndex ->' \
+        "'p4E0R2QCase%02d'," \
+        "throw new GradleException('P4-E0-R2Q dedicated formal run inventory drift')"; do
+        require_count build.gradle "${marker}" 1 \
+            "P4-E0-R2Q exact dedicated run inventory changed: ${marker}"
     done
 
     RUNTIME_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-runtime.XXXXXX")" \
@@ -462,16 +622,71 @@ verify_build_and_formal_gate() {
 
     FORMAL_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-formal.XXXXXX")" \
         || fail 'P4-E0-R2Q verifier could not create formal-task block'
-    sed -n "/^tasks.register('p4E0R2QStudy') {$/,/^}$/p" \
+    sed -n "/^def p4E0R2QFormalMode =/,/^tasks.named('test', Test).configure/p" \
         build.gradle > "${FORMAL_BLOCK}"
     [[ -s "${FORMAL_BLOCK}" ]] || fail 'P4-E0-R2Q formal task block is missing'
-    forbid_fixed "${FORMAL_BLOCK}" 'dependsOn' \
-        'P4-E0-R2Q-A formal entry must own no child dependency'
-    forbid_fixed "${FORMAL_BLOCK}" 'ProcessBuilder' \
-        'P4-E0-R2Q-A formal entry must not launch a child'
-    for marker in finalizedBy commandLine javaexec JavaExec Exec; do
+
+    FORMAL_TASK_LOOP_BLOCK="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e0-r2q-task-loop.XXXXXX")" \
+        || fail 'P4-E0-R2Q verifier could not create formal-task-loop block'
+    sed -n '/^p4E0R2QFormalCaseIndices.each { formalCaseIndex ->$/,/^}$/p' \
+        build.gradle > "${FORMAL_TASK_LOOP_BLOCK}"
+    [[ -s "${FORMAL_TASK_LOOP_BLOCK}" ]] \
+        || fail 'P4-E0-R2Q exact formal task loop is missing'
+    for marker in mustRunAfter shouldRunAfter; do
         forbid_fixed "${FORMAL_BLOCK}" "${marker}" \
-            "P4-E0-R2Q-A formal entry contains forbidden launch seam ${marker}"
+            "P4-E0-R2Q formal spine contains forbidden non-dependency ordering: ${marker}"
+    done
+    for marker in \
+        'def formalCaseToken = String.format(' \
+        "'%02d', formalCaseIndex" \
+        'def prepareCaseTaskName = "prepareP4E0R2QCase${formalCaseToken}".toString()' \
+        'def runCaseTaskName = "runP4E0R2QCase${formalCaseToken}".toString()' \
+        'def verifyCaseTaskName = "verifyP4E0R2QCase${formalCaseToken}".toString()' \
+        'def prerequisiteVerifier = previousP4E0R2QFormalVerifier' \
+        'p4E0R2QConfiguredFormalPrepareTaskNames.add(prepareCaseTaskName)' \
+        'p4E0R2QConfiguredFormalVerifyTaskNames.add(verifyCaseTaskName)' \
+        'p4E0R2QConfiguredFormalFailureTaskNames.add(captureFailureTaskName)' \
+        'dependsOn(prerequisiteVerifier)' \
+        'def runCaseTask = tasks.named(runCaseTaskName, JavaExec)' \
+        'timeout.set(java.time.Duration.ofSeconds(p4E0R2QFormalTimeoutSeconds))' \
+        'requireP4E0R2QFormalGate()' \
+        'finalizedBy(captureFailureTask)' \
+        'dependsOn(runCaseTask)' \
+        'previousP4E0R2QFormalVerifier = verifyCaseTask'; do
+        require_count "${FORMAL_TASK_LOOP_BLOCK}" "${marker}" 1 \
+            "P4-E0-R2Q direct serial case spine changed: ${marker}"
+    done
+    require_count "${FORMAL_TASK_LOOP_BLOCK}" 'dependsOn(prepareCaseTask)' 3 \
+        'P4-E0-R2Q generated case/run setup dependency inventory changed'
+    require_count "${FORMAL_TASK_LOOP_BLOCK}" 'finalizedBy(captureFailureTask)' 1 \
+        'P4-E0-R2Q formal run must have exactly one generated parent-failure finalizer'
+    require_count "${FORMAL_TASK_LOOP_BLOCK}" "'capture-failure'" 1 \
+        'P4-E0-R2Q formal parent-failure command inventory changed'
+    require_count "${FORMAL_TASK_LOOP_BLOCK}" \
+        'captureP4E0R2QCase${formalCaseToken}ParentFailure' 1 \
+        'P4-E0-R2Q formal parent-failure task inventory changed'
+    require_count "${FORMAL_TASK_LOOP_BLOCK}" \
+        'previousP4E0R2QFormalVerifier = verifyCaseTask' 1 \
+        'P4-E0-R2Q formal spine must advance through one generated verifier loop'
+    for marker in \
+        'p4E0R2QExpectedFormalPrepareTaskNames =' \
+        "'prepareP4E0R2QCase%02d'," \
+        'p4E0R2QExpectedFormalVerifyTaskNames =' \
+        "'verifyP4E0R2QCase%02d'," \
+        'p4E0R2QExpectedFormalFailureTaskNames =' \
+        "'captureP4E0R2QCase%02dParentFailure'," \
+        '!= p4E0R2QExpectedFormalPrepareTaskNames' \
+        '!= p4E0R2QExpectedFormalVerifyTaskNames' \
+        '!= p4E0R2QExpectedFormalFailureTaskNames' \
+        "throw new GradleException('P4-E0-R2Q formal task inventory drift')" \
+        'aggregateP4E0R2QFormal.configure {' \
+        'dependsOn(previousP4E0R2QFormalVerifier)' \
+        'verifyP4E0R2QFormalArtifacts.configure {' \
+        'dependsOn(aggregateP4E0R2QFormal)' \
+        "tasks.register('p4E0R2QStudy') {" \
+        'dependsOn(verifyP4E0R2QFormalArtifacts)'; do
+        require_count "${FORMAL_BLOCK}" "${marker}" 1 \
+            "P4-E0-R2Q full serial spine/inventory changed: ${marker}"
     done
 }
 
@@ -489,7 +704,7 @@ verify_source_boundary() {
         > "${R2Q_GAME_LIST}"
     source_count="$(null_record_count "${R2Q_SOURCE_LIST}")"
     game_count="$(null_record_count "${R2Q_GAME_LIST}")"
-    [[ "${source_count}" -eq 10 && "${game_count}" -eq 1 ]] \
+    [[ "${source_count}" -eq 14 && "${game_count}" -eq 2 ]] \
         || fail "P4-E0-R2Q exact source allowlist changed (${source_count}/${game_count})"
     printf '%s\0' \
         'src/p4E0Research/java/com/yo1no/gramarye/magic/definition/player/P4E0ResearchAttachmentFixtures.java' \
@@ -512,8 +727,8 @@ verify_source_boundary() {
                     "P4-E0-R2Q source contains forbidden ${forbidden}: ${file}"
             done
             forbid_ere "${file}" \
-                'catch[[:space:]]*\([^)]*OutOfMemoryError' \
-                "P4-E0-R2Q source catches OOME: ${file}"
+                'catch[[:space:]]*\([^)]*(OutOfMemoryError|Error)' \
+                "P4-E0-R2Q source catches Error/OOME: ${file}"
         done < "${list}"
     done
     for required_case_marker in \
@@ -588,6 +803,152 @@ verify_source_boundary() {
     done
 }
 
+verify_formal_model_contract() {
+    local result='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalResult.java'
+    local evidence='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalEvidence.java'
+    local main_source='src/p4E0Research/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalMain.java'
+    local driver='src/p4E0ResearchGameTest/java/com/yo1no/gramarye/magic/definition/research/P4E0R2QFormalDedicatedDriver.java'
+    local marker=''
+
+    for marker in \
+        'MAXIMUM_JSON_BYTES = 65_536' \
+        'enum ProcessClassification {' \
+        'COMPLETED,' \
+        'REJECTED_BY_RESEARCH_GUARD,' \
+        'FIXTURE_INVALID,' \
+        'INSTRUMENTATION_FAILURE,' \
+        'CHILD_EXIT_FAILURE,' \
+        'TIMEOUT,' \
+        'OOME_EXIT' \
+        'enum QualificationResult {' \
+        'ADMITTED_EXACT,' \
+        'REJECTED_EXPECTED_COUNTER,' \
+        'REJECTED_EXPECTED_DATA_VERSION,' \
+        'NOT_OBSERVED' \
+        '"counter_values"' \
+        '"targets_audited"' \
+        '"semantic_checksum"' \
+        'observedAtLeast != Math.addExact(maximum, 1L)' \
+        'attachmentAdmissions != 1_024L' \
+        'rawRootClaims != 65_536L' \
+        'targetsAudited != 65_536L' \
+        'heap.xms() != 512L * 1_024L * 1_024L' \
+        'heap.xmx() != 1_536L * 1_024L * 1_024L'; do
+        require_fixed "${result}" "${marker}" \
+            "P4-E0-R2Q formal result contract is missing ${marker}"
+    done
+    require_ere_count "${result}" \
+        '^[[:space:]]+(COMPLETED|REJECTED_BY_RESEARCH_GUARD|FIXTURE_INVALID|INSTRUMENTATION_FAILURE|CHILD_EXIT_FAILURE|TIMEOUT|OOME_EXIT)[,]?$' \
+        7 'P4-E0-R2Q process taxonomy must have exactly seven values'
+    require_ere_count "${result}" \
+        '^[[:space:]]+(ADMITTED_EXACT|REJECTED_EXPECTED_COUNTER|REJECTED_EXPECTED_DATA_VERSION|NOT_OBSERVED)[,]?$' \
+        4 'P4-E0-R2Q qualification taxonomy must have exactly four values'
+    for marker in 'java.nio.file.Path' 'Throwable ' 'getMessage(' 'getStackTrace('; do
+        forbid_fixed "${result}" "${marker}" \
+            "P4-E0-R2Q formal result contains forbidden raw diagnostic seam ${marker}"
+    done
+
+    for marker in \
+        'FORMAL_DISK_BUDGET_BYTES = 12_884_901_888L' \
+        'FORMAL_HEAP_MIB = 1_536' \
+        'LOCKED_PROFILE_HASH =' \
+        '"6a6f4541f4c23b9aefad465eb29ec0420d3a4f635f06b528ca07239a93f99418"' \
+        'LOCKED_CASE_PLAN_HASH =' \
+        '"23408739f292d2a5696c56c39b8b4b3978b3840af383930293efbe6b824f5035"' \
+        'P4E0R2QProfile.manifestHash().equals(LOCKED_PROFILE_HASH)' \
+        'P4E0R2QCasePlan.standard().planHash().equals(LOCKED_CASE_PLAN_HASH)' \
+        'RUNS_FILE = "runs.jsonl"' \
+        'PROFILE_FILE = "r2q-profile.json"' \
+        'CASE_PLAN_FILE = "r2q-case-plan.json"' \
+        'SUMMARY_FILE = "summary.md"' \
+        'PROVENANCE_FILE = "PROVENANCE.txt"' \
+        'CHECKSUMS_FILE = "SHA256SUMS.txt"' \
+        'results.size() != P4E0R2QCasePlan.CASE_COUNT' \
+        'PublicationMover mover' \
+        'mover.move(staging, official)' \
+        'StandardCopyOption.ATOMIC_MOVE' \
+        'catch (AtomicMoveNotSupportedException exception)' \
+        'STALE_PROVENANCE.txt' \
+        'OFFICIAL_SHA256SUMS.txt' \
+        'preserveFailed(' \
+        'FAILURE.txt' \
+        'EXPLORATORY_NON_NORMATIVE' \
+        'REJECTED_EXPECTED_COUNTER: 25' \
+        'REJECTED_EXPECTED_DATA_VERSION: 3'; do
+        require_fixed "${evidence}" "${marker}" \
+            "P4-E0-R2Q formal evidence contract is missing ${marker}"
+    done
+    forbid_fixed "${evidence}" 'StandardCopyOption.REPLACE_EXISTING' \
+        'P4-E0-R2Q formal evidence must never replace an artifact or archive'
+    forbid_fixed "${evidence}" 'Files.move(source, target)' \
+        'P4-E0-R2Q formal publication must not fall back to a non-atomic move'
+
+    for marker in \
+        'var staging = parent.resolve(".p4-e0-r2q-" + control.studyId() + ".staging")' \
+        'var target = safeRoot(staleRoot).resolve(identity)' \
+        'var staging = target.getParent().resolve("." + identity + ".staging")' \
+        'atomicMove(official, staging)' \
+        'staging.resolve("STALE_PROVENANCE.txt")' \
+        'requireStaleDirectory(staging, previous, identity)' \
+        'requireNoFormalStaging(' \
+        'name.startsWith(".p4-e0-r2q-") && name.endsWith(".staging")' \
+        'var target = safeRoot(failedRoot).resolve(control.studyId())' \
+        'var staging = target.getParent().resolve("." + control.studyId() + ".staging")' \
+        'staging.resolve("study-control.json")' \
+        'control.toJsonLine()' \
+        'preserveManifestIfPresent(sourceCase, targetCase, control, index)' \
+        'preserveResultIfPresent(sourceCase, targetCase, control, index, "child-result.json")' \
+        '"case-manifest.json"' \
+        '"child-result.json"' \
+        '"verified-result.json"' \
+        '"running.marker"' \
+        '"exit-code.txt"' \
+        '"timeout.marker"' \
+        '"parent-deadline.marker"' \
+        '"FAILURE.txt"'; do
+        require_fixed "${evidence}" "${marker}" \
+            "P4-E0-R2Q stale/failed evidence topology changed: ${marker}"
+    done
+    require_count "${evidence}" 'atomicMove(staging, target)' 2 \
+        'P4-E0-R2Q stale and failed archives must each publish by one atomic staging move'
+    forbid_fixed "${evidence}" 'atomicMove(official, target)' \
+        'P4-E0-R2Q stale archive must not publish before bounded metadata is installed'
+    require_fixed "${main_source}" 'workRoot.resolveSibling("stale-evidence")' \
+        'P4-E0-R2Q stale evidence root topology changed'
+    require_fixed "${main_source}" 'workRoot.resolveSibling("failed-evidence")' \
+        'P4-E0-R2Q failed evidence root topology changed'
+    for marker in \
+        'P4E0R2QFormalEvidence.requireNoFormalStaging(' \
+        'failedRoot.resolve(control.studyId())' \
+        'staleRoot.resolve(control.studyId())' \
+        'staleRoot.resolve(control.gitHead())' \
+        'previous.studyId().equals(control.studyId())' \
+        'previous.gitHead().equals(control.gitHead())' \
+        'formal study identity cannot be reused'; do
+        require_fixed "${main_source}" "${marker}" \
+            "P4-E0-R2Q study/stale identity gate changed: ${marker}"
+    done
+
+    for marker in \
+        'classifyParentEvidence(' \
+        'readExitCode(' \
+        'marker(' \
+        'parentTimedOut' \
+        'CHILD_EXIT_FAILURE' \
+        'TIMEOUT' \
+        'OOME_EXIT' \
+        'COMPLETED_NON_FORMAL_RUNNER_SMOKE' \
+        'formal_children_started' \
+        'official_artifacts_published'; do
+        require_fixed "${main_source}" "${marker}" \
+            "P4-E0-R2Q formal supervisor contract is missing ${marker}"
+    done
+    require_count "${driver}" 'Runtime.getRuntime().halt(' 1 \
+        'P4-E0-R2Q dedicated watchdog must have exactly one hard-halt site'
+    require_fixed "${driver}" 'WATCHDOG_SECONDS = 870L' \
+        'P4-E0-R2Q dedicated watchdog lost its exact timeout'
+}
+
 verify_jar_isolation() {
     local jar_path=''
     local source_path=''
@@ -637,6 +998,7 @@ main() {
     verify_case_plan_contract
     verify_build_and_formal_gate
     verify_source_boundary
+    verify_formal_model_contract
     verify_jar_isolation
     printf '%s\n' \
         'Verified P4-E0-R2Q profile, smoke tasks, formal fail-closed entry, boundaries, and JAR isolation.'

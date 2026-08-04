@@ -301,8 +301,8 @@ final class P4E0ResearchMetricsTest {
                 () -> assertFalse(source.contains("freeMemory(")),
                 () -> assertFalse(source.matches(
                         "(?s).*catch\\s*\\([^)]*OutOfMemoryError.*")),
-                () -> assertFalse(source.contains("heapPoolPeakSum <")),
-                () -> assertFalse(source.contains("heapPoolPeakSum >")));
+                () -> assertFalse(source.contains("heapPoolPeakSum < xmx")),
+                () -> assertFalse(source.contains("heapPoolPeakSum > xmx")));
     }
 
     @Test

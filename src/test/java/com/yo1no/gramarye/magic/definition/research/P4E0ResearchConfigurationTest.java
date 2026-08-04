@@ -194,7 +194,7 @@ final class P4E0ResearchConfigurationTest {
                         "'cleanP4E0ResearchPostRunLogs', Delete")),
                 () -> assertTrue(build.contains(
                         "delete(layout.projectDirectory.dir('logs'))")),
-                () -> assertEquals(2, occurrences(
+                () -> assertEquals(3, occurrences(
                         build, "delete(layout.projectDirectory.dir('logs'))")),
                 () -> assertTrue(build.contains(
                         "dependsOn(cleanP4E0ResearchLauncherLogs)")),

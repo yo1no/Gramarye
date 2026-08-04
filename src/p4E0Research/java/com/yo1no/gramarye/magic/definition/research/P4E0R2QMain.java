@@ -127,7 +127,7 @@ public final class P4E0R2QMain {
                 net.minecraft.world.level.storage.LevelResource.ROOT);
         verifyProfile(fixtureRoot, worldRoot, true);
         var wire = scanReducedWire(fixtureRoot);
-        runExactActualSubmission(server);
+        runExactActualSubmission(server, () -> {});
         writeResult(
                 reportRoot.resolve(DEDICATED_RESULT),
                 result("dedicated", fixtureRoot, wire, 1));
@@ -351,7 +351,8 @@ public final class P4E0R2QMain {
                 scanned.nbt().modifiedUtf8Bytes());
     }
 
-    private static void runExactActualSubmission(MinecraftServer server) {
+    static void runExactActualSubmission(MinecraftServer server, Runnable peakRetainer) {
+        java.util.Objects.requireNonNull(peakRetainer, "peakRetainer");
         var owner = P4E0R2QStoreJournalFixtures.submissionOwner();
         var cookie = CommonListenerCookie.createInitial(
                 new GameProfile(owner.value(), "p4e0-r2q-smoke"), false);
@@ -377,6 +378,7 @@ public final class P4E0R2QMain {
                     context.submissionPort(),
                     P4D3StoreJournalFixture.submissionSkillId(),
                     peak -> {
+                        peakRetainer.run();
                         if (peak.warningCount() != 1
                                 || peak.documentNodeCount() != 1
                                 || peak.validatedNodeCount() != 1) {

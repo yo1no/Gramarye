@@ -416,6 +416,9 @@ verify_b2_build_contracts() {
         "name.startsWith('p4D3') ? p4D3ProbeMod" \
         "name == 'p4E0ResearchDedicatedSmoke'" \
         "name == 'p4E0R2QDedicatedSmoke'" \
+        "name == 'p4E0R2QRunnerDedicatedSmoke'" \
+        "name.startsWith('p4E0ResearchCombined')" \
+        "p4E0R2QConfiguredFormalRunNames.contains(name)" \
         "? p4E0ResearchMod : productionMod" \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)' \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)' \
@@ -435,6 +438,14 @@ verify_b2_build_contracts() {
             "${literal}" \
             "P4-B2-B configuration check missing ${literal} in build.gradle"
     done
+    forbid_fixed \
+        build.gradle \
+        "name.startsWith('p4E0R2QCase')" \
+        'P4-B2-B must not broadly admit P4-E0-R2Q formal case names'
+    forbid_fixed \
+        build.gradle \
+        "name.startsWith('p4E0R2Q')" \
+        'P4-B2-B must not broadly admit the P4-E0-R2Q phase'
 
     require_ere_count \
         build.gradle \

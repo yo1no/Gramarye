@@ -23,6 +23,14 @@ final class P4E0ResearchDedicatedCoordinator {
             P4E0R2QDedicatedDriver.run(server);
             return;
         }
+        if ("r2q-formal".equals(runMode)) {
+            P4E0R2QFormalDedicatedDriver.run(server);
+            return;
+        }
+        if ("r2q-runner-smoke".equals(runMode)) {
+            P4E0R2QFormalDedicatedDriver.runRunnerSmoke(server);
+            return;
+        }
         if (!"dedicated-smoke".equals(runMode)) {
             throw new IllegalStateException("research dedicated scenario is not selected");
         }
