@@ -51,9 +51,14 @@ This page is a compact phase boundary, not a second persistence specification.
   ordering, bounded owner recovery projection, one-shot persisted Attachment observation, login
   recovery, readback-confirmed clear／replay, normal GameTests, and local phase gates. D3-B owns the
   paired restart/crash matrix and combined fixed-heap／Gradle／CI Gates.
-- P4-E owns complete offline root audit, rebuildable root indexing, reconciliation, and reclaim
-  composition. It supplies the complete root snapshot; P4-B2 owns the resulting carrier publication
-  and Store SavedData dirty decision.
+- P4-E0-B owns only this authority synchronization. P4-E1 owns the read-only bounded offline／
+  integrated scanner, full P4-C and journal projection, grouped Store audit, memory-only index, and
+  bounded completeness results; it owns no mutation or reclaim call. P4-E2 owns only login-time
+  immutable reconciliation after P4-D recovery and owns no offline, Store, journal, or reclaim
+  mutation. P4-E3 owns the unique same-`ServerStartingEvent` fresh-audit-to-single-controlled-reclaim
+  composition, restart verification, and fixed-1,536-MiB production Gate. P4-B2 continues to own
+  the resulting carrier publication and Store SavedData dirty decision. These three implementation
+  phases may not be merged.
 - P4 delegates Store owner, quota, CAS, allocation, validation, and reclaim policy to P3. P4-D owns
   the server-side acquisition of one combined quota／ValidationContext snapshot, while P3-C and P3-D
   consume its respective validation and quota members. The `gramarye_skill_definitions` carrier does
@@ -186,13 +191,29 @@ clear only after later persisted playerdata readback confirms the target.
 
 ## Offline roots and reclaim
 
-Complete roots include offline player latest/equipped references, journal targets, and every enabled
-future persistent runtime source. A rebuildable index is never truth and starts incomplete after
-restart. Unreadable, truncated, unknown, or unaudited sources keep the aggregate incomplete, so
-reclaim is not invoked. Root capture and reclaim occur immediately in one logic-thread call chain,
-without forced chunk loads, background sweeping, or cross-tick reuse of `Complete`.
-An unavailable journal projection is an unreadable root source: global completeness remains false
-and production reclaim composition is not invoked; it never becomes an empty root list.
+The exact V0 authority is indexed by the
+[P4-E0 bounded root-audit authority boundary](P4-E0-root-audit-boundary.md) and remains normative in
+the P4 amendment. V0's compile-time closed source inventory contains only
+`PLAYER_SKILL_ATTACHMENT` and `PENDING_ATTACHMENT_JOURNAL`; Store latest and active pins are P3-D
+implicit roots, while SkillInstance, Marker, Construct, and Schedule root persistence is not yet
+enabled. Future families require an inventory member, provider, completeness gate, and tests in one
+reviewed change; dynamic registration cannot prove completeness.
+
+The read-only audit uses the amendment's 25 independent inclusive counters, exact `IntTag(3955)`,
+zero DFU, strict playerdata gzip/NBT language, product-selected 1,536-MiB heap floor, and
+`INCOMPLETE_AND_CONTINUE`. Every selected player source undergoes full P4-C admission; raw
+latest/equipped/journal claims count toward the 65,536 ceiling before deduplication and then undergo
+grouped exact-reference/owner Store audit. Missing or foreign offline pointers defer to login and
+leave disk unchanged. The index is memory-only, starts Incomplete after restart, retains no raw
+data or Complete token, and loses completeness on any source race or reconciliation.
+
+P4-E1 and P4-E2 never invoke reclaim. Only P4-E3 may keep a fresh `Complete` as a local value in the
+single logic-thread call chain `P4-B install -> P4-D bootstrap -> P4-E1 audit -> immediate controlled
+reclaim exactly once`. There is no second listener, forced chunk load, background/periodic sweep, or
+cross-tick reuse. An unavailable journal or any unreadable, over-limit, unaudited, quarantined,
+reconciliation-pending, or invalid Store source keeps the global result Incomplete and reclaim at
+zero. Audit N reconciliation never permits same-round reclaim; only a complete reread at restart
+N+1 can do so. P4-B2 retains publication-before-dirty ownership for positive reclaim.
 
 ## Implementation gate
 
@@ -211,6 +232,14 @@ completes. D3-A starts only after D2-B normal submission and the D3 read-only de
 D3-B starts only after D3-A closure. P4-D completes only after D1, D2-A, D2-B, D3-A, D3-B, and the
 required paired fixed-1-GiB combined first／restart remote Gate pass; the first JVM alone carries the
 complete simultaneous submission envelope.
+
+P4-E1 remains blocked until the documentation-only E0-B authority patch is committed, pushed, and
+its existing remote jobs close successfully. E2 remains blocked until E1 completion; E3 remains
+blocked until E2 completion. E1 must have zero player/Store/journal mutation and zero reclaim calls;
+E2 may publish at most one online Attachment replacement after P4-D recovery but still has zero
+offline/Store/journal/reclaim mutation. E3 alone owns the fresh-complete reclaim composition and the
+exact fixed-1,536-MiB production Gate. R2Q research qualification does not substitute for that Gate,
+and the selected heap tier is not a universal safe minimum.
 
 ## P4-B0 clarification ledger
 
@@ -1006,9 +1035,27 @@ isolation; warning-mode production compilation; and the final static／diff scan
 Together D0 through D3 now close journal framing／migration／operational state, Store authority／
 preflight／commit／publication, authenticated submission and report identity, login recovery with
 prefix clear／replay, and the D–J1 paired-restart／J2 defensive verification boundary. D3-B, D3, and
-P4-D are complete. P4-E is ready only for read-only design review; no P4-E implementation, offline
+P4-D is complete. At P4-D closure, P4-E was ready only for read-only design review; no P4-E implementation, offline
 root-completeness proof, Store-reclaim composition, or general reconciliation exists. P4-D does not
 claim a cross-SavedData／playerdata transaction or fsync durability.
+
+## P4-E0 authority and research closure ledger
+
+The compact [P4-E0 bounded root-audit authority boundary](P4-E0-root-audit-boundary.md) records the
+research lineage, exact formal-evidence identity, product-policy adoption, heap headroom, and phase
+gates. P4-E0-A exposed the missing authority; R1, R2, R2R, and R2Q supplied isolated exploratory
+instrumentation, clean-revision regeneration, a locked candidate, 29-case formal evidence, and
+read-only adjudication. The formal run completed one exact case, 25 independent MAX+1 cases, and
+three DataVersion controls without OOME or timeout. That evidence supports, but does not universally
+prove, the adopted `BALANCED_V0_1536_QUALIFICATION` product boundary.
+
+E0-B now places the exact 25-dimensional vector, counting coordinates, strict playerdata truth
+selection, zero-DFU policy, closed V0 family inventory, memory-only index, defer-to-login
+reconciliation, same-ServerStarting fresh-complete reclaim composition, and product-selected
+1,536-MiB heap floor into the P4 amendment and synchronized lower authorities. This is a local
+documentation patch only: production code and official evidence remain unchanged, no formal study
+was rerun, and E1／E2／E3 implementation has not started. Historical P4-D0 and P3-C phase-status
+snapshots remain valid as history; this section is the later current-status index for P4-E.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1027,7 +1074,14 @@ P4-D3-A             = COMPLETE
 P4-D3-B             = COMPLETE
 P4-D3               = COMPLETE
 P4-D                = COMPLETE
-P4-E                = READY FOR READ-ONLY DESIGN REVIEW
+
+P4-E0-A research/adjudication = COMPLETE
+P4-E0-R1/R2/R2R/R2Q           = COMPLETE
+P4-E0-B authority patch        = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
+P4-E1                           = BLOCKED UNTIL E0-B CLOSURE
+P4-E2                           = BLOCKED
+P4-E3                           = BLOCKED
+P4-E                            = INCOMPLETE
 ```
 
 The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed by
@@ -1045,5 +1099,7 @@ passed, and the externally reported remote build／A3／B／C jobs passed. D3-A 
 complete with the crash D–J matrix, combined first／restart fixed-heap Gate, Gradle task graph,
 portable configuration verifier, and P4-D memory CI job committed at `HEAD`／`origin/main`; the
 externally reported remote build／A3／B／C／D jobs passed. P4-D is complete. P4-E is ready for
-read-only design review and remains unimplemented.
+read-only design review only as a historical P4-D closure statement; the E0 research／adjudication
+lineage is now complete, while this local E0-B authority patch still awaits commit／push／remote
+closure. E1／E2／E3 remain blocked and P4-E remains incomplete.
 Branch-protection required-check configuration remains external governance unknown／pending.

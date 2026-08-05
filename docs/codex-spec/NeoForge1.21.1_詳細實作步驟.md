@@ -252,7 +252,11 @@ P4-D1：strict journal／migration、single Store authority snapshot、窄Store 
 P4-D2：unique policy／SkillId providers、Draft creation、authenticated P3-C composition、
        prepared Attachment transition與composition outcome
 P4-D3：bootstrap／login recovery、persisted-readback clear、paired restart與combined fixed-heap Gate
-P4-E：offline roots、rebuildable index、reconciliation與reclaim composition
+P4-E0-B：documentation-only V0 root-audit authority；無implementation／study rerun
+P4-E1：read-only bounded offline／integrated scanner、full P4-C／journal／Store audit、
+      memory-only index與bounded completeness results；mutation／reclaim 0
+P4-E2：P4-D recovery後login-only immutable reconciliation；offline／Store／journal／reclaim mutation 0
+P4-E3：unique ServerStarting fresh audit→controlled reclaim once、restart／fixed-1,536-MiB／CI gates
 ```
 
 ## P3-A：SkillDraft／SkillDocument／NodeDocument 與 Appearance storage
@@ -523,6 +527,9 @@ combined fixed-heap authority；該文件boundary完成前不得開始P4-D1 impl
 P4-C0只修訂player Attachment quarantine authority；整份文件變更提交且遠端CI通過前不得開始
 P4-C1。P4-C1完成physical／serializer Gate後才可開始P4-C2 registration／lifecycle；C1、C2與
 required remote fixed-heap Gate全部通過前，P4-C不得標記完成。
+P4-E0-B只將核准的V0 root-audit政策同步進權威Markdown；該文件patch提交、
+push且remote closure前不得開始P4-E1。E1完成前不得開始E2，E2完成前
+不得開始E3。E0-B不寫Java／Gradle／CI，不重跑R1／R2／R2Q formal study。
 
 P4-A1～A3、P4-B1／B2與P4-C～E不得重寫P3-D owner truth、quota counting、CAS、revision allocation或reclaim
 policy，也不得重跑P3-B2／B3 resolution／validation。
@@ -983,32 +990,74 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
 
 ## P4-E：Offline roots 與 reconciliation
 
-### 責任
+完整canonical authority是[18號修正案的§18](18_P4持久化與組合修正案.md)。
+本節只將實作強制分成三個不可合併的工作包。
 
-- Bounded read-only audit涵蓋offline player latest／equipped、pending journal與所有已啟用的
-  future SkillInstance／Marker／Construct／Schedule persistent source family。
-- Rebuildable world-level index不是truth；restart預設Incomplete，只有全部enabled source
-  family audit完成才Complete。Unreadable／truncated／unknown source一律Incomplete。
-- Store owner／documents裁決pointer reconciliation；missing／owner mismatch做opaque prune，
-  無journal舊pointer不自動升latest，orphan revision不自動刪除或釋放quota。
-- Root capture最多MAX+1並與reclaim位於同一logic-thread call chain；Complete不跨tick保存。
-- Reclaim依P3-D既有規則；P4-E只建立complete roots並組合呼叫P4-B2 controlled reclaim，
-  matching carrier publication與dirty由P4-B2負責。只改Attachment不dirty Store，改journal或
-  實際reclaim才依matrix dirty。
+### P4-E1：Read-only bounded audit
+
+- 使用25個獨立checked-`long` inclusive counters；exact max合法，第max+1在指定stream
+  checkpoint立即停止並回`INCOMPLETE_AND_CONTINUE`。Accepted `DataVersion`只有
+  `IntTag(3955)`，DFU calls精確為0。Runtime maximum heap低於`1_610_612_736`bytes即
+  `Incomplete(HEAP_FLOOR_NOT_MET)`。數值與counting coordinates不得從本節自行重寫。
+- 同步掃描trusted playerdata directory，驗canonical UUID primary／old pairs、NOFOLLOW／
+  fileKey／race／same-channel identity，並依權威matrix選truth。重用P4-B reviewed strict
+  one-member gzip primitives與streaming unnamed-Compound scanner，在allocation前執行長度上cap。
+- Integrated singleplayer在同一pre-login ServerStarting call chain使用
+  `getSingleplayerProfile()`與`getLoadedPlayerTag()`，不重讀`level.dat`，排除同UUID disk pair。
+- V0 closed inventory恰為`PLAYER_SKILL_ATTACHMENT`與`PENDING_ATTACHMENT_JOURNAL`；使用
+  package-private compile-time inventory、exhaustive no-default switch與exact provider coverage。
+  SkillInstance／Marker／Construct／Schedule尚未啟用，Store latest／active pins由P3-D implicit。
+- Player Tag必須走完整P4-C admission，不建立root-only parser；journal使用P4-D
+  projection。Raw latest／equipped／journal claims在dedup前最多65,536、再作grouped exact
+  reference／expected-owner Store audit，每distinct SkillId最多一次history lookup。
+- Index只memory-only、restart預設Incomplete，不存raw、Store truth或Complete token。E1的
+  player／Store／journal mutation與reclaim invocation均為0。
+
+### P4-E2：Login-only reconciliation
+
+- 只在該player的P4-D login recovery完成後，觀察一個當下Ready Attachment並對全部
+  latest／equipped claims作grouped Store audit。Offline stale／foreign在E1只能defer-to-login，
+  disk不變。
+- Latest prune只使用P4-C唯一generation arithmetic；equipped prune不改generation；valid
+  nonlatest保留，不promote。Generation MAX、identity drift或carrier failure使整批零publication；
+  成功最多一次`setData`。不改Store／journal／Draft／editor，不寫offline disk，不reclaim。
+- Audit N發現reconciliation的當輪與login prune／save之後都不reclaim；只有restart N+1的
+  fresh full audit才可能Complete。
+
+### P4-E3：Lifecycle composition and final Gate
+
+- 在唯一`ServerStartingEvent`、same logic-thread call chain中固定
+  P4-B install → P4-D bootstrap → fresh E1 audit → 若Complete即時建立
+  `SkillRetentionRootSnapshot.Complete` 並呼叫
+  `SkillDefinitionStoreService.reclaim(server, snapshot)` exactly once。`Complete`不存field／index／
+  callback、不跨tick。
+- Reclaim `Rejected`不retry，0不dirty，>0沿用P4-B publication-before-dirty；invariant
+  failure沿用Unavailable／`setDirty(false)`。Audit／index／Incomplete／E2不改Store dirty。
+- 建立production-shaped exact fixed `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError`
+  first／restart Gate，同時保留4,096 directory entries、2,048 records、25 exact maxima、
+  1,024 full P4-C admissions、65,536 accepted raw roots、4,096 journal targets、full Store／carrier、
+  grouped audit、index、Complete、filtered carrier與SavedData deep copy。R2Q不取代此Gate。
 
 ### Gate
 
-- Offline roots、loaded-only→Incomplete、unreadable／future-source incomplete gate、MAX+1、
-  journal roots、missing Store root reconciliation、no chunk load、reclaim Rejected／0／>0 dirty
-  mapping與Complete不得跨tick重用。
+- 25 counters各自exact／MAX+1、其他24維不超限與canonical precedence；heap exact／below；
+  directory／relevant exact／+1；filename／primary-old／gzip／NBT／DataVersion／integrated完整矩陣。
+- P4-C admission classification等價、inventory coverage、journal Available／Unavailable、grouped Store
+  audit、raw roots 65,536／65,537 before dedup、offline disk hash不變、recovery-before-E2、
+  atomic multiprune／MAX、index invalidation與N／N+1。
+- E3 production fixed-1,536-MiB exact／MAX+1／restart Gate、no OOME／timeout、no chunk load／
+  background／cross-tick Complete／production-JAR fixture leakage。
 
 ### 禁止
 
-Chunk force、background sweep、Incomplete best-effort reclaim、重寫P3-D reclaim policy。
+Chunk force、background／periodic／lazy／admin audit、offline writer、DFU、root-only parser、dynamic
+provider completeness、persistent index、Incomplete best-effort reclaim、E1／E2 reclaim、重寫P3-D
+policy、network或E1／E2／E3合併。若E3 exact profile在1,536MiB OOME／timeout，停止並
+先修訂P4-0／第18號heap-floor authority，不縮fixture／ceilings、拆envelope或自行提heap。
 
 Marker gameplay Attachment、`RuntimePersistentStore`、SkillInstance、Schedule與Construct lifecycle
-不由P4-A～E提前建立。P4-E只定義這些未來persistent root source的completeness gate；實際
-source implementation仍留各自後續工程階段。
+不由P4-A～E提前建立；未來啟用時必須在同一reviewed change擴充closed inventory、
+provider、completeness gate與tests。
 
 ## P4 Definition of Done
 
@@ -1020,9 +1069,11 @@ source implementation仍留各自後續工程階段。
 - Existing invalid data不silent empty；SavedData load failure不覆寫primary。Player Attachment
   in-bound malformed保留materialized logical tree；oversize只有第18號核准的canonical marker可
   破壞性取代原representation，restart仍必須Quarantined。
-- Store-first ordering、readback-confirmed journal clear、malformed partial availability、offline-root
-  fail-closed及single-process fixed-1-GiB combined Gate均可由測試證明；不宣稱playerdata／SavedData
-  cross-file durable atomicity。
+- Store-first ordering、readback-confirmed journal clear與malformed partial availability由P4-D fixed-1-GiB
+  combined Gate證明；P4-E另必須以production-shaped fixed-1,536-MiB Gate證明25維bounded
+  audit、offline／integrated truth、full P4-C admission、closed inventory、memory-only index、N／N+1
+  reconciliation與fresh Complete→single controlled reclaim。不宣稱playerdata／SavedData cross-file
+  durable atomicity，也不宣稱1,536 MiB是universal safe minimum。
 
 ---
 
@@ -1543,8 +1594,10 @@ preflight、P3-D commit與Attachment transition。
       prebuilt carrier。
 - [ ] Cross-location update有明確ordering、bounded recovery journal與reconciliation；不宣稱
       fsync或durable atomic。
-- [ ] Persistent roots只有在offline與所有enabled source family完整時才可Complete；不完整時
-      reclaim fail closed。
+- [ ] Persistent roots只有在第18號§18的closed inventory、25 counters、exact DataVersion／
+      zero DFU、heap floor、full P4-C／journal／Store audit及freshness全部通過時才可
+      Complete；E1／E2／reconciliation當輪皆reclaim 0，只有E3 same-ServerStarting call chain
+      可使用fresh Complete。Exact 1,536-MiB production Gate未通過前P4-E不完成。
 - [ ] 新生命週期有清理與 idempotence。
 - [ ] `/skill trace` 可解釋失敗。
 - [ ] dedicated server 無 client class。

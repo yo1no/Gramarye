@@ -27,3 +27,4 @@ Implementation guidance is provided by the [Codex implementation contract](../co
 - [P3-D skill definition Store decision ledger](P3-D-skill-definition-store.md)
 - [P4-0 persistence, Attachment, and composition boundary](P4-0-persistence-boundary.md)
 - [P4-D0 submission journal and composition authority boundary](P4-D0-submission-journal-boundary.md)
+- [P4-E0 bounded root-audit authority boundary](P4-E0-root-audit-boundary.md)

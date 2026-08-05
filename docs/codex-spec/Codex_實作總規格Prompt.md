@@ -664,8 +664,15 @@ P4固定拆分為：
   composition、prepared Attachment transition與composition outcome。
 - P4-D3：bootstrap／login recovery、persisted-readback clear、paired restart與combined fixed-heap Gate；
   無offline enumeration或network。
-- P4-E：complete offline roots、rebuildable root index、reconciliation與reclaim composition；
-  無chunk force、無background sweep。
+- P4-E0-B：documentation-only將第18號§18的V0 numeric／heap／truth／completeness／
+  reconciliation裁決同步進權威文件；無Java／Gradle／CI／study rerun。
+- P4-E1：read-only bounded offline／integrated audit、full P4-C admission、journal／grouped Store
+  audit、memory-only index與bounded completeness results；player／Store／journal mutation與reclaim 0。
+- P4-E2：P4-D login recovery後的online-only immutable latest／equipped reconciliation；offline
+  disk、Store、journal與reclaim mutation 0。
+- P4-E3：唯一`ServerStartingEvent` composition、fresh E1 `Complete`後immediate controlled
+  reclaim exactly once，restart／fixed-1,536-MiB／CI／final gates；無chunk force、background／
+  periodic audit或cross-tick `Complete`。E1／E2／E3不得合併。
 
 P4-B的whole root固定為unnamed Compound，exact fields只有`data` Compound與`DataVersion` Int；
 inner `data` exact fields只有`saved_data_schema_version` Int、`store_blob` ByteArray與
@@ -731,10 +738,22 @@ fsync或cross-location durable atomic。
 recheck位於全部prebuild之後且緊鄰commit。P3-D回`Committed`後才可發布預建carrier／journal並dirty，
 再publication prepared Attachment transition；P4-B不得提前實作或重寫此P4-D composition邊界。
 
-P4-E只負責取得complete retention roots與reclaim composition；P4-B2 controlled API負責實際
-Store reclaim、matching carrier publication與dirty。Rejected／reclaimed=0不修改state，reclaimed>0
-先發布carrier再dirty，filter invariant failure轉Unavailable且不得使用舊carrier。Quarantine byte
-ceilings在P4-B沒有核准consumer，不得為消耗常數建立raw-copy機制。
+P4-E V0的canonical細節只以第18號修正案§18為準。它採25個獨立inclusive
+counters、exact `IntTag(3955)`、zero DFU、strict gzip／unnamed-Compound ingress、
+`INCOMPLETE_AND_CONTINUE`與product-selected `1_610_612_736`-byte／1,536-MiB audit heap
+floor；這些是產品政策，不是universal minimum。V0 closed inventory恰為
+`PLAYER_SKILL_ATTACHMENT`與`PENDING_ATTACHMENT_JOURNAL`，player source必須經完整P4-C
+admission，raw roots在dedup前計capacity，index只memory-only且restart預設Incomplete。
+
+Offline missing／foreign pointer只defer-to-login，disk不變，當輪reclaim 0；P4-E2只在P4-D
+recovery後對online Ready作一次immutable prune，也不reclaim。只有P4-E3能在唯一
+`ServerStartingEvent` call chain中使用fresh E1 `Complete`，立即呼叫
+`SkillDefinitionStoreService.reclaim` exactly once，不存Complete token或跨tick重用。
+P4-B2 controlled API負責實際Store reclaim、matching carrier publication與dirty：Rejected／
+reclaimed=0不改state，reclaimed>0先發布carrier再dirty，filter invariant failure轉
+Unavailable且不使用舊carrier。P4-E3仍需production-shaped fixed-1,536-MiB combined
+Gate；R2Q research evidence不能取代它。Quarantine byte ceilings在P4-B沒有核准
+consumer，不得為消耗常數建立raw-copy機制。
 
 ## 8.2 RuntimePersistentStore
 
@@ -1178,7 +1197,11 @@ P4-D1：strict journal、single Store authority snapshot、窄Store submission p
 P4-D2：unique policy／SkillId providers、Draft creation、authenticated P3-C composition、
        Attachment transition與composition outcome
 P4-D3：bootstrap／login recovery、persisted-readback clear、paired restart與combined fixed-heap Gate
-P4-E：offline roots、rebuildable index、reconciliation與reclaim composition
+P4-E0-B：documentation-only V0 root-audit authority；無implementation／study rerun
+P4-E1：read-only bounded offline／integrated scanner、full P4-C／journal／Store audit與memory-only index；
+      mutation／reclaim 0
+P4-E2：P4-D recovery後login-only immutable reconciliation；offline／Store／journal／reclaim mutation 0
+P4-E3：unique ServerStarting fresh audit→controlled reclaim once、restart／fixed-1,536-MiB／CI gates
 ```
 
 P3-D建立production pure-Java domain aggregate與behavior；它不是第二個persistent adapter。P4接入Overworld SavedData前不建立檔案I/O或替代persistent copy，P4也不得重寫P3-D policy。
@@ -1289,8 +1312,14 @@ composition outcome、report identity、journal與recovery以
   policy／authority snapshots、preflight zero-mutation failures、Store-first crash windows、
   readback-confirmed clear、replay idempotence、report reference identity與single-process fixed-1-GiB
   combined Gate。
-- P4-E offline player roots、future source-family completeness、MAX+1 capture、no chunk load與
-  fail-closed reclaim。
+- P4-E第18號§18的25 counters每維exact／MAX+1與first-failure precedence，heap floor exact／
+  below，directory／relevant exact／+1、UUID grammar、primary／old完整matrix、strict gzip／NBT／
+  DataVersion、DFU 0、integrated snapshot／disk exclusion、full P4-C admission等價、closed
+  inventory／journal／grouped Store audit，以及65,536／65,537 raw roots before dedup。
+- P4-E offline defer-to-login disk preservation、P4-D recovery-before-E2、atomic multiprune／generation
+  MAX、memory-only index invalidation，Audit N reconciliation後reclaim 0／restart N+1，no chunk
+  load／same-call-chain fresh Complete／dirty matrix。P4-E3另須exact fixed-1,536-MiB
+  production-shaped combined Gate與production-JAR fixture isolation；R2Q不能取代。
 - scheduler stable ordering。
 - cancellation idempotence。
 - event re-entry guard。
@@ -1369,7 +1398,12 @@ composition outcome、report identity、journal與recovery以
   Store／carrier才能接合。
 - P4-A3 reclaim filter仍有normal typed failure，或1 GiB full-size P4-B load／save Gate失敗。
 - 任一migration／decode／restore failure會安裝partial Store。
-- 無法證明complete offline roots卻需要執行reclaim。
+- 無法證明complete offline roots卻需要執行reclaim，需要offline playerdata rewrite、
+  root-only Attachment parser、DFU、dynamic provider completeness、chunk force、background／periodic
+  audit、cross-tick Complete，或讓E1／E2直接reclaim。
+- P4-E3 exact production profile在product-selected `-Xmx1536m` Gate發生OOME或timeout。
+  不得縮fixture／numeric ceiling、拆分simultaneous envelope或自行提heap；唯一出口是
+  先修訂P4-0／第18號heap-floor authority。
 - SavedData／Attachment組合被要求承諾fsync或資料庫式durable atomic。
 - Production `SkillMigrationStep` 需要觀察或修改 payload／raw／token／
   DefinitionEnvelope type 或 payload schema version，或 direct-raw 與 P4 tokenized view 無法保持
