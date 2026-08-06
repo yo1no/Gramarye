@@ -249,13 +249,20 @@ DefinitionEnvelope
 - 【Revision ceiling語意】`MAX_STORE_REVISION_ENTRY_ENCODED_BYTES`是inclusive outer-envelope
   admission ceiling，不保證V0 canonical revision可成功產生同長度資料；V0目前最大完整合法
   revision為`1_048_661` bytes，inner document limit仍獨立執行。
-- 【Offline roots】P4-E V0 以第18號修正案§18的25維inclusive vector、exact
-  `IntTag(3955)`、zero DFU、1,536 MiB product-selected audit heap floor 與
+- 【Offline roots】P4-E V0 以第18號修正案§18的25維inclusive vector、exact disk-playerdata
+  `IntTag(3955)`、zero P4-E DFU、1,536 MiB product-selected audit heap floor 與
   `INCOMPLETE_AND_CONTINUE` 執行bounded read-only audit。Closed inventory恰為player skill
   Attachment與pending journal；restart預設Incomplete，任一source／counter／heap／Store audit
   無法證明完整時不得sweep。Index只memory-only，不強制載入chunk、不background／
   periodic audit、不跨tick保存`Complete`。這個heap floor是產品選擇，不是universal
   safe minimum。
+- 【Integrated owner】Platform-post-DFU loaded-player snapshot不讀`DataVersion`、不再DFU、沒有
+  compressed coordinate，以單次read-only traversal計as-if unnamed-Compound logical width與同一
+  structural／aggregate counters。它在owner UUID順序中取代同UUID disk source，不copy、不寫
+  byte array、不double-count、不跨tick，並在Complete candidate前對server／profile UUID／
+  exact Tag reference作freshness recheck。Object identity不保證偵測違反thread contract的同object
+  敵對in-place mutation。Attachment必須使用未修改input的inner P4-C admission core，
+  不呼叫會先做NBT size-measure／raw-copy的registered serializer wrapper。
 
 ## 8-B. 真相歸屬表與單一真相原則
 
@@ -710,7 +717,9 @@ PresentationEvent
   composition，同時保留第18號§18的25維exact profile、1,024次full P4-C admissions、
   65,536 raw roots、4,096 journal targets、full Store／carrier／deep copy與prospective filtered
   carrier，並覆蓋每維MAX+1、heap-below-floor、reconciliation N／next-restart N+1。R2Q research
-  evidence不能取代這個production Gate，1,536 MiB也不是universal minimum。
+  evidence不能取代這個production Gate，1,536 MiB也不是universal minimum。Gate必須
+  實際覆蓋integrated-owner runtime snapshot path或提供reviewed machine-checked domination proof；
+  這條path不得建立second whole-tree copy或同時hydrate同owner disk tree。
   完整逐項矩陣以
   [18號P4修正案 §21](18_P4持久化與組合修正案.md#21-required-tests)為準。
 
@@ -751,6 +760,9 @@ PresentationEvent
   deduplicate才驗capacity，以root-only parser繞過P4-C admission，或在offline／E1／E2／
   reconciliation當輪執行reclaim。P4-E3 exact production profile若在product-selected
   1,536-MiB tier OOME／timeout也阻擋發布，不得縮fixture／ceiling、拆envelope或自行提heap。
+- Integrated snapshot被要求copy／byte-array序列化才能計數、重查`DataVersion`、再次
+  DFU、與同UUID disk雙重計數、跨tick保存，或無法在same-call-chain作exact identity
+  freshness recheck。Integrated-owner path在1,536-MiB E3 Gate OOME／timeout同樣阻擋發布。
 - SavedData API 宣稱 fsync／disk write 成功或 Store／Attachment durable atomic。
 
 ---
@@ -836,6 +848,8 @@ P4-D3：bootstrap／login recovery、persisted-readback prefix clear、paired re
        無offline enumeration／network
 P4-E0-B：documentation-only V0 numeric／heap／truth／completeness／reconciliation authority；
         無Java／Gradle／CI／study rerun
+P4-E0-B.1：documentation-only integrated snapshot counting／post-DFU／freshness authority；
+          無implementation／numeric change／study rerun
 P4-E1：read-only bounded offline／integrated audit、full P4-C admission、journal／Store audit、
       memory-only index與Complete／Incomplete／ReconciliationRequired；reclaim／mutation 0
 P4-E2：P4-D recovery後login-only immutable latest／equipped reconciliation；offline／Store／
@@ -967,11 +981,14 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - [ ] Store-first journal使用bounded generation且只在persisted readback確認後清除；
       composition outcome不把Prepared冒充Committed；strict `writeAnyTag` framing、partial availability、
       continuous chain與single-process fixed-1-GiB combined Gate均通過。
-- [ ] P4-E0-B authority patch已commit／push／remote closure後才開始E1；E1只作read-only
+- [ ] P4-E0-B.1 authority patch已commit／push／remote closure後才重開E1 read-only review；
+      review核准前不開始implementation。E1只作read-only
       bounded audit、E2只作login reconciliation，二者reclaim 0。Offline roots包含offline
       players與journal targets，restart預設Incomplete，只有E3在同一ServerStarting call
-      chain使用fresh Complete即時controlled reclaim exactly once；25-counter／DataVersion／zero-DFU／
-      1,536-MiB production Gate與N／N+1 reconciliation規則以第18號§18為準。
+      chain使用fresh Complete即時controlled reclaim exactly once；25-counter／disk DataVersion／
+      zero-P4-E-DFU／integrated logical counting／pure inner P4-C admission／identity freshness／
+      1,536-MiB production Gate與N／N+1
+      reconciliation規則以第18號§18為準。
 - [ ] ItemStack 自訂資料使用 Data Component。
 - [ ] Action 無法繞過 EffectPipeline。
 - [ ] 魔力無法繞過 ManaTransactionService。

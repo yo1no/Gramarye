@@ -13,7 +13,7 @@ amendment nor reproduces its 25-counter table.
   depth boundary, and existing P4-C／P4-D／P3-D APIs and ownership, including P3-D
   `MAX_RETENTION_ROOTS_PER_RECLAIM = 65_536`.
 - **PRODUCT POLICY CHOICE** is Gramarye V0 authority: the exact 25-dimensional vector, exact-current
-  DataVersion only, zero DFU records, strict gzip／NBT language, the 1,536-MiB audit heap floor,
+  disk-playerdata DataVersion only, zero P4-E DFU records, strict disk gzip／NBT language, the 1,536-MiB audit heap floor,
   `INCOMPLETE_AND_CONTINUE`, integrated runtime snapshot, defer-to-login reconciliation, memory-only
   index, and one same-`ServerStartingEvent` call chain.
 - **EMPIRICAL QUALIFICATION EVIDENCE** is the bounded R2Q observation from one Java 21／macOS aarch64
@@ -38,7 +38,9 @@ amendment nor reproduces its 25-counter table.
   not change production code or official evidence.
 
 The E0-B authority patch is commit `be4dc13bd9ae651b1b99999c06cecf67595a0cdd`, tree
-`cdbc3e2d591754c0d436af4e521228064ba3f3f2`, at `HEAD`／`origin/main`. Maintainer-provided evidence
+`cdbc3e2d591754c0d436af4e521228064ba3f3f2`; its closure is commit
+`c7a2aaf01161550758feaeb6b0a73a277d4cbe4e`, and both commits are reachable from `main`／
+`origin/main`. Maintainer-provided evidence
 records remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and
 `P4-D memory gates` as PASS. Those jobs verified the pushed documentation revision against the
 existing build and memory-gate graph; they did not rerun the R2Q formal study or independently
@@ -79,8 +81,9 @@ DataVersion controls. All 29 parent process classifications are `COMPLETED`; qua
 The amendment adopts the locked profile's exact 25 named inclusive maxima without collapsing them
 into scalar work units. Every counter uses checked `long`; maximum is valid, maximum + 1 stops at its
 stream checkpoint, and no budget transfers, saturation, or pre-capacity root deduplication are
-allowed. The other fixed decisions are exact `IntTag(3955)`, `MAX_PLAYERDATA_DFU_RECORDS = 0`, strict
-single-member gzip and unnamed-Compound EOF, `INCOMPLETE_AND_CONTINUE`, and a product-selected heap
+allowed. The other fixed disk-ingress decisions are exact `IntTag(3955)`,
+`MAX_PLAYERDATA_DFU_RECORDS = 0`, strict single-member gzip and unnamed-Compound EOF;
+`INCOMPLETE_AND_CONTINUE` and the product-selected heap
 floor of `1_610_612_736` bytes (1,536 MiB).
 
 Playerdata truth selection distinguishes platform-read failure, which may select a valid current
@@ -88,6 +91,48 @@ Playerdata truth selection distinguishes platform-read failure, which may select
 The integrated singleplayer source uses the already-loaded world-data snapshot in the same pre-login
 call chain and excludes the same UUID's disk pair. This playerdata selection policy is distinct from
 P4-B Skill SavedData's no-`.dat_old` policy.
+
+## P4-E0-B.1 integrated-owner clarification
+
+The first P4-E1 read-only review exposed one remaining authority gap: the integrated snapshot was a
+selected source, but P4-E0-B had not assigned it an exact byte-counting or freshness coordinate.
+Locked NeoForge 21.1.241 source identifies `WorldData#getLoadedPlayerTag()` as a nullable
+`CompoundTag` accessor and `PrimaryLevelData` as the implementation that returns its exact mutable,
+materialized reference. `LevelStorageSource.readLevelDataTagFixed` applies PLAYER DFU before that
+tag is parsed into world data. `ServerStartingEvent` is synchronous after `loadLevel()` and before
+`ServerStartedEvent`, the first tick, and integrated player login. No platform immutable wrapper,
+freshness token, gzip bytes, original framing, or raw-wire accessor exists.
+
+B.1 fixes four source-selection states. Profile plus snapshot selects
+`INTEGRATED_RUNTIME_SNAPSHOT`, derives owner from the authenticated profile UUID, and excludes that
+UUID's disk pair from open, decode, and roots. Profile plus null snapshot, or both absent, uses the
+normal primary／old matrix. Snapshot without profile is
+`Incomplete(INTEGRATED_OWNER_IDENTITY_UNAVAILABLE)`. Excluded disk entries still consume the
+directory counter and participate in directory-race evidence, but consume no relevant-record,
+byte, structural, admission, or root budget. The snapshot occupies its UUID's normal canonical
+owner-order position and contributes one relevant record.
+
+The snapshot has no compressed-file event and contributes zero to aggregate compressed bytes. A
+single checked, read-only traversal computes its logical as-if unnamed-Compound width: one root type
+byte, the two-byte empty-name length prefix, the complete surviving Compound payload, and the root
+EndTag. That width and all structural values contribute to the existing per-source and aggregate
+counters without changing any maximum; modified UTF counts encoded payload bytes only. The path
+does not copy the whole tree, emit a byte array, serialize through NBT, or add a checksum pass.
+Platform-materialized duplicate fields remain unobservable.
+
+This source is platform-post-DFU. P4-E does not inspect its `DataVersion` and never calls PLAYER DFU;
+the exact `IntTag(3955)` rule remains disk-only. Freshness uses one server logic thread and one
+non-yielding pre-login call chain: capture the exact server, profile UUID, tag reference, and other
+source witnesses, then re-read and compare them immediately before a Complete candidate can leave
+the audit. Loss maps to `Incomplete(INTEGRATED_OWNER_FRESHNESS_LOST)` with discarded partial roots
+and reclaim zero. Identity cannot detect hostile in-place mutation of the same mutable object; V0
+therefore relies on platform thread confinement, pure Gramarye traversal／admission／projection, and
+no re-entrant third-party callback. It adds no copy, second traversal, lock, or watcher.
+
+The registered P4-C serializer wrapper is not the integrated admission seam: its size path writes
+NBT and its rejection path copies raw data. E1 must share the inner migration／decode admission core
+and prove that seam non-mutating, with no retained mutable aliases. B.1 defines that future Gate but
+does not add production code.
 
 ## Completeness, reconciliation, and reclaim
 
@@ -122,6 +167,10 @@ counter envelope, 1,024 P4-C admissions, 65,536 raw roots, 4,096 journal targets
 Store／carrier, grouped audit, index, Complete snapshot, prospective filtered carrier, and SavedData
 deep copy. An exact-profile OOME or timeout stops P4-E; the fixture, numeric limits, and simultaneous
 envelope may not be reduced or split, and the heap may not be raised without a new authority patch.
+R2Q did not naturally exercise the integrated mutable-alias path. E3 must therefore include the
+integrated-owner runtime source or a reviewed machine-checked domination proof, without a second
+whole-tree copy or simultaneous same-owner disk hydration. Until that Gate passes, the 1,536-MiB
+tier is not a general integrated-path safety claim.
 
 ## Phase split and implementation gate
 
@@ -132,10 +181,16 @@ envelope may not be reduced or split, and the heap may not be raised without a n
 - P4-E3: unique startup composition, one immediate controlled reclaim from fresh Complete, restart,
   fixed-heap, CI, and final gates.
 
-P4-E1 read-only design review is open, but implementation remains blocked until that review is
-approved. E2 waits for E1 implementation completion; E3 waits for E2. No phase introduces chunk
-force, periodic/background scanning, network, or a second persistent truth. The completed E0-B
-remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate.
+The first P4-E1 read-only design review stopped at the integrated-snapshot authority Gate because
+P4-E0-B had not fixed that source's counting and freshness coordinate. The review remained
+read-only after the Stop Rule fired, so it could not update this ledger and the repository retained
+the stale `OPEN` label. P4-E0-B.1 corrects that status in the same documentation-only authority
+patch that resolves the blocker. P4-E1 review is now blocked until B.1 is committed, pushed, and
+remotely closed. Implementation remains not started and separately blocked until a renewed
+read-only review is approved. E2 waits for E1 implementation completion; E3 waits for E2.
+No phase introduces chunk force, periodic/background scanning, network, or a second persistent
+truth. The completed E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB
+first／restart Gate.
 
 ## Status
 
@@ -144,9 +199,12 @@ P4-D                              = COMPLETE
 P4-E0-A research/adjudication     = COMPLETE
 P4-E0-R1/R2/R2R/R2Q               = COMPLETE
 P4-E0-B authority patch            = COMPLETE
+P4-E0-B.1 authority patch          = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
 P4-E0                               = COMPLETE
-P4-E1 read-only design review      = OPEN
-P4-E1 implementation               = BLOCKED UNTIL READ-ONLY DESIGN REVIEW APPROVAL
+P4-E1 prior read-only review        = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
+P4-E1 prior exact blocker           = INTEGRATED SNAPSHOT COUNTING/FRESHNESS UNDEFINED BY P4-E0-B
+P4-E1 read-only design review      = BLOCKED UNTIL P4-E0-B.1 CLOSURE
+P4-E1 implementation               = NOT STARTED; BLOCKED UNTIL READ-ONLY DESIGN REVIEW APPROVAL
 P4-E2                               = BLOCKED
 P4-E3                               = BLOCKED
 P4-E                                = INCOMPLETE

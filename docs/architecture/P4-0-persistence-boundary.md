@@ -51,7 +51,9 @@ This page is a compact phase boundary, not a second persistence specification.
   ordering, bounded owner recovery projection, one-shot persisted Attachment observation, login
   recovery, readback-confirmed clear／replay, normal GameTests, and local phase gates. D3-B owns the
   paired restart/crash matrix and combined fixed-heap／Gradle／CI Gates.
-- P4-E0-B owns only this authority synchronization. P4-E1 owns the read-only bounded offline／
+- P4-E0-B owns the V0 numeric／heap／truth／completeness authority synchronization. P4-E0-B.1
+  owns only the documentation clarification for integrated loaded-player source selection, logical
+  counting, post-DFU handling, freshness／alias limits, and the E3 integrated Gate. P4-E1 owns the read-only bounded offline／
   integrated scanner, full P4-C and journal projection, grouped Store audit, memory-only index, and
   bounded completeness results; it owns no mutation or reclaim call. P4-E2 owns only login-time
   immutable reconciliation after P4-D recovery and owns no offline, Store, journal, or reclaim
@@ -199,9 +201,13 @@ implicit roots, while SkillInstance, Marker, Construct, and Schedule root persis
 enabled. Future families require an inventory member, provider, completeness gate, and tests in one
 reviewed change; dynamic registration cannot prove completeness.
 
-The read-only audit uses the amendment's 25 independent inclusive counters, exact `IntTag(3955)`,
-zero DFU, strict playerdata gzip/NBT language, product-selected 1,536-MiB heap floor, and
-`INCOMPLETE_AND_CONTINUE`. Every selected player source undergoes full P4-C admission; raw
+The read-only audit uses the amendment's 25 independent inclusive counters, exact disk-playerdata
+`IntTag(3955)`, zero P4-E DFU, strict disk gzip／NBT language, product-selected 1,536-MiB heap floor,
+and `INCOMPLETE_AND_CONTINUE`. The integrated source is instead platform-post-DFU: it has no
+compressed coordinate, contributes a single-pass as-if unnamed-Compound logical width and the same
+structural／aggregate counters, excludes its UUID's disk pair from selection, and performs an exact
+reference-identity freshness recheck without a whole-tree copy or cross-tick retention. Every
+selected player source undergoes full P4-C admission; raw
 latest/equipped/journal claims count toward the 65,536 ceiling before deduplication and then undergo
 grouped exact-reference/owner Store audit. Missing or foreign offline pointers defer to login and
 leave disk unchanged. The index is memory-only, starts Incomplete after restart, retains no raw
@@ -233,14 +239,17 @@ D3-B starts only after D3-A closure. P4-D completes only after D1, D2-A, D2-B, D
 required paired fixed-1-GiB combined first／restart remote Gate pass; the first JVM alone carries the
 complete simultaneous submission envelope.
 
-P4-E0 is complete. P4-E1 read-only design review is open, but P4-E1 implementation remains blocked
-until that review is approved. E2 remains blocked until E1 implementation completion; E3 remains
-blocked until E2 completion. E1 must have zero player/Store/journal mutation and zero reclaim calls;
-E2 may publish at most one online Attachment replacement after P4-D recovery but still has zero
-offline/Store/journal/reclaim mutation. E3 alone owns the fresh-complete reclaim composition and the
-exact fixed-1,536-MiB production-shaped first／restart Gate. R2Q research qualification and the E0-B
-remote jobs do not substitute for that Gate, and the selected heap tier is not a universal safe
-minimum.
+P4-E0 is complete. The first P4-E1 read-only design review stopped because P4-E0-B had not defined
+the integrated loaded-player snapshot's counting and freshness coordinate. The Stop Rule kept that
+review read-only, leaving a stale `OPEN` label that P4-E0-B.1 corrects as part of the authority patch.
+P4-E1 read-only review is now blocked until B.1 commit／push／remote closure. Implementation is not
+started and remains separately blocked until a renewed read-only review is approved. E2 remains
+blocked until E1 implementation completion; E3 remains blocked until E2 completion. E1 must
+have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
+Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
+mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
+production-shaped first／restart Gate. R2Q research qualification and the E0-B remote jobs do not
+substitute for that Gate, and the selected heap tier is not a universal safe minimum.
 
 ## P4-B0 clarification ledger
 
@@ -1055,12 +1064,21 @@ selection, zero-DFU policy, closed V0 family inventory, memory-only index, defer
 reconciliation, same-ServerStarting fresh-complete reclaim composition, and product-selected
 1,536-MiB heap floor into the P4 amendment and synchronized lower authorities. The documentation-only
 authority patch is commit `be4dc13bd9ae651b1b99999c06cecf67595a0cdd`, tree
-`cdbc3e2d591754c0d436af4e521228064ba3f3f2`, at `HEAD`／`origin/main`. Maintainer-provided evidence
+`cdbc3e2d591754c0d436af4e521228064ba3f3f2`; its closure is commit
+`c7a2aaf01161550758feaeb6b0a73a277d4cbe4e`, and both commits are reachable from `main`／
+`origin/main`. Maintainer-provided evidence
 records remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and
 `P4-D memory gates` as PASS. Those jobs did not rerun the R2Q formal study and do not replace its
 gitignored official evidence. Production code and official evidence remain unchanged; E1／E2／E3
 implementation has not started. Historical P4-D0 and P3-C phase-status snapshots remain valid as
 history; this section is the later current-status index for P4-E.
+
+The first P4-E1 read-only design review then stopped because E0-B had not assigned the already
+materialized integrated snapshot an exact counting／freshness coordinate. Its Stop Rule prohibited a
+ledger edit, leaving the stale `OPEN` label. This local P4-E0-B.1 documentation patch corrects that
+status and fixes the four-state selection matrix, logical unnamed-Compound width, counter
+applicability, post-DFU/no-DataVersion rule, mutable-alias threat boundary, and final identity
+freshness witness. It changes no production code, numeric maximum, heap floor, or R2Q evidence.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1083,9 +1101,12 @@ P4-D                = COMPLETE
 P4-E0-A research/adjudication = COMPLETE
 P4-E0-R1/R2/R2R/R2Q           = COMPLETE
 P4-E0-B authority patch        = COMPLETE
+P4-E0-B.1 authority patch      = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
 P4-E0                           = COMPLETE
-P4-E1 read-only design review  = OPEN
-P4-E1 implementation           = BLOCKED UNTIL READ-ONLY DESIGN REVIEW APPROVAL
+P4-E1 prior read-only review    = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
+P4-E1 prior exact blocker       = INTEGRATED SNAPSHOT COUNTING/FRESHNESS UNDEFINED BY P4-E0-B
+P4-E1 read-only design review  = BLOCKED UNTIL P4-E0-B.1 CLOSURE
+P4-E1 implementation           = NOT STARTED; BLOCKED UNTIL READ-ONLY DESIGN REVIEW APPROVAL
 P4-E2                           = BLOCKED
 P4-E3                           = BLOCKED
 P4-E                            = INCOMPLETE
@@ -1107,8 +1128,10 @@ complete with the crash D–J matrix, combined first／restart fixed-heap Gate, 
 portable configuration verifier, and P4-D memory CI job committed at `HEAD`／`origin/main`; the
 externally reported remote build／A3／B／C／D jobs passed. P4-D is complete. P4-E was ready for
 read-only design review only as a historical P4-D closure statement; the E0 research／adjudication
-lineage and E0-B authority closure are now complete. P4-E1 read-only design review is open, while
-P4-E1 implementation remains blocked until that review is approved; E2／E3 remain blocked and P4-E
-remains incomplete. The E0-B remote jobs did not rerun the R2Q formal study, and P4-E3 still requires
-the production-shaped fixed-1,536-MiB first／restart Gate.
+lineage and E0-B authority closure are now complete. The first P4-E1 read-only design review stopped
+at the integrated-snapshot counting／freshness authority Gate; B.1 corrects the stale `OPEN` ledger.
+The renewed read-only review remains blocked until B.1 closure, while implementation remains not
+started and blocked until that review is approved. E2／E3 remain blocked and
+P4-E remains incomplete. The E0-B remote jobs did not rerun the R2Q formal study, and P4-E3 still
+requires the production-shaped fixed-1,536-MiB first／restart Gate.
 Branch-protection required-check configuration remains external governance unknown.

@@ -666,6 +666,8 @@ P4固定拆分為：
   無offline enumeration或network。
 - P4-E0-B：documentation-only將第18號§18的V0 numeric／heap／truth／completeness／
   reconciliation裁決同步進權威文件；無Java／Gradle／CI／study rerun。
+- P4-E0-B.1：documentation-only固定integrated loaded-player snapshot的logical counting、
+  post-DFU、freshness／alias與E3 Gate；不改numeric profile、heap或evidence。
 - P4-E1：read-only bounded offline／integrated audit、full P4-C admission、journal／grouped Store
   audit、memory-only index與bounded completeness results；player／Store／journal mutation與reclaim 0。
 - P4-E2：P4-D login recovery後的online-only immutable latest／equipped reconciliation；offline
@@ -739,11 +741,21 @@ recheck位於全部prebuild之後且緊鄰commit。P3-D回`Committed`後才可�
 再publication prepared Attachment transition；P4-B不得提前實作或重寫此P4-D composition邊界。
 
 P4-E V0的canonical細節只以第18號修正案§18為準。它採25個獨立inclusive
-counters、exact `IntTag(3955)`、zero DFU、strict gzip／unnamed-Compound ingress、
+counters、exact disk-playerdata `IntTag(3955)`、zero P4-E DFU、strict disk
+gzip／unnamed-Compound ingress、
 `INCOMPLETE_AND_CONTINUE`與product-selected `1_610_612_736`-byte／1,536-MiB audit heap
 floor；這些是產品政策，不是universal minimum。V0 closed inventory恰為
 `PLAYER_SKILL_ATTACHMENT`與`PENDING_ATTACHMENT_JOURNAL`，player source必須經完整P4-C
 admission，raw roots在dedup前計capacity，index只memory-only且restart預設Incomplete。
+
+Integrated snapshot是platform-post-DFU materialized source：compressed checkpoint不適用且total +0；
+以單次checked、read-only traversal計as-if unnamed-Compound logical width並加入同一
+structural／aggregate counters。它在canonical owner UUID順序取代同UUID disk source，不查
+snapshot `DataVersion`、不再DFU、不copy、不寫byte array／SNBT、不double-count disk、不跨
+tick retention。E1必須在same logic-thread／pre-login call chain捕獲並重查exact
+server／profile UUID／Tag reference與其他freshness witnesses；任一drift即discard partial roots且
+reclaim 0。Object identity不證明沒有敵對same-object mutation。Integrated admission必須共用
+且證明pure inner P4-C core，不得直接走registered serializer的NBT-size／raw-copy wrapper。
 
 Offline missing／foreign pointer只defer-to-login，disk不變，當輪reclaim 0；P4-E2只在P4-D
 recovery後對online Ready作一次immutable prune，也不reclaim。只有P4-E3能在唯一
@@ -1314,12 +1326,14 @@ composition outcome、report identity、journal與recovery以
   combined Gate。
 - P4-E第18號§18的25 counters每維exact／MAX+1與first-failure precedence，heap floor exact／
   below，directory／relevant exact／+1、UUID grammar、primary／old完整matrix、strict gzip／NBT／
-  DataVersion、DFU 0、integrated snapshot／disk exclusion、full P4-C admission等價、closed
+  disk DataVersion、DFU 0、integrated snapshot四態／disk exclusion、logical width／modified UTF、
+  no-copy single traversal／no-DataVersion／identity freshness／inner P4-C purity、closed
   inventory／journal／grouped Store audit，以及65,536／65,537 raw roots before dedup。
 - P4-E offline defer-to-login disk preservation、P4-D recovery-before-E2、atomic multiprune／generation
   MAX、memory-only index invalidation，Audit N reconciliation後reclaim 0／restart N+1，no chunk
   load／same-call-chain fresh Complete／dirty matrix。P4-E3另須exact fixed-1,536-MiB
-  production-shaped combined Gate與production-JAR fixture isolation；R2Q不能取代。
+  production-shaped combined Gate與production-JAR fixture isolation；Gate必須覆蓋integrated-owner
+  path或reviewed machine-checked domination proof，R2Q不能取代。
 - scheduler stable ordering。
 - cancellation idempotence。
 - event re-entry guard。
@@ -1401,7 +1415,11 @@ composition outcome、report identity、journal與recovery以
 - 無法證明complete offline roots卻需要執行reclaim，需要offline playerdata rewrite、
   root-only Attachment parser、DFU、dynamic provider completeness、chunk force、background／periodic
   audit、cross-tick Complete，或讓E1／E2直接reclaim。
-- P4-E3 exact production profile在product-selected `-Xmx1536m` Gate發生OOME或timeout。
+- Integrated source無法以單次logical traversal量測／重查identity，或必須copy、完整
+  序列化、second checksum、重讀`level.dat`、再次DFU、double-count disk、callback／retry或
+  cross-tick retention。
+- P4-E3 exact production profile或integrated-owner path在product-selected `-Xmx1536m` Gate發生
+  OOME或timeout。
   不得縮fixture／numeric ceiling、拆分simultaneous envelope或自行提heap；唯一出口是
   先修訂P4-0／第18號heap-floor authority。
 - SavedData／Attachment組合被要求承諾fsync或資料庫式durable atomic。
