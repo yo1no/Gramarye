@@ -242,8 +242,8 @@ complete simultaneous submission envelope.
 P4-E0 is complete. The first P4-E1 read-only design review stopped because P4-E0-B had not defined
 the integrated loaded-player snapshot's counting and freshness coordinate. The Stop Rule kept that
 review read-only, leaving a stale `OPEN` label that P4-E0-B.1 corrects as part of the authority patch.
-P4-E1 read-only review is now blocked until B.1 commit／push／remote closure. Implementation is not
-started and remains separately blocked until a renewed read-only review is approved. E2 remains
+P4-E0-B.1 is now committed, pushed, and remotely closed, so P4-E1 read-only design review is open.
+Implementation is not started and cannot begin unless that review is explicitly approved. E2 remains
 blocked until E1 implementation completion; E3 remains blocked until E2 completion. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
@@ -1075,10 +1075,32 @@ history; this section is the later current-status index for P4-E.
 
 The first P4-E1 read-only design review then stopped because E0-B had not assigned the already
 materialized integrated snapshot an exact counting／freshness coordinate. Its Stop Rule prohibited a
-ledger edit, leaving the stale `OPEN` label. This local P4-E0-B.1 documentation patch corrects that
-status and fixes the four-state selection matrix, logical unnamed-Compound width, counter
-applicability, post-DFU/no-DataVersion rule, mutable-alias threat boundary, and final identity
-freshness witness. It changes no production code, numeric maximum, heap floor, or R2Q evidence.
+ledger edit, leaving the stale `OPEN` label. P4-E0-B.1 corrected that status and fixed the four-state
+selection matrix, logical unnamed-Compound width, counter applicability, post-DFU/no-DataVersion
+rule, mutable-alias threat boundary, and final identity freshness witness.
+
+The documentation-only B.1 authority patch is commit
+`1b0832e9f8b42891654d15b364a18cd509653acd`, tree
+`950d6bc0337d83c298db909ee342b38f22175759`, on `main`／`origin/main`. Its exact changed-path
+scope is:
+
+```text
+docs/architecture/P4-0-persistence-boundary.md
+docs/architecture/P4-E0-root-audit-boundary.md
+docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md
+docs/codex-spec/18_P4持久化與組合修正案.md
+docs/codex-spec/Codex_實作總規格Prompt.md
+docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md
+```
+
+Local `verifyPlatformBaseline`, `compileJava`, and `test` passed with 1,181 unit tests and zero
+failures, errors, or skips. The official six-file R2Q evidence set and SHA-256 manifest remained
+unchanged and verified successfully; B.1 did not rerun the formal study. Maintainer-provided
+evidence records remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and
+`P4-D memory gates` as PASS for this authority commit. The commit changed no production code,
+numeric maximum, heap floor, or R2Q evidence. Branch-protection required-check configuration remains
+external governance unknown. This closure opens only P4-E1 read-only design review, not
+implementation.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1101,12 +1123,12 @@ P4-D                = COMPLETE
 P4-E0-A research/adjudication = COMPLETE
 P4-E0-R1/R2/R2R/R2Q           = COMPLETE
 P4-E0-B authority patch        = COMPLETE
-P4-E0-B.1 authority patch      = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
+P4-E0-B.1 authority patch      = COMPLETE
 P4-E0                           = COMPLETE
 P4-E1 prior read-only review    = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1 prior exact blocker       = INTEGRATED SNAPSHOT COUNTING/FRESHNESS UNDEFINED BY P4-E0-B
-P4-E1 read-only design review  = BLOCKED UNTIL P4-E0-B.1 CLOSURE
-P4-E1 implementation           = NOT STARTED; BLOCKED UNTIL READ-ONLY DESIGN REVIEW APPROVAL
+P4-E1 read-only design review  = OPEN
+P4-E1 implementation           = NOT STARTED
 P4-E2                           = BLOCKED
 P4-E3                           = BLOCKED
 P4-E                            = INCOMPLETE
@@ -1130,8 +1152,8 @@ externally reported remote build／A3／B／C／D jobs passed. P4-D is complete.
 read-only design review only as a historical P4-D closure statement; the E0 research／adjudication
 lineage and E0-B authority closure are now complete. The first P4-E1 read-only design review stopped
 at the integrated-snapshot counting／freshness authority Gate; B.1 corrects the stale `OPEN` ledger.
-The renewed read-only review remains blocked until B.1 closure, while implementation remains not
-started and blocked until that review is approved. E2／E3 remain blocked and
-P4-E remains incomplete. The E0-B remote jobs did not rerun the R2Q formal study, and P4-E3 still
+The B.1 authority patch is now closed and the renewed read-only review is open, while implementation
+remains not started and requires explicit review approval. E2／E3 remain blocked and
+P4-E remains incomplete. The E0-B／B.1 remote jobs did not rerun the R2Q formal study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate.
 Branch-protection required-check configuration remains external governance unknown.

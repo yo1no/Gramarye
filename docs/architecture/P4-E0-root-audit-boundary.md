@@ -134,6 +134,31 @@ NBT and its rejection path copies raw data. E1 must share the inner migration／
 and prove that seam non-mutating, with no retained mutable aliases. B.1 defines that future Gate but
 does not add production code.
 
+## P4-E0-B.1 closure evidence
+
+The documentation-only B.1 authority patch is commit
+`1b0832e9f8b42891654d15b364a18cd509653acd`, tree
+`950d6bc0337d83c298db909ee342b38f22175759`, on `main`／`origin/main`. Its exact changed-path
+scope is:
+
+```text
+docs/architecture/P4-0-persistence-boundary.md
+docs/architecture/P4-E0-root-audit-boundary.md
+docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md
+docs/codex-spec/18_P4持久化與組合修正案.md
+docs/codex-spec/Codex_實作總規格Prompt.md
+docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md
+```
+
+Local `verifyPlatformBaseline`, `compileJava`, and `test` passed; the unit suite contained 1,181
+tests with zero failures, errors, or skips. The official six-file R2Q evidence set and its SHA-256
+manifest were unchanged and verified successfully; B.1 did not rerun the formal study.
+Maintainer-provided evidence records remote `build`, `P4-A3 memory gates`, `P4-B memory gates`,
+`P4-C memory gates`, and `P4-D memory gates` as PASS for the authority commit. Branch-protection
+required-check configuration remains external governance unknown. This closure opens only the
+P4-E1 read-only design review; implementation remains not started and requires that review's
+explicit approval.
+
 ## Completeness, reconciliation, and reclaim
 
 V0's exact closed inventory is `PLAYER_SKILL_ATTACHMENT` plus `PENDING_ATTACHMENT_JOURNAL`.
@@ -185,12 +210,12 @@ The first P4-E1 read-only design review stopped at the integrated-snapshot autho
 P4-E0-B had not fixed that source's counting and freshness coordinate. The review remained
 read-only after the Stop Rule fired, so it could not update this ledger and the repository retained
 the stale `OPEN` label. P4-E0-B.1 corrects that status in the same documentation-only authority
-patch that resolves the blocker. P4-E1 review is now blocked until B.1 is committed, pushed, and
-remotely closed. Implementation remains not started and separately blocked until a renewed
-read-only review is approved. E2 waits for E1 implementation completion; E3 waits for E2.
+patch that resolves the blocker. B.1 is now committed, pushed, and remotely closed, so P4-E1
+read-only design review is open. Implementation remains not started and cannot begin unless that
+review is explicitly approved. E2 waits for E1 implementation completion; E3 waits for E2.
 No phase introduces chunk force, periodic/background scanning, network, or a second persistent
 truth. The completed E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB
-first／restart Gate.
+first／restart Gate; the B.1 remote jobs do not waive it either.
 
 ## Status
 
@@ -199,12 +224,12 @@ P4-D                              = COMPLETE
 P4-E0-A research/adjudication     = COMPLETE
 P4-E0-R1/R2/R2R/R2Q               = COMPLETE
 P4-E0-B authority patch            = COMPLETE
-P4-E0-B.1 authority patch          = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
+P4-E0-B.1 authority patch          = COMPLETE
 P4-E0                               = COMPLETE
 P4-E1 prior read-only review        = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1 prior exact blocker           = INTEGRATED SNAPSHOT COUNTING/FRESHNESS UNDEFINED BY P4-E0-B
-P4-E1 read-only design review      = BLOCKED UNTIL P4-E0-B.1 CLOSURE
-P4-E1 implementation               = NOT STARTED; BLOCKED UNTIL READ-ONLY DESIGN REVIEW APPROVAL
+P4-E1 read-only design review      = OPEN
+P4-E1 implementation               = NOT STARTED
 P4-E2                               = BLOCKED
 P4-E3                               = BLOCKED
 P4-E                                = INCOMPLETE
