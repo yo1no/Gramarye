@@ -37,6 +37,13 @@ amendment nor reproduces its 25-counter table.
 - E0-B is a separate documentation-only product decision. It did not rerun R1, R2, or R2Q and did
   not change production code or official evidence.
 
+The E0-B authority patch is commit `be4dc13bd9ae651b1b99999c06cecf67595a0cdd`, tree
+`cdbc3e2d591754c0d436af4e521228064ba3f3f2`, at `HEAD`／`origin/main`. Maintainer-provided evidence
+records remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and
+`P4-D memory gates` as PASS. Those jobs verified the pushed documentation revision against the
+existing build and memory-gate graph; they did not rerun the R2Q formal study or independently
+verify its gitignored official artifacts. P4-E0-B and P4-E0 are complete.
+
 ## Formal evidence identity
 
 The official evidence root is the gitignored path `build/reports/p4-e0-r2q`. Its authority flag is
@@ -125,8 +132,10 @@ envelope may not be reduced or split, and the heap may not be raised without a n
 - P4-E3: unique startup composition, one immediate controlled reclaim from fresh Complete, restart,
   fixed-heap, CI, and final gates.
 
-E1 waits for E0-B commit, push, and remote closure. E2 waits for E1 completion; E3 waits for E2.
-No phase introduces chunk force, periodic/background scanning, network, or a second persistent truth.
+P4-E1 read-only design review is open, but implementation remains blocked until that review is
+approved. E2 waits for E1 implementation completion; E3 waits for E2. No phase introduces chunk
+force, periodic/background scanning, network, or a second persistent truth. The completed E0-B
+remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate.
 
 ## Status
 
@@ -134,13 +143,15 @@ No phase introduces chunk force, periodic/background scanning, network, or a sec
 P4-D                              = COMPLETE
 P4-E0-A research/adjudication     = COMPLETE
 P4-E0-R1/R2/R2R/R2Q               = COMPLETE
-P4-E0-B authority patch            = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
-P4-E1                               = BLOCKED UNTIL E0-B CLOSURE
+P4-E0-B authority patch            = COMPLETE
+P4-E0                               = COMPLETE
+P4-E1 read-only design review      = OPEN
+P4-E1 implementation               = BLOCKED UNTIL READ-ONLY DESIGN REVIEW APPROVAL
 P4-E2                               = BLOCKED
 P4-E3                               = BLOCKED
 P4-E                                = INCOMPLETE
 ```
 
-Branch-protection required-check configuration remains external governance unknown／pending.
+Branch-protection required-check configuration remains external governance unknown.
 Historical P4-D0 and P3-C phase-status snapshots describe their closure dates; this ledger is the
 later current-status index for P4-E.

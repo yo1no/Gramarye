@@ -233,13 +233,14 @@ D3-B starts only after D3-A closure. P4-D completes only after D1, D2-A, D2-B, D
 required paired fixed-1-GiB combined first／restart remote Gate pass; the first JVM alone carries the
 complete simultaneous submission envelope.
 
-P4-E1 remains blocked until the documentation-only E0-B authority patch is committed, pushed, and
-its existing remote jobs close successfully. E2 remains blocked until E1 completion; E3 remains
+P4-E0 is complete. P4-E1 read-only design review is open, but P4-E1 implementation remains blocked
+until that review is approved. E2 remains blocked until E1 implementation completion; E3 remains
 blocked until E2 completion. E1 must have zero player/Store/journal mutation and zero reclaim calls;
 E2 may publish at most one online Attachment replacement after P4-D recovery but still has zero
 offline/Store/journal/reclaim mutation. E3 alone owns the fresh-complete reclaim composition and the
-exact fixed-1,536-MiB production Gate. R2Q research qualification does not substitute for that Gate,
-and the selected heap tier is not a universal safe minimum.
+exact fixed-1,536-MiB production-shaped first／restart Gate. R2Q research qualification and the E0-B
+remote jobs do not substitute for that Gate, and the selected heap tier is not a universal safe
+minimum.
 
 ## P4-B0 clarification ledger
 
@@ -1035,7 +1036,7 @@ isolation; warning-mode production compilation; and the final static／diff scan
 Together D0 through D3 now close journal framing／migration／operational state, Store authority／
 preflight／commit／publication, authenticated submission and report identity, login recovery with
 prefix clear／replay, and the D–J1 paired-restart／J2 defensive verification boundary. D3-B, D3, and
-P4-D is complete. At P4-D closure, P4-E was ready only for read-only design review; no P4-E implementation, offline
+P4-D are complete. At P4-D closure, P4-E was ready only for read-only design review; no P4-E implementation, offline
 root-completeness proof, Store-reclaim composition, or general reconciliation exists. P4-D does not
 claim a cross-SavedData／playerdata transaction or fsync durability.
 
@@ -1049,13 +1050,17 @@ read-only adjudication. The formal run completed one exact case, 25 independent 
 three DataVersion controls without OOME or timeout. That evidence supports, but does not universally
 prove, the adopted `BALANCED_V0_1536_QUALIFICATION` product boundary.
 
-E0-B now places the exact 25-dimensional vector, counting coordinates, strict playerdata truth
+E0-B places the exact 25-dimensional vector, counting coordinates, strict playerdata truth
 selection, zero-DFU policy, closed V0 family inventory, memory-only index, defer-to-login
 reconciliation, same-ServerStarting fresh-complete reclaim composition, and product-selected
-1,536-MiB heap floor into the P4 amendment and synchronized lower authorities. This is a local
-documentation patch only: production code and official evidence remain unchanged, no formal study
-was rerun, and E1／E2／E3 implementation has not started. Historical P4-D0 and P3-C phase-status
-snapshots remain valid as history; this section is the later current-status index for P4-E.
+1,536-MiB heap floor into the P4 amendment and synchronized lower authorities. The documentation-only
+authority patch is commit `be4dc13bd9ae651b1b99999c06cecf67595a0cdd`, tree
+`cdbc3e2d591754c0d436af4e521228064ba3f3f2`, at `HEAD`／`origin/main`. Maintainer-provided evidence
+records remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and
+`P4-D memory gates` as PASS. Those jobs did not rerun the R2Q formal study and do not replace its
+gitignored official evidence. Production code and official evidence remain unchanged; E1／E2／E3
+implementation has not started. Historical P4-D0 and P3-C phase-status snapshots remain valid as
+history; this section is the later current-status index for P4-E.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1077,8 +1082,10 @@ P4-D                = COMPLETE
 
 P4-E0-A research/adjudication = COMPLETE
 P4-E0-R1/R2/R2R/R2Q           = COMPLETE
-P4-E0-B authority patch        = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
-P4-E1                           = BLOCKED UNTIL E0-B CLOSURE
+P4-E0-B authority patch        = COMPLETE
+P4-E0                           = COMPLETE
+P4-E1 read-only design review  = OPEN
+P4-E1 implementation           = BLOCKED UNTIL READ-ONLY DESIGN REVIEW APPROVAL
 P4-E2                           = BLOCKED
 P4-E3                           = BLOCKED
 P4-E                            = INCOMPLETE
@@ -1098,8 +1105,10 @@ commit is present at `HEAD`／`origin/main`, its local regression and existing f
 passed, and the externally reported remote build／A3／B／C jobs passed. D3-A is complete. D3-B is
 complete with the crash D–J matrix, combined first／restart fixed-heap Gate, Gradle task graph,
 portable configuration verifier, and P4-D memory CI job committed at `HEAD`／`origin/main`; the
-externally reported remote build／A3／B／C／D jobs passed. P4-D is complete. P4-E is ready for
+externally reported remote build／A3／B／C／D jobs passed. P4-D is complete. P4-E was ready for
 read-only design review only as a historical P4-D closure statement; the E0 research／adjudication
-lineage is now complete, while this local E0-B authority patch still awaits commit／push／remote
-closure. E1／E2／E3 remain blocked and P4-E remains incomplete.
-Branch-protection required-check configuration remains external governance unknown／pending.
+lineage and E0-B authority closure are now complete. P4-E1 read-only design review is open, while
+P4-E1 implementation remains blocked until that review is approved; E2／E3 remain blocked and P4-E
+remains incomplete. The E0-B remote jobs did not rerun the R2Q formal study, and P4-E3 still requires
+the production-shaped fixed-1,536-MiB first／restart Gate.
+Branch-protection required-check configuration remains external governance unknown.
