@@ -251,9 +251,9 @@ complete simultaneous submission envelope.
 P4-E0 is complete. The first P4-E1 read-only design review stopped because P4-E0-B had not defined
 the integrated loaded-player snapshot's counting and freshness coordinate; P4-E0-B.1 resolved that
 blocker, and the renewed read-only design review passed. The following E1-A attempt stopped at an
-active heap-floor authority-coordinate conflict. P4-E0-B.2 is now implemented locally as a clean
-documentation-only correction; E1-A is blocked until its commit／push／remote closure, E1-B waits for
-E1-A closure, and E2／E3 remain blocked. E1 must
+active heap-floor authority-coordinate conflict. P4-E0-B.2 is now complete. E1-A may be restored
+and re-preflighted only after the separate closure commit's remote jobs pass; E1-B waits for E1-A
+closure, and E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1133,6 +1133,32 @@ unchanged and does not rerun the study. The stopped E1-A worktree was externally
 replay-verified before this clean patch and is not part of the documentation commit. The P4-E3
 production-shaped fixed-1,536-MiB first／restart Gate remains mandatory.
 
+The B.2 authority patch is commit `005cb43ac4feb875e28c346ca8ceb6ba256c1661`, tree
+`3e8c621edfa92bd9e986f6fd508cc95c5b50689d`, on `main`／`origin/main`. Its exact changed-path scope
+is:
+
+```text
+docs/architecture/P4-0-persistence-boundary.md
+docs/architecture/P4-E0-root-audit-boundary.md
+docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md
+docs/codex-spec/18_P4持久化與組合修正案.md
+docs/codex-spec/Codex_實作總規格Prompt.md
+docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md
+```
+
+The compact [P4-E0 ledger](P4-E0-root-audit-boundary.md) records the same evidence. Local platform
+baseline, production compile, and all
+1,181 unit tests passed, as did Markdown／link／conflict／scope／production-no-diff scans. The exact
+six-file R2Q evidence and its HEAD／tree／study identity remained unchanged and checksummed; the
+formal study was not rerun.
+
+GitHub Actions run `31160683149`, bound to the exact authority commit, completed `build`,
+`P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and `P4-D memory gates` successfully.
+Branch-protection required-check configuration remains external governance unknown. The external
+E1-A archive is not part of either documentation commit. It may be restored only after this closure
+commit's own remote jobs pass, followed by fresh diff review, preflight, and heap child-matrix
+verification rather than reuse of old test evidence.
+
 ```text
 P4-C0.1 = COMPLETE
 P4-C1   = COMPLETE
@@ -1155,12 +1181,12 @@ P4-E0-A research/adjudication = COMPLETE
 P4-E0-R1/R2/R2R/R2Q           = COMPLETE
 P4-E0-B authority patch        = COMPLETE
 P4-E0-B.1 authority patch      = COMPLETE
-P4-E0-B.2 authority patch      = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
+P4-E0-B.2 authority patch      = COMPLETE
 P4-E0                          = COMPLETE
 P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1 read-only design review  = PASS
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
-P4-E1-A implementation         = BLOCKED UNTIL B.2 CLOSURE
+P4-E1-A implementation         = READY FOR CONTROLLED RESTORE / RE-PREFLIGHT AFTER CLOSURE REMOTE PASS
 P4-E1-B                        = BLOCKED UNTIL E1-A CLOSURE
 P4-E2 / P4-E3                  = BLOCKED
 P4-E                           = INCOMPLETE
@@ -1185,8 +1211,9 @@ read-only design review only as a historical P4-D closure statement; the E0 rese
 lineage and E0-B authority closure are now complete. The first P4-E1 read-only design review stopped
 at the integrated-snapshot counting／freshness authority Gate; B.1 resolved it and the renewed review
 passed. The subsequent E1-A attempt stopped at the active heap-floor coordinate conflict. B.2 is
-implemented locally, with commit／push／remote closure pending; E1-A, E1-B, E2, and E3 remain blocked
-as listed above, and P4-E remains incomplete. The E0-B／B.1 remote jobs did not rerun the R2Q formal
+complete; E1-A restoration／re-preflight is conditional on this closure commit's remote PASS, while
+E1-B, E2, and E3 remain blocked as listed above and P4-E remains incomplete. The E0-B／B.1／B.2
+remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate.
 Branch-protection required-check configuration remains external governance unknown.

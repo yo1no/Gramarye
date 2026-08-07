@@ -196,6 +196,36 @@ B.2 changes neither the R2Q `BALANCED_V0_1536_QUALIFICATION` profile, case plan,
 rerun. The stopped E1-A worktree was checksummed, replay-verified, and archived outside the
 repository before this clean documentation patch; that archive is not part of the commit.
 
+## P4-E0-B.2 closure evidence
+
+The documentation-only authority patch is commit
+`005cb43ac4feb875e28c346ca8ceb6ba256c1661`, tree
+`3e8c621edfa92bd9e986f6fd508cc95c5b50689d`, on `main`／`origin/main`. Its exact changed-path
+scope is:
+
+```text
+docs/architecture/P4-0-persistence-boundary.md
+docs/architecture/P4-E0-root-audit-boundary.md
+docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md
+docs/codex-spec/18_P4持久化與組合修正案.md
+docs/codex-spec/Codex_實作總規格Prompt.md
+docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md
+```
+
+Local `verifyPlatformBaseline`, `compileJava`, and `test` passed; the unit suite contained 1,181
+tests with zero failures, errors, or skips. Markdown fence／table／link, active-conflict, changed-path,
+production no-diff, and `git diff --check` scans passed. The official R2Q root remained the exact
+six-file set; its manifest and separate `SHA256SUMS.txt` checksum passed, and its
+`cd0c9d8d…`／`c10743f…`／`7dfb3c36…` HEAD／tree／study identity was unchanged. B.2 did not rerun,
+move, rebuild, or republish the formal study.
+
+The exact authority-commit push run was GitHub Actions run `31160683149`. Its `build`,
+`P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and `P4-D memory gates` jobs all
+completed successfully. Branch-protection required-check configuration remains external governance
+unknown. The external E1-A archive remains outside this closure commit and must not be restored
+until this separate closure commit's own remote jobs pass; restoration then starts with clean
+diff review, E1-A preflight, and the heap child matrix rather than reusing old test evidence.
+
 ## Completeness, reconciliation, and reclaim
 
 V0's exact closed inventory is `PLAYER_SKILL_ATTACHMENT` plus `PENDING_ATTACHMENT_JOURNAL`.
@@ -246,9 +276,9 @@ tier is not a general integrated-path safety claim.
 The first P4-E1 read-only design review stopped at the integrated-snapshot authority Gate because
 P4-E0-B had not fixed that source's counting and freshness coordinate. P4-E0-B.1 resolved it and the
 renewed P4-E1 read-only design review passed. The subsequent E1-A implementation attempt stopped at
-the active heap-floor authority-coordinate conflict. P4-E0-B.2 is implemented locally as this
-documentation-only patch; E1-A remains blocked until its commit／push／remote closure, E1-B waits for
-E1-A closure, and E2／E3 remain blocked.
+the active heap-floor authority-coordinate conflict. P4-E0-B.2 is now complete. E1-A may be restored
+and re-preflighted only after this closure commit's remote jobs pass; E1-B waits for E1-A closure,
+and E2／E3 remain blocked.
 No phase introduces chunk force, periodic/background scanning, network, or a second persistent
 truth. The completed E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB
 first／restart Gate; the B.1 jobs and this authority correction do not waive it either.
@@ -261,12 +291,12 @@ P4-E0-A research/adjudication     = COMPLETE
 P4-E0-R1/R2/R2R/R2Q               = COMPLETE
 P4-E0-B authority patch            = COMPLETE
 P4-E0-B.1 authority patch          = COMPLETE
-P4-E0-B.2 authority patch          = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
+P4-E0-B.2 authority patch          = COMPLETE
 P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1 read-only design review      = PASS
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
-P4-E1-A implementation             = BLOCKED UNTIL B.2 CLOSURE
+P4-E1-A implementation             = READY FOR CONTROLLED RESTORE / RE-PREFLIGHT AFTER CLOSURE REMOTE PASS
 P4-E1-B                            = BLOCKED UNTIL E1-A CLOSURE
 P4-E2 / P4-E3                      = BLOCKED
 P4-E                               = INCOMPLETE
