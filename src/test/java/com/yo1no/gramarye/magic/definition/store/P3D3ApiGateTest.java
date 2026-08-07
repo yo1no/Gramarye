@@ -554,6 +554,10 @@ class P3D3ApiGateTest {
                 && !P4B1PhaseTypes.containsSourceFileName(name)
                 && !P4B2PhaseTypes.containsSourceFileName(name)
                 && !P4DPhaseTypes.containsNewStoreSourceFileName(name)
+                && !P4EPhaseTypes.STORE_TYPE_NAMES.contains(
+                        name.endsWith(".java")
+                                ? name.substring(0, name.length() - ".java".length())
+                                : name)
                 && !Set.of(
                                 "StoreEncodingLayout.java",
                                 "StoreLayoutEncodeResult.java",

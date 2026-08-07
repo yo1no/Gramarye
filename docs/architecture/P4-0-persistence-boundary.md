@@ -251,9 +251,9 @@ complete simultaneous submission envelope.
 P4-E0 is complete. The first P4-E1 read-only design review stopped because P4-E0-B had not defined
 the integrated loaded-player snapshot's counting and freshness coordinate; P4-E0-B.1 resolved that
 blocker, and the renewed read-only design review passed. The following E1-A attempt stopped at an
-active heap-floor authority-coordinate conflict. P4-E0-B.2 is now complete. E1-A may be restored
-and re-preflighted only after the separate closure commit's remote jobs pass; E1-B waits for E1-A
-closure, and E2／E3 remain blocked. E1 must
+active heap-floor authority-coordinate conflict. P4-E0-B.2 is now complete, its closure remote
+prerequisites later passed, and E1-A has now been restored, re-preflighted, and implemented locally.
+E1-B waits for E1-A commit／push／remote closure, and E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1155,9 +1155,45 @@ formal study was not rerun.
 GitHub Actions run `31160683149`, bound to the exact authority commit, completed `build`,
 `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and `P4-D memory gates` successfully.
 Branch-protection required-check configuration remains external governance unknown. The external
-E1-A archive is not part of either documentation commit. It may be restored only after this closure
-commit's own remote jobs pass, followed by fresh diff review, preflight, and heap child-matrix
-verification rather than reuse of old test evidence.
+E1-A archive is not part of either documentation commit. At that closure revision it could be
+restored only after the closure commit's own remote jobs passed. Those prerequisites later passed;
+the controlled restore recorded below then used fresh diff review, preflight, and heap child-matrix
+verification rather than old test evidence.
+
+P4-E1-A has now completed that controlled local restore and fresh re-preflight. The clean base was
+commit `5e97b278c4e51bab64c00ebbf3ec453f9cdeb825`, tree
+`6f6585b6e0b997bb09d515fc9520b79b0f0d57af`, with `HEAD == origin/main` and zero ahead／behind.
+The untouched external archive was
+`/private/tmp/gramarye-p4-e1-a-stopped-20260807TYoCp4R`, manifest SHA-256
+`c2ed4c95a768230b1bac914d2268e27d04bae08a7c95df17841b036bf7c4c079`. Its unique 39-entry
+manifest, per-file hashes, 14-path tracked patch, empty staged patch, 29-path untracked inventory,
+source HEAD／tree, stop reason, and phase scope passed before a clean non-`--3way` restore. Restored
+tracked and untracked bytes matched the archive. No authority, Gradle, workflow, resource,
+formal-evidence, user-world, E1-B, E2, or E3 path was restored.
+
+Fresh adjudication implements only E1-A source-local admission. Effective HotSpot `MaxHeapSize` is
+the sole heap verdict input, and only its package-private qualified capability can create the
+25-counter budget. The Java 21 child matrix qualified G1／Parallel／Serial／ZGC at `-Xmx1536m` with
+effective `1_610_612_736`; G1 `-Xmx1535m` aligned to and qualified at the same floor; G1
+`-Xmx1024m` observed `1_073_741_824` and was below floor. Parallel and Serial diagnostics were
+respectively `1_431_830_528` and `1_556_938_752`, proving `Runtime.maxMemory()` does not affect the
+verdict. Qualified children derived zero source-work calls from the checked sum of all 25 budget
+counters; the below-floor child received no qualified capability or budget and reported zero source
+work. A nonzero sentinel locks the qualified derivation. Pure floor − 1／floor／floor + 1 plus
+unavailable-observation regressions passed.
+
+The local implementation includes the checked 25-counter budget, bounded directory and
+primary／old admission, the shared P4-B strict single-member gzip core, streaming player-NBT scan,
+integrated single-tree traversal, P4-C serializer-equivalent pure admission, and identity-bound
+online Attachment observation. It builds no global inventory, index, root snapshot, grouped Store
+audit, or later-phase service, and performs zero Store dirtying／reclaim, journal mutation,
+Attachment `setData`, playerdata write, event registration, background work, or network work.
+Actual global journal／disk／online／Store ordering remains E1-B responsibility. Targeted tests and
+all 1,282 unit tests passed with zero failures, errors, or skips; normal GameTest passed exactly
+12／12. Dedicated smoke, portable／phase verifiers, and all existing P4-A3／P4-B／
+P4-C／P4-D fixed-heap Gates passed locally; production JAR isolation held. Official R2Q evidence
+remained byte-identical and was not rerun. E1-A remains local-only pending commit, push, and remote
+closure, so E1-B／E2／E3 stay blocked and P4-E stays incomplete.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1186,7 +1222,7 @@ P4-E0                          = COMPLETE
 P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1 read-only design review  = PASS
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
-P4-E1-A implementation         = READY FOR CONTROLLED RESTORE / RE-PREFLIGHT AFTER CLOSURE REMOTE PASS
+P4-E1-A implementation         = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
 P4-E1-B                        = BLOCKED UNTIL E1-A CLOSURE
 P4-E2 / P4-E3                  = BLOCKED
 P4-E                           = INCOMPLETE
@@ -1211,8 +1247,9 @@ read-only design review only as a historical P4-D closure statement; the E0 rese
 lineage and E0-B authority closure are now complete. The first P4-E1 read-only design review stopped
 at the integrated-snapshot counting／freshness authority Gate; B.1 resolved it and the renewed review
 passed. The subsequent E1-A attempt stopped at the active heap-floor coordinate conflict. B.2 is
-complete; E1-A restoration／re-preflight is conditional on this closure commit's remote PASS, while
-E1-B, E2, and E3 remain blocked as listed above and P4-E remains incomplete. The E0-B／B.1／B.2
+complete; the controlled restore, fresh re-preflight, and local E1-A implementation now pass, while
+commit／push／remote closure remain pending. E1-B, E2, and E3 remain blocked as listed above and P4-E
+remains incomplete. The E0-B／B.1／B.2
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate.

@@ -50,6 +50,9 @@ class P4C2AApiGateTest {
                 .toList();
         var expectedSources = new LinkedHashSet<>(P4C1PhaseTypes.PLAYER_SOURCE_FILE_NAMES);
         expectedSources.addAll(P4C2PhaseTypes.PLAYER_SOURCE_FILE_NAMES);
+        P4EPhaseTypes.PLAYER_TYPE_NAMES.stream()
+                .map(name -> name + ".java")
+                .forEach(expectedSources::add);
         var loaded = P4C2PhaseTypes.PLAYER_TOP_LEVEL_TYPE_NAMES.stream()
                 .map(name -> load(P4C2PhaseTypes.PLAYER_PACKAGE + name))
                 .toList();
@@ -208,7 +211,9 @@ class P4C2AApiGateTest {
                 + "PlayerSkillAttachmentService.java";
         var gameTests = "com/yo1no/gramarye/magic/definition/player/"
                 + "PlayerSkillAttachmentGameTests.java";
-        var reviewedAttachmentAccessors = Set.of(service, gameTests);
+        var sourceObservation = "com/yo1no/gramarye/magic/definition/player/"
+                + "PlayerSkillAttachmentSourceObservation.java";
+        var reviewedAttachmentAccessors = Set.of(service, gameTests, sourceObservation);
         var getDataOwners = relativeFilesContaining(production, ".getData(");
         var setDataOwners = relativeFilesContaining(production, ".setData(");
         var playerSources = javaSources(PLAYER_ROOT);

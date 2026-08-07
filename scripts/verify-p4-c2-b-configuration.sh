@@ -236,7 +236,28 @@ verify_search_helpers() {
 is_reviewed_d3a_production_path() {
     case "$1" in
         src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditCounter.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditStage.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompressedCapacityRejected.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileMetadata.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileSystemAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorStatus.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataFileReader.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataNbtScanner.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflight.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
+        src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java | \

@@ -14,9 +14,6 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
 
 /** Strict, bounded, single-member gzip boundary for one already-open primary channel. */
 final class StrictSingleMemberGzipInput {
-    /** Commons Compress 1.26 reads deflate input in 8192-byte marked windows. */
-    private static final int COMMONS_LOOKAHEAD_BYTES = 8_192;
-
     private StrictSingleMemberGzipInput() {
     }
 
@@ -53,78 +50,78 @@ final class StrictSingleMemberGzipInput {
                 recorder);
         var verifiedHeader = new GzipHeaderVerifier(boundedChannel, recorder);
         var bufferedCompressed =
-                new BufferedInputStream(verifiedHeader, COMMONS_LOOKAHEAD_BYTES);
+                new StrictSingleMemberGzipCore.TrailerTrackingBufferedInputStream(
+                        verifiedHeader,
+                        StrictSingleMemberGzipCore.MINIMUM_BUFFER_BYTES);
 
-        try (var gzip = new GzipCompressorInputStream(bufferedCompressed, false)) {
-            var boundedDecompressed = new BoundedDecompressedInputStream(
-                    gzip,
+        try {
+            return StrictSingleMemberGzipCore.read(
+                    bufferedCompressed,
                     SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES,
-                    recorder);
-            var carrierResult = SkillSavedDataCarrierPersistenceBridge.loadDecompressed(
-                    boundedDecompressed, provider);
+                    recorder,
+                    StrictSingleMemberGzipCore.ByteCheckpoint.NONE,
+                    decompressed -> SkillSavedDataCarrierPersistenceBridge.loadDecompressed(
+                            decompressed, provider),
+                    (carrierResult, boundedDecompressed, completion) -> {
+                        var infrastructureFailure = infrastructureFailure(
+                                recorder, boundedChannel, baselineSize);
+                        if (infrastructureFailure.isPresent()) {
+                            return failure(infrastructureFailure.orElseThrow());
+                        }
 
-            var infrastructureFailure = infrastructureFailure(
-                    recorder, boundedChannel, baselineSize);
-            if (infrastructureFailure.isPresent()) {
-                return failure(infrastructureFailure.orElseThrow());
-            }
+                        // B1 intentionally receives max+1 followed by synthetic EOF so a
+                        // decompression bomb terminates at the approved whole-root bound rather
+                        // than being drained indefinitely.
+                        if (boundedDecompressed.capacityExceeded()) {
+                            if (carrierResult
+                                    instanceof SkillSavedDataCarrierLoadResult.Failure failed) {
+                                return carrierFailure(failed.failure());
+                            }
+                            throw new IllegalStateException(
+                                    "B1 accepted a decompressed stream beyond its approved bound");
+                        }
+                        if (carrierResult
+                                instanceof SkillSavedDataCarrierLoadResult.Failure failed) {
+                            // Once B1 has a safe malformed/capacity classification, fail closed
+                            // without draining attacker-controlled decompressed bytes merely to
+                            // find another error.
+                            return carrierFailure(failed.failure());
+                        }
+                        if (!boundedDecompressed.delegateEofObserved()) {
+                            throw new IllegalStateException(
+                                    "B1 published Ready before observing decompressed member EOF");
+                        }
 
-            // B1 intentionally receives max+1 followed by synthetic EOF so a decompression bomb
-            // terminates at the approved whole-root bound rather than being drained indefinitely.
-            if (boundedDecompressed.capacityExceeded()) {
-                if (carrierResult instanceof SkillSavedDataCarrierLoadResult.Failure failed) {
-                    return carrierFailure(failed.failure());
-                }
-                throw new IllegalStateException(
-                        "B1 accepted a decompressed stream beyond its approved bound");
-            }
-            if (carrierResult instanceof SkillSavedDataCarrierLoadResult.Failure failed) {
-                // Once B1 has a safe malformed/capacity classification, fail closed without
-                // draining attacker-controlled decompressed bytes merely to find another error.
-                return carrierFailure(failed.failure());
-            }
-            if (!boundedDecompressed.delegateEofObserved()) {
-                throw new IllegalStateException(
-                        "B1 published Ready before observing decompressed member EOF");
-            }
+                        var compressedTail = completion.verifyMemberCompletion();
+                        infrastructureFailure = infrastructureFailure(
+                                recorder, boundedChannel, baselineSize);
+                        if (infrastructureFailure.isPresent()) {
+                            return failure(infrastructureFailure.orElseThrow());
+                        }
+                        if (compressedTail
+                                == StrictSingleMemberGzipCore.CompressedTail.SECOND_MEMBER) {
+                            return failure(
+                                    SkillSavedDataPrimaryFailure.MultipleGzipMembers.INSTANCE);
+                        }
+                        if (compressedTail
+                                == StrictSingleMemberGzipCore.CompressedTail.TRAILING_DATA) {
+                            return failure(
+                                    SkillSavedDataPrimaryFailure.CompressedTrailingData.INSTANCE);
+                        }
+                        if (!boundedChannel.actualEofObserved()
+                                || boundedChannel.byteCount() != baselineSize) {
+                            throw new IllegalStateException(
+                                    "compressed EOF did not match the validated channel baseline");
+                        }
 
-            var compressedTail = readCompressedTail(bufferedCompressed);
-            infrastructureFailure = infrastructureFailure(
-                    recorder, boundedChannel, baselineSize);
-            if (infrastructureFailure.isPresent()) {
-                return failure(infrastructureFailure.orElseThrow());
-            }
-            if (compressedTail == CompressedTail.SECOND_MEMBER) {
-                return failure(SkillSavedDataPrimaryFailure.MultipleGzipMembers.INSTANCE);
-            }
-            if (compressedTail == CompressedTail.TRAILING_DATA) {
-                return failure(SkillSavedDataPrimaryFailure.CompressedTrailingData.INSTANCE);
-            }
-            if (!boundedChannel.actualEofObserved()
-                    || boundedChannel.byteCount() != baselineSize) {
-                throw new IllegalStateException(
-                        "compressed EOF did not match the validated channel baseline");
-            }
-
-            var ready = (SkillSavedDataCarrierLoadResult.Ready) carrierResult;
-            return new StrictSingleMemberGzipResult.Ready(ready.candidate());
+                        var ready = (SkillSavedDataCarrierLoadResult.Ready) carrierResult;
+                        return new StrictSingleMemberGzipResult.Ready(ready.candidate());
+                    });
         } catch (IOException exception) {
             recorder.recordGzipIOException(exception);
             return failure(infrastructureFailure(recorder, boundedChannel, baselineSize)
                     .orElseThrow());
         }
-    }
-
-    private static CompressedTail readCompressedTail(BufferedInputStream compressed)
-            throws IOException {
-        var first = compressed.read();
-        if (first == -1) {
-            return CompressedTail.NONE;
-        }
-        if (first == 0x1f && compressed.read() == 0x8b) {
-            return CompressedTail.SECOND_MEMBER;
-        }
-        return CompressedTail.TRAILING_DATA;
     }
 
     /** Channel I/O wins over an observed size race, which wins over gzip classification. */
@@ -144,7 +141,7 @@ final class StrictSingleMemberGzipInput {
             return Optional.of(new SkillSavedDataPrimaryFailure.PrimaryFileRaceDetected(
                     SkillSavedDataPrimaryFailure.PrimaryFileRaceKind.SHRANK_DURING_READ));
         }
-        return recorder.gzipFailure();
+        return recorder.savedDataGzipFailure();
     }
 
     private static StrictSingleMemberGzipResult.Failure carrierFailure(
@@ -157,10 +154,234 @@ final class StrictSingleMemberGzipInput {
         return new StrictSingleMemberGzipResult.Failure(failure);
     }
 
-    private enum CompressedTail {
+}
+
+/**
+ * Reviewed generic single-member gzip stream core shared by bounded source-admission callers.
+ *
+ * <p>The caller owns the mark/reset-capable compressed buffer and supplies the parser, byte
+ * checkpoint, bounded recorder, and completion policy. This class remains the only production
+ * owner of the Commons single-member constructor and compressed-tail grammar.</p>
+ */
+final class StrictSingleMemberGzipCore {
+    /** Commons Compress 1.26 reads deflate input in 8192-byte marked windows. */
+    static final int MINIMUM_BUFFER_BYTES = 8_192;
+
+    private StrictSingleMemberGzipCore() {
+    }
+
+    static <P, R> R read(
+            BufferedInputStream bufferedCompressed,
+            long maximumDecompressedBytes,
+            GzipFailureRecorder recorder,
+            ByteCheckpoint decompressedCheckpoint,
+            PayloadReader<P> parser,
+            CompletionVerifier<P, R> completionVerifier) throws IOException {
+        Objects.requireNonNull(bufferedCompressed, "bufferedCompressed");
+        Objects.requireNonNull(recorder, "recorder");
+        Objects.requireNonNull(decompressedCheckpoint, "decompressedCheckpoint");
+        Objects.requireNonNull(parser, "parser");
+        Objects.requireNonNull(completionVerifier, "completionVerifier");
+
+        try {
+            try (var gzip = new GzipCompressorInputStream(bufferedCompressed, false)) {
+                GzipIOExceptionObserver gzipIOExceptionObserver = exception -> {
+                    recorder.recordGzipIOException(exception);
+                    if (bufferedCompressed
+                            instanceof TrailerTrackingBufferedInputStream tracked) {
+                        recorder.refineLockedCommonsTrailerFailure(
+                                tracked.classifyFailure(exception));
+                    }
+                };
+                var boundedDecompressed = new BoundedDecompressedInputStream(
+                        gzip,
+                        maximumDecompressedBytes,
+                        recorder,
+                        decompressedCheckpoint,
+                        gzipIOExceptionObserver);
+                var parsed = parser.read(boundedDecompressed);
+                var completion = new CompressedCompletion(
+                        bufferedCompressed, boundedDecompressed);
+                return completionVerifier.complete(parsed, boundedDecompressed, completion);
+            }
+        } catch (IOException exception) {
+            if (bufferedCompressed instanceof TrailerTrackingBufferedInputStream tracked) {
+                recorder.refineLockedCommonsTrailerFailure(
+                        tracked.classifyFailure(exception));
+            }
+            throw exception;
+        }
+    }
+
+    @FunctionalInterface
+    interface ByteCheckpoint {
+        ByteCheckpoint NONE = ignored -> {
+        };
+
+        /**
+         * Observes one fixed-buffer read before those bytes are returned to the next layer.
+         * A rejecting caller records its own bounded classification before throwing.
+         */
+        void observe(long byteDelta) throws IOException;
+    }
+
+    @FunctionalInterface
+    interface PayloadReader<P> {
+        P read(InputStream decompressed) throws IOException;
+    }
+
+    @FunctionalInterface
+    interface GzipIOExceptionObserver {
+        void observe(IOException exception);
+    }
+
+    @FunctionalInterface
+    interface CompletionVerifier<P, R> {
+        R complete(
+                P parsed,
+                BoundedDecompressedInputStream decompressed,
+                CompressedCompletion completion) throws IOException;
+    }
+
+    static final class CompressedCompletion {
+        private final BufferedInputStream compressed;
+        private final BoundedDecompressedInputStream decompressed;
+        private boolean verified;
+
+        private CompressedCompletion(
+                BufferedInputStream compressed,
+                BoundedDecompressedInputStream decompressed) {
+            this.compressed = Objects.requireNonNull(compressed, "compressed");
+            this.decompressed = Objects.requireNonNull(decompressed, "decompressed");
+        }
+
+        /** Requires decompressed EOF, then classifies the exact tail on the same buffer. */
+        CompressedTail verifyMemberCompletion() throws IOException {
+            if (verified) {
+                throw new IllegalStateException(
+                        "gzip member completion was verified more than once");
+            }
+            if (decompressed.capacityExceeded()) {
+                throw new IllegalStateException(
+                        "gzip member completion followed decompressed capacity overflow");
+            }
+            if (!decompressed.delegateEofObserved()) {
+                throw new IllegalStateException(
+                        "gzip member completion preceded decompressed EOF");
+            }
+            verified = true;
+            var first = compressed.read();
+            if (first == -1) {
+                return CompressedTail.NONE;
+            }
+            if (first == 0x1f && compressed.read() == 0x8b) {
+                return CompressedTail.SECOND_MEMBER;
+            }
+            return CompressedTail.TRAILING_DATA;
+        }
+    }
+
+    enum CompressedTail {
         NONE,
         SECOND_MEMBER,
         TRAILING_DATA
+    }
+
+    /**
+     * Tracks the locked Commons Compress 1.26 trailer transition without inspecting a stack or
+     * retaining an exception. Commons marks before each inflater fill, resets exactly once after
+     * {@code Inflater.finished()}, rewinds that fill with one bulk read, and then reads the eight
+     * trailer bytes one at a time through {@code DataInput.readUnsignedByte()}.
+     */
+    static final class TrailerTrackingBufferedInputStream extends BufferedInputStream {
+        private TrailerStage trailerStage = TrailerStage.DEFLATE;
+        private int trailerBytesRead;
+
+        TrailerTrackingBufferedInputStream(
+                InputStream delegate, int bufferSize) {
+            super(Objects.requireNonNull(delegate, "delegate"), requireMinimumBuffer(bufferSize));
+        }
+
+        @Override
+        public synchronized void reset() throws IOException {
+            super.reset();
+            trailerStage = TrailerStage.REWIND;
+            trailerBytesRead = 0;
+        }
+
+        @Override
+        public synchronized int read() throws IOException {
+            var value = super.read();
+            if (trailerStage == TrailerStage.REWIND) {
+                // No bulk rewind means the inflater consumed the entire marked fill.
+                trailerStage = TrailerStage.TRAILER;
+            }
+            if (trailerStage == TrailerStage.TRAILER && value != -1) {
+                trailerBytesRead++;
+            }
+            return value;
+        }
+
+        @Override
+        public synchronized int read(byte[] bytes, int offset, int length) throws IOException {
+            var count = super.read(bytes, offset, length);
+            if (trailerStage == TrailerStage.REWIND
+                    && length > 0
+                    && count == length) {
+                // Commons Compress 1.26 rewinds the inflater fill with one exact bulk read.
+                trailerStage = TrailerStage.TRAILER;
+            }
+            return count;
+        }
+
+        private synchronized TrailerFailure classifyFailure(IOException exception) {
+            Objects.requireNonNull(exception, "exception");
+            if (trailerStage == TrailerStage.DEFLATE) {
+                return TrailerFailure.NONE;
+            }
+            if (exception instanceof EOFException && trailerBytesRead < 8) {
+                return TrailerFailure.TRUNCATED;
+            }
+            // The reset is the structural trailer boundary. Locked Commons Compress 1.26 then
+            // emits these two exact comparison failures; inspect the message transiently only to
+            // distinguish them and retain solely the bounded enum below.
+            if ("Gzip-compressed data is corrupt (CRC32 error)"
+                    .equals(exception.getMessage())) {
+                return TrailerFailure.CRC;
+            }
+            if ("Gzip-compressed data is corrupt(uncompressed size mismatch)"
+                    .equals(exception.getMessage())) {
+                return TrailerFailure.ISIZE;
+            }
+            if (trailerBytesRead == 4) {
+                return TrailerFailure.CRC;
+            }
+            if (trailerBytesRead == 8) {
+                return TrailerFailure.ISIZE;
+            }
+            return TrailerFailure.NONE;
+        }
+
+        private static int requireMinimumBuffer(int bufferSize) {
+            if (bufferSize < MINIMUM_BUFFER_BYTES) {
+                throw new IllegalArgumentException(
+                        "compressed buffer must preserve Commons lookahead");
+            }
+            return bufferSize;
+        }
+
+        private enum TrailerStage {
+            DEFLATE,
+            REWIND,
+            TRAILER
+        }
+    }
+
+    enum TrailerFailure {
+        NONE,
+        CRC,
+        ISIZE,
+        TRUNCATED
     }
 }
 
@@ -189,6 +410,7 @@ final class BoundedChannelInputStream extends InputStream {
     private final FileChannel channel;
     private final long observationLimit;
     private final GzipFailureRecorder recorder;
+    private final StrictSingleMemberGzipCore.ByteCheckpoint checkpoint;
     private final byte[] oneByte = new byte[1];
     private long byteCount;
     private boolean actualEofObserved;
@@ -197,8 +419,21 @@ final class BoundedChannelInputStream extends InputStream {
 
     BoundedChannelInputStream(
             FileChannel channel, long maximumBytes, GzipFailureRecorder recorder) {
+        this(
+                channel,
+                maximumBytes,
+                recorder,
+                StrictSingleMemberGzipCore.ByteCheckpoint.NONE);
+    }
+
+    BoundedChannelInputStream(
+            FileChannel channel,
+            long maximumBytes,
+            GzipFailureRecorder recorder,
+            StrictSingleMemberGzipCore.ByteCheckpoint checkpoint) {
         this.channel = Objects.requireNonNull(channel, "channel");
         this.recorder = Objects.requireNonNull(recorder, "recorder");
+        this.checkpoint = Objects.requireNonNull(checkpoint, "checkpoint");
         if (maximumBytes <= 0 || maximumBytes == Long.MAX_VALUE) {
             throw new IllegalArgumentException("maximumBytes must allow one finite probe byte");
         }
@@ -238,6 +473,7 @@ final class BoundedChannelInputStream extends InputStream {
             recorder.recordChannelFailure();
             throw new IOException();
         }
+        checkpoint.observe(count);
         byteCount = Math.addExact(byteCount, count);
         return count;
     }
@@ -481,6 +717,31 @@ final class GzipFailureRecorder {
                 : SkillSavedDataPrimaryFailure.GzipFailureKind.DEFLATE_INVALID);
     }
 
+    /** True only for validation unavailable to the platform's permissive playerdata reader. */
+    boolean strictOnlyFailure() {
+        return switch (state) {
+            case FHCRC_INVALID,
+                    TRAILER_CRC_INVALID,
+                    TRAILER_ISIZE_INVALID,
+                    COMMONS_TRAILER_TRUNCATED -> true;
+            case NONE, CHANNEL_IO, HEADER_INVALID, DEFLATE_INVALID, TRUNCATED -> false;
+        };
+    }
+
+    void refineLockedCommonsTrailerFailure(
+            StrictSingleMemberGzipCore.TrailerFailure failure) {
+        Objects.requireNonNull(failure, "failure");
+        if (state == State.CHANNEL_IO || failure == StrictSingleMemberGzipCore.TrailerFailure.NONE) {
+            return;
+        }
+        state = switch (failure) {
+            case NONE -> throw new IllegalStateException("unreachable trailer refinement");
+            case CRC -> State.TRAILER_CRC_INVALID;
+            case ISIZE -> State.TRAILER_ISIZE_INVALID;
+            case TRUNCATED -> State.COMMONS_TRAILER_TRUNCATED;
+        };
+    }
+
     Optional<SkillSavedDataPrimaryFailure> channelFailure() {
         return state == State.CHANNEL_IO
                 ? Optional.of(new SkillSavedDataPrimaryFailure.OuterSavedDataUnreadable(
@@ -501,8 +762,26 @@ final class GzipFailureRecorder {
                     SkillSavedDataPrimaryFailure.GzipFailureKind.TRAILER_CRC_INVALID);
             case TRAILER_ISIZE_INVALID -> malformed(
                     SkillSavedDataPrimaryFailure.GzipFailureKind.TRAILER_ISIZE_INVALID);
-            case TRUNCATED -> malformed(
+            case TRUNCATED, COMMONS_TRAILER_TRUNCATED -> malformed(
                     SkillSavedDataPrimaryFailure.GzipFailureKind.TRUNCATED);
+        };
+    }
+
+    /** Preserves the established P4-B classification at its external primary-ingress boundary. */
+    Optional<SkillSavedDataPrimaryFailure> savedDataGzipFailure() {
+        return switch (state) {
+            // Locked Commons 1.26 formerly reached the generic IOException branch for both
+            // trailer comparisons. E1 needs their strict-only identity, while P4-B continues to
+            // publish its reviewed DEFLATE_INVALID vocabulary.
+            case TRAILER_CRC_INVALID, TRAILER_ISIZE_INVALID -> malformed(
+                    SkillSavedDataPrimaryFailure.GzipFailureKind.DEFLATE_INVALID);
+            case NONE,
+                    CHANNEL_IO,
+                    HEADER_INVALID,
+                    FHCRC_INVALID,
+                    DEFLATE_INVALID,
+                    TRUNCATED,
+                    COMMONS_TRAILER_TRUNCATED -> gzipFailure();
         };
     }
 
@@ -519,7 +798,8 @@ final class GzipFailureRecorder {
         DEFLATE_INVALID,
         TRAILER_CRC_INVALID,
         TRAILER_ISIZE_INVALID,
-        TRUNCATED
+        TRUNCATED,
+        COMMONS_TRAILER_TRUNCATED
     }
 }
 
@@ -528,7 +808,8 @@ final class BoundedDecompressedInputStream extends InputStream {
     private final InputStream delegate;
     private final long maximumBytes;
     private final long observationLimit;
-    private final GzipFailureRecorder recorder;
+    private final StrictSingleMemberGzipCore.ByteCheckpoint checkpoint;
+    private final StrictSingleMemberGzipCore.GzipIOExceptionObserver gzipIOExceptionObserver;
     private final byte[] oneByte = new byte[1];
     private long byteCount;
     private boolean delegateEofObserved;
@@ -536,8 +817,38 @@ final class BoundedDecompressedInputStream extends InputStream {
 
     BoundedDecompressedInputStream(
             InputStream delegate, long maximumBytes, GzipFailureRecorder recorder) {
+        this(
+                delegate,
+                maximumBytes,
+                recorder,
+                StrictSingleMemberGzipCore.ByteCheckpoint.NONE,
+                recorder::recordGzipIOException);
+    }
+
+    BoundedDecompressedInputStream(
+            InputStream delegate,
+            long maximumBytes,
+            GzipFailureRecorder recorder,
+            StrictSingleMemberGzipCore.ByteCheckpoint checkpoint) {
+        this(
+                delegate,
+                maximumBytes,
+                recorder,
+                checkpoint,
+                recorder::recordGzipIOException);
+    }
+
+    BoundedDecompressedInputStream(
+            InputStream delegate,
+            long maximumBytes,
+            GzipFailureRecorder recorder,
+            StrictSingleMemberGzipCore.ByteCheckpoint checkpoint,
+            StrictSingleMemberGzipCore.GzipIOExceptionObserver gzipIOExceptionObserver) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
-        this.recorder = Objects.requireNonNull(recorder, "recorder");
+        Objects.requireNonNull(recorder, "recorder");
+        this.checkpoint = Objects.requireNonNull(checkpoint, "checkpoint");
+        this.gzipIOExceptionObserver = Objects.requireNonNull(
+                gzipIOExceptionObserver, "gzipIOExceptionObserver");
         if (maximumBytes <= 0 || maximumBytes == Long.MAX_VALUE) {
             throw new IllegalArgumentException("maximumBytes must allow one finite probe byte");
         }
@@ -566,13 +877,14 @@ final class BoundedDecompressedInputStream extends InputStream {
         try {
             count = delegate.read(bytes, offset, permitted);
         } catch (IOException exception) {
-            recorder.recordGzipIOException(exception);
+            gzipIOExceptionObserver.observe(exception);
             throw exception;
         }
         if (count == -1) {
             delegateEofObserved = true;
             return -1;
         }
+        checkpoint.observe(count);
         byteCount = Math.addExact(byteCount, count);
         return count;
     }

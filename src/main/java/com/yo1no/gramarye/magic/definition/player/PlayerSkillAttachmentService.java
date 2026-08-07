@@ -461,18 +461,10 @@ public final class PlayerSkillAttachmentService {
         return switch (observeChecked(player)) {
             case ObservedPlayerSkillAttachment.Missing ignored ->
                     new Available<>(new PlayerSkillRootProjection(List.of()));
-            case ObservedPlayerSkillAttachment.Ready ready -> {
-                var references = new ArrayList<SkillReference>(
-                        ready.state().latestStates().size()
-                                + ready.state().equipped().size());
-                ready.state().latestStates().stream()
-                        .flatMap(state -> state.pointer().stream())
-                        .forEach(references::add);
-                ready.state().equipped().stream()
-                        .map(EquippedSkillReference::reference)
-                        .forEach(references::add);
-                yield new Available<>(new PlayerSkillRootProjection(references));
-            }
+            case ObservedPlayerSkillAttachment.Ready ready -> new Available<>(
+                    new PlayerSkillRootProjection(
+                            PlayerSkillAttachmentSourceObservation.rootsForReady(
+                                    ready.state())));
             case ObservedPlayerSkillAttachment.Quarantined quarantined ->
                     new Unavailable<>(quarantined.reason());
         };

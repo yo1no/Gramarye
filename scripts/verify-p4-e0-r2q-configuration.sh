@@ -229,6 +229,73 @@ verify_helpers() {
             || "${output}" == *'WRONG_MISSING'* ]]; then
         fail 'P4-E0-R2Q verifier cannot distinguish tool error from missing input'
     fi
+    is_reviewed_e1a_production_or_ledger_path \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java' \
+        || fail 'P4-E0-R2Q verifier rejected an exact reviewed E1-A path'
+    if is_reviewed_e1a_production_or_ledger_path \
+            'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudgetExtra.java'; then
+        fail 'P4-E0-R2Q verifier accepted a prefix-near E1-A production path'
+    fi
+    if is_reviewed_e1a_production_or_ledger_path \
+            'docs/codex-spec/18_P4持久化與組合修正案.md'; then
+        fail 'P4-E0-R2Q verifier accepted an authority path as E1-A work'
+    fi
+}
+
+is_reviewed_e1a_production_or_ledger_path() {
+    case "$1" in
+        docs/architecture/P4-0-persistence-boundary.md | \
+        docs/architecture/P4-E0-root-audit-boundary.md | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditCounter.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditStage.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompressedCapacityRejected.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileMetadata.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileSystemAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorStatus.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataFileReader.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataNbtScanner.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflight.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
+        src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+verify_only_reviewed_e1a_production_or_ledger_changes() {
+    local changed=''
+    local status=0
+    local path=''
+    changed="$(git diff --name-only HEAD -- \
+        src/main/java src/main/resources docs/codex-spec docs/architecture \
+        .github/workflows gradle.properties)" || status=$?
+    [[ "${status}" -eq 0 ]] || fail 'git failed while checking tracked production and authority paths'
+    while IFS= read -r path; do
+        [[ -z "${path}" ]] && continue
+        is_reviewed_e1a_production_or_ledger_path "${path}" \
+            || fail "P4-E0-R2Q modified an unreviewed production, authority, workflow, or version path: ${path}"
+    done <<< "${changed}"
+
+    status=0
+    changed="$(git ls-files --others --exclude-standard -- \
+        src/main/java src/main/resources docs/codex-spec docs/architecture \
+        .github/workflows gradle.properties)" || status=$?
+    [[ "${status}" -eq 0 ]] || fail 'git failed while checking untracked production and authority paths'
+    while IFS= read -r path; do
+        [[ -z "${path}" ]] && continue
+        is_reviewed_e1a_production_or_ledger_path "${path}" \
+            || fail "P4-E0-R2Q added an unreviewed production, authority, workflow, or version path: ${path}"
+    done <<< "${changed}"
 }
 
 verify_paths_and_boundaries() {
@@ -277,16 +344,7 @@ verify_paths_and_boundaries() {
         require_regular_file "${file}" "P4-E0-R2Q reviewed path is missing: ${file}"
     done
 
-    git diff --quiet HEAD -- \
-        src/main/java src/main/resources docs/codex-spec docs/architecture \
-        .github/workflows gradle.properties \
-        || fail 'P4-E0-R2Q modified production, authority, workflow, or version truth'
-    untracked="$(git ls-files --others --exclude-standard -- \
-        src/main/java src/main/resources docs/codex-spec docs/architecture \
-        .github/workflows)" || status=$?
-    [[ "${status}" -eq 0 ]] || fail 'git failed while checking prohibited paths'
-    [[ -z "${untracked}" ]] \
-        || fail "P4-E0-R2Q added a prohibited path: ${untracked}"
+    verify_only_reviewed_e1a_production_or_ledger_changes
     forbid_fixed .github/workflows/build.yml 'p4-e0-r2q' \
         'P4-E0-R2Q must not add a workflow job'
     forbid_fixed .github/workflows/build.yml 'P4-E0-R2Q' \

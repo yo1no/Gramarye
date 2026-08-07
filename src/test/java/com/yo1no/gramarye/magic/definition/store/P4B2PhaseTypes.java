@@ -25,6 +25,7 @@ final class P4B2PhaseTypes {
             "SkillSubsystemLifecycleException",
             "SkillSubsystemResult",
             "SkillSubsystemUnavailableReason",
+            "StrictSingleMemberGzipCore",
             "StrictSingleMemberGzipInput",
             "StrictSingleMemberGzipResult");
 

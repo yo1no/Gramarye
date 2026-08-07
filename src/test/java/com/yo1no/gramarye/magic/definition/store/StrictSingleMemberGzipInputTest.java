@@ -1,7 +1,10 @@
 package com.yo1no.gramarye.magic.definition.store;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
@@ -14,6 +17,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.CRC32;
 import java.util.zip.GZIPOutputStream;
 import org.junit.jupiter.api.Test;
@@ -44,6 +49,135 @@ class StrictSingleMemberGzipInputTest {
                 SkillSavedDataPrimaryFailure.CompressedTrailingData.class);
         assertFailure(concat(canonical, new byte[] {0x1f}),
                 SkillSavedDataPrimaryFailure.CompressedTrailingData.class);
+    }
+
+    @Test
+    void genericCoreUsesCallerOwnedBufferAndReportsExactByteCheckpoints()
+            throws Exception {
+        var path = temporaryDirectory.resolve("generic-core.dat");
+        var compressedBytes = canonicalGzip();
+        var decompressedBytes = canonicalRoot();
+        Files.write(path, compressedBytes);
+        var compressedCheckpoint = new AtomicLong();
+        var decompressedCheckpoint = new AtomicLong();
+        var recorder = new GzipFailureRecorder();
+
+        try (var channel = FileChannel.open(path, StandardOpenOption.READ)) {
+            var boundedChannel = new BoundedChannelInputStream(
+                    channel,
+                    MagicSafetyCeilings.MAX_SKILL_SAVED_DATA_FILE_BYTES,
+                    recorder,
+                    compressedCheckpoint::addAndGet);
+            var verifiedHeader = new GzipHeaderVerifier(boundedChannel, recorder);
+            var callerOwnedBuffer = new java.io.BufferedInputStream(
+                    verifiedHeader, StrictSingleMemberGzipCore.MINIMUM_BUFFER_BYTES);
+
+            var observed = StrictSingleMemberGzipCore.read(
+                    callerOwnedBuffer,
+                    SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES,
+                    recorder,
+                    decompressedCheckpoint::addAndGet,
+                    input -> {
+                        long count = 0;
+                        var block = new byte[1_024];
+                        int current;
+                        while ((current = input.read(block)) != -1) {
+                            count += current;
+                        }
+                        return count;
+                    },
+                    (count, boundedDecompressed, completion) -> {
+                        assertTrue(boundedDecompressed.delegateEofObserved());
+                        assertEquals(
+                                StrictSingleMemberGzipCore.CompressedTail.NONE,
+                                completion.verifyMemberCompletion());
+                        return count;
+                    });
+
+            assertEquals(decompressedBytes.length, observed);
+            assertEquals(compressedBytes.length, compressedCheckpoint.get());
+            assertEquals(decompressedBytes.length, decompressedCheckpoint.get());
+            assertTrue(recorder.channelFailure().isEmpty());
+            assertTrue(recorder.gzipFailure().isEmpty());
+        }
+    }
+
+    @Test
+    void genericCoreCheckpointsPrecedeExposureAndCompletionRequiresEof()
+            throws Exception {
+        var path = temporaryDirectory.resolve("generic-core-ordering.dat");
+        Files.write(path, canonicalGzip());
+        var compressedStop = new IOException("compressed checkpoint stop");
+        var parserInvoked = new AtomicBoolean();
+
+        try (var channel = FileChannel.open(path, StandardOpenOption.READ)) {
+            var recorder = new GzipFailureRecorder();
+            var compressed = callerOwnedBuffer(
+                    channel,
+                    recorder,
+                    ignored -> {
+                        throw compressedStop;
+                    });
+
+            var thrown = assertThrows(
+                    IOException.class,
+                    () -> StrictSingleMemberGzipCore.read(
+                            compressed,
+                            SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES,
+                            recorder,
+                            StrictSingleMemberGzipCore.ByteCheckpoint.NONE,
+                            input -> {
+                                parserInvoked.set(true);
+                                return 0;
+                            },
+                            (ignored, decompressed, completion) -> ignored));
+            assertSame(compressedStop, thrown);
+            assertFalse(parserInvoked.get());
+        }
+
+        var decompressedStop = new IOException("decompressed checkpoint stop");
+        var returnedPayloadBytes = new AtomicLong();
+        try (var channel = FileChannel.open(path, StandardOpenOption.READ)) {
+            var recorder = new GzipFailureRecorder();
+            var compressed = callerOwnedBuffer(
+                    channel, recorder, StrictSingleMemberGzipCore.ByteCheckpoint.NONE);
+
+            var thrown = assertThrows(
+                    IOException.class,
+                    () -> StrictSingleMemberGzipCore.read(
+                            compressed,
+                            SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES,
+                            recorder,
+                            ignored -> {
+                                throw decompressedStop;
+                            },
+                            input -> {
+                                if (input.read() != -1) {
+                                    returnedPayloadBytes.incrementAndGet();
+                                }
+                                return 0;
+                            },
+                            (ignored, decompressed, completion) -> ignored));
+            assertSame(decompressedStop, thrown);
+            assertEquals(0, returnedPayloadBytes.get());
+        }
+
+        try (var channel = FileChannel.open(path, StandardOpenOption.READ)) {
+            var recorder = new GzipFailureRecorder();
+            var compressed = callerOwnedBuffer(
+                    channel, recorder, StrictSingleMemberGzipCore.ByteCheckpoint.NONE);
+
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> StrictSingleMemberGzipCore.read(
+                            compressed,
+                            SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES,
+                            recorder,
+                            StrictSingleMemberGzipCore.ByteCheckpoint.NONE,
+                            input -> 0,
+                            (ignored, decompressed, completion) ->
+                                    completion.verifyMemberCompletion()));
+        }
     }
 
     @Test
@@ -208,6 +342,20 @@ class StrictSingleMemberGzipInputTest {
                     MagicSafetyCeilings.MAX_SKILL_SAVED_DATA_FILE_BYTES,
                     Optional.empty());
         }
+    }
+
+    private static java.io.BufferedInputStream callerOwnedBuffer(
+            FileChannel channel,
+            GzipFailureRecorder recorder,
+            StrictSingleMemberGzipCore.ByteCheckpoint compressedCheckpoint) {
+        var boundedChannel = new BoundedChannelInputStream(
+                channel,
+                MagicSafetyCeilings.MAX_SKILL_SAVED_DATA_FILE_BYTES,
+                recorder,
+                compressedCheckpoint);
+        return new java.io.BufferedInputStream(
+                new GzipHeaderVerifier(boundedChannel, recorder),
+                StrictSingleMemberGzipCore.MINIMUM_BUFFER_BYTES);
     }
 
     private void assertFailure(byte[] bytes, Class<?> expected) throws IOException {

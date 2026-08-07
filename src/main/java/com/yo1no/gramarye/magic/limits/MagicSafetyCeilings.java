@@ -142,6 +142,85 @@ public final class MagicSafetyCeilings {
     /** Inclusive writeAnyTag byte ceiling for the complete player skill Attachment value. */
     public static final int MAX_PLAYER_SKILL_ATTACHMENT_ENCODED_BYTES = 16_777_216;
 
+    /** Maximum immediate entries admitted from the playerdata directory by one P4-E audit. */
+    public static final int MAX_PLAYERDATA_DIRECTORY_ENTRIES = 4_096;
+
+    /** Maximum selected canonical player records admitted by one P4-E audit. */
+    public static final int MAX_PLAYERDATA_RELEVANT_RECORDS = 2_048;
+
+    /** Inclusive compressed-byte ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_COMPRESSED_BYTES_PER_FILE = 33_559_514;
+
+    /** Inclusive decompressed-byte ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_DECOMPRESSED_BYTES_PER_FILE = 268_435_456;
+
+    /** Inclusive container-depth ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_CONTAINER_DEPTH_PER_FILE = 512;
+
+    /** Inclusive Compound-container ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_COMPOUND_CONTAINERS_PER_FILE = 1_024;
+
+    /** Inclusive Compound-field-entry ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_COMPOUND_FIELD_ENTRIES_PER_FILE = 65_537;
+
+    /** Inclusive List payload-element ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_LIST_ELEMENTS_PER_FILE = 65_536;
+
+    /** Inclusive byte-array element ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_BYTE_ARRAY_ELEMENTS_PER_FILE = 268_435_384;
+
+    /** Inclusive int-array element ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_INT_ARRAY_ELEMENTS_PER_FILE = 65_536;
+
+    /** Inclusive long-array element ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_LONG_ARRAY_ELEMENTS_PER_FILE = 65_536;
+
+    /** Inclusive modified-UTF payload-byte ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_MODIFIED_UTF8_BYTES_PER_FILE = 67_107_692;
+
+    /** Inclusive scalar-tag ceiling for one selected playerdata file. */
+    public static final int MAX_PLAYERDATA_SCALAR_TAGS_PER_FILE = 65_537;
+
+    /** Inclusive compressed-byte ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_COMPRESSED_BYTES_TOTAL = 268_440_533;
+
+    /** Inclusive decompressed-byte ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_DECOMPRESSED_BYTES_TOTAL = 536_870_912;
+
+    /** Inclusive Compound-container ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_COMPOUND_CONTAINERS_TOTAL = 131_072;
+
+    /** Inclusive Compound-field-entry ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_COMPOUND_FIELD_ENTRIES_TOTAL = 524_288;
+
+    /** Inclusive List payload-element ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_LIST_ELEMENTS_TOTAL = 131_072;
+
+    /** Inclusive byte-array element ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_BYTE_ARRAY_ELEMENTS_TOTAL = 456_524_705;
+
+    /** Inclusive int-array element ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_INT_ARRAY_ELEMENTS_TOTAL = 131_072;
+
+    /** Inclusive long-array element ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_LONG_ARRAY_ELEMENTS_TOTAL = 131_072;
+
+    /** Inclusive modified-UTF payload-byte ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_MODIFIED_UTF8_BYTES_TOTAL = 75_497_472;
+
+    /** Inclusive scalar-tag ceiling across selected files in one P4-E audit. */
+    public static final int MAX_PLAYERDATA_SCALAR_TAGS_TOTAL = 458_752;
+
+    /** Maximum P4-C Attachment admission invocations accepted by one P4-E audit. */
+    public static final int MAX_PLAYERDATA_ATTACHMENT_ADMISSIONS = 1_024;
+
+    /**
+     * Product-selected minimum effective HotSpot {@code MaxHeapSize} for a P4-E root audit.
+     * Runtime-reported usable heap and memory-pool maxima are diagnostics, not this authority
+     * coordinate.
+     */
+    public static final long MIN_P4_E_ROOT_AUDIT_MAX_HEAP_SIZE_BYTES = 1_610_612_736L;
+
     private MagicSafetyCeilings() {
     }
 

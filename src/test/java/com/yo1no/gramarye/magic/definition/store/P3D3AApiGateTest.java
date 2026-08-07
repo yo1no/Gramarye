@@ -496,6 +496,7 @@ class P3D3AApiGateTest {
                 || P4B1PhaseTypes.containsTopLevelName(name)
                 || P4B2PhaseTypes.containsTopLevelName(name)
                 || P4DPhaseTypes.containsNewStoreTopLevelName(name)
+                || P4EPhaseTypes.STORE_TYPE_NAMES.contains(name)
                 || Set.of(
                                 "StoreEncodingLayout",
                                 "StoreLayoutEncodeResult",

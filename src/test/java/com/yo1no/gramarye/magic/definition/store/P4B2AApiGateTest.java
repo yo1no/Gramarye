@@ -291,8 +291,31 @@ class P4B2AApiGateTest {
 
         var strict = read(STORE_ROOT.resolve("StrictSingleMemberGzipInput.java"));
         var ingress = read(STORE_ROOT.resolve("SkillSavedDataPrimaryIngress.java"));
+        assertTrue(strict.contains("return StrictSingleMemberGzipCore.read("));
         assertTrue(strict.contains(
                 "new GzipCompressorInputStream(bufferedCompressed, false)"));
+        assertEquals(
+                1,
+                occurrences(
+                        withoutCommentsAndLiterals(strict),
+                        "new GzipCompressorInputStream("));
+        var compressedBound = sourceSlice(
+                strict,
+                "final class BoundedChannelInputStream",
+                "\nfinal class GzipHeaderVerifier");
+        var decompressedBound = strict.substring(
+                strict.indexOf("final class BoundedDecompressedInputStream"));
+        assertOrdered(
+                compressedBound,
+                "checkpoint.observe(count);",
+                "byteCount = Math.addExact(byteCount, count);",
+                "return count;");
+        assertOrdered(
+                decompressedBound,
+                "checkpoint.observe(count);",
+                "byteCount = Math.addExact(byteCount, count);",
+                "return count;");
+        assertTrue(strict.contains("completion.verifyMemberCompletion()"));
         assertFalse(Pattern.compile(
                         "new\\s+GzipCompressorInputStream\\s*\\([^;]*,\\s*true\\s*\\)",
                         Pattern.DOTALL)
@@ -308,8 +331,11 @@ class P4B2AApiGateTest {
         assertEquals(1, occurrences(
                 withoutCommentsAndLiterals(ingress), "FileChannel.open("));
         assertEquals(
-                Set.of("com/yo1no/gramarye/magic/definition/store/"
-                        + "SkillSavedDataPrimaryIngress.java"),
+                Set.of(
+                        "com/yo1no/gramarye/magic/definition/store/"
+                                + "P4E1FileSystemAccess.java",
+                        "com/yo1no/gramarye/magic/definition/store/"
+                                + "SkillSavedDataPrimaryIngress.java"),
                 filesContaining(productionSources(MAIN_JAVA), "FileChannel.open("));
         assertFalse(Pattern.compile("\\.\\s*position\\s*\\(")
                 .matcher(withoutCommentsAndLiterals(strict))

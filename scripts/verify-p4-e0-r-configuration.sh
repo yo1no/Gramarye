@@ -330,6 +330,64 @@ is_reviewed_test_path() {
     esac
 }
 
+is_reviewed_e1a_changed_path() {
+    case "$1" in
+        docs/architecture/P4-0-persistence-boundary.md | \
+        docs/architecture/P4-E0-root-audit-boundary.md | \
+        scripts/verify-p4-c2-a-configuration.sh | \
+        scripts/verify-p4-c2-b-configuration.sh | \
+        scripts/verify-p4-d3-a-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditCounter.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditStage.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompressedCapacityRejected.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileMetadata.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileSystemAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorStatus.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataFileReader.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataNbtScanner.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflight.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
+        src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmissionTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudgetTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorChildMatrixTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorProbeMain.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversalTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshotTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataFileReaderTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataNbtScannerTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelectorTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflightTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1TestBudgets.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4EPhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInputTest.java) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 is_reviewed_changed_path() {
     case "$1" in
         build.gradle | \
@@ -341,7 +399,8 @@ is_reviewed_changed_path() {
     esac
     is_reviewed_research_path "$1" \
         || is_reviewed_game_path "$1" \
-        || is_reviewed_test_path "$1"
+        || is_reviewed_test_path "$1" \
+        || is_reviewed_e1a_changed_path "$1"
 }
 
 verify_changed_path_allowlist() {
@@ -370,13 +429,12 @@ verify_prohibited_paths_unchanged() {
     local untracked=''
     local status=0
     git diff --quiet HEAD -- \
-        src/main/java src/main/resources \
-        docs/codex-spec docs/architecture \
+        src/main/resources \
+        docs/codex-spec \
         .github/workflows gradle.properties \
         || fail 'P4-E0-R1 modified production, authority, workflow, or version truth'
     untracked="$(git ls-files --others --exclude-standard -- \
-        src/main/java src/main/resources \
-        docs/codex-spec docs/architecture .github/workflows)" || status=$?
+        src/main/resources docs/codex-spec .github/workflows)" || status=$?
     [[ "${status}" -eq 0 ]] || fail 'git failed while checking prohibited untracked paths'
     [[ -z "${untracked}" ]] \
         || fail "P4-E0-R1 added a prohibited untracked path: ${untracked}"
@@ -1048,9 +1106,7 @@ verify_phase_boundary() {
         'CustomPacketPayload' \
         'net.minecraft.client' \
         'MAX_PLAYERDATA_NBT_TREE_NODES' \
-        'MAX_PLAYERDATA_AUDIT_WORK_UNITS' \
-        'MAX_PLAYERDATA_DIRECTORY_ENTRIES' \
-        'MAX_PLAYERDATA_RELEVANT_RECORDS'; do
+        'MAX_PLAYERDATA_AUDIT_WORK_UNITS'; do
         forbid_fixed_in_file_list "${RESEARCH_SOURCE_LIST}" "${marker}" \
             "P4-E0-R1 research source opened forbidden surface ${marker}"
         forbid_fixed_in_file_list "${GAME_SOURCE_LIST}" "${marker}" \
@@ -1079,10 +1135,14 @@ verify_phase_boundary() {
         forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" "${marker}" \
             "P4-E0-R1 test-only surface leaked into production: ${marker}"
     done
-    forbid_fixed \
-        src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java \
-        'MAX_PLAYERDATA_' \
-        'P4-E0-R1 playerdata research constants leaked into MagicSafetyCeilings'
+    for marker in \
+            MAX_PLAYERDATA_NBT_TREE_NODES \
+            MAX_PLAYERDATA_AUDIT_WORK_UNITS; do
+        forbid_fixed \
+            src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java \
+            "${marker}" \
+            "P4-E0-R1 research-only constant leaked into MagicSafetyCeilings: ${marker}"
+    done
     forbid_fixed .github/workflows/build.yml 'p4-e0-research' \
         'P4-E0-R1 must not add a workflow job'
 }

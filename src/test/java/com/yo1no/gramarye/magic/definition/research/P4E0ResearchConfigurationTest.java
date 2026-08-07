@@ -484,10 +484,16 @@ final class P4E0ResearchConfigurationTest {
                 () -> assertFalse(production.contains("P4E0R2Q")),
                 () -> assertFalse(production.contains("p4-e0-research")),
                 () -> assertFalse(production.contains("p4-e0-r2q")),
+                // E1-A now owns reviewed production playerdata ceilings. The retired
+                // research-only aggregate names must remain absent.
                 () -> assertFalse(read(PROJECT_ROOT.resolve(
                                 "src/main/java/com/yo1no/gramarye/magic/limits/"
                                         + "MagicSafetyCeilings.java"))
-                        .contains("MAX_PLAYERDATA_")),
+                        .contains("MAX_PLAYERDATA_NBT_TREE_NODES")),
+                () -> assertFalse(read(PROJECT_ROOT.resolve(
+                                "src/main/java/com/yo1no/gramarye/magic/limits/"
+                                        + "MagicSafetyCeilings.java"))
+                        .contains("MAX_PLAYERDATA_AUDIT_WORK_UNITS")),
                 () -> assertFalse(read(PROJECT_ROOT.resolve(
                                 ".github/workflows/build.yml"))
                         .contains("p4-e0-research")));

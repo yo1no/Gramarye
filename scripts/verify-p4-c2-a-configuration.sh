@@ -154,11 +154,13 @@ forbid_fixed_outside() {
     local needle="$2"
     local allowed_one="$3"
     local allowed_two="${4:-}"
-    local message="$5"
+    local allowed_three="${5:-}"
+    local message="$6"
     local file=''
     while IFS= read -r -d '' file; do
         if [[ "${file}" == "${allowed_one}" \
-                || ( -n "${allowed_two}" && "${file}" == "${allowed_two}" ) ]]; then
+                || ( -n "${allowed_two}" && "${file}" == "${allowed_two}" ) \
+                || ( -n "${allowed_three}" && "${file}" == "${allowed_three}" ) ]]; then
             continue
         fi
         forbid_fixed "${file}" "${needle}" "${message} (${file})"
@@ -244,17 +246,18 @@ verify_exact_sources_and_registration() {
         'NeoForgeRegistries.Keys.ATTACHMENT_TYPES' \
         '.copyOnDeath()'; do
         forbid_fixed_outside \
-            "${PRODUCTION_SOURCE_LIST}" "${literal}" "${registration}" '' \
+            "${PRODUCTION_SOURCE_LIST}" "${literal}" "${registration}" '' '' \
             'Attachment registration surface escaped its unique owner'
     done
     forbid_fixed_outside \
-        "${PRODUCTION_SOURCE_LIST}" '"player_skills"' "${registration}" "${game_tests}" \
+        "${PRODUCTION_SOURCE_LIST}" '"player_skills"' "${registration}" "${game_tests}" '' \
         'stable player skill Attachment ID escaped registration/tests'
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" '.getData(' "${service}" "${game_tests}" \
+        "${package_path}/PlayerSkillAttachmentSourceObservation.java" \
         'player Attachment getData escaped the controlled service/GameTest seam'
     forbid_fixed_outside \
-        "${PRODUCTION_SOURCE_LIST}" '.setData(' "${service}" '' \
+        "${PRODUCTION_SOURCE_LIST}" '.setData(' "${service}" '' '' \
         'player Attachment setData escaped the controlled service'
     forbid_fixed_in_file_list \
         "${PRODUCTION_SOURCE_LIST}" '.removeData(' \
@@ -310,7 +313,7 @@ verify_phase_bounds_and_normal_tests() {
         'P4-D3-A reviewed login recovery event owner is missing'
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" 'PlayerEvent' \
-        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' '' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' '' '' \
         'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
 
     for literal in \

@@ -108,6 +108,13 @@ public final class PlayerSkillAttachmentGameTests {
             var player = connected.player();
             helper.assertFalse(player.hasData(PlayerSkillAttachments.type()),
                     "missing playerdata must not install the Attachment");
+            var missingSource = PlayerSkillAttachmentSourceObservation.observe(player);
+            helper.assertTrue(missingSource
+                            instanceof PlayerSkillAttachmentSourceObservation.Missing
+                            && missingSource.rootsAvailable()
+                            && missingSource.roots().isEmpty()
+                            && missingSource.isCurrent(player),
+                    "missing source observation must be non-installing and current");
             assertAvailableEquals(service.findDraft(player, new SkillId(DRAFT_ID)),
                     Optional.empty(), "missing Draft read");
             assertAvailableEquals(service.draftCount(player), 0, "missing Draft count");
@@ -159,6 +166,8 @@ public final class PlayerSkillAttachmentGameTests {
             assertApplied(service.putDraft(player, draft), "Draft publication");
             helper.assertTrue(player.hasData(PlayerSkillAttachments.type()),
                     "first changed mutation must install one complete Ready state");
+            helper.assertFalse(missingSource.isCurrent(player),
+                    "missing source observation must detect Attachment installation");
             assertCurrentness(
                     service.checkPreparedTransitionCurrent(player, preparedWhileMissing),
                     PlayerSkillAttachmentService.TransitionCurrentness.STATE_CHANGED,
@@ -269,6 +278,12 @@ public final class PlayerSkillAttachmentGameTests {
             var samePointer = prepared(service.prepareLatestTransitionToCurrent(
                     player, draft.skillId(), reference));
             var samePointerIdentity = requireReady(service.observe(player));
+            var readySource = PlayerSkillAttachmentSourceObservation.observe(player);
+            helper.assertTrue(readySource
+                            instanceof PlayerSkillAttachmentSourceObservation.Ready
+                            && readySource.rootsAvailable()
+                            && readySource.isCurrent(player),
+                    "Ready source observation must bind the exact state identity");
             helper.assertTrue(samePointer.isNoOp()
                             && samePointer.targetGeneration() == 1,
                     "same-pointer transition must remain a generation-preserving no-op");
@@ -288,6 +303,8 @@ public final class PlayerSkillAttachmentGameTests {
                     Optional.of(replacementReference)));
             var sameUuidMissing = unplacedPlayer(
                     server, player.getUUID(), "p4c2-same-uuid-missing");
+            helper.assertFalse(readySource.isCurrent(sameUuidMissing),
+                    "same UUID on a different player identity must not satisfy currentness");
             assertMutationRejected(
                     service.publishPreparedTransition(sameUuidMissing, presentToMissing),
                     PlayerSkillAttachmentService.MutationRejectionCode.STATE_CHANGED,
@@ -434,7 +451,13 @@ public final class PlayerSkillAttachmentGameTests {
                     diskAttachment.equals(readyBeforeSave.carrier().copyTag()),
                     "synchronous save must persist the exact prebuilt canonical carrier");
 
+            var onlineSourceBeforeRemoval =
+                    PlayerSkillAttachmentSourceObservation.observe(player);
+            helper.assertTrue(onlineSourceBeforeRemoval.isCurrent(player),
+                    "fresh source observation must see the exact online player");
             playerList.remove(player);
+            helper.assertFalse(onlineSourceBeforeRemoval.isCurrent(player),
+                    "source observation must detect removal from the online UUID set");
             connected.channel().finishAndReleaseAll();
             connected = placePlayer(server, PERSISTENCE_PLAYER_ID, "p4c2-reload");
             var reloaded = connected.player();
@@ -925,6 +948,16 @@ public final class PlayerSkillAttachmentGameTests {
                         PlayerSkillAttachmentService.UnavailableReason
                                 .PRESERVED_RAW_QUARANTINE,
                         "preserved quarantine roots");
+                var source = PlayerSkillAttachmentSourceObservation.observe(player);
+                helper.assertTrue(source
+                                instanceof PlayerSkillAttachmentSourceObservation.Quarantined
+                                        quarantined
+                                && quarantined.reason()
+                                        == PlayerSkillAttachmentService.UnavailableReason
+                                                .PRESERVED_RAW_QUARANTINE
+                                && !quarantined.rootsAvailable()
+                                && quarantined.isCurrent(player),
+                        "preserved source observation must be unavailable and identity-bound");
             }
             case MARKER -> {
                 helper.assertTrue(state instanceof PlayerSkillAttachmentOversizeMarker,
@@ -944,6 +977,16 @@ public final class PlayerSkillAttachmentGameTests {
                 helper.assertTrue(PlayerSkillAttachmentMarker.isExact(
                                 PlayerSkillAttachmentSerializer.INSTANCE.write(state, player.registryAccess())),
                         "OversizeMarker clone must retain the exact canonical marker");
+                var source = PlayerSkillAttachmentSourceObservation.observe(player);
+                helper.assertTrue(source
+                                instanceof PlayerSkillAttachmentSourceObservation.Quarantined
+                                        quarantined
+                                && quarantined.reason()
+                                        == PlayerSkillAttachmentService.UnavailableReason
+                                                .OVERSIZE_QUARANTINE
+                                && !quarantined.rootsAvailable()
+                                && quarantined.isCurrent(player),
+                        "oversize source observation must be unavailable and identity-bound");
             }
             case READY, READY_GENERATION_BOUNDARY -> {
                 helper.assertTrue(state instanceof PlayerSkillAttachmentReady ready
@@ -951,6 +994,12 @@ public final class PlayerSkillAttachmentGameTests {
                         "Ready clone must retain the complete canonical carrier");
                 assertAvailableEquals(service.draftCount(player), 0,
                         "Ready clone controlled access");
+                var source = PlayerSkillAttachmentSourceObservation.observe(player);
+                helper.assertTrue(source
+                                instanceof PlayerSkillAttachmentSourceObservation.Ready
+                                && source.rootsAvailable()
+                                && source.isCurrent(player),
+                        "Ready source observation must be available and identity-bound");
             }
         }
     }

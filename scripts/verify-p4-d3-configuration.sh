@@ -268,19 +268,58 @@ verify_search_helpers() {
     fi
 }
 
+is_reviewed_e1a_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditCounter.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditStage.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompressedCapacityRejected.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileMetadata.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileSystemAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorStatus.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataFileReader.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataNbtScanner.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflight.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
+        src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 verify_production_no_diff() {
+    local changed=''
     local untracked=''
     local path=''
     local status=0
-    git diff --quiet HEAD -- src/main/java src/main/resources \
-        || fail 'P4-D3-B must not modify production Java or resources'
+    git diff --quiet HEAD -- src/main/resources \
+        || fail 'P4-E1-A must not modify production resources'
+    changed="$(git diff --name-only HEAD -- src/main/java)" || status=$?
+    [[ "${status}" -eq 0 ]] \
+        || fail "git failed while checking tracked production Java (exit ${status})"
+    while IFS= read -r path; do
+        [[ -z "${path}" ]] && continue
+        is_reviewed_e1a_production_path "${path}" \
+            || fail "production Java escaped exact reviewed E1-A allowlist: ${path}"
+    done <<< "${changed}"
+    status=0
     untracked="$(git ls-files --others --exclude-standard -- \
         src/main/java src/main/resources)" || status=$?
     [[ "${status}" -eq 0 ]] \
         || fail "git failed while checking untracked production paths (exit ${status})"
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
-        fail "P4-D3-B added an untracked production path: ${path}"
+        is_reviewed_e1a_production_path "${path}" \
+            || fail "untracked production path escaped exact reviewed E1-A allowlist: ${path}"
     done <<< "${untracked}"
 }
 
