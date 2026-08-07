@@ -668,6 +668,9 @@ P4固定拆分為：
   reconciliation裁決同步進權威文件；無Java／Gradle／CI／study rerun。
 - P4-E0-B.1：documentation-only固定integrated loaded-player snapshot的logical counting、
   post-DFU、freshness／alias與E3 Gate；不改numeric profile、heap或evidence。
+- P4-E0-B.2：documentation-only將heap-floor唯一判定座標修正為effective HotSpot
+  `MaxHeapSize` VM option bytes並同步三狀態、precedence與process controls；不改floor、numeric
+  profile、R2Q evidence或implementation。B.2 remote closure前不得開始／恢復E1-A。
 - P4-E1：read-only bounded offline／integrated audit、full P4-C admission、journal／grouped Store
   audit、memory-only index與bounded completeness results；player／Store／journal mutation與reclaim 0。
 - P4-E2：P4-D login recovery後的online-only immutable latest／equipped reconciliation；offline
@@ -743,10 +746,20 @@ recheck位於全部prebuild之後且緊鄰commit。P3-D回`Committed`後才可�
 P4-E V0的canonical細節只以第18號修正案§18為準。它採25個獨立inclusive
 counters、exact disk-playerdata `IntTag(3955)`、zero P4-E DFU、strict disk
 gzip／unnamed-Compound ingress、
-`INCOMPLETE_AND_CONTINUE`與product-selected `1_610_612_736`-byte／1,536-MiB audit heap
+`INCOMPLETE_AND_CONTINUE`與product-selected
+`MIN_P4_E_ROOT_AUDIT_MAX_HEAP_SIZE_BYTES = 1_610_612_736`／1,536-MiB audit heap
 floor；這些是產品政策，不是universal minimum。V0 closed inventory恰為
 `PLAYER_SKILL_ATTACHMENT`與`PENDING_ATTACHMENT_JOURNAL`，player source必須經完整P4-C
 admission，raw roots在dedup前計capacity，index只memory-only且restart預設Incomplete。
+
+Heap-floor唯一normative observation是
+`HotSpotDiagnosticMXBean.getVMOption("MaxHeapSize").getValue()`的strict canonical base-10
+nonnegative `long`。Effective value小於floor為`HEAP_FLOOR_NOT_MET`，大於等於為
+`QUALIFIED_FLOOR_PRESENT`，bean／option／value／核准observation無法驗證則為
+`HEAP_FLOOR_UNVERIFIABLE`；`Error`／OOME不捕捉。兩個非qualified結果都在journal與source
+work前回Incomplete、startup繼續，directory／file／journal／Attachment／root／Store／reclaim／
+mutation全為0。`Runtime.maxMemory()`、heap usage max、pool max／peak sum都只作diagnostic，
+不得fallback、取min／max、套容差或取代effective `MaxHeapSize`。
 
 Integrated snapshot是platform-post-DFU materialized source：compressed checkpoint不適用且total +0；
 以單次checked、read-only traversal計as-if unnamed-Compound logical width並加入同一
@@ -1210,6 +1223,9 @@ P4-D2：unique policy／SkillId providers、Draft creation、authenticated P3-C 
        Attachment transition與composition outcome
 P4-D3：bootstrap／login recovery、persisted-readback clear、paired restart與combined fixed-heap Gate
 P4-E0-B：documentation-only V0 root-audit authority；無implementation／study rerun
+P4-E0-B.1：documentation-only integrated snapshot counting／freshness authority
+P4-E0-B.2：documentation-only effective HotSpot MaxHeapSize observation／三狀態／precedence／
+           process-control authority；無floor／numeric／R2Q evidence／implementation change
 P4-E1：read-only bounded offline／integrated scanner、full P4-C／journal／Store audit與memory-only index；
       mutation／reclaim 0
 P4-E2：P4-D recovery後login-only immutable reconciliation；offline／Store／journal／reclaim mutation 0
@@ -1324,8 +1340,11 @@ composition outcome、report identity、journal與recovery以
   policy／authority snapshots、preflight zero-mutation failures、Store-first crash windows、
   readback-confirmed clear、replay idempotence、report reference identity與single-process fixed-1-GiB
   combined Gate。
-- P4-E第18號§18的25 counters每維exact／MAX+1與first-failure precedence，heap floor exact／
-  below，directory／relevant exact／+1、UUID grammar、primary／old完整matrix、strict gzip／NBT／
+- P4-E第18號§18的25 counters每維exact／MAX+1與first-failure precedence；effective HotSpot
+  `MaxHeapSize`三狀態、floor − 1／floor／floor + 1 pure seam、1,536 MiB
+  G1／Parallel／Serial／ZGC qualified、1,535 MiB G1 alignment-positive與1,024 MiB G1
+  below-floor controls，並證明Runtime／heap／pool values只作diagnostic及非qualified source work 0；
+  directory／relevant exact／+1、UUID grammar、primary／old完整matrix、strict gzip／NBT／
   disk DataVersion、DFU 0、integrated snapshot四態／disk exclusion、logical width／modified UTF、
   no-copy single traversal／no-DataVersion／identity freshness／inner P4-C purity、closed
   inventory／journal／grouped Store audit，以及65,536／65,537 raw roots before dedup。

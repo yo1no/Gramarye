@@ -255,6 +255,8 @@ P4-D3：bootstrap／login recovery、persisted-readback clear、paired restart�
 P4-E0-B：documentation-only V0 root-audit authority；無implementation／study rerun
 P4-E0-B.1：documentation-only integrated-owner runtime snapshot counting／freshness authority；
          修正stale review ledger，無implementation／study rerun
+P4-E0-B.2：documentation-only effective HotSpot MaxHeapSize observation／三狀態／precedence／
+         process-control authority；無floor／numeric／R2Q evidence／implementation change
 P4-E1：read-only bounded offline／integrated scanner、full P4-C／journal／Store audit、
       memory-only index與bounded completeness results；mutation／reclaim 0
 P4-E2：P4-D recovery後login-only immutable reconciliation；offline／Store／journal／reclaim mutation 0
@@ -1003,9 +1005,17 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
 - 使用25個獨立checked-`long` inclusive counters；exact max合法，第max+1在指定stream
   checkpoint立即停止並回`INCOMPLETE_AND_CONTINUE`。Disk playerdata只接受
   `DataVersion = IntTag(3955)`；integrated snapshot是platform-post-DFU source，不檢查其
-  `DataVersion`，P4-E對兩者的DFU calls都精確為0。Runtime maximum heap低於
-  `1_610_612_736`bytes即`Incomplete(HEAP_FLOOR_NOT_MET)`。數值與counting coordinates
-  不得從本節自行重寫。
+  `DataVersion`，P4-E對兩者的DFU calls都精確為0。Heap-floor唯一判定座標是
+  `HotSpotDiagnosticMXBean.getVMOption("MaxHeapSize").getValue()`的strict canonical base-10
+  nonnegative `long`。Effective value小於
+  `MIN_P4_E_ROOT_AUDIT_MAX_HEAP_SIZE_BYTES = 1_610_612_736`bytes為
+  `Incomplete(HEAP_FLOOR_NOT_MET)`，大於等於為`QUALIFIED_FLOOR_PRESENT`；bean／option／
+  value／核准observation無法驗證為`Incomplete(HEAP_FLOOR_UNVERIFIABLE)`，`Error`／OOME不捕捉。
+  兩個failure狀態都在journal／directory／source work前short-circuit，startup繼續且所有
+  journal observation／directory work／file opens／Attachment admission／raw-root capture／Store
+  target audit／reclaim／source mutation為0。`Runtime.maxMemory()`、heap
+  usage與pool max／peak只作diagnostic，不得fallback、取min／max或套容差。Floor數值與counting
+  coordinates不得從本節自行重寫。
 - 同步掃描trusted playerdata directory，驗canonical UUID primary／old pairs、NOFOLLOW／
   fileKey／race／same-channel identity，並依權威matrix選truth。重用P4-B reviewed strict
   one-member gzip primitives與streaming unnamed-Compound scanner，在allocation前執行長度上cap。
@@ -1036,7 +1046,9 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
   `INTEGRATED_OWNER_FRESHNESS_LOST`、丟棄partial roots、reclaim 0；不retry／merge／
   cross-tick retention。Object identity不證明同一alias未被敵對in-place mutation；V0只依賴
   thread confinement、no-yield／no third-party callback與Gramarye operations的pure／non-mutating Gate。
-- First-failure保持journal readiness → directory count → filename／primary-old pairing →
+- First-failure保持server／thread／lifecycle programming checks → effective HotSpot `MaxHeapSize`
+  observation → `HEAP_FLOOR_NOT_MET`／`HEAP_FLOOR_UNVERIFIABLE` short-circuit → journal readiness →
+  directory count → filename／primary-old pairing →
   integrated selection／identity capture → relevant count → canonical selected-owner order。
   Integrated分支接著skip per-file／aggregate compressed與gzip，再依序logical per-source width →
   aggregate checked-add → structural counters → logical framing completion → skip DataVersion →
@@ -1081,7 +1093,11 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
 
 ### Gate
 
-- 25 counters各自exact／MAX+1、其他24維不超限與canonical precedence；heap exact／below；
+- 25 counters各自exact／MAX+1、其他24維不超限與canonical precedence；effective HotSpot
+  `MaxHeapSize`三狀態與nonqualified zero-work；1,536 MiB G1／Parallel／Serial／ZGC
+  qualified、locked Temurin/macOS aarch64的1,535 MiB G1 alignment-positive、1,024 MiB G1
+  below-floor process controls，以及pure injected floor − 1／floor／floor + 1 comparator；
+  Runtime／heap／pool values只作diagnostic；
   directory／relevant exact／+1；filename／primary-old／gzip／NBT／disk `DataVersion`／
   integrated四態、compressed skip／logical width／modified-UTF／alias freshness完整矩陣。
 - P4-C admission classification等價、inventory coverage、journal Available／Unavailable、grouped Store
@@ -1643,11 +1659,13 @@ preflight、P3-D commit與Attachment transition。
 - [ ] Cross-location update有明確ordering、bounded recovery journal與reconciliation；不宣稱
       fsync或durable atomic。
 - [ ] Persistent roots只有在第18號§18的closed inventory、25 counters、disk exact
-      `DataVersion`／zero DFU、integrated logical width／pure admission／identity freshness、heap floor、
+      `DataVersion`／zero DFU、integrated logical width／pure admission／identity freshness、effective
+      HotSpot `MaxHeapSize` observation為`QUALIFIED_FLOOR_PRESENT`、
       full P4-C／journal／Store audit全部通過時才可
       Complete；E1／E2／reconciliation當輪皆reclaim 0，只有E3 same-ServerStarting call chain
-      可使用fresh Complete。P4-E0-B.1 closure前P4-E1 review blocked，review核准前
-      implementation不開始；exact 1,536-MiB production Gate未通過前P4-E不完成。
+      可使用fresh Complete。P4-E0-B.1 closure前P4-E1 review blocked；review核准後若發現active
+      heap-coordinate conflict，P4-E0-B.2 commit／push／remote closure前仍不得開始／恢復E1-A；
+      exact 1,536-MiB production Gate未通過前P4-E不完成。
 - [ ] 新生命週期有清理與 idempotence。
 - [ ] `/skill trace` 可解釋失敗。
 - [ ] dedicated server 無 client class。

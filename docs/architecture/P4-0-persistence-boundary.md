@@ -53,7 +53,10 @@ This page is a compact phase boundary, not a second persistence specification.
   paired restart/crash matrix and combined fixed-heap／Gradle／CI Gates.
 - P4-E0-B owns the V0 numeric／heap／truth／completeness authority synchronization. P4-E0-B.1
   owns only the documentation clarification for integrated loaded-player source selection, logical
-  counting, post-DFU handling, freshness／alias limits, and the E3 integrated Gate. P4-E1 owns the read-only bounded offline／
+  counting, post-DFU handling, freshness／alias limits, and the E3 integrated Gate. P4-E0-B.2 owns
+  only the documentation correction from `Runtime.maxMemory()` to effective HotSpot `MaxHeapSize`
+  VM-option bytes, its three-state／precedence contract, and process-control roles; it changes no
+  floor, numeric maximum, R2Q evidence, or implementation. P4-E1 owns the read-only bounded offline／
   integrated scanner, full P4-C and journal projection, grouped Store audit, memory-only index, and
   bounded completeness results; it owns no mutation or reclaim call. P4-E2 owns only login-time
   immutable reconciliation after P4-D recovery and owns no offline, Store, journal, or reclaim
@@ -203,7 +206,13 @@ reviewed change; dynamic registration cannot prove completeness.
 
 The read-only audit uses the amendment's 25 independent inclusive counters, exact disk-playerdata
 `IntTag(3955)`, zero P4-E DFU, strict disk gzip／NBT language, product-selected 1,536-MiB heap floor,
-and `INCOMPLETE_AND_CONTINUE`. The integrated source is instead platform-post-DFU: it has no
+and `INCOMPLETE_AND_CONTINUE`. Its sole heap-floor coordinate is the strict canonical nonnegative
+`long` from HotSpot's `MaxHeapSize` VM option: below the unchanged
+`MIN_P4_E_ROOT_AUDIT_MAX_HEAP_SIZE_BYTES = 1_610_612_736`-byte floor is
+`HEAP_FLOOR_NOT_MET`, at／above is `QUALIFIED_FLOOR_PRESENT`, and an unavailable／invalid observation
+is `HEAP_FLOOR_UNVERIFIABLE`. Both nonqualified statuses short-circuit before journal／source work
+with startup continuing and reclaim／mutation zero; Runtime／heap／pool memory values are diagnostic
+only. The integrated source is instead platform-post-DFU: it has no
 compressed coordinate, contributes a single-pass as-if unnamed-Compound logical width and the same
 structural／aggregate counters, excludes its UUID's disk pair from selection, and performs an exact
 reference-identity freshness recheck without a whole-tree copy or cross-tick retention. Every
@@ -240,11 +249,11 @@ required paired fixed-1-GiB combined first／restart remote Gate pass; the first
 complete simultaneous submission envelope.
 
 P4-E0 is complete. The first P4-E1 read-only design review stopped because P4-E0-B had not defined
-the integrated loaded-player snapshot's counting and freshness coordinate. The Stop Rule kept that
-review read-only, leaving a stale `OPEN` label that P4-E0-B.1 corrects as part of the authority patch.
-P4-E0-B.1 is now committed, pushed, and remotely closed, so P4-E1 read-only design review is open.
-Implementation is not started and cannot begin unless that review is explicitly approved. E2 remains
-blocked until E1 implementation completion; E3 remains blocked until E2 completion. E1 must
+the integrated loaded-player snapshot's counting and freshness coordinate; P4-E0-B.1 resolved that
+blocker, and the renewed read-only design review passed. The following E1-A attempt stopped at an
+active heap-floor authority-coordinate conflict. P4-E0-B.2 is now implemented locally as a clean
+documentation-only correction; E1-A is blocked until its commit／push／remote closure, E1-B waits for
+E1-A closure, and E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1069,9 +1078,10 @@ authority patch is commit `be4dc13bd9ae651b1b99999c06cecf67595a0cdd`, tree
 `origin/main`. Maintainer-provided evidence
 records remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and
 `P4-D memory gates` as PASS. Those jobs did not rerun the R2Q formal study and do not replace its
-gitignored official evidence. Production code and official evidence remain unchanged; E1／E2／E3
-implementation has not started. Historical P4-D0 and P3-C phase-status snapshots remain valid as
-history; this section is the later current-status index for P4-E.
+gitignored official evidence. At the E0-B closure revision, production code and official evidence
+were unchanged and E1／E2／E3 implementation had not started. That is superseded historical wording;
+the later current status is recorded below. Historical P4-D0 and P3-C phase-status snapshots remain
+valid as history; this section is the later current-status index for P4-E.
 
 The first P4-E1 read-only design review then stopped because E0-B had not assigned the already
 materialized integrated snapshot an exact counting／freshness coordinate. Its Stop Rule prohibited a
@@ -1099,8 +1109,29 @@ unchanged and verified successfully; B.1 did not rerun the formal study. Maintai
 evidence records remote `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and
 `P4-D memory gates` as PASS for this authority commit. The commit changed no production code,
 numeric maximum, heap floor, or R2Q evidence. Branch-protection required-check configuration remains
-external governance unknown. This closure opens only P4-E1 read-only design review, not
-implementation.
+external governance unknown. At the B.1 closure revision this opened only P4-E1 read-only design
+review, not implementation. That is superseded historical wording; the renewed review later passed
+and the first E1-A attempt then stopped at the B.2 conflict below.
+
+P4-E0-B.2 is the documentation-only correction discovered by the approved E1-A implementation
+attempt. It makes
+`HotSpotDiagnosticMXBean -> getVMOption("MaxHeapSize") -> VMOption.value -> strict canonical
+base-10 nonnegative long` the sole normative heap-floor observation. The unchanged floor is
+`MIN_P4_E_ROOT_AUDIT_MAX_HEAP_SIZE_BYTES = 1_610_612_736` bytes: lower is `HEAP_FLOOR_NOT_MET`,
+at／above is
+`QUALIFIED_FLOOR_PRESENT`, and an absent／invalid／overflowing observation or approved observation
+`RuntimeException` is `HEAP_FLOOR_UNVERIFIABLE`; `Error`／OOME are not caught. Runtime heap and
+collector-pool values are diagnostic only and never fallback, min／max, tolerance, or authority
+inputs. Both nonqualified statuses return Incomplete before journal／directory／source work and keep
+all admission／root／Store audit／reclaim／mutation counts at zero while startup continues.
+
+The process controls are 1,536 MiB G1／Parallel／Serial／ZGC qualified at effective floor; the locked
+Temurin 21.0.8+9／macOS aarch64 1,535 MiB G1 alignment-positive qualified control; the 1,024 MiB G1
+real below-floor control; and a pure injected floor − 1／floor／floor + 1 comparator. They add no
+ceiling. B.2 leaves the R2Q profile／case plan／25 maxima／floor／29 results／six-file official evidence
+unchanged and does not rerun the study. The stopped E1-A worktree was externally checksummed and
+replay-verified before this clean patch and is not part of the documentation commit. The P4-E3
+production-shaped fixed-1,536-MiB first／restart Gate remains mandatory.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1124,14 +1155,15 @@ P4-E0-A research/adjudication = COMPLETE
 P4-E0-R1/R2/R2R/R2Q           = COMPLETE
 P4-E0-B authority patch        = COMPLETE
 P4-E0-B.1 authority patch      = COMPLETE
-P4-E0                           = COMPLETE
-P4-E1 prior read-only review    = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
-P4-E1 prior exact blocker       = INTEGRATED SNAPSHOT COUNTING/FRESHNESS UNDEFINED BY P4-E0-B
-P4-E1 read-only design review  = OPEN
-P4-E1 implementation           = NOT STARTED
-P4-E2                           = BLOCKED
-P4-E3                           = BLOCKED
-P4-E                            = INCOMPLETE
+P4-E0-B.2 authority patch      = IMPLEMENTED LOCALLY; COMMIT/PUSH/REMOTE PENDING
+P4-E0                          = COMPLETE
+P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
+P4-E1 read-only design review  = PASS
+P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
+P4-E1-A implementation         = BLOCKED UNTIL B.2 CLOSURE
+P4-E1-B                        = BLOCKED UNTIL E1-A CLOSURE
+P4-E2 / P4-E3                  = BLOCKED
+P4-E                           = INCOMPLETE
 ```
 
 The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed by
@@ -1151,9 +1183,10 @@ portable configuration verifier, and P4-D memory CI job committed at `HEAD`／`o
 externally reported remote build／A3／B／C／D jobs passed. P4-D is complete. P4-E was ready for
 read-only design review only as a historical P4-D closure statement; the E0 research／adjudication
 lineage and E0-B authority closure are now complete. The first P4-E1 read-only design review stopped
-at the integrated-snapshot counting／freshness authority Gate; B.1 corrects the stale `OPEN` ledger.
-The B.1 authority patch is now closed and the renewed read-only review is open, while implementation
-remains not started and requires explicit review approval. E2／E3 remain blocked and
-P4-E remains incomplete. The E0-B／B.1 remote jobs did not rerun the R2Q formal study, and P4-E3 still
+at the integrated-snapshot counting／freshness authority Gate; B.1 resolved it and the renewed review
+passed. The subsequent E1-A attempt stopped at the active heap-floor coordinate conflict. B.2 is
+implemented locally, with commit／push／remote closure pending; E1-A, E1-B, E2, and E3 remain blocked
+as listed above, and P4-E remains incomplete. The E0-B／B.1 remote jobs did not rerun the R2Q formal
+study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate.
 Branch-protection required-check configuration remains external governance unknown.

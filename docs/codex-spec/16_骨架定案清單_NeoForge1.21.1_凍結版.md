@@ -250,12 +250,19 @@ DefinitionEnvelope
   admission ceiling，不保證V0 canonical revision可成功產生同長度資料；V0目前最大完整合法
   revision為`1_048_661` bytes，inner document limit仍獨立執行。
 - 【Offline roots】P4-E V0 以第18號修正案§18的25維inclusive vector、exact disk-playerdata
-  `IntTag(3955)`、zero P4-E DFU、1,536 MiB product-selected audit heap floor 與
+  `IntTag(3955)`、zero P4-E DFU、`MIN_P4_E_ROOT_AUDIT_MAX_HEAP_SIZE_BYTES = 1_610_612_736`
+  （1,536 MiB）product-selected audit heap floor 與
   `INCOMPLETE_AND_CONTINUE` 執行bounded read-only audit。Closed inventory恰為player skill
   Attachment與pending journal；restart預設Incomplete，任一source／counter／heap／Store audit
   無法證明完整時不得sweep。Index只memory-only，不強制載入chunk、不background／
   periodic audit、不跨tick保存`Complete`。這個heap floor是產品選擇，不是universal
-  safe minimum。
+  safe minimum。Heap-floor唯一判定座標是
+  `HotSpotDiagnosticMXBean.getVMOption("MaxHeapSize").getValue()`的strict canonical base-10
+  nonnegative `long`，不是requested `-Xmx`或`Runtime.maxMemory()`。小於floor為
+  `HEAP_FLOOR_NOT_MET`，大於等於為`QUALIFIED_FLOOR_PRESENT`，bean／option／value／核准
+  observation無法驗證則為`HEAP_FLOOR_UNVERIFIABLE`；兩個非qualified狀態都在journal、directory
+  與source work前回Incomplete，startup繼續且reclaim／mutation為0。Runtime、heap-usage與pool
+  memory values只作diagnostic，不得fallback、取min／max或套用容差；`Error`／OOME不捕捉。
 - 【Integrated owner】Platform-post-DFU loaded-player snapshot不讀`DataVersion`、不再DFU、沒有
   compressed coordinate，以單次read-only traversal計as-if unnamed-Compound logical width與同一
   structural／aggregate counters。它在owner UUID順序中取代同UUID disk source，不copy、不寫
@@ -716,7 +723,10 @@ PresentationEvent
   P4-E3另須在單一fixed-1,536-MiB process使用production scanner／index／reclaim
   composition，同時保留第18號§18的25維exact profile、1,024次full P4-C admissions、
   65,536 raw roots、4,096 journal targets、full Store／carrier／deep copy與prospective filtered
-  carrier，並覆蓋每維MAX+1、heap-below-floor、reconciliation N／next-restart N+1。R2Q research
+  carrier，並覆蓋每維MAX+1、effective-MaxHeap三狀態與reconciliation N／next-restart N+1。
+  Heap process controls精確包含1,536 MiB G1／Parallel／Serial／ZGC qualified、locked
+  Temurin/macOS aarch64的1,535 MiB G1 alignment-positive、1,024 MiB G1 below-floor，以及pure
+  injected floor − 1／floor／floor + 1 comparator；這些是test roles，不是新增ceiling。R2Q research
   evidence不能取代這個production Gate，1,536 MiB也不是universal minimum。Gate必須
   實際覆蓋integrated-owner runtime snapshot path或提供reviewed machine-checked domination proof；
   這條path不得建立second whole-tree copy或同時hydrate同owner disk tree。
@@ -850,6 +860,8 @@ P4-E0-B：documentation-only V0 numeric／heap／truth／completeness／reconcil
         無Java／Gradle／CI／study rerun
 P4-E0-B.1：documentation-only integrated snapshot counting／post-DFU／freshness authority；
           無implementation／numeric change／study rerun
+P4-E0-B.2：documentation-only effective HotSpot MaxHeapSize observation／三狀態／precedence／
+          process-control authority；無floor／numeric／R2Q evidence／implementation change
 P4-E1：read-only bounded offline／integrated audit、full P4-C admission、journal／Store audit、
       memory-only index與Complete／Incomplete／ReconciliationRequired；reclaim／mutation 0
 P4-E2：P4-D recovery後login-only immutable latest／equipped reconciliation；offline／Store／
@@ -982,7 +994,8 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
       composition outcome不把Prepared冒充Committed；strict `writeAnyTag` framing、partial availability、
       continuous chain與single-process fixed-1-GiB combined Gate均通過。
 - [ ] P4-E0-B.1 authority patch已commit／push／remote closure後才重開E1 read-only review；
-      review核准前不開始implementation。E1只作read-only
+      review核准後仍須先完成P4-E0-B.2 effective-MaxHeapSize authority commit／push／remote closure，
+      才可開始或恢復E1-A implementation。E1只作read-only
       bounded audit、E2只作login reconciliation，二者reclaim 0。Offline roots包含offline
       players與journal targets，restart預設Incomplete，只有E3在同一ServerStarting call
       chain使用fresh Complete即時controlled reclaim exactly once；25-counter／disk DataVersion／
