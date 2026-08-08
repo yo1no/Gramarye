@@ -56,8 +56,12 @@ This page is a compact phase boundary, not a second persistence specification.
   counting, post-DFU handling, freshness／alias limits, and the E3 integrated Gate. P4-E0-B.2 owns
   only the documentation correction from `Runtime.maxMemory()` to effective HotSpot `MaxHeapSize`
   VM-option bytes, its three-state／precedence contract, and process-control roles; it changes no
-  floor, numeric maximum, R2Q evidence, or implementation. P4-E1 owns the read-only bounded offline／
-  integrated scanner, full P4-C and journal projection, grouped Store audit, memory-only index, and
+  floor, numeric maximum, R2Q evidence, or implementation. P4-E0-B.3 owns only the documentation
+  clarification for online source counter applicability, `online > integrated > disk` arbitration,
+  unified UUID ordering, final online freshness, and the E3 online qualification obligation; it too
+  changes no numeric profile, evidence, or implementation. P4-E1 owns the read-only bounded online／
+  integrated／disk scanner; full P4-C applies only to disk／integrated Tags while online observes the
+  existing admitted state. E1 also owns journal projection, grouped Store audit, memory-only index, and
   bounded completeness results; it owns no mutation or reclaim call. P4-E2 owns only login-time
   immutable reconciliation after P4-D recovery and owns no offline, Store, journal, or reclaim
   mutation. P4-E3 owns the unique same-`ServerStartingEvent` fresh-audit-to-single-controlled-reclaim
@@ -194,7 +198,7 @@ Store mutation precedes Attachment mutation. A bounded world journal records the
 generation/pointer transition. An in-memory `setData` does not prove durability; journal entries
 clear only after later persisted playerdata readback confirms the target.
 
-## Offline roots and reclaim
+## Player roots and reclaim
 
 The exact V0 authority is indexed by the
 [P4-E0 bounded root-audit authority boundary](P4-E0-root-audit-boundary.md) and remains normative in
@@ -212,11 +216,17 @@ and `INCOMPLETE_AND_CONTINUE`. Its sole heap-floor coordinate is the strict cano
 `HEAP_FLOOR_NOT_MET`, at／above is `QUALIFIED_FLOOR_PRESENT`, and an unavailable／invalid observation
 is `HEAP_FLOOR_UNVERIFIABLE`. Both nonqualified statuses short-circuit before journal／source work
 with startup continuing and reclaim／mutation zero; Runtime／heap／pool memory values are diagnostic
-only. The integrated source is instead platform-post-DFU: it has no
+only. Online, integrated, and disk primary／old are source kinds within the one
+`PLAYER_SKILL_ATTACHMENT` family; per-UUID precedence is `online > integrated > disk` and all
+selected owners share one UUID-natural order. Online observes only the existing admitted
+Missing／Ready／Quarantined state: it has no per-file counter instance, contributes zero byte／
+structural aggregates and admissions, and contributes actual Ready roots. The integrated source is
+platform-post-DFU: it has no
 compressed coordinate, contributes a single-pass as-if unnamed-Compound logical width and the same
 structural／aggregate counters, excludes its UUID's disk pair from selection, and performs an exact
-reference-identity freshness recheck without a whole-tree copy or cross-tick retention. Every
-selected player source undergoes full P4-C admission; raw
+reference-identity freshness recheck without a whole-tree copy or cross-tick retention. Only
+disk／integrated materialized Tags undergo full P4-C admission. Online and integrated winners exclude
+same-UUID disk ingress, while physical entries still count toward directory/race evidence. Raw
 latest/equipped/journal claims count toward the 65,536 ceiling before deduplication and then undergo
 grouped exact-reference/owner Store audit. Missing or foreign offline pointers defer to login and
 leave disk unchanged. The index is memory-only, starts Incomplete after restart, retains no raw
@@ -253,8 +263,10 @@ the integrated loaded-player snapshot's counting and freshness coordinate; P4-E0
 blocker, and the renewed read-only design review passed. The following E1-A attempt stopped at an
 active heap-floor authority-coordinate conflict. P4-E0-B.2 is complete, its closure remote
 prerequisites passed, and E1-A has been restored, re-preflighted, implemented, committed, pushed,
-and remotely qualified. E1-A is complete. The E1-B read-only design review is open; E1-B
-implementation has not started, and E2／E3 remain blocked. E1 must
+and remotely qualified. E1-A is complete. The E1-B read-only design review then stopped at the
+online source counter applicability authority gap. P4-E0-B.3 is now
+implemented locally as a documentation-only correction; a new E1-B read-only review remains blocked
+until B.3 commit／push／remote closure. E1-B implementation has not started, and E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1207,8 +1219,28 @@ Log4j rollover warning was a generated-output `NoSuchFileException` while deleti
 rebuildable root `logs/` output was precisely removed. Official R2Q evidence remained byte-identical
 and was not rerun. Maintainer-provided evidence records remote `build`, `P4-A3 memory gates`,
 `P4-B memory gates`, `P4-C memory gates`, and `P4-D memory gates` as PASS. E1-A is complete; the
-E1-B read-only design review is open, E1-B implementation has not started, E2／E3 remain blocked,
-and P4-E remains incomplete.
+E1-B read-only design review subsequently stopped at the online source counter applicability
+authority gap; E1-B implementation has not started, E2／E3 remain blocked, and P4-E remains
+incomplete.
+
+P4-E0-B.3 is the documentation-only correction for that gap. It fixes
+`ONLINE_PLAYER_ATTACHMENT` as a source kind within `PLAYER_SKILL_ATTACHMENT`, per-UUID precedence
+`online > integrated > disk`, `relevant_records` once per selected authoritative owner UUID, and a single UUID-natural owner
+order. Online uses only E1-A's already-admitted Missing／Ready／Quarantined observation: per-file
+counters are not applicable, byte／structural aggregates and admission contribute zero, and Ready
+contributes actual latest／equipped claims. Exact initial／final player／server／presence／state witness
+is required, with final freshness only after journal claims and grouped Store audit on a
+Complete-candidate path. It cannot overwrite an earlier terminal failure.
+
+B.3 does not change the 25 maxima, the effective-`MaxHeapSize` floor, the R2Q profile／case plan／
+identity, or official evidence, and it does not rerun R2Q or change production. R2Q did not naturally
+execute online players; E3 must therefore run online Missing＋Ready／exclusion／freshness in the same
+1,536-MiB envelope, or provide a machine-checked domination proof plus an actual freshness runtime
+test, while retaining relevant 2,048 and raw roots 65,536 exact. A new E1-B read-only review remains
+blocked until this local B.3 patch is committed, pushed, and remotely closed.
+The pre-patch ledger still said `OPEN` only because the stopped review's Stop Rule prohibited a
+documentation change; B.3 records the exact stop. It does not auto-ready E1-B: after B.3 closure,
+the read-only review must restart from preflight before any implementation can be considered.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1233,12 +1265,14 @@ P4-E0-R1/R2/R2R/R2Q           = COMPLETE
 P4-E0-B authority patch        = COMPLETE
 P4-E0-B.1 authority patch      = COMPLETE
 P4-E0-B.2 authority patch      = COMPLETE
+P4-E0-B.3 online source counter authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
 P4-E0                          = COMPLETE
 P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
-P4-E1 read-only design review  = PASS
+P4-E1-A enabling read-only review = PASS (HISTORICAL)
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
 P4-E1-A                        = COMPLETE
-P4-E1-B read-only design review = OPEN
+P4-E1-B prior read-only review = STOPPED AT ONLINE SOURCE COUNTER APPLICABILITY AUTHORITY GAP
+P4-E1-B new read-only review   = BLOCKED UNTIL P4-E0-B.3 CLOSURE
 P4-E1-B implementation         = NOT STARTED
 P4-E2 / P4-E3                  = BLOCKED
 P4-E                           = INCOMPLETE
@@ -1264,10 +1298,12 @@ lineage and E0-B authority closure are now complete. The first P4-E1 read-only d
 at the integrated-snapshot counting／freshness authority Gate; B.1 resolved it and the renewed review
 passed. The subsequent E1-A attempt stopped at the active heap-floor coordinate conflict. B.2 is
 complete; the controlled restore, fresh re-preflight, E1-A implementation, commit／push, and remote
-closure now pass. E1-A is complete. E1-B is open only for read-only design review; its
-implementation has not started. E2 and E3 remain blocked, and P4-E remains incomplete. The
-E0-B／B.1／B.2
+closure now pass. E1-A is complete. E1-B's prior read-only review stopped at the online counter
+applicability gap; B.3 is locally implemented,
+but a new review is blocked until B.3 closure and implementation has not started. E2 and E3 remain
+blocked, and P4-E remains incomplete. The E0-B／B.1／B.2
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
-requires the production-shaped fixed-1,536-MiB first／restart Gate.
+requires the production-shaped fixed-1,536-MiB first／restart Gate including the B.3 online
+actual-path／domination-proof obligation.
 Branch-protection required-check configuration remains external governance unknown.

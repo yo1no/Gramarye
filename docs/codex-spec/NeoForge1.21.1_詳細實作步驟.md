@@ -257,7 +257,10 @@ P4-E0-B.1：documentation-only integrated-owner runtime snapshot counting／fres
          修正stale review ledger，無implementation／study rerun
 P4-E0-B.2：documentation-only effective HotSpot MaxHeapSize observation／三狀態／precedence／
          process-control authority；無floor／numeric／R2Q evidence／implementation change
-P4-E1：read-only bounded offline／integrated scanner、full P4-C／journal／Store audit、
+P4-E0-B.3：documentation-only online source counter applicability／online > integrated > disk／
+         UUID ordering／final freshness／E3 obligation；無numeric／R2Q evidence／implementation change
+P4-E1：read-only bounded online／integrated／disk scanner；online existing-state observation only，
+      disk／integrated full P4-C；journal／Store audit、
       memory-only index與bounded completeness results；mutation／reclaim 0
 P4-E2：P4-D recovery後login-only immutable reconciliation；offline／Store／journal／reclaim mutation 0
 P4-E3：unique ServerStarting fresh audit→controlled reclaim once、restart／fixed-1,536-MiB／CI gates
@@ -487,7 +490,7 @@ Mark set：
 ∪ active in-memory pins
 ```
 
-External roots由P4-E complete offline audit提供player latest／equipped、pending journal與每一個
+External roots由P4-E complete player-root audit提供player latest／equipped、pending journal與每一個
 已啟用的SkillInstance／Marker／Construct／Schedule persistent source family；P3-D不依賴這些
 runtime classes。Owner不pin全部revisions。只有non-latest、無external root且active pin count
 為0者可回收。
@@ -535,7 +538,11 @@ P4-E0-B只將核准的V0 root-audit政策同步進權威Markdown；該文件patc
 push且remote closure完成。P4-E0-B.1只補完integrated runtime snapshot計量與freshness
 authority，並修正前次read-only review命中Stop Rule後仍留下的stale `OPEN`；B.1
 commit／push／remote closure前P4-E1 review保持blocked，review核准前implementation仍為
-`NOT STARTED`。E1完成前不得開始E2，E2完成前不得開始E3。E0-B／B.1
+`NOT STARTED`。P4-E0-B.2完成effective `MaxHeapSize` authority correction後，E1-A已closure；
+其後E1-B read-only review因online source counter applicability gap停止。P4-E0-B.3只固定online
+source coordinate／arbitration／ordering／freshness／E3 obligation；B.3 commit／push／remote closure前
+新的E1-B review blocked，closure後須從頭重開review，不直接開始implementation。E1完成前不得
+開始E2，E2完成前不得開始E3。E0-B／B.1／B.2／B.3
 不寫Java／Gradle／CI，不重跑R1／R2／R2Q formal study。
 
 P4-A1～A3、P4-B1／B2與P4-C～E不得重寫P3-D owner truth、quota counting、CAS、revision allocation或reclaim
@@ -995,7 +1002,7 @@ Store commit composition、journal domain／generation chain、revision allocati
 Network、caller-supplied owner／authorization／quota／context／revision／Store state、Attachment-first、
 raw Store exposure、Store rollback、offline enumeration、P4-E implementation及重寫P4-A2 encoding。
 
-## P4-E：Offline roots 與 reconciliation
+## P4-E：Player roots 與 reconciliation
 
 完整canonical authority是[18號修正案的§18](18_P4持久化與組合修正案.md)。
 本節只將實作強制分成三個不可合併的工作包。
@@ -1019,13 +1026,22 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
 - 同步掃描trusted playerdata directory，驗canonical UUID primary／old pairs、NOFOLLOW／
   fileKey／race／same-channel identity，並依權威matrix選truth。重用P4-B reviewed strict
   one-member gzip primitives與streaming unnamed-Compound scanner，在allocation前執行長度上cap。
-- Integrated source選擇固定四態：profile與loaded snapshot都存在時選
+- `ONLINE_PLAYER_ATTACHMENT`只是既有`PLAYER_SKILL_ATTACHMENT` family內的source kind，不新增
+  closed-inventory family／provider。在server logic thread先由`PlayerList#getPlayers()` live view建立bounded compact online identity
+  observation，不保留live view；每項只存exact player／authenticated UUID／server。第2,049個distinct
+  UUID使用既有`relevant_records` cap立即失敗，不新增online ceiling；duplicate UUID、wrong server、
+  null player fail-fast。每UUID truth precedence固定為`online > integrated > disk`，online勝出時不
+  open／decode disk、不project integrated；physical disk entries仍計directory及race witness。
+- 沒有online winner時，Integrated source選擇固定四態：profile與loaded snapshot都存在時選
   `INTEGRATED_RUNTIME_SNAPSHOT`並以authenticated profile UUID為owner；profile存在但snapshot
   為null，或兩者都不存在時，回一般disk primary／old matrix；snapshot存在但profile
   不存在時回Global Incomplete `INTEGRATED_OWNER_IDENTITY_UNAVAILABLE`。選snapshot時不重讀
   `level.dat`、不open／decode同UUID disk pair，也不雙重投影roots；該pair實際目錄entry
   仍計`directory_entries`並參與directory race witness，但不計`relevant_records`。
-- Snapshot自身不增`directory_entries`，選中時`relevant_records += 1`。它對
+- `relevant_records`統一為每個selected authoritative owner UUID一筆，source kind可為ONLINE、
+  INTEGRATED、DISK_PRIMARY、DISK_OLD；maximum 2,048 inclusive，第2,049筆立即capacity failure。
+  Online Missing／Ready／Quarantined都先+1，integrated選中時+1；online／integrated勝出時同UUID
+  disk pair +0，counter不因zero roots或quarantine退還。Snapshot自身不增`directory_entries`。它對
   `compressed_bytes_per_file` complete skip，對`compressed_bytes_total`貢獻`+0`；其他
   per-source／aggregate structural counters與`decompressed_bytes_per_file`／`_total`均適用。
   計量為per-selected-source的as-if unnamed-Compound logical width：1-byte root type＋
@@ -1039,25 +1055,39 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
   admission一次完成後`attachment_admissions += 1`，只有Ready可將latest-present與
   equipped以raw order／duplicates投入global `raw_root_claims`；任何quarantine／schema／
   migration／Draft hydrate或其他rejection都是Global Incomplete，不保存partial roots。
+- Online全部per-file counters為`NOT_APPLICABLE`，byte／structural aggregates +0，
+  `attachment_admissions` +0，Ready actual latest／equipped roots在append前計cap且保留duplicates；
+  `NOT_APPLICABLE`不是0-byte file，精確25-row table以第18號§18為準。Online只使用E1-A
+  non-installing Missing／Ready／Quarantined observation，不取raw Tag、不重跑serializer／admission、
+  tree／size／DataVersion／DFU，不安裝default或`setData`。Missing是zero roots；兩種quarantine均
+  `ATTACHMENT_QUARANTINED`。
 - Integrated traversal只能在same server logic thread、same pre-login `ServerStarting`
   composition call chain內使用；入口capture exact server、profile UUID、loaded `CompoundTag`
-  identity與online／source-set witnesses，完成count／admission／projection後、Complete candidate
+  identity與source-set witnesses；online initial／final witness依下一項獨立保存與驗證，不以
+  integrated witness替代。完成count／admission／projection後、Complete candidate
   或reclaim前重取並驗證同一identity與witnesses。失敗回
   `INTEGRATED_OWNER_FRESHNESS_LOST`、丟棄partial roots、reclaim 0；不retry／merge／
   cross-tick retention。Object identity不證明同一alias未被敵對in-place mutation；V0只依賴
   thread confinement、no-yield／no third-party callback與Gramarye operations的pure／non-mutating Gate。
-- First-failure保持server／thread／lifecycle programming checks → effective HotSpot `MaxHeapSize`
-  observation → `HEAP_FLOOR_NOT_MET`／`HEAP_FLOOR_UNVERIFIABLE` short-circuit → journal readiness →
-  directory count → filename／primary-old pairing →
-  integrated selection／identity capture → relevant count → canonical selected-owner order。
-  Integrated分支接著skip per-file／aggregate compressed與gzip，再依序logical per-source width →
-  aggregate checked-add → structural counters → logical framing completion → skip DataVersion →
-  full P4-C admission → admission counter → raw roots；所有source後才是raw-root bound →
-  grouped Store audit → final freshness recheck → Complete candidate。Disk branch precedence不變。
+- Global first-failure精確為：programming／null／thread → effective heap → Store installed／Ready →
+  journal bootstrap／Ready → inventory coverage → directory enumeration／count → filename／pair metadata →
+  bounded online identity → integrated four-state → `online > integrated > disk` arbitration → all-source
+  owner UUID natural sort → per-owner relevant checkpoint → source-local observation／admission → player
+  roots → journal roots → grouped Store audit → final freshness → result／index。Pairing只是metadata；
+  online／integrated winner不得進同UUID disk strict ingress。Owner內latest按SkillId、equipped按slot，
+  journal在所有player claims後；不得all-online-first。Integrated分支在source-local stage依序skip
+  compressed／gzip → logical width／aggregate → structural counters → skip DataVersion → full P4-C
+  admission → admission counter → roots；disk stream precedence不變。
+- Initial online witness保存exact server／UUID／player／hasData presence／state identity或exact absence。
+  只有原本可Complete且journal claims／Store audit成功後才重取完整online UUID set，驗same player／
+  server／presence／state identity；不reproject、不讀disk、不重跑admission、不retry。Drift回
+  `ONLINE_SOURCE_FRESHNESS_LOST`、discard claims／capability、index Incomplete、reclaim 0。較早counter／
+  source／Attachment／journal／Store／reconciliation terminal failure不得被final freshness覆蓋。
 - V0 closed inventory恰為`PLAYER_SKILL_ATTACHMENT`與`PENDING_ATTACHMENT_JOURNAL`；使用
   package-private compile-time inventory、exhaustive no-default switch與exact provider coverage。
   SkillInstance／Marker／Construct／Schedule尚未啟用，Store latest／active pins由P3-D implicit。
-- Player Tag必須走完整P4-C admission，不建立root-only parser；journal使用P4-D
+- Disk／integrated Player Tag必須走完整P4-C admission；online只觀察existing state且admission +0。
+  不建立root-only parser；journal使用P4-D
   projection。Raw latest／equipped／journal claims在dedup前最多65,536、再作grouped exact
   reference／expected-owner Store audit，每distinct SkillId最多一次history lookup。
 - Index只memory-only、restart預設Incomplete，不存raw、Store truth或Complete token。E1的
@@ -1089,7 +1119,10 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
   grouped audit、index、Complete、filtered carrier與SavedData deep copy。R2Q不取代此Gate，
   也未自然涵蓋integrated runtime alias path；E3必須實際加入integrated-owner path，或提供
   reviewed machine-checked domination proof。Snapshot取代同owner disk source，不同時hydrate兩份
-  player tree，不建立second whole-tree copy。
+  player tree，不建立second whole-tree copy。R2Q也未自然執行online `ServerPlayer` path；同一
+  envelope須actual執行online Missing＋Ready、source exclusion與initial／final witness，或提供
+  reviewed machine-checked domination proof並另跑actual online freshness runtime test。兩種方案
+  都要維持relevant 2,048與raw roots 65,536 exact，不能因online多數counter為+0而略過。
 
 ### Gate
 
@@ -1099,7 +1132,9 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
   below-floor process controls，以及pure injected floor − 1／floor／floor + 1 comparator；
   Runtime／heap／pool values只作diagnostic；
   directory／relevant exact／+1；filename／primary-old／gzip／NBT／disk `DataVersion`／
-  integrated四態、compressed skip／logical width／modified-UTF／alias freshness完整矩陣。
+  integrated四態、compressed skip／logical width／modified-UTF／alias freshness，以及online
+  Missing／Ready／兩種Quarantined、25-counter applicability、admission +0、source exclusion、
+  unified UUID order與final freshness完整矩陣。
 - P4-C admission classification等價、inventory coverage、journal Available／Unavailable、grouped Store
   audit、raw roots 65,536／65,537 before dedup、offline disk hash不變、recovery-before-E2、
   atomic multiprune／MAX、index invalidation與N／N+1。
@@ -1113,9 +1148,11 @@ provider completeness、persistent index、Incomplete best-effort reclaim、E1�
 policy、network或E1／E2／E3合併。Integrated snapshot額外禁止whole-tree copy、byte-array
 serialization、`DataVersion` Gate／re-DFU、同UUID disk relevant／roots雙計、跨tick保存、
 second checksum traversal、registered serializer wrapper或以identity宣稱可排除敵對in-place mutation。
+Online額外禁止raw Tag、serializer／admission、tree／size／DataVersion／DFU、online-first partition、
+same-UUID second truth、reprojection、retry／rescan或以final freshness覆蓋較早terminal failure。
 若same-call-chain identity recheck不可行，或pure inner P4-C core會修改input且只能靠
 serializer／copy／re-encode，停止E1。若E3 exact profile的
-disk或integrated path在1,536MiB OOME／timeout，停止並先修訂P4-0／第18號heap-floor
+disk／integrated path或online obligation在1,536MiB OOME／timeout，停止並先修訂P4-0／第18號heap-floor
 authority，不縮fixture／ceilings、拆envelope或自行提heap。
 
 Marker gameplay Attachment、`RuntimePersistentStore`、SkillInstance、Schedule與Construct lifecycle
@@ -1134,9 +1171,11 @@ provider、completeness gate與tests。
   破壞性取代原representation，restart仍必須Quarantined。
 - Store-first ordering、readback-confirmed journal clear與malformed partial availability由P4-D fixed-1-GiB
   combined Gate證明；P4-E另必須以production-shaped fixed-1,536-MiB Gate證明25維bounded
-  audit、offline／integrated truth、full P4-C admission、closed inventory、memory-only index、N／N+1
+  audit、online／integrated／disk唯一truth、disk／integrated full P4-C admission與online +0 admission、
+  closed inventory、memory-only index、N／N+1
   reconciliation與fresh Complete→single controlled reclaim；integrated runtime alias path必須直接測試或有
-  reviewed machine-checked domination proof。不宣稱playerdata／SavedData cross-file
+  reviewed machine-checked domination proof，online path必須actual執行或有domination proof加actual
+  freshness test。不宣稱playerdata／SavedData cross-file
   durable atomicity，也不宣稱1,536 MiB是universal safe minimum。
 
 ---
@@ -1659,12 +1698,13 @@ preflight、P3-D commit與Attachment transition。
 - [ ] Cross-location update有明確ordering、bounded recovery journal與reconciliation；不宣稱
       fsync或durable atomic。
 - [ ] Persistent roots只有在第18號§18的closed inventory、25 counters、disk exact
-      `DataVersion`／zero DFU、integrated logical width／pure admission／identity freshness、effective
+      `DataVersion`／zero DFU、online > integrated > disk唯一truth、online existing-state observation／
+      admission +0／final freshness、integrated logical width／pure admission／identity freshness、effective
       HotSpot `MaxHeapSize` observation為`QUALIFIED_FLOOR_PRESENT`、
-      full P4-C／journal／Store audit全部通過時才可
+      disk／integrated full P4-C／journal／Store audit全部通過時才可
       Complete；E1／E2／reconciliation當輪皆reclaim 0，只有E3 same-ServerStarting call chain
-      可使用fresh Complete。P4-E0-B.1 closure前P4-E1 review blocked；review核准後若發現active
-      heap-coordinate conflict，P4-E0-B.2 commit／push／remote closure前仍不得開始／恢復E1-A；
+      可使用fresh Complete。E1-A已closure；前次E1-B review因online applicability gap停止，
+      P4-E0-B.3 commit／push／remote closure前不得從頭重開E1-B review；
       exact 1,536-MiB production Gate未通過前P4-E不完成。
 - [ ] 新生命週期有清理與 idempotence。
 - [ ] `/skill trace` 可解釋失敗。

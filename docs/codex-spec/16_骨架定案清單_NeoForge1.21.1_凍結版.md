@@ -249,7 +249,7 @@ DefinitionEnvelope
 - 【Revision ceiling語意】`MAX_STORE_REVISION_ENTRY_ENCODED_BYTES`是inclusive outer-envelope
   admission ceiling，不保證V0 canonical revision可成功產生同長度資料；V0目前最大完整合法
   revision為`1_048_661` bytes，inner document limit仍獨立執行。
-- 【Offline roots】P4-E V0 以第18號修正案§18的25維inclusive vector、exact disk-playerdata
+- 【Player roots】P4-E V0 以第18號修正案§18的25維inclusive vector、exact disk-playerdata
   `IntTag(3955)`、zero P4-E DFU、`MIN_P4_E_ROOT_AUDIT_MAX_HEAP_SIZE_BYTES = 1_610_612_736`
   （1,536 MiB）product-selected audit heap floor 與
   `INCOMPLETE_AND_CONTINUE` 執行bounded read-only audit。Closed inventory恰為player skill
@@ -270,6 +270,23 @@ DefinitionEnvelope
   exact Tag reference作freshness recheck。Object identity不保證偵測違反thread contract的同object
   敵對in-place mutation。Attachment必須使用未修改input的inner P4-C admission core，
   不呼叫會先做NBT size-measure／raw-copy的registered serializer wrapper。
+- 【Online owner】`ONLINE_PLAYER_ATTACHMENT`是既有`PLAYER_SKILL_ATTACHMENT` family內的source
+  kind，不是第三個inventory family。每UUID的truth precedence固定為
+  `online > integrated runtime snapshot > disk primary／old`且恰選一種；online勝出時不open／
+  decode disk、不project integrated。Physical disk entries仍計directory及race witness，但被排除的
+  pair不計relevant record。所有selected player owners共同按UUID natural order處理，不建立
+  online-first分區；owner內latest按SkillId、equipped按slot，journal在所有player claims之後。
+- 【Online counting／freshness】Online Missing／Ready／Quarantined都使selected owner的
+  `relevant_records += 1`；all per-file counters為`NOT_APPLICABLE`，byte／structural aggregate
+  counters +0，`attachment_admissions += 0`，Ready actual roots在append前計cap且保留duplicates。
+  `NOT_APPLICABLE`不是0-byte file；唯一逐項25列以第18號修正案§18為準。E1只觀察已admit的
+  existing state，不取raw Tag、不重跑serializer／admission／tree／size／DataVersion／DFU。
+  Initial witness保存exact server／UUID／player／presence／state identity；journal claims與Store audit
+  成功後才作final exact recheck，不reproject／retry，且不得覆蓋較早terminal failure。Drift使claims
+  discarded、index Incomplete、reclaim 0。
+  全域first-failure依第18號§18固定18 checkpoints：programming／heap → Store → journal → inventory →
+  directory／pair metadata → online identity → integrated observation → arbitration → UUID sort → relevant →
+  source-local work → player roots → journal roots → grouped Store audit → final freshness → result／index。
 
 ## 8-B. 真相歸屬表與單一真相原則
 
@@ -729,7 +746,11 @@ PresentationEvent
   injected floor − 1／floor／floor + 1 comparator；這些是test roles，不是新增ceiling。R2Q research
   evidence不能取代這個production Gate，1,536 MiB也不是universal minimum。Gate必須
   實際覆蓋integrated-owner runtime snapshot path或提供reviewed machine-checked domination proof；
-  這條path不得建立second whole-tree copy或同時hydrate同owner disk tree。
+  這條path不得建立second whole-tree copy或同時hydrate同owner disk tree。R2Q亦未執行online
+  `ServerPlayer` source；同一Gate還必須actual執行online Missing＋Ready、source exclusion與
+  initial／final witness，或提供reviewed machine-checked domination proof並另跑actual online
+  freshness runtime test。兩種方案都須維持relevant 2,048與raw roots 65,536 exact maximum，
+  不得因online大多數counter為+0而省略online obligation。
   完整逐項矩陣以
   [18號P4修正案 §21](18_P4持久化與組合修正案.md#21-required-tests)為準。
 
@@ -768,7 +789,9 @@ PresentationEvent
 - Journal 在 persisted playerdata readback 前清除，或 generation overflow 未 fail closed。
 - Offline roots不完整仍best-effort reclaim，只掃online players即宣稱Complete，先root
   deduplicate才驗capacity，以root-only parser繞過P4-C admission，或在offline／E1／E2／
-  reconciliation當輪執行reclaim。P4-E3 exact production profile若在product-selected
+  reconciliation當輪執行reclaim；online observation重跑admission／serializer／tree／size／
+  DataVersion／DFU、同UUID形成多個truth、採online-first分區、未排除disk／integrated，或freshness
+  drift仍發布Complete也一律阻擋。P4-E3 exact production profile或online qualification obligation若在product-selected
   1,536-MiB tier OOME／timeout也阻擋發布，不得縮fixture／ceiling、拆envelope或自行提heap。
 - Integrated snapshot被要求copy／byte-array序列化才能計數、重查`DataVersion`、再次
   DFU、與同UUID disk雙重計數、跨tick保存，或無法在same-call-chain作exact identity
@@ -862,7 +885,10 @@ P4-E0-B.1：documentation-only integrated snapshot counting／post-DFU／freshne
           無implementation／numeric change／study rerun
 P4-E0-B.2：documentation-only effective HotSpot MaxHeapSize observation／三狀態／precedence／
           process-control authority；無floor／numeric／R2Q evidence／implementation change
-P4-E1：read-only bounded offline／integrated audit、full P4-C admission、journal／Store audit、
+P4-E0-B.3：documentation-only online Attachment 25-counter applicability、online > integrated > disk、
+          unified UUID ordering、final freshness與E3 obligation；無numeric／evidence／implementation change
+P4-E1：read-only bounded online／integrated／disk audit；online existing-state observation only，
+      disk／integrated full P4-C admission；journal／Store audit、
       memory-only index與Complete／Incomplete／ReconciliationRequired；reclaim／mutation 0
 P4-E2：P4-D recovery後login-only immutable latest／equipped reconciliation；offline／Store／
       journal／reclaim mutation 0
@@ -993,13 +1019,14 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - [ ] Store-first journal使用bounded generation且只在persisted readback確認後清除；
       composition outcome不把Prepared冒充Committed；strict `writeAnyTag` framing、partial availability、
       continuous chain與single-process fixed-1-GiB combined Gate均通過。
-- [ ] P4-E0-B.1 authority patch已commit／push／remote closure後才重開E1 read-only review；
-      review核准後仍須先完成P4-E0-B.2 effective-MaxHeapSize authority commit／push／remote closure，
-      才可開始或恢復E1-A implementation。E1只作read-only
-      bounded audit、E2只作login reconciliation，二者reclaim 0。Offline roots包含offline
+- [ ] P4-E0-B.1／B.2與E1-A已closure。前次E1-B read-only review因online source counter
+      applicability authority gap停止；只有P4-E0-B.3 commit／push／remote closure後才可從頭重開
+      E1-B read-only review，不直接開始implementation。E1只作read-only
+      bounded online／integrated／disk audit、E2只作login reconciliation，二者reclaim 0。Player roots包含online／offline
       players與journal targets，restart預設Incomplete，只有E3在同一ServerStarting call
       chain使用fresh Complete即時controlled reclaim exactly once；25-counter／disk DataVersion／
-      zero-P4-E-DFU／integrated logical counting／pure inner P4-C admission／identity freshness／
+      zero-P4-E-DFU／online source exclusion與+0 admission／integrated logical counting／pure inner
+      P4-C admission／identity freshness／
       1,536-MiB production Gate與N／N+1
       reconciliation規則以第18號§18為準。
 - [ ] ItemStack 自訂資料使用 Data Component。

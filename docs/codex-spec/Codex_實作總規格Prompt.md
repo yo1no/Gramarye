@@ -671,7 +671,12 @@ P4固定拆分為：
 - P4-E0-B.2：documentation-only將heap-floor唯一判定座標修正為effective HotSpot
   `MaxHeapSize` VM option bytes並同步三狀態、precedence與process controls；不改floor、numeric
   profile、R2Q evidence或implementation。B.2 remote closure前不得開始／恢復E1-A。
-- P4-E1：read-only bounded offline／integrated audit、full P4-C admission、journal／grouped Store
+- P4-E0-B.3：documentation-only固定online Attachment source的25-counter applicability、
+  `online > integrated > disk` arbitration、統一UUID owner ordering、online final freshness與E3
+  qualification；不改numeric profile、heap floor、R2Q evidence或implementation。B.3 closure前新的
+  E1-B read-only review blocked，closure後須從頭重開review。
+- P4-E1：read-only bounded online／integrated／disk audit；online只觀察existing admitted state，
+  disk／integrated執行full P4-C admission；journal／grouped Store
   audit、memory-only index與bounded completeness results；player／Store／journal mutation與reclaim 0。
 - P4-E2：P4-D login recovery後的online-only immutable latest／equipped reconciliation；offline
   disk、Store、journal與reclaim mutation 0。
@@ -749,8 +754,11 @@ gzip／unnamed-Compound ingress、
 `INCOMPLETE_AND_CONTINUE`與product-selected
 `MIN_P4_E_ROOT_AUDIT_MAX_HEAP_SIZE_BYTES = 1_610_612_736`／1,536-MiB audit heap
 floor；這些是產品政策，不是universal minimum。V0 closed inventory恰為
-`PLAYER_SKILL_ATTACHMENT`與`PENDING_ATTACHMENT_JOURNAL`，player source必須經完整P4-C
-admission，raw roots在dedup前計capacity，index只memory-only且restart預設Incomplete。
+`PLAYER_SKILL_ATTACHMENT`與`PENDING_ATTACHMENT_JOURNAL`。`ONLINE_PLAYER_ATTACHMENT`、
+integrated snapshot與disk primary／old是player family內的source kinds，不是新增inventory family；
+同UUID truth precedence固定為`online > integrated > disk`且恰選一種。只有disk／integrated
+materialized Tag必須經完整P4-C admission；online只觀察existing admitted state且本次
+`attachment_admissions += 0`。Raw roots在dedup前計capacity，index只memory-only且restart預設Incomplete。
 
 Heap-floor唯一normative observation是
 `HotSpotDiagnosticMXBean.getVMOption("MaxHeapSize").getValue()`的strict canonical base-10
@@ -770,6 +778,29 @@ server／profile UUID／Tag reference與其他freshness witnesses；任一drift�
 reclaim 0。Object identity不證明沒有敵對same-object mutation。Integrated admission必須共用
 且證明pure inner P4-C core，不得直接走registered serializer的NBT-size／raw-copy wrapper。
 
+Online winner排除同UUID integrated projection與disk open／decode；physical disk entries仍照常計
+`directory_entries`並保留race witness。`relevant_records`統一定義為每個selected authoritative
+owner UUID一筆，source kind可為ONLINE／INTEGRATED／DISK_PRIMARY／DISK_OLD；maximum 2,048
+inclusive，第2,049筆capacity failure。Online Missing／Ready／Quarantined都先計一筆，Missing為
+zero roots，Quarantined再形成`ATTACHMENT_QUARANTINED`且不退還counter。Online的全部per-file
+counters為`NOT_APPLICABLE`，byte／structural aggregates +0，admission +0，Ready actual roots在
+append前計capacity；`NOT_APPLICABLE`不是0-byte file。唯一精確25-row table以第18號修正案§18為準。
+
+`PlayerList#getPlayers()` live view不得被保留；E1在logic thread上建立最多2,049個distinct UUID的
+compact exact player／UUID／server identity observation，使用既有relevant cap，不新增online
+ceiling。所有selected owners共同按UUID natural order，owner內latest按SkillId、equipped按slot，
+journal接在所有player claims之後；不得採online-first partition。Online只使用E1-A non-installing
+Missing／Ready／Quarantined observation，不取raw Tag、不執行serializer／admission／tree traversal／
+size／DataVersion／DFU，不安裝default或`setData`。
+
+Global checkpoints固定為programming／thread → effective heap → Store Ready → journal Ready →
+inventory coverage → directory count → filename／pair metadata → bounded online identity → integrated
+four-state → source arbitration → UUID sort → relevant count → source-local observation／admission →
+player roots → journal roots → grouped Store audit → final freshness → result／index。Final online
+freshness只在Complete-candidate路徑重取完整UUID set並驗exact player／server／presence／state identity；
+不reproject、不重讀disk、不重跑admission、不retry。Drift形成`ONLINE_SOURCE_FRESHNESS_LOST`、
+discard claims／capability、index Incomplete、reclaim 0，且不得覆蓋較早terminal failure。
+
 Offline missing／foreign pointer只defer-to-login，disk不變，當輪reclaim 0；P4-E2只在P4-D
 recovery後對online Ready作一次immutable prune，也不reclaim。只有P4-E3能在唯一
 `ServerStartingEvent` call chain中使用fresh E1 `Complete`，立即呼叫
@@ -779,6 +810,11 @@ reclaimed=0不改state，reclaimed>0先發布carrier再dirty，filter invariant 
 Unavailable且不使用舊carrier。P4-E3仍需production-shaped fixed-1,536-MiB combined
 Gate；R2Q research evidence不能取代它。Quarantine byte ceilings在P4-B沒有核准
 consumer，不得為消耗常數建立raw-copy機制。
+
+R2Q沒有自然執行online `ServerPlayer` path。E3必須在同一1,536-MiB envelope actual執行
+online Missing＋Ready、source exclusion與initial／final witness，或提供reviewed machine-checked
+domination proof並另執行actual freshness runtime test；兩種方案都維持relevant 2,048與raw roots
+65,536 exact maximum。Online不得因大多數counter為+0而完全省略。
 
 ## 8.2 RuntimePersistentStore
 
@@ -1226,7 +1262,10 @@ P4-E0-B：documentation-only V0 root-audit authority；無implementation／study
 P4-E0-B.1：documentation-only integrated snapshot counting／freshness authority
 P4-E0-B.2：documentation-only effective HotSpot MaxHeapSize observation／三狀態／precedence／
            process-control authority；無floor／numeric／R2Q evidence／implementation change
-P4-E1：read-only bounded offline／integrated scanner、full P4-C／journal／Store audit與memory-only index；
+P4-E0-B.3：documentation-only online source counter applicability／arbitration／UUID order／freshness／
+           E3 obligation；無numeric／R2Q evidence／implementation change
+P4-E1：read-only bounded online／integrated／disk scanner；online existing-state observation only，
+      disk／integrated full P4-C；journal／Store audit與memory-only index；
       mutation／reclaim 0
 P4-E2：P4-D recovery後login-only immutable reconciliation；offline／Store／journal／reclaim mutation 0
 P4-E3：unique ServerStarting fresh audit→controlled reclaim once、restart／fixed-1,536-MiB／CI gates
@@ -1347,12 +1386,16 @@ composition outcome、report identity、journal與recovery以
   directory／relevant exact／+1、UUID grammar、primary／old完整matrix、strict gzip／NBT／
   disk DataVersion、DFU 0、integrated snapshot四態／disk exclusion、logical width／modified UTF、
   no-copy single traversal／no-DataVersion／identity freshness／inner P4-C purity、closed
-  inventory／journal／grouped Store audit，以及65,536／65,537 raw roots before dedup。
+  inventory／journal／grouped Store audit，以及65,536／65,537 raw roots before dedup。另驗online
+  Missing／Ready／兩種Quarantined、逐項25-counter applicability、admission +0、same-UUID source
+  exclusion、all-source UUID ordering與initial／final exact freshness witness，不得重跑admission。
 - P4-E offline defer-to-login disk preservation、P4-D recovery-before-E2、atomic multiprune／generation
   MAX、memory-only index invalidation，Audit N reconciliation後reclaim 0／restart N+1，no chunk
   load／same-call-chain fresh Complete／dirty matrix。P4-E3另須exact fixed-1,536-MiB
   production-shaped combined Gate與production-JAR fixture isolation；Gate必須覆蓋integrated-owner
-  path或reviewed machine-checked domination proof，R2Q不能取代。
+  path或reviewed machine-checked domination proof；online另須actual Missing＋Ready＋source exclusion＋
+  freshness，或machine-checked domination加actual freshness runtime test，並維持relevant 2,048／
+  roots 65,536 exact。R2Q不能取代integrated alias或online runtime evidence。
 - scheduler stable ordering。
 - cancellation idempotence。
 - event re-entry guard。
@@ -1431,13 +1474,17 @@ composition outcome、report identity、journal與recovery以
   Store／carrier才能接合。
 - P4-A3 reclaim filter仍有normal typed failure，或1 GiB full-size P4-B load／save Gate失敗。
 - 任一migration／decode／restore failure會安裝partial Store。
-- 無法證明complete offline roots卻需要執行reclaim，需要offline playerdata rewrite、
+- 無法證明complete player roots卻需要執行reclaim，需要offline playerdata rewrite、
   root-only Attachment parser、DFU、dynamic provider completeness、chunk force、background／periodic
   audit、cross-tick Complete，或讓E1／E2直接reclaim。
 - Integrated source無法以單次logical traversal量測／重查identity，或必須copy、完整
   序列化、second checksum、重讀`level.dat`、再次DFU、double-count disk、callback／retry或
   cross-tick retention。
-- P4-E3 exact production profile或integrated-owner path在product-selected `-Xmx1536m` Gate發生
+- Online source需要raw Tag、serializer／admission、tree／size／DataVersion／DFU，無法排除同UUID
+  integrated／disk，無法採單一UUID natural order，或final freshness需要reproject／retry並覆蓋
+  較早terminal failure。
+- P4-E3 exact production profile、integrated-owner path或online qualification obligation在
+  product-selected `-Xmx1536m` Gate發生
   OOME或timeout。
   不得縮fixture／numeric ceiling、拆分simultaneous envelope或自行提heap；唯一出口是
   先修訂P4-0／第18號heap-floor authority。

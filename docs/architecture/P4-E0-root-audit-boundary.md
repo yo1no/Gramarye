@@ -14,8 +14,9 @@ amendment nor reproduces its 25-counter table.
   `MAX_RETENTION_ROOTS_PER_RECLAIM = 65_536`.
 - **PRODUCT POLICY CHOICE** is Gramarye V0 authority: the exact 25-dimensional vector, exact-current
   disk-playerdata DataVersion only, zero P4-E DFU records, strict disk gzip／NBT language, the 1,536-MiB audit heap floor,
-  `INCOMPLETE_AND_CONTINUE`, integrated runtime snapshot, defer-to-login reconciliation, memory-only
-  index, and one same-`ServerStartingEvent` call chain.
+  `INCOMPLETE_AND_CONTINUE`, online Attachment plus integrated runtime snapshot, per-UUID
+  `online > integrated > disk` arbitration, unified UUID ordering, final source freshness,
+  defer-to-login reconciliation, memory-only index, and one same-`ServerStartingEvent` call chain.
 - **EMPIRICAL QUALIFICATION EVIDENCE** is the bounded R2Q observation from one Java 21／macOS aarch64
   environment. It supports adopting the product profile; it is not a universal safety theorem, a
   mathematically unique vector, the lowest safe heap, or a Minecraft／NeoForge requirement.
@@ -89,8 +90,10 @@ VM-option bytes the sole normative observation coordinate without changing that 
 
 Playerdata truth selection distinguishes platform-read failure, which may select a valid current
 `.dat_old`, from Gramarye strict-only rejection or post-selection semantic failure, which may not.
-The integrated singleplayer source uses the already-loaded world-data snapshot in the same pre-login
-call chain and excludes the same UUID's disk pair. This playerdata selection policy is distinct from
+Online Attachment, integrated snapshot, and disk are source kinds within the same player family;
+per-UUID precedence is `online > integrated > disk`. The integrated singleplayer source uses the
+already-loaded world-data snapshot in the same pre-login call chain and excludes the same UUID's disk
+pair when no online source wins. This playerdata selection policy is distinct from
 P4-B Skill SavedData's no-`.dat_old` policy.
 
 ## P4-E0-B.1 integrated-owner clarification
@@ -180,8 +183,8 @@ diagnostics only. They are never a fallback, override, min／max operand, tolera
 coordinate. Both nonqualified statuses return global Incomplete while startup continues and before
 any journal observation, directory／file work, Attachment admission, root capture, Store audit,
 reclaim, or source mutation. Global precedence is programming／lifecycle checks, effective
-`MaxHeapSize` observation, nonqualified short-circuit, journal readiness, then directory／source and
-the remaining 25-counter audit.
+`MaxHeapSize` observation, nonqualified short-circuit, Store readiness, journal readiness, closed
+inventory coverage, then the B.3 online／integrated／disk arbitration and remaining 25-counter audit.
 
 The process controls are test roles, not new ceilings. At `-Xmx1536m`, G1／Parallel／Serial／ZGC
 observe effective `1_610_612_736` and qualify. On locked Temurin 21.0.8+9／macOS aarch64,
@@ -276,7 +279,8 @@ inventory or root snapshot and perform zero Store reclaim, Store dirtying, journ
 Attachment `setData`, playerdata write, event registration, background work, or network work.
 The closure counters therefore record E1-A mutation `0`, Store dirty delta `0`, and Store reclaim
 calls `0`.
-Actual journal-to-directory-to-online-to-Store composition remains E1-B work.
+Actual B.3-ordered Store／journal／inventory／directory／online／integrated／disk arbitration and
+grouped Store-audit composition remains E1-B work.
 
 Local targeted regressions and all 1,282 unit tests passed with zero failures, errors, or skips;
 normal GameTest passed exactly 12／12. Dedicated smoke, configuration verifiers, and the existing
@@ -292,10 +296,49 @@ Maintainer-provided closure evidence records remote `build`, `P4-A3 memory gates
 therefore complete. Branch-protection required-check configuration remains external governance
 unknown.
 
+## P4-E0-B.3 online-source counter authority
+
+The E1-B read-only review stopped at one exact authority gap: the completed E1-A source-local seam
+could observe an online `ServerPlayer` Attachment, but the active global contract had not assigned
+that source an exact 25-counter coordinate or arbitration／freshness position. B.3 resolves only that
+documentation gap. `ONLINE_PLAYER_ATTACHMENT` is a source kind inside the existing
+`PLAYER_SKILL_ATTACHMENT` family, not a third inventory family. Per UUID, truth precedence is
+`online > integrated runtime snapshot > disk primary／old`, with exactly one winner. Physical disk
+entries remain directory-count and race witnesses, but an online winner prevents same-UUID disk
+open／decode and integrated projection.
+
+`relevant_records` now means one selected authoritative owner UUID across online, integrated, and
+disk sources. Online Missing／Ready／Quarantined each consumes one record; Missing has zero roots,
+while quarantine then fails deterministically without refund. Online has no per-file counter
+instance, contributes zero to byte／structural aggregates and `attachment_admissions`, and contributes
+its actual Ready latest／equipped root claims only after the pre-append capacity check, retaining
+duplicates. `NOT_APPLICABLE` is not a
+zero-byte file. The amendment remains the sole exact 25-row table and leaves every maximum unchanged.
+
+The bounded online observation copies identities from the platform live player view on the logic
+thread without retaining that view. All selected player owners share one UUID-natural order; each
+owner contributes latest by SkillId and equipped by slot, followed by journal canonical order.
+Online uses only the already-admitted non-installing Missing／Ready／Quarantined observation—no raw
+Tag, serializer, admission, tree traversal, size, DataVersion, DFU, default install, or `setData`.
+Its final exact player／server／presence／state witness runs only for a Complete candidate after
+journal claims and grouped Store audit. Drift discards claims／capability, leaves the index
+Incomplete, and keeps reclaim at zero; it never overrides an earlier terminal failure.
+
+B.3 changes no source code, test, script, Gradle／workflow file, numeric maximum, 1,536-MiB floor,
+R2Q profile／case plan／identity, or official evidence. It does not rerun R2Q. R2Q did not exercise the
+online runtime path, so E3 must either run online Missing＋Ready, exclusion, and initial／final
+freshness in the same 1,536-MiB envelope, or provide a reviewed machine-checked domination proof plus
+an actual freshness runtime test; relevant 2,048 and roots 65,536 remain exact in either case.
+The prior ledger still said `OPEN` because the Stop Rule prohibited that review from modifying
+documents; B.3 records the stop without treating the stale text as a preflight failure. Local B.3
+does not auto-ready E1-B. Only after commit／push／remote closure may a separate E1-B read-only review
+restart from its preflight; implementation remains not started.
+
 ## Completeness, reconciliation, and reclaim
 
 V0's exact closed inventory is `PLAYER_SKILL_ATTACHMENT` plus `PENDING_ATTACHMENT_JOURNAL`.
-Player sources undergo full P4-C admission rather than a root-only parse; journal targets come from
+Disk and integrated materialized player Tags undergo full P4-C admission rather than a root-only
+parse; online observes the existing admitted state and contributes zero admissions. Journal targets come from
 the P4-D projection. Raw latest／equipped／journal claims count before deduplication, then a grouped
 Store seam verifies exact references and expected owners without exposing Store data or foreign
 owners.
@@ -328,7 +371,9 @@ envelope may not be reduced or split, and the heap may not be raised without a n
 R2Q did not naturally exercise the integrated mutable-alias path. E3 must therefore include the
 integrated-owner runtime source or a reviewed machine-checked domination proof, without a second
 whole-tree copy or simultaneous same-owner disk hydration. Until that Gate passes, the 1,536-MiB
-tier is not a general integrated-path safety claim.
+tier is not a general integrated-path safety claim. R2Q also did not exercise the online path; E3
+must meet the B.3 actual-path／domination-plus-runtime-test obligation in the same envelope and may
+not omit it merely because most online counter contributions are zero.
 
 ## Phase split and implementation gate
 
@@ -346,7 +391,9 @@ the active heap-floor authority-coordinate conflict. P4-E0-B.2 is now complete. 
 revision E1-A could be restored and re-preflighted only after the closure commit's remote jobs
 passed. Those prerequisites later passed; E1-A was restored, freshly adjudicated, implemented,
 verified locally, committed, pushed, and remotely qualified. E1-A is complete; the E1-B read-only
-design review is open, while E1-B implementation has not started. E2／E3 remain blocked.
+design review then stopped at the online source counter applicability authority gap. This B.3 local
+patch records that stop and blocks a new E1-B read-only review until B.3 commit／push／remote closure;
+E1-B implementation has not started. E2／E3 remain blocked.
 No phase introduces chunk force, periodic/background scanning, network, or a second persistent
 truth. The completed E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB
 first／restart Gate; the B.1 jobs and this authority correction do not waive it either.
@@ -360,12 +407,14 @@ P4-E0-R1/R2/R2R/R2Q               = COMPLETE
 P4-E0-B authority patch            = COMPLETE
 P4-E0-B.1 authority patch          = COMPLETE
 P4-E0-B.2 authority patch          = COMPLETE
+P4-E0-B.3 online source counter authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
 P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
-P4-E1 read-only design review      = PASS
+P4-E1-A enabling read-only review  = PASS (HISTORICAL)
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
 P4-E1-A                            = COMPLETE
-P4-E1-B read-only design review    = OPEN
+P4-E1-B prior read-only review     = STOPPED AT ONLINE SOURCE COUNTER APPLICABILITY AUTHORITY GAP
+P4-E1-B new read-only review       = BLOCKED UNTIL P4-E0-B.3 CLOSURE
 P4-E1-B implementation             = NOT STARTED
 P4-E2 / P4-E3                      = BLOCKED
 P4-E                               = INCOMPLETE
