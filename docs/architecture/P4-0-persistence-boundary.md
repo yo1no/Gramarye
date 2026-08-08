@@ -264,9 +264,9 @@ blocker, and the renewed read-only design review passed. The following E1-A atte
 active heap-floor authority-coordinate conflict. P4-E0-B.2 is complete, its closure remote
 prerequisites passed, and E1-A has been restored, re-preflighted, implemented, committed, pushed,
 and remotely qualified. E1-A is complete. The E1-B read-only design review then stopped at the
-online source counter applicability authority gap. P4-E0-B.3 is now
-implemented locally as a documentation-only correction; a new E1-B read-only review remains blocked
-until B.3 commit／push／remote closure. E1-B implementation has not started, and E2／E3 remain blocked. E1 must
+online source counter applicability authority gap. P4-E0-B.3 authority and exact-SHA remote closure
+are now complete; a fresh E1-B read-only design review is open from preflight. E1-B implementation
+has not started, and E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1236,11 +1236,15 @@ B.3 does not change the 25 maxima, the effective-`MaxHeapSize` floor, the R2Q pr
 identity, or official evidence, and it does not rerun R2Q or change production. R2Q did not naturally
 execute online players; E3 must therefore run online Missing＋Ready／exclusion／freshness in the same
 1,536-MiB envelope, or provide a machine-checked domination proof plus an actual freshness runtime
-test, while retaining relevant 2,048 and raw roots 65,536 exact. A new E1-B read-only review remains
-blocked until this local B.3 patch is committed, pushed, and remotely closed.
+test, while retaining relevant 2,048 and raw roots 65,536 exact. The authority patch was committed as
+`e23a2a6c0df298315fc726ec509d3f953d559a08` with tree
+`ce1d6d379c763ed2824f831f6a1e81c73c3fec65`, pushed to `main`, and qualified by exact-SHA workflow
+run `31251807408` attempt 1. Its `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory
+gates`, and `P4-D memory gates` jobs all completed successfully. B.3 is complete.
 The pre-patch ledger still said `OPEN` only because the stopped review's Stop Rule prohibited a
-documentation change; B.3 records the exact stop. It does not auto-ready E1-B: after B.3 closure,
-the read-only review must restart from preflight before any implementation can be considered.
+documentation change; B.3 records the exact stop. A fresh E1-B read-only design review is now open
+from preflight. `OPEN` authorizes only that review, not implementation; implementation remains not
+started.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1265,14 +1269,18 @@ P4-E0-R1/R2/R2R/R2Q           = COMPLETE
 P4-E0-B authority patch        = COMPLETE
 P4-E0-B.1 authority patch      = COMPLETE
 P4-E0-B.2 authority patch      = COMPLETE
-P4-E0-B.3 online source counter authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+P4-E0-B.3 online source counter authority = COMPLETE
+P4-E0-B.3 authority commit     = e23a2a6c0df298315fc726ec509d3f953d559a08
+P4-E0-B.3 authority tree       = ce1d6d379c763ed2824f831f6a1e81c73c3fec65
+P4-E0-B.3 authority remote run = 31251807408 (attempt 1)
+P4-E0-B.3 authority remote jobs = build + P4-A3/B/C/D memory gates PASS
 P4-E0                          = COMPLETE
 P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review = PASS (HISTORICAL)
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
 P4-E1-A                        = COMPLETE
 P4-E1-B prior read-only review = STOPPED AT ONLINE SOURCE COUNTER APPLICABILITY AUTHORITY GAP
-P4-E1-B new read-only review   = BLOCKED UNTIL P4-E0-B.3 CLOSURE
+P4-E1-B read-only review       = OPEN
 P4-E1-B implementation         = NOT STARTED
 P4-E2 / P4-E3                  = BLOCKED
 P4-E                           = INCOMPLETE
@@ -1299,9 +1307,9 @@ at the integrated-snapshot counting／freshness authority Gate; B.1 resolved it 
 passed. The subsequent E1-A attempt stopped at the active heap-floor coordinate conflict. B.2 is
 complete; the controlled restore, fresh re-preflight, E1-A implementation, commit／push, and remote
 closure now pass. E1-A is complete. E1-B's prior read-only review stopped at the online counter
-applicability gap; B.3 is locally implemented,
-but a new review is blocked until B.3 closure and implementation has not started. E2 and E3 remain
-blocked, and P4-E remains incomplete. The E0-B／B.1／B.2
+applicability gap; B.3 authority and exact-SHA remote closure now pass. A fresh E1-B read-only
+design review is open from preflight, but implementation has not started. E2 and E3 remain blocked,
+and P4-E remains incomplete. The E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate including the B.3 online

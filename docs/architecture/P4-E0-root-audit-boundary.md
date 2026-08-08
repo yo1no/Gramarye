@@ -330,9 +330,13 @@ online runtime path, so E3 must either run online Missing＋Ready, exclusion, an
 freshness in the same 1,536-MiB envelope, or provide a reviewed machine-checked domination proof plus
 an actual freshness runtime test; relevant 2,048 and roots 65,536 remain exact in either case.
 The prior ledger still said `OPEN` because the Stop Rule prohibited that review from modifying
-documents; B.3 records the stop without treating the stale text as a preflight failure. Local B.3
-does not auto-ready E1-B. Only after commit／push／remote closure may a separate E1-B read-only review
-restart from its preflight; implementation remains not started.
+documents; B.3 records the stop without treating the stale text as a preflight failure. The
+authority patch was committed as `e23a2a6c0df298315fc726ec509d3f953d559a08` with tree
+`ce1d6d379c763ed2824f831f6a1e81c73c3fec65`, pushed to `main`, and qualified by exact-SHA workflow
+run `31251807408` attempt 1: `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`,
+and `P4-D memory gates` all completed successfully. B.3 is therefore complete. A fresh E1-B
+read-only design review is now open from preflight; `OPEN` authorizes design review only and does
+not approve implementation, which remains not started.
 
 ## Completeness, reconciliation, and reclaim
 
@@ -391,9 +395,9 @@ the active heap-floor authority-coordinate conflict. P4-E0-B.2 is now complete. 
 revision E1-A could be restored and re-preflighted only after the closure commit's remote jobs
 passed. Those prerequisites later passed; E1-A was restored, freshly adjudicated, implemented,
 verified locally, committed, pushed, and remotely qualified. E1-A is complete; the E1-B read-only
-design review then stopped at the online source counter applicability authority gap. This B.3 local
-patch records that stop and blocks a new E1-B read-only review until B.3 commit／push／remote closure;
-E1-B implementation has not started. E2／E3 remain blocked.
+design review then stopped at the online source counter applicability authority gap. The B.3
+authority patch and its exact-SHA remote Gate are now complete, so a new E1-B read-only design review
+is open from preflight. E1-B implementation has not started. E2／E3 remain blocked.
 No phase introduces chunk force, periodic/background scanning, network, or a second persistent
 truth. The completed E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB
 first／restart Gate; the B.1 jobs and this authority correction do not waive it either.
@@ -407,14 +411,18 @@ P4-E0-R1/R2/R2R/R2Q               = COMPLETE
 P4-E0-B authority patch            = COMPLETE
 P4-E0-B.1 authority patch          = COMPLETE
 P4-E0-B.2 authority patch          = COMPLETE
-P4-E0-B.3 online source counter authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+P4-E0-B.3 online source counter authority = COMPLETE
+P4-E0-B.3 authority commit         = e23a2a6c0df298315fc726ec509d3f953d559a08
+P4-E0-B.3 authority tree           = ce1d6d379c763ed2824f831f6a1e81c73c3fec65
+P4-E0-B.3 authority remote run     = 31251807408 (attempt 1)
+P4-E0-B.3 authority remote jobs    = build + P4-A3/B/C/D memory gates PASS
 P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review  = PASS (HISTORICAL)
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
 P4-E1-A                            = COMPLETE
 P4-E1-B prior read-only review     = STOPPED AT ONLINE SOURCE COUNTER APPLICABILITY AUTHORITY GAP
-P4-E1-B new read-only review       = BLOCKED UNTIL P4-E0-B.3 CLOSURE
+P4-E1-B read-only review           = OPEN
 P4-E1-B implementation             = NOT STARTED
 P4-E2 / P4-E3                      = BLOCKED
 P4-E                               = INCOMPLETE
