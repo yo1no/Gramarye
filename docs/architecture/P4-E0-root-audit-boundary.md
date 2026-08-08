@@ -227,7 +227,7 @@ could not be restored until the separate closure commit's own remote jobs passed
 prerequisites later passed, and the controlled restore below then started with clean diff review,
 E1-A preflight, and the heap child matrix rather than reusing old test evidence.
 
-## P4-E1-A controlled restore and local implementation evidence
+## P4-E1-A controlled restore and implementation closure evidence
 
 The controlled restore started from clean `main` commit
 `5e97b278c4e51bab64c00ebbf3ec453f9cdeb825`, tree
@@ -238,10 +238,12 @@ ahead／behind. The external archive was
 outside the repository, was not modified, and contained the recorded stop reason
 `ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT`. Its unique 39-entry manifest, every per-file
 hash, 14-path tracked patch, empty staged patch, 29-path untracked inventory, original HEAD／tree,
-and scope were verified
-before a clean non-`--3way` apply. Post-restore tracked and untracked bytes matched the archive
-inventory; no authority, Gradle, workflow, resource, formal-evidence, user-world, E1-B, E2, or E3
-path was restored.
+and scope were verified before a clean non-`--3way` apply. The tracked patch retained SHA-256
+`3c5f2c7e0adcbe6a3c10422d1795b6135d7c63b4848c5282d22424fa062c6d6c`; post-restore tracked
+bytes and every untracked per-file hash matched the archive inventory. No authority, Gradle,
+workflow, resource, formal-evidence, user-world, E1-B, E2, or E3 path was restored. The reviewed
+implementation is commit `55755da795aff5a12c29234918f5231acb1165b7`, tree
+`c3ffb1c67726c0dc4297f96e7996eb7fa704d4b8`, and is present at `main`／`origin/main`.
 
 Fresh diff adjudication retained only source-local E1-A admission work. The authoritative preflight
 uses only effective HotSpot `MaxHeapSize`; a package-private qualified capability is the sole route
@@ -264,18 +266,31 @@ floor − 1／floor／floor + 1 and malformed／unavailable observation tests pa
 `Runtime.maxMemory()` remained diagnostic-only. E1-A now owns the exact 25-counter checked budget,
 bounded directory and primary／old source admission, a streaming player-NBT scanner, integrated
 single-tree traversal, P4-C full-admission reuse, and identity-bound online Attachment observation.
-P4-B and E1 delegate to one strict single-member gzip core, while the registered P4-C serializer
-and E1 pure admission retain equivalent classifications. These primitives publish no global
+All 25 counter coordinates passed inclusive MAX, MAX+1 rejection, and checked-`long` overflow
+tests; `raw_root_claims` continues to use the existing retention-root ceiling. P4-B and E1 delegate
+to one strict single-member gzip core with no failure-classification or compressed-EOF semantic
+drift. The registered P4-C serializer and E1 pure admission retained equivalent classifications;
+serializer rejection still performs its required preservation copy, while E1 rejection recorded
+exactly zero raw-copy calls. These primitives publish no global
 inventory or root snapshot and perform zero Store reclaim, Store dirtying, journal mutation,
 Attachment `setData`, playerdata write, event registration, background work, or network work.
+The closure counters therefore record E1-A mutation `0`, Store dirty delta `0`, and Store reclaim
+calls `0`.
 Actual journal-to-directory-to-online-to-Store composition remains E1-B work.
 
 Local targeted regressions and all 1,282 unit tests passed with zero failures, errors, or skips;
 normal GameTest passed exactly 12／12. Dedicated smoke, configuration verifiers, and the existing
-P4-A3／P4-B／P4-C／P4-D fixed-heap Gates also passed. The production JAR kept
+`p4A3HeapProbe`, `p4B2FixedHeapGate`, `p4C2FixedHeapGate`, and
+`p4D3FixedHeapGate` all passed in full. The production JAR kept
 test／research helpers isolated. The official R2Q six-file evidence and checksums remained unchanged;
-no R1／R2／R2Q study or smoke was rerun. E1-A has not been committed, pushed, or remotely qualified,
-so it is not complete and cannot open E1-B yet.
+no R1／R2／R2Q study or smoke was rerun. During the P4-C fixed-heap lifecycle run, Log4j rollover
+emitted a generated-output `NoSuchFileException` while attempting to delete
+`logs/debug-5.log.gz`; it was not a Gate failure, OOME, timeout, or semantic test failure. The
+confirmed rebuildable root `logs/` output was removed precisely after verification.
+Maintainer-provided closure evidence records remote `build`, `P4-A3 memory gates`, `P4-B memory gates`,
+`P4-C memory gates`, and `P4-D memory gates` as PASS for the implementation commit. E1-A is
+therefore complete. Branch-protection required-check configuration remains external governance
+unknown.
 
 ## Completeness, reconciliation, and reclaim
 
@@ -329,10 +344,9 @@ P4-E0-B had not fixed that source's counting and freshness coordinate. P4-E0-B.1
 renewed P4-E1 read-only design review passed. The subsequent E1-A implementation attempt stopped at
 the active heap-floor authority-coordinate conflict. P4-E0-B.2 is now complete. At its closure
 revision E1-A could be restored and re-preflighted only after the closure commit's remote jobs
-passed. Those prerequisites later passed; E1-A was restored, freshly adjudicated, implemented, and
-verified locally. This does not
-close E1-A: commit, push, and remote evidence remain pending. E1-B waits for E1-A closure, and
-E2／E3 remain blocked.
+passed. Those prerequisites later passed; E1-A was restored, freshly adjudicated, implemented,
+verified locally, committed, pushed, and remotely qualified. E1-A is complete; the E1-B read-only
+design review is open, while E1-B implementation has not started. E2／E3 remain blocked.
 No phase introduces chunk force, periodic/background scanning, network, or a second persistent
 truth. The completed E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB
 first／restart Gate; the B.1 jobs and this authority correction do not waive it either.
@@ -350,8 +364,9 @@ P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1 read-only design review      = PASS
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
-P4-E1-A implementation             = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
-P4-E1-B                            = BLOCKED UNTIL E1-A CLOSURE
+P4-E1-A                            = COMPLETE
+P4-E1-B read-only design review    = OPEN
+P4-E1-B implementation             = NOT STARTED
 P4-E2 / P4-E3                      = BLOCKED
 P4-E                               = INCOMPLETE
 ```

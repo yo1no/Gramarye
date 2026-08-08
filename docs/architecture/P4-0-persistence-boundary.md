@@ -251,9 +251,10 @@ complete simultaneous submission envelope.
 P4-E0 is complete. The first P4-E1 read-only design review stopped because P4-E0-B had not defined
 the integrated loaded-player snapshot's counting and freshness coordinate; P4-E0-B.1 resolved that
 blocker, and the renewed read-only design review passed. The following E1-A attempt stopped at an
-active heap-floor authority-coordinate conflict. P4-E0-B.2 is now complete, its closure remote
-prerequisites later passed, and E1-A has now been restored, re-preflighted, and implemented locally.
-E1-B waits for E1-A commit／push／remote closure, and E2／E3 remain blocked. E1 must
+active heap-floor authority-coordinate conflict. P4-E0-B.2 is complete, its closure remote
+prerequisites passed, and E1-A has been restored, re-preflighted, implemented, committed, pushed,
+and remotely qualified. E1-A is complete. The E1-B read-only design review is open; E1-B
+implementation has not started, and E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1168,8 +1169,13 @@ The untouched external archive was
 `c2ed4c95a768230b1bac914d2268e27d04bae08a7c95df17841b036bf7c4c079`. Its unique 39-entry
 manifest, per-file hashes, 14-path tracked patch, empty staged patch, 29-path untracked inventory,
 source HEAD／tree, stop reason, and phase scope passed before a clean non-`--3way` restore. Restored
-tracked and untracked bytes matched the archive. No authority, Gradle, workflow, resource,
+tracked bytes matched patch SHA-256
+`3c5f2c7e0adcbe6a3c10422d1795b6135d7c63b4848c5282d22424fa062c6d6c`, and every untracked
+per-file hash matched the archive. No authority, Gradle, workflow, resource,
 formal-evidence, user-world, E1-B, E2, or E3 path was restored.
+
+The reviewed implementation is commit `55755da795aff5a12c29234918f5231acb1165b7`, tree
+`c3ffb1c67726c0dc4297f96e7996eb7fa704d4b8`, and is present at `main`／`origin/main`.
 
 Fresh adjudication implements only E1-A source-local admission. Effective HotSpot `MaxHeapSize` is
 the sole heap verdict input, and only its package-private qualified capability can create the
@@ -1188,12 +1194,21 @@ integrated single-tree traversal, P4-C serializer-equivalent pure admission, and
 online Attachment observation. It builds no global inventory, index, root snapshot, grouped Store
 audit, or later-phase service, and performs zero Store dirtying／reclaim, journal mutation,
 Attachment `setData`, playerdata write, event registration, background work, or network work.
+All 25 counter coordinates passed inclusive MAX, MAX+1 rejection, and checked-`long` overflow.
+P4-B and E1 use one strict gzip core with no classification or EOF drift. P4-C serializer and
+pure-admission classifications remained equivalent; E1 rejection performed zero raw copies. The
+closure counters record E1-A mutation `0`, Store dirty delta `0`, and Store reclaim calls `0`.
 Actual global journal／disk／online／Store ordering remains E1-B responsibility. Targeted tests and
 all 1,282 unit tests passed with zero failures, errors, or skips; normal GameTest passed exactly
 12／12. Dedicated smoke, portable／phase verifiers, and all existing P4-A3／P4-B／
-P4-C／P4-D fixed-heap Gates passed locally; production JAR isolation held. Official R2Q evidence
-remained byte-identical and was not rerun. E1-A remains local-only pending commit, push, and remote
-closure, so E1-B／E2／E3 stay blocked and P4-E stays incomplete.
+P4-C／P4-D fixed-heap Gates passed locally in full; production JAR isolation held. The P4-C run's
+Log4j rollover warning was a generated-output `NoSuchFileException` while deleting
+`logs/debug-5.log.gz`, not a Gate failure, OOME, timeout, or semantic failure; the confirmed
+rebuildable root `logs/` output was precisely removed. Official R2Q evidence remained byte-identical
+and was not rerun. Maintainer-provided evidence records remote `build`, `P4-A3 memory gates`,
+`P4-B memory gates`, `P4-C memory gates`, and `P4-D memory gates` as PASS. E1-A is complete; the
+E1-B read-only design review is open, E1-B implementation has not started, E2／E3 remain blocked,
+and P4-E remains incomplete.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1222,8 +1237,9 @@ P4-E0                          = COMPLETE
 P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1 read-only design review  = PASS
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
-P4-E1-A implementation         = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
-P4-E1-B                        = BLOCKED UNTIL E1-A CLOSURE
+P4-E1-A                        = COMPLETE
+P4-E1-B read-only design review = OPEN
+P4-E1-B implementation         = NOT STARTED
 P4-E2 / P4-E3                  = BLOCKED
 P4-E                           = INCOMPLETE
 ```
@@ -1247,9 +1263,10 @@ read-only design review only as a historical P4-D closure statement; the E0 rese
 lineage and E0-B authority closure are now complete. The first P4-E1 read-only design review stopped
 at the integrated-snapshot counting／freshness authority Gate; B.1 resolved it and the renewed review
 passed. The subsequent E1-A attempt stopped at the active heap-floor coordinate conflict. B.2 is
-complete; the controlled restore, fresh re-preflight, and local E1-A implementation now pass, while
-commit／push／remote closure remain pending. E1-B, E2, and E3 remain blocked as listed above and P4-E
-remains incomplete. The E0-B／B.1／B.2
+complete; the controlled restore, fresh re-preflight, E1-A implementation, commit／push, and remote
+closure now pass. E1-A is complete. E1-B is open only for read-only design review; its
+implementation has not started. E2 and E3 remain blocked, and P4-E remains incomplete. The
+E0-B／B.1／B.2
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate.
