@@ -266,8 +266,9 @@ prerequisites passed, and E1-A has been restored, re-preflighted, implemented, c
 and remotely qualified. E1-A base is complete. The E1-B read-only design review then stopped at the
 online source counter applicability authority gap. P4-E0-B.3 authority and exact-SHA remote closure
 are now complete. The renewed E1-B review then stopped at the tag-free P4-C admission bridge Gate;
-its focused A.1 review passed, and A.1 is implemented locally with commit, push, and remote
-qualification pending. E1-B is blocked on that closure, and E2／E3 remain blocked. E1 must
+its focused A.1 review, implementation commit, push, and exact-SHA remote qualification have now
+passed. P4-E1-A.1 is complete. The P4-E1-B read-only design review is open, while implementation
+remains not started; E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1247,20 +1248,39 @@ documentation change; B.3 records the exact stop. At the B.3 closure revision, a
 read-only design review opened from preflight. That `OPEN` state authorized only that review, not
 implementation. The renewed review subsequently stopped at the A.1 tag-free bridge Gate.
 
-## P4-E1-A.1 local implementation ledger
+## P4-E1-A.1 implementation closure ledger
 
 The renewed E1-B review stopped at the tag-free P4-C admission bridge Gate. A.1 implements one
 sealed store-owned capability, one package-private `Tag`／provider binding, and immediate disk／
-integrated adapters into the existing unique P4-C semantic admission core. The public boundary
+integrated adapters into the existing unique P4-C semantic admission core,
+`PlayerSkillAttachmentAdmission.admit`. The public boundary
 exposes neither `Tag` nor raw roots. Inputs are single-use and cleared before checks; admitted
 projections expose only a bounded count plus single-use ordered drain／discard. E1 performs zero raw
 copies, re-encodes, extra whole-tree traversals, mutations, dirty operations, journal operations,
 or reclaim calls.
 
-Local targeted and full regression evidence passed with 1,300 unit tests, normal GameTest 12／12,
-dedicated smoke, the existing A3／B／C／D fixed-heap Gates, phase／portable gates, `javap`, and
-production-JAR isolation. Official R2Q evidence remained unchanged and was not rerun. A.1 remains
-an unstaged local implementation; commit, push, and remote qualification are pending.
+Local targeted bridge／visibility／API regressions passed exactly 18／18, and full regression passed
+with 1,300 unit tests and zero failures, errors, or skips. Normal GameTest passed 12／12, as did
+dedicated smoke, the existing A3／B／C／D configuration and fixed-heap Gates, phase／portable gates,
+`javap`, and production-JAR isolation.
+
+The implementation commit is `5fea6f36aff2512ed7e232e45d9bfbd3cc0ad2ef`
+(`feat(persistence): add tag-free root audit admission bridge`) with tree
+`9e5f87e1063b4f4a42ef4c4b6bf7bbc2b7a85cdc`. Its exact stat is 20 files changed, 1,995 insertions,
+and 84 deletions: 3 production Java paths, 8 test／phase-gate paths, 7 portable-verifier paths, and
+these 2 architecture ledgers. It was pushed to `main`.
+
+Exact-SHA Build workflow run
+[31291725341](https://github.com/yo1no/Gramarye/actions/runs/31291725341), attempt 1, is the unique
+run for that implementation SHA. Its exact `build`, `P4-A3 memory gates`, `P4-B memory gates`,
+`P4-C memory gates`, and `P4-D memory gates` jobs all completed successfully. The reviewed A.1
+boundary retains one public sealed source, one package-private final `Tag`／provider binding, zero
+public／protected `Tag` exposure, and no public raw-root collection. E1 raw-copy calls are zero; the
+unique semantic core, source single-use claim／clear, and projection reserve-before-drain contract
+remain enforced. The actual global reservation composition remains E1-B work. E1-B production
+types remain absent, and A.1 adds zero mutation, dirty, or reclaim call-site delta. Official R2Q
+evidence and checksums remained unchanged and no R1／R2／R2Q study or smoke was rerun. Gradle,
+workflow, resources, and authority deltas are zero.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1298,8 +1318,14 @@ P4-E1-A base                   = COMPLETE
 P4-E1-B prior read-only review = STOPPED AT ONLINE SOURCE COUNTER APPLICABILITY AUTHORITY GAP
 P4-E1-B renewed read-only review = STOPPED AT TAG-FREE P4-C ADMISSION BRIDGE GATE
 P4-E1-A.1 tag-free bridge review = PASS
-P4-E1-A.1 tag-free admission bridge = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
-P4-E1-B                        = BLOCKED UNTIL A.1 COMMIT / PUSH / REMOTE CLOSURE
+P4-E1-A.1 implementation commit = 5fea6f36aff2512ed7e232e45d9bfbd3cc0ad2ef
+P4-E1-A.1 implementation tree   = 9e5f87e1063b4f4a42ef4c4b6bf7bbc2b7a85cdc
+P4-E1-A.1 implementation stat   = 20 files; 1,995 insertions; 84 deletions
+P4-E1-A.1 implementation remote run = 31291725341 (attempt 1)
+P4-E1-A.1 implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
+P4-E1-A.1 tag-free admission bridge = COMPLETE
+P4-E1-B read-only design review = OPEN
+P4-E1-B implementation         = NOT STARTED
 P4-E2 / P4-E3                  = BLOCKED
 P4-E                           = INCOMPLETE
 ```
@@ -1326,9 +1352,10 @@ passed. The subsequent E1-A attempt stopped at the active heap-floor coordinate 
 complete; the controlled restore, fresh re-preflight, E1-A implementation, commit／push, and remote
 closure now pass. E1-A base is complete. E1-B's prior read-only review stopped at the online counter
 applicability gap; B.3 authority and exact-SHA remote closure passed. The renewed E1-B review then
-stopped at the tag-free P4-C admission bridge Gate. Its A.1 review passed, and A.1 is implemented
-locally with commit, push, and remote qualification pending. E1-B is blocked until A.1 closure; E2
-and E3 remain blocked, and P4-E remains incomplete. The E0-B／B.1／B.2／B.3
+stopped at the tag-free P4-C admission bridge Gate. Its A.1 review passed, and A.1 was implemented,
+committed, pushed, and qualified by its exact-SHA remote Gate. P4-E1-A.1 is complete. The P4-E1-B
+read-only design review is open; implementation has not started. E2 and E3 remain blocked, and
+P4-E remains incomplete. The E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate including the B.3 online

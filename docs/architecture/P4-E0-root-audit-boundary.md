@@ -339,7 +339,7 @@ revision, a fresh E1-B read-only design review opened from preflight; that `OPEN
 design review only and did not approve implementation. The renewed review subsequently stopped at
 the tag-free P4-C admission bridge Gate recorded below.
 
-## P4-E1-A.1 tag-free P4-C admission bridge local evidence
+## P4-E1-A.1 tag-free P4-C admission bridge closure evidence
 
 The renewed P4-E1-B read-only design review stopped at the remaining tag-free P4-C admission
 bridge Gate. Disk and integrated observations had to reuse the unique P4-C full-admission semantic
@@ -359,7 +359,8 @@ The disk and integrated adapters accept their complete existing observation, bin
 already-measured input identity, byte-width witness, and provider witness, and immediately consume
 the capability through `PlayerSkillAttachmentService`. Input identity references are claimed and
 cleared before owner, witness, size, or semantic checks. In-bound inputs invoke the existing unique
-P4-C semantic admission core exactly once; oversize inputs invoke it zero times. E1 performs no
+P4-C semantic admission core, `PlayerSkillAttachmentAdmission.admit`, exactly once; oversize inputs
+invoke it zero times. E1 performs no
 measurement, whole-Tag re-encode, extra whole-tree traversal, or raw preservation copy. Registered
 serializer rejection retains its one required raw copy, while E1 rejection performs zero raw
 copies.
@@ -372,14 +373,29 @@ owner, witness failure, sink failure, and programming misuse consume the relevan
 its backing references. The bridge adds no global inventory, grouped Store audit, index, Complete
 capture, mutation, dirtying, journal operation, playerdata write, or reclaim call.
 
-Targeted bridge／visibility／API regressions and the full 1,300-test unit suite passed; normal
-GameTest remained exactly 12／12. Dedicated smoke, all reviewed portable／phase verifiers, and the
-existing P4-A3／P4-B／P4-C／P4-D configuration and fixed-heap Gates passed locally. `javap` and
-production-JAR inspection confirmed the sealed hierarchy, generic signatures, public-surface
-bounds, and test／research isolation. Official R2Q evidence and checksums remained unchanged, and
-no R1／R2／R2Q study or smoke was rerun. Gradle, workflow, resources, authority, mutation, dirty,
-and reclaim deltas are zero. This is local working-tree evidence only; commit, push, and remote
-qualification remain pending.
+Targeted bridge／visibility／API regressions passed exactly 18／18, and the full 1,300-test unit suite
+passed with zero failures, errors, or skips; normal GameTest remained exactly 12／12. Dedicated
+smoke, all reviewed portable／phase verifiers, and the existing P4-A3／P4-B／P4-C／P4-D configuration
+and fixed-heap Gates passed locally. `javap` and production-JAR inspection confirmed the sealed
+hierarchy, generic signatures, public-surface bounds, and test／research isolation.
+
+The implementation was committed as `5fea6f36aff2512ed7e232e45d9bfbd3cc0ad2ef`
+(`feat(persistence): add tag-free root audit admission bridge`) with tree
+`9e5f87e1063b4f4a42ef4c4b6bf7bbc2b7a85cdc`. Its exact stat is 20 files changed, 1,995 insertions,
+and 84 deletions: 3 production Java paths, 8 test／phase-gate paths, 7 portable-verifier paths, and
+these 2 architecture ledgers. It was pushed to `main`.
+
+Exact-SHA Build workflow run
+[31291725341](https://github.com/yo1no/Gramarye/actions/runs/31291725341), attempt 1, is the unique
+run for that implementation SHA. Its exact `build`, `P4-A3 memory gates`, `P4-B memory gates`,
+`P4-C memory gates`, and `P4-D memory gates` jobs all completed successfully. The reviewed A.1
+boundary retains one public sealed source, one package-private final `Tag`／provider binding, zero
+public／protected `Tag` exposure, and no public raw-root collection. E1 raw-copy calls are zero; the
+unique semantic core, source single-use claim／clear, and projection reserve-before-drain contract
+remain enforced. The actual global reservation composition remains E1-B work. E1-B production
+types remain absent, and A.1 adds zero mutation, dirty, or reclaim call-site delta. Official R2Q
+evidence and checksums remained unchanged; no R1／R2／R2Q study or smoke was rerun. Gradle, workflow,
+resources, and authority deltas are zero.
 
 ## Completeness, reconciliation, and reclaim
 
@@ -440,8 +456,9 @@ passed. Those prerequisites later passed; E1-A was restored, freshly adjudicated
 verified locally, committed, pushed, and remotely qualified. E1-A base is complete; the E1-B read-only
 design review then stopped at the online source counter applicability authority gap. The B.3
 authority patch and its exact-SHA remote Gate are now complete. The renewed E1-B review then stopped
-at the tag-free P4-C admission bridge Gate. Its focused A.1 review passed, and A.1 is implemented
-locally only. E1-B remains blocked until A.1 commit, push, and remote closure; E2／E3 remain blocked.
+at the tag-free P4-C admission bridge Gate. Its focused A.1 review, implementation commit, push, and
+exact-SHA remote Gate have now passed. P4-E1-A.1 is complete. The P4-E1-B read-only design review is
+open; P4-E1-B implementation has not started. E2／E3 remain blocked.
 No phase introduces chunk force, periodic/background scanning, network, or a second persistent
 truth. The completed E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB
 first／restart Gate; the B.1 jobs and this authority correction do not waive it either.
@@ -468,8 +485,14 @@ P4-E1-A base                       = COMPLETE
 P4-E1-B prior read-only review     = STOPPED AT ONLINE SOURCE COUNTER APPLICABILITY AUTHORITY GAP
 P4-E1-B renewed read-only review   = STOPPED AT TAG-FREE P4-C ADMISSION BRIDGE GATE
 P4-E1-A.1 tag-free bridge review   = PASS
-P4-E1-A.1 tag-free admission bridge = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
-P4-E1-B                            = BLOCKED UNTIL A.1 COMMIT / PUSH / REMOTE CLOSURE
+P4-E1-A.1 implementation commit    = 5fea6f36aff2512ed7e232e45d9bfbd3cc0ad2ef
+P4-E1-A.1 implementation tree      = 9e5f87e1063b4f4a42ef4c4b6bf7bbc2b7a85cdc
+P4-E1-A.1 implementation stat      = 20 files; 1,995 insertions; 84 deletions
+P4-E1-A.1 implementation remote run = 31291725341 (attempt 1)
+P4-E1-A.1 implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
+P4-E1-A.1 tag-free admission bridge = COMPLETE
+P4-E1-B read-only design review    = OPEN
+P4-E1-B implementation             = NOT STARTED
 P4-E2 / P4-E3                      = BLOCKED
 P4-E                               = INCOMPLETE
 ```
