@@ -344,6 +344,7 @@ is_reviewed_e1a_changed_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditCounter.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditStage.java | \
@@ -359,9 +360,11 @@ is_reviewed_e1a_changed_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflight.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
         src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmissionTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentServiceTestSupport.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservationTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P3D1ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P3D2ApiGateTest.java | \
@@ -369,7 +372,11 @@ is_reviewed_e1a_changed_path() {
         src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2AApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C1ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1VisibilityCompileTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudgetTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorChildMatrixTest.java | \
@@ -380,6 +387,7 @@ is_reviewed_e1a_changed_path() {
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataFileReaderTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataNbtScannerTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelectorTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1RootAuditBridgeTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflightTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1TestBudgets.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4EPhaseTypes.java | \

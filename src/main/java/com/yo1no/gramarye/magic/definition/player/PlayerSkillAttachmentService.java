@@ -5,6 +5,7 @@ import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.definition.document.SkillDraft;
 import com.yo1no.gramarye.magic.definition.document.SkillDraftPersistenceFacade;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
+import com.yo1no.gramarye.magic.definition.store.PlayerSkillAttachmentAdmissionSource;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +19,11 @@ import net.neoforged.bus.api.IEventBus;
 
 /** Server-thread controlled port for one player's permanent skill Attachment. */
 public final class PlayerSkillAttachmentService {
+    private static final long CLEARED_ENCODED_WIDTH = -1L;
+    private final PlayerSkillAttachmentAdmission rootAuditAdmission;
+
     PlayerSkillAttachmentService() {
+        this.rootAuditAdmission = new PlayerSkillAttachmentAdmission();
     }
 
     /** Registers the unique Attachment type on the mod bus and returns a stateless service. */
@@ -470,6 +475,130 @@ public final class PlayerSkillAttachmentService {
         };
     }
 
+    /**
+     * Consumes one closed store-issued source and performs the existing full P4-C admission.
+     *
+     * <p>The source is irreversibly claimed and cleared before any identity, binding, size, or
+     * semantic validation. Expected data failures become a bounded rejection; programming misuse
+     * fails fast.</p>
+     */
+    public RootAuditAdmissionResult admitForRootAudit(
+            PlayerSkillAttachmentAdmissionSource<?, ?> source) {
+        Objects.requireNonNull(source, "source");
+        OpaqueAdmissionSource<?, ?> opaque = source;
+        if (opaque.consumed) {
+            throw misuse("P4E1_ADMISSION_SOURCE_ALREADY_CONSUMED");
+        }
+
+        var owner = opaque.owner;
+        var inputIdentity = opaque.inputIdentity;
+        var measurementInputIdentity = opaque.measurementInputIdentity;
+        var exactEncodedWidth = opaque.exactEncodedWidth;
+        var providerIdentity = opaque.providerIdentity;
+        var providerWitnessIdentity = opaque.providerWitnessIdentity;
+        opaque.consumed = true;
+        opaque.inputIdentity = null;
+        opaque.measurementInputIdentity = null;
+        opaque.exactEncodedWidth = CLEARED_ENCODED_WIDTH;
+        opaque.providerIdentity = null;
+        opaque.providerWitnessIdentity = null;
+
+        if (owner != this) {
+            throw misuse("P4E1_ADMISSION_SOURCE_OWNER_MISMATCH");
+        }
+        if (inputIdentity != measurementInputIdentity) {
+            throw misuse("P4E1_ADMISSION_INPUT_IDENTITY_MISMATCH");
+        }
+        if (providerIdentity != providerWitnessIdentity) {
+            throw misuse("P4E1_ADMISSION_PROVIDER_IDENTITY_MISMATCH");
+        }
+        if (!(inputIdentity instanceof net.minecraft.nbt.Tag input)) {
+            throw misuse("P4E1_ADMISSION_INPUT_BINDING_INVALID");
+        }
+        if (!(providerIdentity instanceof net.minecraft.core.HolderLookup.Provider provider)) {
+            throw misuse("P4E1_ADMISSION_PROVIDER_BINDING_INVALID");
+        }
+
+        final AttachmentTagSizeResult measured;
+        if (exactEncodedWidth >= 1L && exactEncodedWidth <= AttachmentTagSize.maximum()) {
+            measured = new AttachmentTagSizeResult.WithinLimit(exactEncodedWidth);
+        } else if (exactEncodedWidth > AttachmentTagSize.maximum()) {
+            measured = new AttachmentTagSizeResult.Exceeded(
+                    AttachmentTagSize.observedAtLeast(), AttachmentTagSize.maximum());
+        } else {
+            throw misuse("P4E1_ADMISSION_SIZE_PROOF_INVALID");
+        }
+
+        if (measured instanceof AttachmentTagSizeResult.Exceeded) {
+            return RootAuditOversize.INSTANCE;
+        }
+        return switch (rootAuditAdmission.admit(input, measured, Optional.of(provider))) {
+            case PlayerSkillAttachmentAdmission.Admitted admitted ->
+                    new RootAuditAdmitted(
+                            this,
+                            admitted.ready().latestStates(),
+                            admitted.ready().equipped());
+            case PlayerSkillAttachmentAdmission.Rejected rejected ->
+                    new RootAuditRejected(rejected.failure());
+            case PlayerSkillAttachmentAdmission.Oversize ignored ->
+                    RootAuditOversize.INSTANCE;
+        };
+    }
+
+    /**
+     * Returns the exact number of callbacks a later successful drain will make.
+     *
+     * <p>A future global caller must reserve this many raw-root claims before draining. If any
+     * reservation fails, it must discard the handle instead; no callback or root append is then
+     * permitted.</p>
+     */
+    public int rootCount(RootAuditAdmitted admitted) {
+        Objects.requireNonNull(admitted, "admitted");
+        if (admitted.consumed) {
+            throw misuse("P4E1_ROOT_PROJECTION_ALREADY_CONSUMED");
+        }
+        if (admitted.owner != this) {
+            admitted.consumeAndClear();
+            throw misuse("P4E1_ROOT_PROJECTION_OWNER_MISMATCH");
+        }
+        return admitted.rootCount;
+    }
+
+    /** Drains latest roots first and equipped roots second after caller-side full reservation. */
+    public void drainRootProjection(RootAuditAdmitted admitted, RootAuditSink sink) {
+        Objects.requireNonNull(admitted, "admitted");
+        if (admitted.consumed) {
+            throw misuse("P4E1_ROOT_PROJECTION_ALREADY_CONSUMED");
+        }
+        var owner = admitted.owner;
+        var latest = admitted.latest;
+        var equipped = admitted.equipped;
+        admitted.consumeAndClear();
+        if (owner != this) {
+            throw misuse("P4E1_ROOT_PROJECTION_OWNER_MISMATCH");
+        }
+        Objects.requireNonNull(sink, "sink");
+        for (var state : latest) {
+            state.pointer().ifPresent(sink::latest);
+        }
+        for (var entry : equipped) {
+            sink.equipped(entry.slot(), entry.reference());
+        }
+    }
+
+    /** Consumes a reserved-but-unpublished projection without issuing callbacks. */
+    public void discardRootProjection(RootAuditAdmitted admitted) {
+        Objects.requireNonNull(admitted, "admitted");
+        if (admitted.consumed) {
+            throw misuse("P4E1_ROOT_PROJECTION_ALREADY_CONSUMED");
+        }
+        var owner = admitted.owner;
+        admitted.consumeAndClear();
+        if (owner != this) {
+            throw misuse("P4E1_ROOT_PROJECTION_OWNER_MISMATCH");
+        }
+    }
+
     /** Package-private registered-state observation for normal GameTest assertions. */
     ObservedPlayerSkillAttachment observe(ServerPlayer player) {
         requireServerThread(player);
@@ -597,6 +726,101 @@ public final class PlayerSkillAttachmentService {
         if (!PlayerSkillAttachmentPersistenceBridge.equippedSlotWithinLimit(slot)) {
             throw new IllegalArgumentException("slot is outside the hard equipped boundary");
         }
+    }
+
+    private static IllegalStateException misuse(String code) {
+        return new IllegalStateException(code);
+    }
+
+    /** Generic storage only; no operation accepts this forgeable base type. */
+    public abstract static class OpaqueAdmissionSource<I, P> {
+        private final PlayerSkillAttachmentService owner;
+        private I inputIdentity;
+        private I measurementInputIdentity;
+        private long exactEncodedWidth;
+        private P providerIdentity;
+        private P providerWitnessIdentity;
+        private boolean consumed;
+
+        protected OpaqueAdmissionSource(
+                PlayerSkillAttachmentService owner,
+                I inputIdentity,
+                I measurementInputIdentity,
+                long exactEncodedWidth,
+                P providerIdentity,
+                P providerWitnessIdentity) {
+            this.owner = owner;
+            this.inputIdentity = inputIdentity;
+            this.measurementInputIdentity = measurementInputIdentity;
+            this.exactEncodedWidth = exactEncodedWidth;
+            this.providerIdentity = providerIdentity;
+            this.providerWitnessIdentity = providerWitnessIdentity;
+        }
+    }
+
+    public sealed interface RootAuditAdmissionResult
+            permits RootAuditAdmitted, RootAuditRejected, RootAuditOversize {
+    }
+
+    /** Single-use service-owned view of admitted immutable root backings. */
+    public static final class RootAuditAdmitted implements RootAuditAdmissionResult {
+        private final PlayerSkillAttachmentService owner;
+        private List<PlayerLatestState> latest;
+        private List<EquippedSkillReference> equipped;
+        private final int rootCount;
+        private boolean consumed;
+
+        private RootAuditAdmitted(
+                PlayerSkillAttachmentService owner,
+                List<PlayerLatestState> latest,
+                List<EquippedSkillReference> equipped) {
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.latest = Objects.requireNonNull(latest, "latest");
+            this.equipped = Objects.requireNonNull(equipped, "equipped");
+            var count = equipped.size();
+            for (var state : latest) {
+                if (state.pointer().isPresent()) {
+                    count = Math.addExact(count, 1);
+                }
+            }
+            var maximum = Math.addExact(
+                    MagicSafetyCeilings.MAX_PLAYER_LATEST_STATES,
+                    MagicSafetyCeilings.MAX_PLAYER_EQUIPPED_REFERENCES);
+            if (count < 0 || count > maximum) {
+                throw new IllegalStateException("P4E1_ROOT_PROJECTION_COUNT_INVALID");
+            }
+            this.rootCount = count;
+        }
+
+        private void consumeAndClear() {
+            consumed = true;
+            latest = null;
+            equipped = null;
+        }
+    }
+
+    /** Bounded expected-data rejection; the raw failure remains package-internal. */
+    public static final class RootAuditRejected implements RootAuditAdmissionResult {
+        private final PlayerSkillAttachmentFailure failure;
+
+        private RootAuditRejected(PlayerSkillAttachmentFailure failure) {
+            this.failure = Objects.requireNonNull(failure, "failure");
+        }
+
+        PlayerSkillAttachmentFailure failure() {
+            return failure;
+        }
+    }
+
+    public enum RootAuditOversize implements RootAuditAdmissionResult {
+        INSTANCE
+    }
+
+    /** Callback-only root projection surface; no backing collection is exposed. */
+    public interface RootAuditSink {
+        void latest(SkillReference reference);
+
+        void equipped(int slot, SkillReference reference);
     }
 
     public sealed interface Result<T> permits Available, Unavailable {

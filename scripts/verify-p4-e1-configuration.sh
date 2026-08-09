@@ -10,11 +10,18 @@ CEILINGS="$MAIN_JAVA/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java"
 BUDGET="$STORE_ROOT/P4E1AuditBudget.java"
 HEAP_OBSERVATION="$STORE_ROOT/P4E1HeapFloorObservation.java"
 PREFLIGHT="$STORE_ROOT/P4E1SourceAdmissionPreflight.java"
+ADMISSION_SOURCE="$STORE_ROOT/PlayerSkillAttachmentAdmissionSource.java"
+BOUND_ADMISSION_SOURCE="$STORE_ROOT/P4E1BoundPlayerSkillAttachmentAdmissionSource.java"
+PLAYER_SERVICE="$PLAYER_ROOT/PlayerSkillAttachmentService.java"
 HEAP_CHILD="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorChildMatrixTest.java"
 HEAP_PROBE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorProbeMain.java"
 HEAP_UNIT="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservationTest.java"
 PREFLIGHT_UNIT="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflightTest.java"
 PHASE_TYPES="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4EPhaseTypes.java"
+A1_API_GATE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1ApiGateTest.java"
+A1_VISIBILITY_GATE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1VisibilityCompileTest.java"
+A1_BRIDGE_TEST="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1RootAuditBridgeTest.java"
+A1_TEST_SUPPORT="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentServiceTestSupport.java"
 E0_LEDGER="$REPOSITORY_ROOT/docs/architecture/P4-E0-root-audit-boundary.md"
 
 fail() {
@@ -64,52 +71,17 @@ is_allowed_changed_path() {
         scripts/verify-p4-e0-r-configuration.sh | \
         scripts/verify-p4-e0-r2q-configuration.sh | \
         scripts/verify-p4-e1-configuration.sh | \
-        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditCounter.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditStage.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompressedCapacityRejected.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileMetadata.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileSystemAccess.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservation.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorStatus.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshot.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataFileReader.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataNbtScanner.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflight.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
-        src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmissionTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservationTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/research/P4E0ResearchConfigurationTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D1ApiGateTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D2ApiGateTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3AApiGateTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2AApiGateTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2PhaseTypes.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentServiceTestSupport.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1VisibilityCompileTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AApiGateTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudgetTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorChildMatrixTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservationTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorProbeMain.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversalTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshotTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataFileReaderTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataNbtScannerTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelectorTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflightTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1TestBudgets.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4EPhaseTypes.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInputTest.java)
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1RootAuditBridgeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4EPhaseTypes.java)
             return 0
             ;;
         *)
@@ -203,8 +175,14 @@ self_regression() {
     [ "$GREP_RESULT" -eq 0 ] || fail "self-test could not classify forbidden marker"
 
     is_allowed_changed_path \
-        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java' \
         || fail "self-test rejected an exact allowed E1-A path"
+    is_allowed_changed_path \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java' \
+        || fail "self-test rejected the exact sealed source path"
+    is_allowed_changed_path \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java' \
+        || fail "self-test rejected the exact bound source path"
     if is_allowed_changed_path 'build.gradle'; then
         fail "self-test accepted a forbidden Gradle path"
     fi
@@ -212,8 +190,12 @@ self_regression() {
         fail "self-test accepted a forbidden production resource path"
     fi
     if is_allowed_changed_path \
-            'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudgetExtra.java'; then
+            'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSourceExtra.java'; then
         fail "self-test accepted a prefix-near production path"
+    fi
+    if is_allowed_changed_path \
+            'src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSourceExtra.java'; then
+        fail "self-test accepted a prefix-near sealed source path"
     fi
     if is_allowed_changed_path 'logs/latest.log'; then
         fail "self-test accepted a repository-root runtime log"
@@ -231,7 +213,7 @@ self_regression
 verify_changed_paths
 [ -x "$0" ] || fail "portable verifier is not executable"
 
-EXPECTED_STORE_TYPE_COUNT=15
+EXPECTED_STORE_TYPE_COUNT=16
 ACTUAL_STORE_TYPE_COUNT=$(find "$STORE_ROOT" -maxdepth 1 -name 'P4E1*.java' -print \
         | wc -l | tr -d ' ')
 [ "$ACTUAL_STORE_TYPE_COUNT" -eq "$EXPECTED_STORE_TYPE_COUNT" ] \
@@ -247,6 +229,7 @@ for name in \
         P4E1HeapFloorObservation \
         P4E1HeapFloorStatus \
         P4E1IntegratedSnapshotTraversal \
+        P4E1BoundPlayerSkillAttachmentAdmissionSource \
         P4E1PlayerDataDirectorySnapshot \
         P4E1PlayerDataFileReader \
         P4E1PlayerDataNbtScanner \
@@ -259,9 +242,11 @@ for name in \
 done
 
 for file in "$CEILINGS" "$BUDGET" "$PREFLIGHT" \
+        "$ADMISSION_SOURCE" "$BOUND_ADMISSION_SOURCE" "$PLAYER_SERVICE" \
         "$PLAYER_ROOT/PlayerSkillAttachmentAdmission.java" \
         "$PLAYER_ROOT/PlayerSkillAttachmentSourceObservation.java" \
-        "$HEAP_CHILD" "$HEAP_PROBE" "$HEAP_UNIT" "$PREFLIGHT_UNIT" "$PHASE_TYPES"; do
+        "$HEAP_CHILD" "$HEAP_PROBE" "$HEAP_UNIT" "$PREFLIGHT_UNIT" "$PHASE_TYPES" \
+        "$A1_API_GATE" "$A1_VISIBILITY_GATE" "$A1_BRIDGE_TEST" "$A1_TEST_SUPPORT"; do
     [ -f "$file" ] || fail "required reviewed file missing: $file"
     [ ! -L "$file" ] || fail "required reviewed file is a symlink: $file"
 done
@@ -373,7 +358,94 @@ require_fixed "$STORE_ROOT/StrictSingleMemberGzipInput.java" \
 require_exact_count "$STORE_ROOT/StrictSingleMemberGzipInput.java" \
     'new GzipCompressorInputStream(' 1
 
-E1_SOURCES=$(find "$STORE_ROOT" -maxdepth 1 -type f -name 'P4E1*.java' -print)
+require_fixed "$ADMISSION_SOURCE" \
+    'public sealed abstract class PlayerSkillAttachmentAdmissionSource<I, P>'
+require_fixed "$ADMISSION_SOURCE" \
+    'extends PlayerSkillAttachmentService.OpaqueAdmissionSource<I, P>'
+require_fixed "$ADMISSION_SOURCE" \
+    'permits P4E1BoundPlayerSkillAttachmentAdmissionSource'
+reject_fixed "$ADMISSION_SOURCE" 'Tag'
+reject_fixed "$ADMISSION_SOURCE" 'public PlayerSkillAttachmentAdmissionSource('
+reject_fixed "$ADMISSION_SOURCE" 'protected PlayerSkillAttachmentAdmissionSource('
+require_fixed "$BOUND_ADMISSION_SOURCE" \
+    'final class P4E1BoundPlayerSkillAttachmentAdmissionSource'
+require_fixed "$BOUND_ADMISSION_SOURCE" \
+    'extends PlayerSkillAttachmentAdmissionSource<Tag, HolderLookup.Provider>'
+require_exact_count "$BOUND_ADMISSION_SOURCE" \
+    'new P4E1BoundPlayerSkillAttachmentAdmissionSource(' 2
+require_exact_count "$BOUND_ADMISSION_SOURCE" 'service.admitForRootAudit(' 2
+require_exact_count "$BOUND_ADMISSION_SOURCE" 'admitDiskObservation(' 1
+require_exact_count "$BOUND_ADMISSION_SOURCE" 'admitIntegratedObservation(' 1
+reject_fixed "$BOUND_ADMISSION_SOURCE" 'return new P4E1BoundPlayerSkillAttachmentAdmissionSource('
+for production_source in $(find "$MAIN_JAVA" -type f -name '*.java' -print); do
+    [ "$production_source" = "$BOUND_ADMISSION_SOURCE" ] && continue
+    reject_fixed "$production_source" 'new P4E1BoundPlayerSkillAttachmentAdmissionSource('
+    reject_fixed "$production_source" 'service.admitForRootAudit('
+done
+require_fixed "$PLAYER_SERVICE" \
+    'public abstract static class OpaqueAdmissionSource<I, P>'
+require_fixed "$PLAYER_SERVICE" \
+    'public RootAuditAdmissionResult admitForRootAudit('
+require_fixed "$PLAYER_SERVICE" \
+    'PlayerSkillAttachmentAdmissionSource<?, ?> source)'
+require_exact_count "$PLAYER_SERVICE" 'admitForRootAudit(' 1
+reject_fixed "$PLAYER_SERVICE" 'admitForRootAudit(OpaqueAdmissionSource'
+reject_fixed "$PLAYER_SERVICE" 'admitForRootAudit(Object'
+reject_fixed "$PLAYER_SERVICE" 'admitForRootAudit(Tag'
+require_fixed "$PLAYER_SERVICE" 'public int rootCount(RootAuditAdmitted admitted)'
+require_fixed "$PLAYER_SERVICE" \
+    'public void drainRootProjection(RootAuditAdmitted admitted, RootAuditSink sink)'
+require_fixed "$PLAYER_SERVICE" \
+    'public void discardRootProjection(RootAuditAdmitted admitted)'
+require_fixed "$PLAYER_SERVICE" 'opaque.inputIdentity = null'
+require_fixed "$PLAYER_SERVICE" 'opaque.measurementInputIdentity = null'
+require_fixed "$PLAYER_SERVICE" 'opaque.providerIdentity = null'
+require_fixed "$PLAYER_SERVICE" 'opaque.providerWitnessIdentity = null'
+require_fixed "$PLAYER_SERVICE" 'opaque.exactEncodedWidth = CLEARED_ENCODED_WIDTH'
+require_fixed "$PLAYER_SERVICE" 'admitted.consumeAndClear()'
+require_fixed "$PLAYER_SERVICE" 'sink::latest'
+require_fixed "$PLAYER_SERVICE" 'sink.equipped(entry.slot(), entry.reference())'
+require_exact_count "$PLAYER_SERVICE" 'rootAuditAdmission.admit(' 1
+require_exact_count "$PLAYER_ROOT/PlayerSkillAttachmentSerializer.java" 'input.copy()' 1
+
+for source in "$ADMISSION_SOURCE" "$BOUND_ADMISSION_SOURCE"; do
+    reject_fixed "$source" '.copy('
+    reject_fixed "$source" 'NbtIo.'
+    reject_fixed "$source" 'writeAnyTag'
+    reject_fixed "$source" 'AttachmentTagSize.measure'
+    reject_fixed "$source" 'List<SkillReference>'
+    reject_fixed "$source" 'Codec'
+    reject_fixed "$source" 'Serializable'
+    reject_fixed "$source" 'static {'
+done
+for token in \
+        '.copy()' \
+        'NbtIo.' \
+        'writeAnyTag' \
+        'AttachmentTagSize.measure' \
+        'SkillRetentionRootAuditService' \
+        'PendingAttachmentJournal' \
+        'CompleteCapture' \
+        '.reclaim(' \
+        'static {'; do
+    reject_fixed "$PLAYER_SERVICE" "$token"
+done
+require_exact_count "$PLAYER_SERVICE" '.setData(' 1
+require_fixed "$A1_API_GATE" 'final class P4E1A1ApiGateTest'
+require_fixed "$A1_VISIBILITY_GATE" 'final class P4E1A1VisibilityCompileTest'
+require_fixed "$A1_BRIDGE_TEST" 'final class P4E1RootAuditBridgeTest'
+require_fixed "$A1_TEST_SUPPORT" 'PlayerSkillAttachmentSerializer.INSTANCE.read('
+
+for source in "$ADMISSION_SOURCE" "$BOUND_ADMISSION_SOURCE" "$PLAYER_SERVICE"; do
+    reject_fixed "$source" '@SuppressWarnings'
+    reject_fixed "$source" 'unchecked'
+    reject_fixed "$source" 'java.lang.reflect'
+    reject_fixed "$source" 'sun.misc.Unsafe'
+    reject_fixed "$source" 'setAccessible('
+done
+
+E1_SOURCES="$(find "$STORE_ROOT" -maxdepth 1 -type f -name 'P4E1*.java' -print)
+$ADMISSION_SOURCE"
 [ -n "$E1_SOURCES" ] || fail "P4-E1 source allowlist is empty"
 
 for token in \
@@ -463,6 +535,44 @@ for forbidden_name in \
     [ ! -e "$STORE_ROOT/$forbidden_name" ] \
         || fail "later-phase production source exists: $forbidden_name"
 done
+
+verify_a1_jar_isolation() {
+    local listing jar_path jar_count
+    listing=$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-e1-jar.XXXXXX")
+    trap 'rm -f -- "$listing"' RETURN
+    jar_count=0
+    for jar_path in "$REPOSITORY_ROOT"/build/libs/gramarye-*.jar; do
+        [ -f "$jar_path" ] || continue
+        [ ! -L "$jar_path" ] || fail "production JAR is a symlink: $jar_path"
+        jar_count=$((jar_count + 1))
+        jar tf "$jar_path" > "$listing" \
+            || fail "jar tool failed while inspecting $jar_path"
+        for class_path in \
+                'com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.class' \
+                'com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.class' \
+                'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$OpaqueAdmissionSource.class' \
+                'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditAdmissionResult.class' \
+                'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditAdmitted.class' \
+                'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditRejected.class' \
+                'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditOversize.class' \
+                'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditSink.class'; do
+            require_fixed "$listing" "$class_path"
+        done
+        for forbidden_class in \
+                P4E1A1ApiGateTest \
+                P4E1A1VisibilityCompileTest \
+                P4E1RootAuditBridgeTest \
+                PlayerSkillAttachmentServiceTestSupport; do
+            reject_fixed "$listing" "$forbidden_class"
+        done
+    done
+    [ "$jar_count" -eq 1 ] \
+        || fail "expected one production JAR for A.1 isolation, found $jar_count"
+    rm -f -- "$listing"
+    trap - RETURN
+}
+
+verify_a1_jar_isolation
 
 require_fixed "$PHASE_TYPES" '"P4E1CompressedCapacityRejected"'
 require_fixed "$PHASE_TYPES" '"P4E1SourceAdmissionPreflight"'

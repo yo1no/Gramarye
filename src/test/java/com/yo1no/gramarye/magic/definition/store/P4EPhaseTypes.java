@@ -14,12 +14,17 @@ final class P4EPhaseTypes {
             "P4E1HeapFloorObservation",
             "P4E1HeapFloorStatus",
             "P4E1IntegratedSnapshotTraversal",
+            "P4E1BoundPlayerSkillAttachmentAdmissionSource",
             "P4E1PlayerDataDirectorySnapshot",
             "P4E1PlayerDataFileReader",
             "P4E1PlayerDataNbtScanner",
             "P4E1PlayerDataSourceSelector",
             "P4E1SourceAdmissionPreflight",
-            "P4E1SourceFailure");
+            "P4E1SourceFailure",
+            "PlayerSkillAttachmentAdmissionSource");
+
+    static final Set<String> PUBLIC_STORE_TYPE_NAMES = Set.of(
+            "PlayerSkillAttachmentAdmissionSource");
 
     static final Set<String> PLAYER_TYPE_NAMES = Set.of(
             "PlayerSkillAttachmentAdmission",
@@ -29,6 +34,8 @@ final class P4EPhaseTypes {
             "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java",
             "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java",
             "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java",
+            "com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java",
+            "com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java",
             "com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java",
             "com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java");
 

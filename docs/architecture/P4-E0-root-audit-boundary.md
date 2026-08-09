@@ -334,9 +334,52 @@ documents; B.3 records the stop without treating the stale text as a preflight f
 authority patch was committed as `e23a2a6c0df298315fc726ec509d3f953d559a08` with tree
 `ce1d6d379c763ed2824f831f6a1e81c73c3fec65`, pushed to `main`, and qualified by exact-SHA workflow
 run `31251807408` attempt 1: `build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`,
-and `P4-D memory gates` all completed successfully. B.3 is therefore complete. A fresh E1-B
-read-only design review is now open from preflight; `OPEN` authorizes design review only and does
-not approve implementation, which remains not started.
+and `P4-D memory gates` all completed successfully. B.3 is therefore complete. At the B.3 closure
+revision, a fresh E1-B read-only design review opened from preflight; that `OPEN` state authorized
+design review only and did not approve implementation. The renewed review subsequently stopped at
+the tag-free P4-C admission bridge Gate recorded below.
+
+## P4-E1-A.1 tag-free P4-C admission bridge local evidence
+
+The renewed P4-E1-B read-only design review stopped at the remaining tag-free P4-C admission
+bridge Gate. Disk and integrated observations had to reuse the unique P4-C full-admission semantic
+core without exposing `Tag`, providers, Ready state, or raw root collections across the public
+package boundary. The focused A.1 review approved one sealed nominal capability; no authority
+amendment was required.
+
+The local implementation adds `PlayerSkillAttachmentAdmissionSource<I, P>` as the sole new public
+top-level type. It is sealed, has no public／protected constructor, factory, accessor, or mutable
+state, and permits only package-private final `P4E1BoundPlayerSkillAttachmentAdmissionSource`.
+Generic erasure remains opaque at the public boundary; the only capability generic specialization
+that binds `Tag` and `HolderLookup.Provider` is that package-private class. The public service
+operation accepts the exact sealed capability rather than the forgeable generic base, `Object`, a
+raw type, or caller-selected input types.
+
+The disk and integrated adapters accept their complete existing observation, bind the exact
+already-measured input identity, byte-width witness, and provider witness, and immediately consume
+the capability through `PlayerSkillAttachmentService`. Input identity references are claimed and
+cleared before owner, witness, size, or semantic checks. In-bound inputs invoke the existing unique
+P4-C semantic admission core exactly once; oversize inputs invoke it zero times. E1 performs no
+measurement, whole-Tag re-encode, extra whole-tree traversal, or raw preservation copy. Registered
+serializer rejection retains its one required raw copy, while E1 rejection performs zero raw
+copies.
+
+A successful admission returns a service-owned single-use projection handle, not a root
+collection. The caller reads the bounded root count, reserves capacity, and then drains in
+latest-by-SkillId followed by equipped-by-slot order while preserving duplicates, or discards
+without callbacks. Reserve failure therefore discards before publication. Drain, discard, wrong
+owner, witness failure, sink failure, and programming misuse consume the relevant handle and clear
+its backing references. The bridge adds no global inventory, grouped Store audit, index, Complete
+capture, mutation, dirtying, journal operation, playerdata write, or reclaim call.
+
+Targeted bridge／visibility／API regressions and the full 1,300-test unit suite passed; normal
+GameTest remained exactly 12／12. Dedicated smoke, all reviewed portable／phase verifiers, and the
+existing P4-A3／P4-B／P4-C／P4-D configuration and fixed-heap Gates passed locally. `javap` and
+production-JAR inspection confirmed the sealed hierarchy, generic signatures, public-surface
+bounds, and test／research isolation. Official R2Q evidence and checksums remained unchanged, and
+no R1／R2／R2Q study or smoke was rerun. Gradle, workflow, resources, authority, mutation, dirty,
+and reclaim deltas are zero. This is local working-tree evidence only; commit, push, and remote
+qualification remain pending.
 
 ## Completeness, reconciliation, and reclaim
 
@@ -394,10 +437,11 @@ renewed P4-E1 read-only design review passed. The subsequent E1-A implementation
 the active heap-floor authority-coordinate conflict. P4-E0-B.2 is now complete. At its closure
 revision E1-A could be restored and re-preflighted only after the closure commit's remote jobs
 passed. Those prerequisites later passed; E1-A was restored, freshly adjudicated, implemented,
-verified locally, committed, pushed, and remotely qualified. E1-A is complete; the E1-B read-only
+verified locally, committed, pushed, and remotely qualified. E1-A base is complete; the E1-B read-only
 design review then stopped at the online source counter applicability authority gap. The B.3
-authority patch and its exact-SHA remote Gate are now complete, so a new E1-B read-only design review
-is open from preflight. E1-B implementation has not started. E2／E3 remain blocked.
+authority patch and its exact-SHA remote Gate are now complete. The renewed E1-B review then stopped
+at the tag-free P4-C admission bridge Gate. Its focused A.1 review passed, and A.1 is implemented
+locally only. E1-B remains blocked until A.1 commit, push, and remote closure; E2／E3 remain blocked.
 No phase introduces chunk force, periodic/background scanning, network, or a second persistent
 truth. The completed E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB
 first／restart Gate; the B.1 jobs and this authority correction do not waive it either.
@@ -420,10 +464,12 @@ P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review  = PASS (HISTORICAL)
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
-P4-E1-A                            = COMPLETE
+P4-E1-A base                       = COMPLETE
 P4-E1-B prior read-only review     = STOPPED AT ONLINE SOURCE COUNTER APPLICABILITY AUTHORITY GAP
-P4-E1-B read-only review           = OPEN
-P4-E1-B implementation             = NOT STARTED
+P4-E1-B renewed read-only review   = STOPPED AT TAG-FREE P4-C ADMISSION BRIDGE GATE
+P4-E1-A.1 tag-free bridge review   = PASS
+P4-E1-A.1 tag-free admission bridge = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+P4-E1-B                            = BLOCKED UNTIL A.1 COMMIT / PUSH / REMOTE CLOSURE
 P4-E2 / P4-E3                      = BLOCKED
 P4-E                               = INCOMPLETE
 ```

@@ -191,6 +191,8 @@ verify_exact_sources_and_registration() {
     local package_path='src/main/java/com/yo1no/gramarye/magic/definition/player'
     local registration="${package_path}/PlayerSkillAttachments.java"
     local service="${package_path}/PlayerSkillAttachmentService.java"
+    local admission_source='src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java'
+    local bound_source='src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java'
     local game_tests="${package_path}/PlayerSkillAttachmentGameTests.java"
     local serialize_line=''
     local death_line=''
@@ -211,6 +213,24 @@ verify_exact_sources_and_registration() {
             "${package_path}/${source}.java" \
             "P4-C2-A reviewed production source is missing: ${source}.java"
         printf '%s\0' "${package_path}/${source}.java" >> "${C2_SOURCE_LIST}"
+    done
+    require_regular_file "${admission_source}" \
+        'P4-E1-A.1 sealed Attachment admission source is missing'
+    require_regular_file "${bound_source}" \
+        'P4-E1-A.1 bound Attachment admission source is missing'
+    require_fixed "${admission_source}" \
+        'public sealed abstract class PlayerSkillAttachmentAdmissionSource<I, P>' \
+        'P4-E1-A.1 sealed Attachment admission declaration drifted'
+    require_fixed "${bound_source}" \
+        'extends PlayerSkillAttachmentAdmissionSource<Tag, HolderLookup.Provider>' \
+        'P4-E1-A.1 package-private Tag/provider binding drifted'
+    for operation in \
+        'admitForRootAudit(' \
+        'rootCount(RootAuditAdmitted admitted)' \
+        'drainRootProjection(RootAuditAdmitted admitted, RootAuditSink sink)' \
+        'discardRootProjection(RootAuditAdmitted admitted)'; do
+        require_fixed "${service}" "${operation}" \
+            "P4-E1-A.1 player service operation drifted: ${operation}"
     done
 
     for literal in \
@@ -385,6 +405,15 @@ verify_production_jar() {
                 "${JAR_LISTING}" \
                 "com/yo1no/gramarye/magic/definition/player/${class_name}.class" \
                 "P4-C2-A production JAR lacks reviewed class ${class_name}"
+        done
+        for class_path in \
+            'com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.class' \
+            'com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.class' \
+            'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$OpaqueAdmissionSource.class' \
+            'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditAdmitted.class' \
+            'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditSink.class'; do
+            require_fixed "${JAR_LISTING}" "${class_path}" \
+                "P4-E1-A.1 production JAR lacks reviewed class ${class_path}"
         done
         for literal in \
             p4C2Probe p4C2GameTest gramarye_p4_c2 \

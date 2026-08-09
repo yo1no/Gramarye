@@ -37,10 +37,16 @@ final class P4C2PhaseTypes {
             "MutationRejected",
             "MutationRejectionCode",
             "NoOp",
+            "OpaqueAdmissionSource",
             "PlayerSkillRootProjection",
             "Prepared",
             "PreparedPlayerSkillTransition",
             "Result",
+            "RootAuditAdmissionResult",
+            "RootAuditAdmitted",
+            "RootAuditOversize",
+            "RootAuditRejected",
+            "RootAuditSink",
             "TransitionCurrentness",
             "TransitionPreparation",
             "TransitionRejected",
@@ -49,6 +55,9 @@ final class P4C2PhaseTypes {
             "UnavailableReason");
 
     static final Set<String> SERVICE_PUBLIC_METHOD_NAMES = Set.of(
+            "admitForRootAudit",
+            "discardRootProjection",
+            "drainRootProjection",
             "draftCount",
             "editorState",
             "equippedAt",
@@ -64,6 +73,7 @@ final class P4C2PhaseTypes {
             "putDraft",
             "registerOn",
             "removeDraft",
+            "rootCount",
             "rootProjection",
             "setEditorState",
             "setEquipped");

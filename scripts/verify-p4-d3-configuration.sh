@@ -275,6 +275,7 @@ is_reviewed_e1a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditCounter.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditStage.java | \
@@ -290,6 +291,7 @@ is_reviewed_e1a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflight.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
         src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java) return 0 ;;
         *) return 1 ;;

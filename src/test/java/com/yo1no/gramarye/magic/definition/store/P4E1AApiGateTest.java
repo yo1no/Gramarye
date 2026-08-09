@@ -25,12 +25,15 @@ final class P4E1AApiGateTest {
             "com/yo1no/gramarye/magic/definition/player");
 
     @Test
-    void reviewedE1ATypesAreExactAndPackagePrivate() throws Exception {
+    void reviewedE1ATypesAreExactWithOneSealedPublicCapability() throws Exception {
         assertEquals(P4EPhaseTypes.STORE_TYPE_NAMES, p4EStoreTypeNames());
         for (var simpleName : P4EPhaseTypes.STORE_TYPE_NAMES) {
-            assertFalse(Modifier.isPublic(Class.forName(
-                    "com.yo1no.gramarye.magic.definition.store." + simpleName)
-                    .getModifiers()), simpleName);
+            assertEquals(
+                    P4EPhaseTypes.PUBLIC_STORE_TYPE_NAMES.contains(simpleName),
+                    Modifier.isPublic(Class.forName(
+                            "com.yo1no.gramarye.magic.definition.store." + simpleName)
+                            .getModifiers()),
+                    simpleName);
         }
         for (var simpleName : P4EPhaseTypes.PLAYER_TYPE_NAMES) {
             assertFalse(Modifier.isPublic(Class.forName(
@@ -204,9 +207,11 @@ final class P4E1AApiGateTest {
 
         for (var simpleName : P4EPhaseTypes.STORE_TYPE_NAMES) {
             var type = Class.forName("com.yo1no.gramarye.magic.definition.store." + simpleName);
-            assertFalse(Modifier.isPublic(type.getModifiers()));
+            assertEquals(
+                    P4EPhaseTypes.PUBLIC_STORE_TYPE_NAMES.contains(simpleName),
+                    Modifier.isPublic(type.getModifiers()));
         }
-        assertFalse(e1Sources.contains("public class"));
+        assertEquals(1, occurrences(e1Sources, "public sealed abstract class"));
         assertFalse(e1Sources.contains("public interface"));
     }
 
@@ -246,7 +251,9 @@ final class P4E1AApiGateTest {
     private static Set<String> p4EStoreTypeNames() throws Exception {
         try (var stream = Files.list(STORE_ROOT)) {
             return stream
-                    .filter(path -> path.getFileName().toString().startsWith("P4E1"))
+                    .filter(path -> path.getFileName().toString().startsWith("P4E1")
+                            || path.getFileName().toString().equals(
+                                    "PlayerSkillAttachmentAdmissionSource.java"))
                     .filter(path -> path.toString().endsWith(".java"))
                     .map(path -> path.getFileName().toString().replace(".java", ""))
                     .collect(Collectors.toUnmodifiableSet());
@@ -256,7 +263,9 @@ final class P4E1AApiGateTest {
     private static String p4ESources() throws Exception {
         var paths = new ArrayList<Path>();
         try (var stream = Files.list(STORE_ROOT)) {
-            stream.filter(path -> path.getFileName().toString().startsWith("P4E1"))
+            stream.filter(path -> path.getFileName().toString().startsWith("P4E1")
+                            || path.getFileName().toString().equals(
+                                    "PlayerSkillAttachmentAdmissionSource.java"))
                     .forEach(paths::add);
         }
         for (var name : P4EPhaseTypes.PLAYER_TYPE_NAMES) {
