@@ -61,8 +61,11 @@ This page is a compact phase boundary, not a second persistence specification.
   unified UUID ordering, final online freshness, and the E3 online qualification obligation; it too
   changes no numeric profile, evidence, or implementation. P4-E1 owns the read-only bounded online／
   integrated／disk scanner; full P4-C applies only to disk／integrated Tags while online observes the
-  existing admitted state. E1 also owns journal projection, grouped Store audit, memory-only index, and
-  bounded completeness results; it owns no mutation or reclaim call. P4-E2 owns only login-time
+  existing admitted state. Its reviewed global-composition work is forcibly split into B1 then B2.
+  B1 owns closed inventory coverage, global source arbitration, player／journal raw-root capture,
+  capacity-before-dedup, and freshness witnesses, producing only a package-private single-use
+  unpublished capture. B2 owns grouped Store audit, the bounded public result, memory-only index,
+  and ephemeral same-call-chain Complete handoff. E1 owns no mutation or reclaim call. P4-E2 owns only login-time
   immutable reconciliation after P4-D recovery and owns no offline, Store, journal, or reclaim
   mutation. P4-E3 owns the unique same-`ServerStartingEvent` fresh-audit-to-single-controlled-reclaim
   composition, restart verification, and fixed-1,536-MiB production Gate. P4-B2 continues to own
@@ -263,12 +266,13 @@ the integrated loaded-player snapshot's counting and freshness coordinate; P4-E0
 blocker, and the renewed read-only design review passed. The following E1-A attempt stopped at an
 active heap-floor authority-coordinate conflict. P4-E0-B.2 is complete, its closure remote
 prerequisites passed, and E1-A has been restored, re-preflighted, implemented, committed, pushed,
-and remotely qualified. E1-A base is complete. The E1-B read-only design review then stopped at the
+and remotely qualified. P4-E1-A is complete. The E1-B read-only design review then stopped at the
 online source counter applicability authority gap. P4-E0-B.3 authority and exact-SHA remote closure
 are now complete. The renewed E1-B review then stopped at the tag-free P4-C admission bridge Gate;
 its focused A.1 review, implementation commit, push, and exact-SHA remote qualification have now
-passed. P4-E1-A.1 is complete. The P4-E1-B read-only design review is open, while implementation
-remains not started; E2／E3 remain blocked. E1 must
+passed. P4-E1-A.1 is complete. The renewed P4-E1-B read-only design review has now passed without a
+Stop Condition and forces the B1／B2 implementation split. B1 is ready; B2 is blocked until B1
+closure, and neither implementation has started. E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1220,7 +1224,7 @@ Log4j rollover warning was a generated-output `NoSuchFileException` while deleti
 `logs/debug-5.log.gz`, not a Gate failure, OOME, timeout, or semantic failure; the confirmed
 rebuildable root `logs/` output was precisely removed. Official R2Q evidence remained byte-identical
 and was not rerun. Maintainer-provided evidence records remote `build`, `P4-A3 memory gates`,
-`P4-B memory gates`, `P4-C memory gates`, and `P4-D memory gates` as PASS. E1-A base is complete; the
+`P4-B memory gates`, `P4-C memory gates`, and `P4-D memory gates` as PASS. P4-E1-A is complete; the
 E1-B read-only design review subsequently stopped at the online source counter applicability
 authority gap. At that stop E1-B implementation had not started; E2／E3 remained blocked, and P4-E
 remained incomplete.
@@ -1282,6 +1286,51 @@ types remain absent, and A.1 adds zero mutation, dirty, or reclaim call-site del
 evidence and checksums remained unchanged and no R1／R2／R2Q study or smoke was rerun. Gradle,
 workflow, resources, and authority deltas are zero.
 
+## P4-E1-B read-only design review closure ledger
+
+The renewed P4-E1-B read-only design review is PASS. Its clean review base was `main` commit
+`468ac130b2441456c4213b4fc213d62c34316fc2`, tree
+`eb6395cbec748e892e67fa23bfa53bd52893811e`, with `HEAD == origin/main`. The prior closures are
+P4-E0-B.3 commit `ac28d456780047aa210a3b687b418561faed9ee7`／tree
+`3270d897800c55ce90d332e3c03031f58b429d18`／run `31253153118`, P4-E1-A commit
+`b55e2440d1cf947de154f7cb703e475b674951d0`／tree
+`423249daf8adb1860443942bf5c5cb2d611f0152`／run `31241737755`, and P4-E1-A.1 commit
+`468ac130b2441456c4213b4fc213d62c34316fc2`／tree
+`eb6395cbec748e892e67fa23bfa53bd52893811e`／run `31292884093`. All are reachable from
+`origin/main`; each exact-SHA workflow contains five successful jobs: `build` and the P4-A3／B／C／D
+memory gates.
+
+No Stop Condition was hit. The active amendment and synchronized lower authorities now supply the
+complete inventory, arbitration, counter, freshness, grouped Store-audit, index, result, and E3
+handoff contract. The completed A.1 bridge closes the last public-boundary risk by providing a
+tag-free, single-use P4-C admission projection. The review requires no authority amendment,
+persistent-schema change, numeric change, network surface, second persistent truth, offline write,
+chunk force, or background work.
+
+The implementation split is mandatory and sequential:
+
+- **P4-E1-B1** owns the compile-time closed inventory and exact provider coverage; the global
+  `online > integrated > disk` arbitration and one UUID-natural owner order; ordered player and
+  journal raw-root capture; the raw-claim capacity check before append and before deduplication; and
+  the directory／file／source plus online／integrated freshness witnesses. Its only success value is
+  a package-private, single-use, unpublished capture. That capture may carry a single-use final
+  freshness check for later orchestration, but it cannot escape as a public result or index value.
+- **P4-E1-B2** alone consumes the capture, performs grouped exact-reference／expected-owner Store
+  audit, invokes final freshness after that audit, publishes the bounded public audit result,
+  maintains the memory-only index, and creates the ephemeral same-call-chain `Complete` handoff.
+  Neither raw claims nor a `Complete` token may be retained in the index.
+
+B1 must not construct `SkillRetentionRootSnapshot`, call raw or controlled reclaim, perform grouped
+Store audit, publish raw roots, add the public audit result, or build the memory-only index. B2 is
+blocked until B1 closes. Both remain within E1's zero player／Store／journal mutation, zero dirty, and
+zero reclaim boundary. B2's handoff is not a retention snapshot; E3 alone may convert a fresh local
+Complete handoff to `SkillRetentionRootSnapshot.Complete` and call controlled reclaim exactly once.
+
+The fixed `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` P4-E3 production-shaped first／restart
+Gate remains mandatory and cannot be waived by this review, the split, R2Q, or existing memory jobs.
+Branch-protection required-check configuration remains external governance unknown. This closure is
+documentation-only and starts no B1 or B2 implementation.
+
 ```text
 P4-C0.1 = COMPLETE
 P4-C1   = COMPLETE
@@ -1305,7 +1354,7 @@ P4-E0-R1/R2/R2R/R2Q           = COMPLETE
 P4-E0-B authority patch        = COMPLETE
 P4-E0-B.1 authority patch      = COMPLETE
 P4-E0-B.2 authority patch      = COMPLETE
-P4-E0-B.3 online source counter authority = COMPLETE
+P4-E0-B.3                      = COMPLETE
 P4-E0-B.3 authority commit     = e23a2a6c0df298315fc726ec509d3f953d559a08
 P4-E0-B.3 authority tree       = ce1d6d379c763ed2824f831f6a1e81c73c3fec65
 P4-E0-B.3 authority remote run = 31251807408 (attempt 1)
@@ -1314,7 +1363,7 @@ P4-E0                          = COMPLETE
 P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review = PASS (HISTORICAL)
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
-P4-E1-A base                   = COMPLETE
+P4-E1-A                        = COMPLETE
 P4-E1-B prior read-only review = STOPPED AT ONLINE SOURCE COUNTER APPLICABILITY AUTHORITY GAP
 P4-E1-B renewed read-only review = STOPPED AT TAG-FREE P4-C ADMISSION BRIDGE GATE
 P4-E1-A.1 tag-free bridge review = PASS
@@ -1323,9 +1372,10 @@ P4-E1-A.1 implementation tree   = 9e5f87e1063b4f4a42ef4c4b6bf7bbc2b7a85cdc
 P4-E1-A.1 implementation stat   = 20 files; 1,995 insertions; 84 deletions
 P4-E1-A.1 implementation remote run = 31291725341 (attempt 1)
 P4-E1-A.1 implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
-P4-E1-A.1 tag-free admission bridge = COMPLETE
-P4-E1-B read-only design review = OPEN
-P4-E1-B implementation         = NOT STARTED
+P4-E1-A.1                      = COMPLETE
+P4-E1-B read-only design review = PASS
+P4-E1-B1 implementation         = READY
+P4-E1-B2 implementation         = BLOCKED UNTIL B1 CLOSURE
 P4-E2 / P4-E3                  = BLOCKED
 P4-E                           = INCOMPLETE
 ```
@@ -1350,12 +1400,13 @@ lineage and E0-B authority closure are now complete. The first P4-E1 read-only d
 at the integrated-snapshot counting／freshness authority Gate; B.1 resolved it and the renewed review
 passed. The subsequent E1-A attempt stopped at the active heap-floor coordinate conflict. B.2 is
 complete; the controlled restore, fresh re-preflight, E1-A implementation, commit／push, and remote
-closure now pass. E1-A base is complete. E1-B's prior read-only review stopped at the online counter
+closure now pass. P4-E1-A is complete. E1-B's prior read-only review stopped at the online counter
 applicability gap; B.3 authority and exact-SHA remote closure passed. The renewed E1-B review then
 stopped at the tag-free P4-C admission bridge Gate. Its A.1 review passed, and A.1 was implemented,
 committed, pushed, and qualified by its exact-SHA remote Gate. P4-E1-A.1 is complete. The P4-E1-B
-read-only design review is open; implementation has not started. E2 and E3 remain blocked, and
-P4-E remains incomplete. The E0-B／B.1／B.2／B.3
+read-only design review has now passed without a Stop Condition; B1 is ready, B2 is blocked until
+B1 closure, and neither implementation has started. E2 and E3 remain blocked, and P4-E remains
+incomplete. The E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate including the B.3 online
