@@ -100,6 +100,41 @@ public final class SkillDefinitionStoreService {
         return submissionPort;
     }
 
+    /** Captures the exact package-private Ready identity tuple before any P4-E1 source work. */
+    P4E1GlobalSourceCapture.StoreObservation observeP4E1StoreReady(
+            MinecraftServer server) {
+        requireServerThread(server);
+        var adapter = installedAdapter(server);
+        if (!(adapter.state() instanceof SkillSavedDataState.Ready ready)) {
+            return P4E1GlobalSourceCapture.StoreObservation.Unavailable.INSTANCE;
+        }
+        var inner = ready.innerCarrier();
+        var storeCarrier = ready.storeCarrier();
+        if (inner.storeCarrier() != storeCarrier) {
+            throw lifecycle(SkillSubsystemLifecycleException.Code.CACHE_IDENTITY_MISMATCH);
+        }
+        return new P4E1GlobalSourceCapture.StoreObservation.Ready(
+                new P4E1GlobalSourceCapture.StoreReadyWitness(
+                        this,
+                        server,
+                        adapter,
+                        ready,
+                        ready.store(),
+                        inner,
+                        storeCarrier,
+                        inner.pending()));
+    }
+
+    boolean isP4E1StoreReadyCurrent(
+            MinecraftServer server,
+            P4E1GlobalSourceCapture.StoreReadyWitness witness) {
+        requireServerThread(server);
+        Objects.requireNonNull(witness, "witness");
+        witness.requireBinding(this, server);
+        var adapter = installedAdapter(server);
+        return witness.matches(adapter);
+    }
+
     void install(MinecraftServer server) {
         requireServerThread(server);
         if (installedServers.containsKey(server)) {

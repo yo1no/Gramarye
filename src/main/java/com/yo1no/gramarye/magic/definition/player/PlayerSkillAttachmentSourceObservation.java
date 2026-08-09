@@ -41,7 +41,7 @@ sealed abstract class PlayerSkillAttachmentSourceObservation
         var state = player.getData(type);
         return switch (state) {
             case PlayerSkillAttachmentReady ready ->
-                    new Ready(server, player.getUUID(), player, ready, rootsForReady(ready));
+                    new Ready(server, player.getUUID(), player, ready);
             case PlayerSkillAttachmentPreservedRaw preserved -> new Quarantined(
                     server,
                     player.getUUID(),
@@ -76,7 +76,21 @@ sealed abstract class PlayerSkillAttachmentSourceObservation
 
     abstract boolean rootsAvailable();
 
+    final UUID playerId() {
+        return playerId;
+    }
+
+    final void requireCurrentThread() {
+        requireServerThread(serverIdentity);
+    }
+
     abstract List<SkillReference> roots();
+
+    abstract int rootCount();
+
+    abstract void drain(PlayerSkillAttachmentService.RootAuditSink sink);
+
+    abstract void discardRoots();
 
     static List<SkillReference> rootsForReady(PlayerSkillAttachmentReady ready) {
         Objects.requireNonNull(ready, "ready");
@@ -120,19 +134,32 @@ sealed abstract class PlayerSkillAttachmentSourceObservation
         List<SkillReference> roots() {
             return List.of();
         }
+
+        @Override
+        int rootCount() {
+            return 0;
+        }
+
+        @Override
+        void drain(PlayerSkillAttachmentService.RootAuditSink sink) {
+            Objects.requireNonNull(sink, "sink");
+        }
+
+        @Override
+        void discardRoots() {
+        }
     }
 
     static final class Ready extends PlayerSkillAttachmentSourceObservation {
-        private final List<SkillReference> roots;
+        private PlayerSkillAttachmentReady ready;
 
         private Ready(
                 MinecraftServer server,
                 UUID playerId,
                 ServerPlayer player,
-                PlayerSkillAttachmentReady ready,
-                List<SkillReference> roots) {
+                PlayerSkillAttachmentReady ready) {
             super(server, playerId, player, Objects.requireNonNull(ready, "ready"));
-            this.roots = List.copyOf(Objects.requireNonNull(roots, "roots"));
+            this.ready = ready;
         }
 
         @Override
@@ -142,7 +169,48 @@ sealed abstract class PlayerSkillAttachmentSourceObservation
 
         @Override
         List<SkillReference> roots() {
-            return roots;
+            return rootsForReady(ready);
+        }
+
+        @Override
+        int rootCount() {
+            var current = requireRoots();
+            var count = current.equipped().size();
+            for (var state : current.latestStates()) {
+                if (state.pointer().isPresent()) {
+                    count = Math.addExact(count, 1);
+                }
+            }
+            return count;
+        }
+
+        @Override
+        void drain(PlayerSkillAttachmentService.RootAuditSink sink) {
+            Objects.requireNonNull(sink, "sink");
+            var current = requireRoots();
+            try {
+                for (var state : current.latestStates()) {
+                    state.pointer().ifPresent(sink::latest);
+                }
+                for (var entry : current.equipped()) {
+                    sink.equipped(entry.slot(), entry.reference());
+                }
+            } finally {
+                ready = null;
+            }
+        }
+
+        @Override
+        void discardRoots() {
+            requireRoots();
+            ready = null;
+        }
+
+        private PlayerSkillAttachmentReady requireRoots() {
+            if (ready == null) {
+                throw new IllegalStateException("Online Attachment roots already consumed");
+            }
+            return ready;
         }
     }
 
@@ -171,6 +239,20 @@ sealed abstract class PlayerSkillAttachmentSourceObservation
         @Override
         List<SkillReference> roots() {
             throw new IllegalStateException("Quarantined Attachment roots are unavailable");
+        }
+
+        @Override
+        int rootCount() {
+            throw new IllegalStateException("Quarantined Attachment roots are unavailable");
+        }
+
+        @Override
+        void drain(PlayerSkillAttachmentService.RootAuditSink sink) {
+            throw new IllegalStateException("Quarantined Attachment roots are unavailable");
+        }
+
+        @Override
+        void discardRoots() {
         }
     }
 }

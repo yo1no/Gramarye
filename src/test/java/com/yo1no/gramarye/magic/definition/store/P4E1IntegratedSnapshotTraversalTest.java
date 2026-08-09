@@ -72,6 +72,19 @@ final class P4E1IntegratedSnapshotTraversalTest {
     }
 
     @Test
+    void globalSelectionDefersTheSoleRelevantRecordCheckpoint() {
+        var budget = P4E1TestBudgets.create();
+        var selected = assertInstanceOf(
+                P4E1IntegratedSnapshotTraversal.Selection.Integrated.class,
+                P4E1IntegratedSnapshotTraversal.captureForGlobal(
+                        new MutableAccess(new Object(), true, OWNER, new CompoundTag()),
+                        budget));
+
+        assertEquals(OWNER, selected.ownerId());
+        assertEquals(0L, budget.observed(P4E1AuditCounter.RELEVANT_RECORDS));
+    }
+
+    @Test
     void integratedOwnerDiskPairCountsDirectoryButIsNotASecondRelevantRecord()
             throws IOException {
         var otherOwner = UUID.fromString("00000000-0000-0000-0000-000000000018");

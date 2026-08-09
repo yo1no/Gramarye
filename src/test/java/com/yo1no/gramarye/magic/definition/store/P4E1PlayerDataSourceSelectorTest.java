@@ -66,6 +66,23 @@ class P4E1PlayerDataSourceSelectorTest {
     }
 
     @Test
+    void disappearanceOfASnapshottedActiveRouteIsRace() throws IOException {
+        var ordinary = route();
+        Files.writeString(ordinary.old(), "old");
+        var snapshotted = new P4E1PlayerDataDirectorySnapshot.RouteRecord(
+                PLAYER_ID,
+                ordinary.primary(),
+                ordinary.old(),
+                true,
+                true);
+
+        var failure = failed(P4E1PlayerDataSourceSelector.select(
+                snapshotted, P4E1TestBudgets.create(), firstByteReader()));
+
+        assertEquals(P4E1SourceFailure.Code.PRIMARY_FILE_RACE_DETECTED, failure.code());
+    }
+
+    @Test
     void fileAppearingBetweenAbsentChecksIsRaceAndDoesNotFallBack() throws IOException {
         var route = route();
         Files.writeString(route.old(), "old");

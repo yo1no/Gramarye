@@ -271,8 +271,9 @@ online source counter applicability authority gap. P4-E0-B.3 authority and exact
 are now complete. The renewed E1-B review then stopped at the tag-free P4-C admission bridge Gate;
 its focused A.1 review, implementation commit, push, and exact-SHA remote qualification have now
 passed. P4-E1-A.1 is complete. The renewed P4-E1-B read-only design review has now passed without a
-Stop Condition and forces the B1／B2 implementation split. B1 is ready; B2 is blocked until B1
-closure, and neither implementation has started. E2／E3 remain blocked. E1 must
+Stop Condition and forces the B1／B2 implementation split. B1 is implemented and fully verified only
+in the local unstaged worktree; its commit, push, and remote closure remain pending. B2 is blocked
+until that closure and has not started. E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1331,6 +1332,24 @@ Gate remains mandatory and cannot be waived by this review, the split, R2Q, or e
 Branch-protection required-check configuration remains external governance unknown. This closure is
 documentation-only and starts no B1 or B2 implementation.
 
+## P4-E1-B1 local implementation ledger
+
+The B1 implementation is present only in the unstaged local worktree based on unchanged
+`main`／`origin/main` commit `6f1b111f5ba0d503671f1c2f9c520311ae4dd2cc`, tree
+`78b7289d6ad79bdf444ea99b03de3480151cace7`, ahead／behind `0/0`. The machine-verifiable delta adds
+the exact two-family inventory; Store Ready and journal lifecycle／proof witnesses; bounded online
+identity capture; UUID-natural `online > integrated > disk` arbitration; full-source reservation
+before drain; one segmented raw-claim backing; and a package-private, single-use unpublished B1
+capture with final-freshness witnesses. B2 grouped Store audit, index, public result, Complete
+handoff, snapshot, reclaim, mutation, dirtying, networking, and new persistence are absent.
+
+Local verification passed: full rerun tests; normal GameTest `12/12`; dedicated-server smoke;
+warning-mode production recompile; production JAR and 38-class `javap -p -s -v` inspection; all 11
+portable configuration verifiers in normal and minimal-PATH modes plus `bash -n`; and all existing
+P4-A3／P4-B／P4-C／P4-D fixed-heap gates without heap or fixture changes. The locked R2Q evidence was
+verified in place and not rerun. Commit, push, exact-SHA remote jobs, and branch-protection status
+remain pending／unknown.
+
 ```text
 P4-C0.1 = COMPLETE
 P4-C1   = COMPLETE
@@ -1374,8 +1393,9 @@ P4-E1-A.1 implementation remote run = 31291725341 (attempt 1)
 P4-E1-A.1 implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
 P4-E1-A.1                      = COMPLETE
 P4-E1-B read-only design review = PASS
-P4-E1-B1 implementation         = READY
-P4-E1-B2 implementation         = BLOCKED UNTIL B1 CLOSURE
+P4-E1-B1 implementation         = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+P4-E1-B2 implementation         = BLOCKED UNTIL B1 COMMIT / PUSH / REMOTE CLOSURE
+P4-E1-B                         = INCOMPLETE
 P4-E2 / P4-E3                  = BLOCKED
 P4-E                           = INCOMPLETE
 ```
@@ -1404,9 +1424,10 @@ closure now pass. P4-E1-A is complete. E1-B's prior read-only review stopped at 
 applicability gap; B.3 authority and exact-SHA remote closure passed. The renewed E1-B review then
 stopped at the tag-free P4-C admission bridge Gate. Its A.1 review passed, and A.1 was implemented,
 committed, pushed, and qualified by its exact-SHA remote Gate. P4-E1-A.1 is complete. The P4-E1-B
-read-only design review has now passed without a Stop Condition; B1 is ready, B2 is blocked until
-B1 closure, and neither implementation has started. E2 and E3 remain blocked, and P4-E remains
-incomplete. The E0-B／B.1／B.2／B.3
+read-only design review has now passed without a Stop Condition. B1 is implemented and fully
+verified only in the local unstaged worktree; its commit,
+push, and exact-SHA remote closure remain pending, and B2 has not started. E2 and E3 remain blocked,
+and P4-E remains incomplete. The E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate including the B.3 online

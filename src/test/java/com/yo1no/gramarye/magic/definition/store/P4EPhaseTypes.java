@@ -2,7 +2,7 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import java.util.Set;
 
-/** Exact P4-E1-A production allowlist; later P4-E phases remain absent. */
+/** Exact P4-E1-B1 production allowlist; B2 and later P4-E phases remain absent. */
 final class P4EPhaseTypes {
     static final Set<String> STORE_TYPE_NAMES = Set.of(
             "P4E1AuditBudget",
@@ -15,12 +15,17 @@ final class P4EPhaseTypes {
             "P4E1HeapFloorStatus",
             "P4E1IntegratedSnapshotTraversal",
             "P4E1BoundPlayerSkillAttachmentAdmissionSource",
+            "P4E1GlobalSourceCapture",
+            "P4E1PendingJournalObservation",
             "P4E1PlayerDataDirectorySnapshot",
             "P4E1PlayerDataFileReader",
             "P4E1PlayerDataNbtScanner",
             "P4E1PlayerDataSourceSelector",
+            "P4E1RawClaimBuffer",
+            "P4E1RootSourceFamily",
             "P4E1SourceAdmissionPreflight",
             "P4E1SourceFailure",
+            "P4E1SourceInventory",
             "PlayerSkillAttachmentAdmissionSource");
 
     static final Set<String> PUBLIC_STORE_TYPE_NAMES = Set.of(
@@ -41,7 +46,6 @@ final class P4EPhaseTypes {
 
     static final Set<String> FORBIDDEN_LATER_PHASE_TOKENS = Set.of(
             "SkillRetentionRootAuditService",
-            "P4E1Global",
             "OfflineRootIndex",
             "RootInventory",
             "Reconciliation",

@@ -194,6 +194,7 @@ class P4A2ApiGateTest {
                 P4DPhaseTypes.NEW_STORE_SOURCE_FILE_NAMES);
         reviewedD1JournalOwners.addAll(P4DPhaseTypes.MODIFIED_STORE_SOURCE_FILE_NAMES);
         reviewedD1JournalOwners.add("SkillSubmissionRecoveryGameTests.java");
+        reviewedD1JournalOwners.add("P4E1PendingJournalObservation.java");
 
         assertAll(
                 () -> assertEquals(1, occurrences(planSource,

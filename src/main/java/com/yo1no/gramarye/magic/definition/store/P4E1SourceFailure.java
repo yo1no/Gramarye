@@ -61,6 +61,22 @@ record P4E1SourceFailure(
                 "");
     }
 
+    static P4E1SourceFailure rootCapacity(P4E1AuditBudget.Exceeded exceeded) {
+        Objects.requireNonNull(exceeded, "exceeded");
+        if (exceeded.counter() != P4E1AuditCounter.RAW_ROOT_CLAIMS) {
+            throw new IllegalArgumentException("root capacity needs the raw-root counter");
+        }
+        return new P4E1SourceFailure(
+                Code.ROOT_CAPACITY_EXCEEDED,
+                exceeded.stage(),
+                Optional.of(exceeded.counter()),
+                exceeded.observedAtLeast(),
+                exceeded.maximum(),
+                0,
+                Optional.empty(),
+                "");
+    }
+
     static P4E1SourceFailure capacity(
             P4E1AuditCounter counter,
             P4E1AuditStage stage,
@@ -125,7 +141,13 @@ record P4E1SourceFailure(
     enum Code {
         HEAP_FLOOR_NOT_MET,
         HEAP_FLOOR_UNVERIFIABLE,
+        STORE_UNAVAILABLE,
+        JOURNAL_NOT_READY,
+        JOURNAL_UNAVAILABLE,
+        JOURNAL_TARGET_INVALID,
+        INVENTORY_PROVIDER_MISSING,
         COUNTER_CAPACITY_EXCEEDED,
+        ROOT_CAPACITY_EXCEEDED,
         DIRECTORY_UNREADABLE,
         DIRECTORY_TYPE_UNSUPPORTED,
         DIRECTORY_IDENTITY_UNAVAILABLE,

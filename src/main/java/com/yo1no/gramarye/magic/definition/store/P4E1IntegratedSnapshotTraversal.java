@@ -32,10 +32,25 @@ final class P4E1IntegratedSnapshotTraversal {
 
     static Selection capture(MinecraftServer server, P4E1AuditBudget budget) {
         Objects.requireNonNull(server, "server");
-        return capture(new MinecraftSnapshotAccess(server), budget);
+        return capture(new MinecraftSnapshotAccess(server), budget, true);
     }
 
     static Selection capture(SnapshotAccess access, P4E1AuditBudget budget) {
+        return capture(access, budget, true);
+    }
+
+    /** B1 ordering seam; the global owner performs the sole relevant-record checkpoint later. */
+    static Selection captureForGlobal(MinecraftServer server, P4E1AuditBudget budget) {
+        Objects.requireNonNull(server, "server");
+        return capture(new MinecraftSnapshotAccess(server), budget, false);
+    }
+
+    static Selection captureForGlobal(SnapshotAccess access, P4E1AuditBudget budget) {
+        return capture(access, budget, false);
+    }
+
+    private static Selection capture(
+            SnapshotAccess access, P4E1AuditBudget budget, boolean countRelevant) {
         Objects.requireNonNull(access, "access");
         Objects.requireNonNull(budget, "budget");
         if (!access.isSameThread()) {
@@ -56,12 +71,14 @@ final class P4E1IntegratedSnapshotTraversal {
             return new Selection.Disk(Optional.ofNullable(profileId));
         }
 
-        var exceeded = budget.checkpointSingle(
-                P4E1AuditCounter.RELEVANT_RECORDS,
-                P4E1AuditStage.RELEVANT_RECORDS,
-                1L);
-        if (exceeded.isPresent()) {
-            return new Selection.Failure(P4E1SourceFailure.capacity(exceeded.orElseThrow()));
+        if (countRelevant) {
+            var exceeded = budget.checkpointSingle(
+                    P4E1AuditCounter.RELEVANT_RECORDS,
+                    P4E1AuditStage.RELEVANT_RECORDS,
+                    1L);
+            if (exceeded.isPresent()) {
+                return new Selection.Failure(P4E1SourceFailure.capacity(exceeded.orElseThrow()));
+            }
         }
         return new Selection.Integrated(serverIdentity, profileId, snapshot);
     }

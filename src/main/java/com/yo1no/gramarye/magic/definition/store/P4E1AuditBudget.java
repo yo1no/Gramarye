@@ -67,7 +67,12 @@ final class P4E1AuditBudget {
 
     /** Future P4-E1-B raw append checkpoint; it reuses the existing P3-D root ceiling. */
     Optional<Exceeded> checkpointRawRootClaim(P4E1AuditStage stage) {
-        return checkpointValue(P4E1AuditCounter.RAW_ROOT_CLAIMS, stage, 1L);
+        return checkpointRawRootClaims(stage, 1L);
+    }
+
+    /** Reserves a complete source delta before any root callback is permitted. */
+    Optional<Exceeded> checkpointRawRootClaims(P4E1AuditStage stage, long delta) {
+        return checkpointValue(P4E1AuditCounter.RAW_ROOT_CLAIMS, stage, delta);
     }
 
     long observed(P4E1AuditCounter counter) {

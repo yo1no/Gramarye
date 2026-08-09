@@ -195,6 +195,69 @@ public final class SkillDefinitionStoreSubmissionPort {
                 ((AccessReady) access).journalReady().journal().targetReferences());
     }
 
+    /** Observes exact journal lifecycle/proof identities without projecting or decoding roots. */
+    P4E1PendingJournalObservation.Result observeP4E1Journal(
+            MinecraftServer server,
+            P4E1GlobalSourceCapture.StoreReadyWitness storeWitness) {
+        SkillDefinitionStoreService.requireServerThread(server);
+        Objects.requireNonNull(storeWitness, "storeWitness");
+        storeWitness.requireBinding(service, server);
+        var adapter = service.installedAdapter(server);
+        if (!storeWitness.matches(adapter)) {
+            throw new IllegalStateException("P4E1_JOURNAL_STORE_WITNESS_MISMATCH");
+        }
+        var savedDataReady = storeWitness.savedDataReadyIdentity();
+        var lifecycle = savedDataReady.journalLifecycle();
+        if (lifecycle instanceof PendingAttachmentJournalLifecycle.Uninitialized) {
+            return new P4E1PendingJournalObservation.Result.Incomplete(
+                    P4E1PendingJournalObservation.FailureCode.JOURNAL_NOT_READY);
+        }
+        var installed = (PendingAttachmentJournalLifecycle.Installed) lifecycle;
+        if (!(installed.state() instanceof PendingAttachmentJournalState.Ready journalReady)) {
+            return new P4E1PendingJournalObservation.Result.Incomplete(
+                    P4E1PendingJournalObservation.FailureCode.JOURNAL_UNAVAILABLE);
+        }
+        var journal = journalReady.journal();
+        var proof = journalReady.targetAuditProof();
+        var proofSatisfied = switch (proof) {
+            case JournalTargetAuditProof.AuditedExisting ignored -> true;
+            case JournalTargetAuditProof.ConditionalOnExactCommit conditional ->
+                    conditional.isSatisfied();
+        };
+        if (!proofSatisfied || !proof.isFor(journal)) {
+            return new P4E1PendingJournalObservation.Result.Incomplete(
+                    P4E1PendingJournalObservation.FailureCode.JOURNAL_TARGET_INVALID);
+        }
+        var innerPending = savedDataReady.innerCarrier().pending();
+        if (journalReady.sourcePending() != innerPending) {
+            return new P4E1PendingJournalObservation.Result.Incomplete(
+                    P4E1PendingJournalObservation.FailureCode.JOURNAL_UNAVAILABLE);
+        }
+        return new P4E1PendingJournalObservation.Result.Available(
+                new P4E1PendingJournalObservation.Ready(
+                        this,
+                        server,
+                        storeWitness,
+                        adapter,
+                        savedDataReady,
+                        journalReady,
+                        journalReady.sourcePending(),
+                        innerPending,
+                        proof,
+                        journal));
+    }
+
+    boolean isP4E1JournalWitnessCurrent(
+            MinecraftServer server,
+            P4E1GlobalSourceCapture.StoreReadyWitness storeWitness,
+            P4E1PendingJournalObservation.Ready observation) {
+        SkillDefinitionStoreService.requireServerThread(server);
+        Objects.requireNonNull(observation, "observation");
+        storeWitness.requireBinding(service, server);
+        return observation.matchesCurrentIdentities(
+                this, server, storeWitness, service.installedAdapter(server));
+    }
+
     /**
      * Projects the requested owner's bounded canonical pending recovery chains after a fresh
      * exact-target Store audit.

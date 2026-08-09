@@ -307,6 +307,11 @@ is_reviewed_d3a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceAdmissionPreflight.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PendingJournalObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1RawClaimBuffer.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1RootSourceFamily.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
         src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java | \

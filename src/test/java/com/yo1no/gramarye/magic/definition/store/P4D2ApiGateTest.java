@@ -194,6 +194,7 @@ final class P4D2ApiGateTest {
 
         assertEquals(Set.of(
                         "checkPreparedTransitionCurrent",
+                        "isOnlineRootWitnessCurrent",
                         "prepareLatestTransitionToCurrent"),
                 publicDeclaredMethodNames(PlayerSkillAttachmentService.class).stream()
                         .filter(name -> name.endsWith("Current")

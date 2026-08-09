@@ -239,6 +239,7 @@ class P4A3AApiGateTest {
                 P4DPhaseTypes.NEW_STORE_SOURCE_FILE_NAMES);
         reviewedD1JournalOwners.addAll(P4DPhaseTypes.MODIFIED_STORE_SOURCE_FILE_NAMES);
         reviewedD1JournalOwners.add("SkillSubmissionRecoveryGameTests.java");
+        reviewedD1JournalOwners.add("P4E1PendingJournalObservation.java");
 
         assertAll(
                 () -> assertFalse(production.contains("P4A3HeapProbe")),

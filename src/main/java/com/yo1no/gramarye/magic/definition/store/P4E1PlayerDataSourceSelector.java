@@ -40,6 +40,7 @@ final class P4E1PlayerDataSourceSelector {
                 route.playerId(),
                 route.primary(),
                 SourceKind.PRIMARY,
+                route.primaryObserved(),
                 budget,
                 reader,
                 fileSystem,
@@ -57,6 +58,7 @@ final class P4E1PlayerDataSourceSelector {
                 route.playerId(),
                 route.old(),
                 SourceKind.OLD,
+                route.oldObserved(),
                 budget,
                 reader,
                 fileSystem,
@@ -78,6 +80,7 @@ final class P4E1PlayerDataSourceSelector {
             UUID playerId,
             Path path,
             SourceKind source,
+            boolean observedInDirectorySnapshot,
             P4E1AuditBudget budget,
             SourceReader<T> reader,
             P4E1FileSystemAccess fileSystem,
@@ -86,6 +89,9 @@ final class P4E1PlayerDataSourceSelector {
         try {
             baseline = P4E1FileMetadata.capture(fileSystem.readAttributes(path));
         } catch (NoSuchFileException firstAbsent) {
+            if (observedInDirectorySnapshot) {
+                return race(playerId);
+            }
             observer.afterFirstAbsentCheck(source);
             try {
                 fileSystem.readAttributes(path);

@@ -26,6 +26,7 @@ is_reviewed_d1_journal_owner() {
         "${STORE_ROOT}/PendingAttachmentJournalSchema.java" | \
         "${STORE_ROOT}/PendingAttachmentJournalState.java" | \
         "${STORE_ROOT}/PendingAttachmentJournalWireScan.java" | \
+        "${STORE_ROOT}/P4E1PendingJournalObservation.java" | \
         "${STORE_ROOT}/SkillDefinitionStore.java" | \
         "${STORE_ROOT}/SkillDefinitionStoreSubmissionPort.java" | \
         "${STORE_ROOT}/SkillSubmissionRecoveryGameTests.java" | \

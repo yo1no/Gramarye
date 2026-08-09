@@ -22,6 +22,8 @@ A1_API_GATE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/
 A1_VISIBILITY_GATE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1VisibilityCompileTest.java"
 A1_BRIDGE_TEST="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1RootAuditBridgeTest.java"
 A1_TEST_SUPPORT="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentServiceTestSupport.java"
+B1_API_GATE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java"
+B1_CORE_TEST="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1CoreTest.java"
 E0_LEDGER="$REPOSITORY_ROOT/docs/architecture/P4-E0-root-audit-boundary.md"
 
 fail() {
@@ -68,18 +70,42 @@ is_allowed_changed_path() {
         scripts/verify-p4-c2-b-configuration.sh | \
         scripts/verify-p4-d3-a-configuration.sh | \
         scripts/verify-p4-d3-configuration.sh | \
+        scripts/verify-p4-d1-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
         scripts/verify-p4-e0-r-configuration.sh | \
         scripts/verify-p4-e0-r2q-configuration.sh | \
         scripts/verify-p4-e1-configuration.sh | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PendingJournalObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1RawClaimBuffer.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1RootSourceFamily.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentServiceTestSupport.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4C1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4A2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4A3AApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1VisibilityCompileTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1CoreTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversalTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelectorTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1RootAuditBridgeTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4EPhaseTypes.java)
             return 0
@@ -213,7 +239,7 @@ self_regression
 verify_changed_paths
 [ -x "$0" ] || fail "portable verifier is not executable"
 
-EXPECTED_STORE_TYPE_COUNT=16
+EXPECTED_STORE_TYPE_COUNT=21
 ACTUAL_STORE_TYPE_COUNT=$(find "$STORE_ROOT" -maxdepth 1 -name 'P4E1*.java' -print \
         | wc -l | tr -d ' ')
 [ "$ACTUAL_STORE_TYPE_COUNT" -eq "$EXPECTED_STORE_TYPE_COUNT" ] \
@@ -230,12 +256,17 @@ for name in \
         P4E1HeapFloorStatus \
         P4E1IntegratedSnapshotTraversal \
         P4E1BoundPlayerSkillAttachmentAdmissionSource \
+        P4E1GlobalSourceCapture \
+        P4E1PendingJournalObservation \
         P4E1PlayerDataDirectorySnapshot \
         P4E1PlayerDataFileReader \
         P4E1PlayerDataNbtScanner \
         P4E1PlayerDataSourceSelector \
+        P4E1RawClaimBuffer \
+        P4E1RootSourceFamily \
         P4E1SourceAdmissionPreflight \
-        P4E1SourceFailure; do
+        P4E1SourceFailure \
+        P4E1SourceInventory; do
     file="$STORE_ROOT/$name.java"
     [ -f "$file" ] || fail "required production source missing: $file"
     [ ! -L "$file" ] || fail "required production source is a symlink: $file"
@@ -249,6 +280,11 @@ for file in "$CEILINGS" "$BUDGET" "$PREFLIGHT" \
         "$A1_API_GATE" "$A1_VISIBILITY_GATE" "$A1_BRIDGE_TEST" "$A1_TEST_SUPPORT"; do
     [ -f "$file" ] || fail "required reviewed file missing: $file"
     [ ! -L "$file" ] || fail "required reviewed file is a symlink: $file"
+done
+
+for file in "$B1_API_GATE" "$B1_CORE_TEST"; do
+    [ -f "$file" ] || fail "required B1 reviewed file missing: $file"
+    [ ! -L "$file" ] || fail "required B1 reviewed file is a symlink: $file"
 done
 
 while IFS='|' read -r name value; do
@@ -342,6 +378,7 @@ require_fixed "$BUDGET" \
 reject_fixed "$BUDGET" 'static P4E1AuditBudget create('
 for production_source in $(find "$MAIN_JAVA" -type f -name '*.java' -print); do
     [ "$production_source" = "$PREFLIGHT" ] && continue
+    [ "$production_source" = "$STORE_ROOT/P4E1GlobalSourceCapture.java" ] && continue
     reject_fixed "$production_source" 'P4E1SourceAdmissionPreflight.evaluate('
 done
 require_fixed "$E0_LEDGER" 'P4-E0-B.2 effective-MaxHeapSize authority correction'
@@ -473,8 +510,6 @@ for token in \
         '.saveAll(' \
         '.saveWithoutId(' \
         'PendingSkillSubmissionJournal' \
-        'SkillDefinitionStoreService' \
-        'SkillDefinitionStoreSubmissionPort' \
         'net.minecraft.client' \
         'SkillRetentionRootSnapshot' \
         '.reclaim(' \
@@ -558,10 +593,21 @@ verify_a1_jar_isolation() {
                 'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditSink.class'; do
             require_fixed "$listing" "$class_path"
         done
+        for class_path in \
+                'com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.class' \
+                'com/yo1no/gramarye/magic/definition/store/P4E1PendingJournalObservation.class' \
+                'com/yo1no/gramarye/magic/definition/store/P4E1RawClaimBuffer.class' \
+                'com/yo1no/gramarye/magic/definition/store/P4E1RootSourceFamily.class' \
+                'com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.class' \
+                'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$OnlineRootAuditHandle.class'; do
+            require_fixed "$listing" "$class_path"
+        done
         for forbidden_class in \
                 P4E1A1ApiGateTest \
                 P4E1A1VisibilityCompileTest \
                 P4E1RootAuditBridgeTest \
+                P4E1B1ApiGateTest \
+                P4E1B1CoreTest \
                 PlayerSkillAttachmentServiceTestSupport; do
             reject_fixed "$listing" "$forbidden_class"
         done

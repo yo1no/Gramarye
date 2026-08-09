@@ -45,6 +45,11 @@ public final class PlayerSkillAttachmentService {
         return successor.isPresent() && successor.getAsInt() == targetGeneration;
     }
 
+    /** Supplies the existing P4-C encoded admission boundary to the closed E1 bridge. */
+    public static long maximumRootAuditAttachmentEncodedBytes() {
+        return AttachmentTagSize.maximum();
+    }
+
     public Result<Optional<SkillDraft>> findDraft(ServerPlayer player, SkillId skillId) {
         requireServerThread(player);
         Objects.requireNonNull(skillId, "skillId");
@@ -476,6 +481,118 @@ public final class PlayerSkillAttachmentService {
     }
 
     /**
+     * Observes one exact online Attachment source without copying its root projection.
+     *
+     * <p>The returned service-owned handle is single-use for roots, then remains only as an
+     * identity witness until its final discard. It exposes no Attachment state or collection.</p>
+     */
+    public OnlineRootAuditHandle observeOnlineForRootAudit(ServerPlayer player) {
+        requireServerThread(player);
+        return new OnlineRootAuditHandle(
+                this, PlayerSkillAttachmentSourceObservation.observe(player));
+    }
+
+    /** Returns the bounded state classification of one exact online handle. */
+    public OnlineRootAuditState onlineRootState(OnlineRootAuditHandle handle) {
+        var observation = requireOnlineRootHandle(handle, OnlineHandleStage.NEW);
+        if (observation instanceof PlayerSkillAttachmentSourceObservation.Missing) {
+            return OnlineRootAuditState.MISSING;
+        }
+        if (observation instanceof PlayerSkillAttachmentSourceObservation.Ready) {
+            return OnlineRootAuditState.READY;
+        }
+        return OnlineRootAuditState.QUARANTINED;
+    }
+
+    /** Returns the quarantine reason; any non-quarantined use is programming misuse. */
+    public UnavailableReason onlineRootUnavailableReason(OnlineRootAuditHandle handle) {
+        var observation = requireOnlineRootHandle(handle, OnlineHandleStage.NEW);
+        if (observation instanceof PlayerSkillAttachmentSourceObservation.Quarantined quarantined) {
+            return quarantined.reason();
+        }
+        throw misuse("P4E1_ONLINE_ROOT_SOURCE_NOT_QUARANTINED");
+    }
+
+    /** Returns the exact callback count without exposing root backing. */
+    public int onlineRootCount(OnlineRootAuditHandle handle) {
+        var observation = requireOnlineRootHandle(handle, OnlineHandleStage.NEW);
+        if (!observation.rootsAvailable()) {
+            throw misuse("P4E1_ONLINE_ROOT_SOURCE_QUARANTINED");
+        }
+        return observation.rootCount();
+    }
+
+    /** Drains latest-present roots followed by equipped-slot roots exactly once. */
+    public void drainOnlineRootProjection(
+            OnlineRootAuditHandle handle, RootAuditSink sink) {
+        var observation = requireOnlineRootHandle(handle, OnlineHandleStage.NEW);
+        if (!observation.rootsAvailable()) {
+            throw misuse("P4E1_ONLINE_ROOT_SOURCE_QUARANTINED");
+        }
+        handle.stage = OnlineHandleStage.WITNESS_ONLY;
+        observation.drain(Objects.requireNonNull(sink, "sink"));
+    }
+
+    /** Discards the root capability while retaining only the exact online identity witness. */
+    public void discardOnlineRootProjection(OnlineRootAuditHandle handle) {
+        var observation = requireOnlineRootHandle(handle, OnlineHandleStage.NEW);
+        observation.discardRoots();
+        handle.stage = OnlineHandleStage.WITNESS_ONLY;
+    }
+
+    /** Checks the exact player, presence, and state identity after the root capability is gone. */
+    public boolean isOnlineRootWitnessCurrent(
+            OnlineRootAuditHandle handle, ServerPlayer player) {
+        var observation = requireOnlineRootHandle(handle, OnlineHandleStage.WITNESS_ONLY);
+        Objects.requireNonNull(player, "player");
+        var server = Objects.requireNonNull(player.getServer(), "player server");
+        if (!server.isSameThread()) {
+            throw misuse("P4E1_ONLINE_ROOT_WITNESS_WRONG_THREAD");
+        }
+        if (!player.getUUID().equals(handle.playerId)) {
+            throw misuse("P4E1_ONLINE_ROOT_WITNESS_WRONG_PLAYER");
+        }
+        return observation.isCurrent(player);
+    }
+
+    /** Clears the final identity witness exactly once. */
+    public void discardOnlineRootWitness(OnlineRootAuditHandle handle) {
+        requireOnlineRootHandle(handle, OnlineHandleStage.WITNESS_ONLY);
+        handle.stage = OnlineHandleStage.DISCARDED;
+        handle.observation = null;
+    }
+
+    /** Clears either a NEW or witness-only handle during unpublished failure cleanup. */
+    public void discardOnlineRootAuditHandle(OnlineRootAuditHandle handle) {
+        Objects.requireNonNull(handle, "handle");
+        if (handle.owner != this) {
+            throw misuse("P4E1_ONLINE_ROOT_HANDLE_OWNER_MISMATCH");
+        }
+        if (handle.stage == OnlineHandleStage.DISCARDED || handle.observation == null) {
+            throw misuse("P4E1_ONLINE_ROOT_HANDLE_LIFECYCLE_MISMATCH");
+        }
+        handle.observation.requireCurrentThread();
+        if (handle.stage == OnlineHandleStage.NEW) {
+            handle.observation.discardRoots();
+        }
+        handle.stage = OnlineHandleStage.DISCARDED;
+        handle.observation = null;
+    }
+
+    private PlayerSkillAttachmentSourceObservation requireOnlineRootHandle(
+            OnlineRootAuditHandle handle, OnlineHandleStage required) {
+        Objects.requireNonNull(handle, "handle");
+        if (handle.owner != this) {
+            throw misuse("P4E1_ONLINE_ROOT_HANDLE_OWNER_MISMATCH");
+        }
+        if (handle.stage != required || handle.observation == null) {
+            throw misuse("P4E1_ONLINE_ROOT_HANDLE_LIFECYCLE_MISMATCH");
+        }
+        handle.observation.requireCurrentThread();
+        return handle.observation;
+    }
+
+    /**
      * Consumes one closed store-issued source and performs the existing full P4-C admission.
      *
      * <p>The source is irreversibly claimed and cleared before any identity, binding, size, or
@@ -821,6 +938,34 @@ public final class PlayerSkillAttachmentService {
         void latest(SkillReference reference);
 
         void equipped(int slot, SkillReference reference);
+    }
+
+    public enum OnlineRootAuditState {
+        MISSING,
+        READY,
+        QUARANTINED
+    }
+
+    /** Opaque online root/witness handle; construction and backing access remain service-owned. */
+    public static final class OnlineRootAuditHandle {
+        private final PlayerSkillAttachmentService owner;
+        private final UUID playerId;
+        private PlayerSkillAttachmentSourceObservation observation;
+        private OnlineHandleStage stage = OnlineHandleStage.NEW;
+
+        private OnlineRootAuditHandle(
+                PlayerSkillAttachmentService owner,
+                PlayerSkillAttachmentSourceObservation observation) {
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.observation = Objects.requireNonNull(observation, "observation");
+            this.playerId = observation.playerId();
+        }
+    }
+
+    private enum OnlineHandleStage {
+        NEW,
+        WITNESS_ONLY,
+        DISCARDED
     }
 
     public sealed interface Result<T> permits Available, Unavailable {

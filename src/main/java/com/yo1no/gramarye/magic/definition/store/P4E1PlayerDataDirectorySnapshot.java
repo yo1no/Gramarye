@@ -167,6 +167,10 @@ final class P4E1PlayerDataDirectorySnapshot {
         return entries.size();
     }
 
+    List<RouteRecord> records() {
+        return records;
+    }
+
     VerificationResult verifyUnchanged() {
         return verifyUnchanged(Observer.NONE);
     }
@@ -310,11 +314,24 @@ final class P4E1PlayerDataDirectorySnapshot {
         private final UUID playerId;
         private final Path primary;
         private final Path old;
+        private final boolean primaryObserved;
+        private final boolean oldObserved;
 
         RouteRecord(UUID playerId, Path primary, Path old) {
+            this(playerId, primary, old, false, false);
+        }
+
+        RouteRecord(
+                UUID playerId,
+                Path primary,
+                Path old,
+                boolean primaryObserved,
+                boolean oldObserved) {
             this.playerId = Objects.requireNonNull(playerId, "playerId");
             this.primary = Objects.requireNonNull(primary, "primary");
             this.old = Objects.requireNonNull(old, "old");
+            this.primaryObserved = primaryObserved;
+            this.oldObserved = oldObserved;
         }
 
         UUID playerId() {
@@ -327,6 +344,14 @@ final class P4E1PlayerDataDirectorySnapshot {
 
         Path old() {
             return old;
+        }
+
+        boolean primaryObserved() {
+            return primaryObserved;
+        }
+
+        boolean oldObserved() {
+            return oldObserved;
         }
     }
 
@@ -373,6 +398,8 @@ final class P4E1PlayerDataDirectorySnapshot {
 
     private static final class RouteBuilder {
         private final UUID playerId;
+        private boolean primaryObserved;
+        private boolean oldObserved;
 
         private RouteBuilder(UUID playerId) {
             this.playerId = playerId;
@@ -382,6 +409,11 @@ final class P4E1PlayerDataDirectorySnapshot {
             if (!kind.relevant()) {
                 throw new IllegalArgumentException("route requires a canonical active name");
             }
+            if (kind == FilenameKind.PRIMARY) {
+                primaryObserved = true;
+            } else {
+                oldObserved = true;
+            }
         }
 
         private RouteRecord build(Path directory) {
@@ -389,7 +421,9 @@ final class P4E1PlayerDataDirectorySnapshot {
             return new RouteRecord(
                     playerId,
                     directory.resolve(route + PRIMARY_SUFFIX),
-                    directory.resolve(route + OLD_SUFFIX));
+                    directory.resolve(route + OLD_SUFFIX),
+                    primaryObserved,
+                    oldObserved);
         }
     }
 }

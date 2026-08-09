@@ -123,7 +123,7 @@ final class P4E1AApiGateTest {
                 () -> assertEquals(1, occurrences(
                         preflight, "new P4E1AuditBudget(new QualifiedPermit())")),
                 () -> assertTrue(preflight.contains("private QualifiedPermit()")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(1, occurrences(
                         production.replace(preflight, ""),
                         "P4E1SourceAdmissionPreflight.evaluate(")),
                 () -> assertTrue(budget.contains(
