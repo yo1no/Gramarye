@@ -233,7 +233,10 @@ same-UUID disk ingress, while physical entries still count toward directory/race
 latest/equipped/journal claims count toward the 65,536 ceiling before deduplication and then undergo
 grouped exact-reference/owner Store audit. Missing or foreign offline pointers defer to login and
 leave disk unchanged. The index is memory-only, starts Incomplete after restart, retains no raw
-data or Complete token, and loses completeness on any source race or reconciliation.
+playerdata／Attachment data or `Complete` token, and loses completeness on any source race or
+reconciliation. Only after B2-A grouped Store audit and B2-B final freshness both pass may ownership
+of the original segmented reference backing transfer into the index; no second full root vector is
+created.
 
 P4-E1 and P4-E2 never invoke reclaim. Only P4-E3 may keep a fresh `Complete` as a local value in the
 single logic-thread call chain `P4-B install -> P4-D bootstrap -> P4-E1 audit -> immediate controlled
@@ -272,9 +275,10 @@ are now complete. The renewed E1-B review then stopped at the tag-free P4-C admi
 its focused A.1 review, implementation commit, push, and exact-SHA remote qualification have now
 passed. P4-E1-A.1 is complete. The renewed P4-E1-B read-only design review passed without a Stop
 Condition and forced the B1／B2 implementation split. P4-E1-B1 is committed, pushed, locally
-verified, and qualified by the exact-SHA remote run; it is complete. P4-E1-B2 read-only design
-review is open and its implementation has not started. P4-E1-B remains incomplete, and E2／E3 remain
-blocked. E1 must
+verified, and qualified by the exact-SHA remote run; it is complete. The P4-E1-B2 read-only design
+review is complete and forcibly split implementation into B2-A followed by B2-B. B2-A is ready but
+not started; B2-B is blocked until B2-A implementation, commit, push, and exact-SHA remote closure.
+P4-E1-B2 and P4-E1-B remain incomplete, and E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1320,13 +1324,17 @@ The implementation split is mandatory and sequential:
 - **P4-E1-B2** alone consumes the capture, performs grouped exact-reference／expected-owner Store
   audit, invokes final freshness after that audit, publishes the bounded public audit result,
   maintains the memory-only index, and creates the ephemeral same-call-chain `Complete` handoff.
-  Neither raw claims nor a `Complete` token may be retained in the index.
+  The index retains neither the B1 capture, source witnesses, nor unaudited raw-claim authority.
+  After B2-A audit and B2-B freshness pass, the original segmented `SkillReference` backing may
+  transfer into index ownership as audited references; no second full root vector or `Complete`
+  token is retained.
 
 B1 must not construct `SkillRetentionRootSnapshot`, call raw or controlled reclaim, perform grouped
-Store audit, publish raw roots, add the public audit result, or build the memory-only index. B2 is
-blocked until B1 closes. Both remain within E1's zero player／Store／journal mutation, zero dirty, and
-zero reclaim boundary. B2's handoff is not a retention snapshot; E3 alone may convert a fresh local
-Complete handoff to `SkillRetentionRootSnapshot.Complete` and call controlled reclaim exactly once.
+Store audit, publish raw roots, add the public audit result, or build the memory-only index. B2
+remained blocked until B1 closure; that prerequisite has closed. Both remain within E1's zero
+player／Store／journal mutation, zero dirty, and zero reclaim boundary. B2's handoff is not a
+retention snapshot; E3 alone may convert a fresh local Complete handoff to
+`SkillRetentionRootSnapshot.Complete` and call controlled reclaim exactly once.
 
 The fixed `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` P4-E3 production-shaped first／restart
 Gate remains mandatory and cannot be waived by this review, the split, R2Q, or existing memory jobs.
@@ -1400,6 +1408,109 @@ SHA. Its five jobs—`build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C m
 `P4-D memory gates`—all passed. Branch-protection required-check configuration remains external
 governance unknown.
 
+## P4-E1-B2 read-only design review closure ledger
+
+The P4-E1-B2 read-only design review is complete and hit no Stop Condition. It forcibly splits the
+remaining implementation into B2-A followed by B2-B. At this documentation working-tree coordinate,
+the review closure is `IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING`; only the exact-SHA
+remote Gate for this closure commit can qualify B2-A to start.
+
+The split is a semantic closure boundary rather than a file-count split. Grouped Store audit and the
+D1-sensitive Store seam form an independently reviewable surface. B2-A can produce a
+package-private, single-use, same-tick, unpublished `AuditedCapture`; B2-B can consume that exact
+value without rescanning playerdata, rerunning P4-C admission, reprojecting roots, or rerunning the
+grouped Store audit. B2-A needs no temporary public raw API, creates no persistent intermediate
+truth, and creates no index, `Complete`, snapshot, or reclaim call.
+
+B2-A's fixed call shape is:
+
+```text
+B1 Captured
+-> exact B2-A owner/server/thread/tick consume
+-> raw first pass builds distinct SkillId insertion order
+-> exactly one opaque Store-history lookup per distinct SkillId
+-> raw second pass performs domain terminal mapping in original order
+-> preserve D1 journal-audit failure order, lookup timing, privacy, and proof identity
+-> package-private, single-use, same-tick, unpublished AuditedCapture
+```
+
+B2-A owns the B1 single-use transfer; exact owner／server／thread／tick binding; an opaque exact-history
+observation primitive; the bounded distinct-ID table; player owner and revision checks; journal exact
+target checks; raw-order first-terminal mapping; internal reconciliation／incomplete facts; history
+observation cleanup; and the unpublished `AuditedCapture`. It does not own a public result,
+`SkillRetentionRootAuditService`, final freshness, the memory-only index, public `Complete`, an E3
+handoff, `SkillRetentionRootSnapshot`, reclaim, reconciliation mutation, or event wiring.
+
+B2-B's fixed call shape is:
+
+```text
+AuditedCapture
+-> final freshness
+-> transfer the same segmented backing to memory-only index ownership
+-> bounded diagnostics result
+-> nonforgeable same-tick Complete permit
+-> package-private single-iterator E3 handoff
+```
+
+B2-B owns final Store／journal／online／directory／selected-file／integrated／inventory freshness;
+memory-only index publication, generation, and invalidation; a bounded public diagnostics facade;
+the single-use `Complete` permit; a package-private E3 handoff; and package-private server-cleanup and
+future E2-invalidation seams. It still does not call the snapshot factory or reclaim, perform E2
+mutation, install E3 event／composition wiring, add a fixed-heap task, or modify Gradle／CI.
+
+The grouped audit decision is fixed for B2-A. Its first raw traversal validates metadata and builds a
+bounded `LinkedHashMap` in first-occurrence order. The lookup phase observes every distinct
+`SkillId` exactly once through an opaque Store-history primitive. A second raw traversal, never map
+iteration, decides the domain terminal. Player claims classify history absence as missing, owner
+mismatch as owner mismatch, exact-revision absence as missing, and otherwise as valid. Journal owner
+correctness comes from the fresh D1 proof; missing journal history or revision is journal-target
+invalid. Valid nonlatest revisions remain valid. The seam never queries Store latest or exposes the
+actual foreign owner, history, document, Store snapshot, or carrier. History observations are
+cleared after success or failure; unexpected `RuntimeException` becomes a bounded internal failure,
+while `Error`／`OutOfMemoryError` propagates after cleanup.
+
+D1 and E1 share only that low-level opaque exact-history observation primitive. They do not share a
+high-level coordinator that would force D1 to preload every distinct ID. D1's raw journal order,
+early terminal, owner-before-revision precedence, machine codes, entry-index／route metadata, proof
+identity, actual-owner privacy, and lookup count must remain unchanged.
+
+The successful `AuditedCapture` may retain the original B1 segmented root backing, source and B1
+summary tables, witness bundle, exact Store Ready witness, journal proof／lifecycle witness,
+distinct-ID count, and owner／server／thread／tick binding. It may not retain Store-history
+observations, the actual foreign owner, a public root collection, a second flattened root list,
+persistent truth, index, `Complete` token, or P3-D snapshot.
+
+All player claims precede all journal claims. If a player stale claim and journal invalid target
+coexist, the first raw-order player stale claim wins. Domain classification stops at that claim;
+diagnostics record only `staleObservedAtLeast = 1`, and a later journal failure cannot overwrite the
+reconciliation result. Hash-map iteration never decides terminal order.
+
+The prior statement that the index retains no raw claims means it must not retain a B1 capture,
+source witnesses, or unaudited raw-claim authority. After B2-A Store audit and B2-B final freshness
+both pass, the same segmented `SkillReference` backing may change ownership and become the
+index-owned audited-reference backing. This creates exactly zero second full root vectors. The index
+remains rebuildable evidence rather than truth and never independently authorizes reclaim.
+
+B2-A and B2-B preserve this zero-side-effect matrix:
+
+```text
+Store mutation calls        = 0
+Store reclaim calls         = 0
+Store dirty delta           = 0
+Attachment setData          = 0
+journal mutation            = 0
+playerdata/filesystem write = 0
+DFU calls                   = 0
+event registration          = 0
+network                     = 0
+chunk load/force            = 0
+background work             = 0
+```
+
+The exact P4-E3 fixed `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` production-shaped
+first／restart Gate remains mandatory; R2Q evidence cannot replace it. Branch-protection
+required-check configuration remains external governance unknown.
+
 ```text
 P4-C0.1 = COMPLETE
 P4-C1   = COMPLETE
@@ -1444,8 +1555,10 @@ P4-E1-A.1 implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
 P4-E1-A.1                      = COMPLETE
 P4-E1-B read-only design review  = PASS
 P4-E1-B1                         = COMPLETE
-P4-E1-B2 read-only design review = OPEN
-P4-E1-B2 implementation          = NOT STARTED
+P4-E1-B2 read-only design review = COMPLETE — FORCED B2-A / B2-B SPLIT
+P4-E1-B2-A implementation        = READY; NOT STARTED
+P4-E1-B2-B implementation        = BLOCKED UNTIL B2-A IMPLEMENTATION / COMMIT / PUSH / REMOTE CLOSURE
+P4-E1-B2                         = INCOMPLETE
 P4-E1-B                          = INCOMPLETE
 P4-E2 / P4-E3                   = BLOCKED
 P4-E                            = INCOMPLETE
@@ -1477,8 +1590,10 @@ stopped at the tag-free P4-C admission bridge Gate. Its A.1 review passed, and A
 committed, pushed, and qualified by its exact-SHA remote Gate. P4-E1-A.1 is complete. The P4-E1-B
 read-only design review passed without a Stop Condition. B1 was committed at
 `011658f122809af7f9e63f40c980587d3b3d4c76`, pushed, locally verified, and qualified by exact-SHA
-remote run `31320097058`; it is complete. B2 read-only design review is open, while B2
-implementation has not started. E2 and E3 remain blocked, and P4-E remains incomplete. The
+remote run `31320097058`; it is complete. The B2 read-only design review is complete and forcibly
+split implementation into B2-A followed by B2-B. B2-A is ready but not started; B2-B is blocked
+until B2-A implementation, commit, push, and exact-SHA remote closure. B2 and E1-B remain
+incomplete; E2 and E3 remain blocked, and P4-E remains incomplete. The
 E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
