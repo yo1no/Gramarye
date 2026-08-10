@@ -270,10 +270,11 @@ and remotely qualified. P4-E1-A is complete. The E1-B read-only design review th
 online source counter applicability authority gap. P4-E0-B.3 authority and exact-SHA remote closure
 are now complete. The renewed E1-B review then stopped at the tag-free P4-C admission bridge Gate;
 its focused A.1 review, implementation commit, push, and exact-SHA remote qualification have now
-passed. P4-E1-A.1 is complete. The renewed P4-E1-B read-only design review has now passed without a
-Stop Condition and forces the B1／B2 implementation split. B1 is implemented and fully verified only
-in the local unstaged worktree; its commit, push, and remote closure remain pending. B2 is blocked
-until that closure and has not started. E2／E3 remain blocked. E1 must
+passed. P4-E1-A.1 is complete. The renewed P4-E1-B read-only design review passed without a Stop
+Condition and forced the B1／B2 implementation split. P4-E1-B1 is committed, pushed, locally
+verified, and qualified by the exact-SHA remote run; it is complete. P4-E1-B2 read-only design
+review is open and its implementation has not started. P4-E1-B remains incomplete, and E2／E3 remain
+blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1332,23 +1333,72 @@ Gate remains mandatory and cannot be waived by this review, the split, R2Q, or e
 Branch-protection required-check configuration remains external governance unknown. This closure is
 documentation-only and starts no B1 or B2 implementation.
 
-## P4-E1-B1 local implementation ledger
+## P4-E1-B1 implementation closure ledger
 
-The B1 implementation is present only in the unstaged local worktree based on unchanged
-`main`／`origin/main` commit `6f1b111f5ba0d503671f1c2f9c520311ae4dd2cc`, tree
-`78b7289d6ad79bdf444ea99b03de3480151cace7`, ahead／behind `0/0`. The machine-verifiable delta adds
-the exact two-family inventory; Store Ready and journal lifecycle／proof witnesses; bounded online
-identity capture; UUID-natural `online > integrated > disk` arbitration; full-source reservation
-before drain; one segmented raw-claim backing; and a package-private, single-use unpublished B1
-capture with final-freshness witnesses. B2 grouped Store audit, index, public result, Complete
-handoff, snapshot, reclaim, mutation, dirtying, networking, and new persistence are absent.
+The implementation commit is `011658f122809af7f9e63f40c980587d3b3d4c76`, tree
+`55f55927e0045a96afef1147e48de55343cb7a3f`, with the exact committed stat `34 files changed,
+2,571 insertions(+), 33 deletions(-)`. Its committed scope is exactly these 34 paths:
 
-Local verification passed: full rerun tests; normal GameTest `12/12`; dedicated-server smoke;
-warning-mode production recompile; production JAR and 38-class `javap -p -s -v` inspection; all 11
-portable configuration verifiers in normal and minimal-PATH modes plus `bash -n`; and all existing
-P4-A3／P4-B／P4-C／P4-D fixed-heap gates without heap or fixture changes. The locked R2Q evidence was
-verified in place and not rerun. Commit, push, exact-SHA remote jobs, and branch-protection status
-remain pending／unknown.
+```text
+M docs/architecture/P4-0-persistence-boundary.md
+M docs/architecture/P4-E0-root-audit-boundary.md
+M scripts/verify-p4-c2-b-configuration.sh
+M scripts/verify-p4-d1-configuration.sh
+M scripts/verify-p4-d3-a-configuration.sh
+M scripts/verify-p4-d3-configuration.sh
+M scripts/verify-p4-e0-r-configuration.sh
+M scripts/verify-p4-e0-r2q-configuration.sh
+M scripts/verify-p4-e1-configuration.sh
+M src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java
+M src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java
+A src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java
+A src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PendingJournalObservation.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshot.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java
+A src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1RawClaimBuffer.java
+A src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1RootSourceFamily.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java
+A src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4A2ApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4A3AApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2PhaseTypes.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2ApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AApiGateTest.java
+A src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java
+A src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1CoreTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversalTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelectorTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4EPhaseTypes.java
+```
+
+The closed inventory contains exactly `PLAYER_SKILL_ATTACHMENT` and `PENDING_ATTACHMENT_JOURNAL`.
+Arbitration is UUID-natural `online > integrated > disk`, with every player claim ordered before the
+journal claims. Each source reserves its complete declared claim count before drain; publication
+uses one progressive segmented raw-claim backing and remains package-private, single-use, and
+unpublished. The implementation has zero player／Store／journal mutation, zero dirty delta, zero
+reclaim calls, and no event, network, filesystem-write, or new persistent-truth side effect. B1 has
+no grouped Store audit, memory-only index, public `Complete`, `SkillRetentionRootSnapshot`, or
+reclaim composition; those later responsibilities were not implemented.
+
+Local verification passed with 183 test classes and 1,316 tests, all with zero failures, errors, or
+skips; the focused API/core results were `6/6` and `8/8`. Normal GameTest passed `12/12`, and the
+dedicated-server smoke passed through Ready startup, clean SavedData absence, and normal shutdown.
+Warning-mode production compilation, production JAR isolation, 38-class `javap -p -s -v`, and all 11
+portable configuration verifiers in normal, minimal-PATH, and `bash -n` modes passed. The unchanged
+fixed-heap gates passed: P4-A3's three fixed-1-GiB workloads; P4-B's valid, hostile, malformed,
+trailing, second-member, restart, and packaged-runtime matrix; P4-C's six lifecycle／restart cases;
+and P4-D's D–J1 crash matrix plus combined first／restart. The official R2Q evidence was not rerun or
+modified.
+
+Remote workflow run `31320097058` (attempt 1) completed successfully for the exact implementation
+SHA. Its five jobs—`build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and
+`P4-D memory gates`—all passed. Branch-protection required-check configuration remains external
+governance unknown.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1392,12 +1442,13 @@ P4-E1-A.1 implementation stat   = 20 files; 1,995 insertions; 84 deletions
 P4-E1-A.1 implementation remote run = 31291725341 (attempt 1)
 P4-E1-A.1 implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
 P4-E1-A.1                      = COMPLETE
-P4-E1-B read-only design review = PASS
-P4-E1-B1 implementation         = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
-P4-E1-B2 implementation         = BLOCKED UNTIL B1 COMMIT / PUSH / REMOTE CLOSURE
-P4-E1-B                         = INCOMPLETE
-P4-E2 / P4-E3                  = BLOCKED
-P4-E                           = INCOMPLETE
+P4-E1-B read-only design review  = PASS
+P4-E1-B1                         = COMPLETE
+P4-E1-B2 read-only design review = OPEN
+P4-E1-B2 implementation          = NOT STARTED
+P4-E1-B                          = INCOMPLETE
+P4-E2 / P4-E3                   = BLOCKED
+P4-E                            = INCOMPLETE
 ```
 
 The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed by
@@ -1424,10 +1475,11 @@ closure now pass. P4-E1-A is complete. E1-B's prior read-only review stopped at 
 applicability gap; B.3 authority and exact-SHA remote closure passed. The renewed E1-B review then
 stopped at the tag-free P4-C admission bridge Gate. Its A.1 review passed, and A.1 was implemented,
 committed, pushed, and qualified by its exact-SHA remote Gate. P4-E1-A.1 is complete. The P4-E1-B
-read-only design review has now passed without a Stop Condition. B1 is implemented and fully
-verified only in the local unstaged worktree; its commit,
-push, and exact-SHA remote closure remain pending, and B2 has not started. E2 and E3 remain blocked,
-and P4-E remains incomplete. The E0-B／B.1／B.2／B.3
+read-only design review passed without a Stop Condition. B1 was committed at
+`011658f122809af7f9e63f40c980587d3b3d4c76`, pushed, locally verified, and qualified by exact-SHA
+remote run `31320097058`; it is complete. B2 read-only design review is open, while B2
+implementation has not started. E2 and E3 remain blocked, and P4-E remains incomplete. The
+E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate including the B.3 online
