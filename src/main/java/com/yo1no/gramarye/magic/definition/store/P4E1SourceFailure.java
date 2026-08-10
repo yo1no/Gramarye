@@ -131,7 +131,7 @@ record P4E1SourceFailure(
         return boundedExceptionClassName(exception.getClass().getName());
     }
 
-    private static String boundedExceptionClassName(String className) {
+    static String boundedExceptionClassName(String className) {
         Objects.requireNonNull(className, "className");
         return className.length() <= MAX_EXCEPTION_CLASS_NAME_LENGTH
                 ? className

@@ -227,6 +227,23 @@ class P4B2AApiGateTest {
                 .map(P4B2AApiGateTest::read)
                 .map(P4B2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
+        var lifecycleHolder = withoutCommentsAndLiterals(
+                read(STORE_ROOT.resolve("SkillSavedDataLifecycleGameTests.java")));
+        assertEquals(3, occurrences(lifecycleHolder, "PlayerSkillAttachment"));
+        assertEquals(2, occurrences(lifecycleHolder, "PlayerSkillAttachmentGameTests"));
+        assertEquals(1, occurrences(lifecycleHolder, "PlayerSkillAttachmentService"));
+        var playerAttachmentFreeCode = sources.stream()
+                .map(path -> {
+                    var source = withoutCommentsAndLiterals(read(path));
+                    if (path.equals(STORE_ROOT.resolve(
+                            "SkillSavedDataLifecycleGameTests.java"))) {
+                        return source
+                                .replace("PlayerSkillAttachmentGameTests", "")
+                                .replace("PlayerSkillAttachmentService", "");
+                    }
+                    return source;
+                })
+                .collect(Collectors.joining("\n"));
         var raw = sources.stream().map(P4B2AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         // P4-C1 phase-local: player Attachment physical types are allowed elsewhere in main,
@@ -275,8 +292,10 @@ class P4B2AApiGateTest {
                 "P4B2Heap");
 
         for (var forbidden : forbiddenFragments) {
-            var inspected = Set.of("PendingAttachmentJournal", "Attachment", "Journal")
-                    .contains(forbidden) ? journalFreeCode : code;
+            var inspected = forbidden.equals("PlayerSkillAttachment")
+                    ? playerAttachmentFreeCode
+                    : Set.of("PendingAttachmentJournal", "Attachment", "Journal")
+                            .contains(forbidden) ? journalFreeCode : code;
             assertFalse(inspected.contains(forbidden),
                     () -> "B2-A source contains " + forbidden);
         }

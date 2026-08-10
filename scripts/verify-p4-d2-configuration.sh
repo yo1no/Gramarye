@@ -152,6 +152,20 @@ forbid_fixed_in_file_list() {
     done < "${file_list}"
 }
 
+forbid_fixed_in_file_list_except() {
+    local file_list="$1"
+    local needle="$2"
+    local allowed_file="$3"
+    local message="$4"
+    local file=''
+    while IFS= read -r -d '' file; do
+        if [[ "${file}" == "${allowed_file}" ]]; then
+            continue
+        fi
+        forbid_fixed "${file}" "${needle}" "${message} (${file})"
+    done < "${file_list}"
+}
+
 count_fixed_in_file_list() {
     local file_list="$1"
     local needle="$2"
@@ -441,7 +455,6 @@ verify_static_ownership_and_phase_bounds() {
         'OfflineRoot' \
         'RootCollector' \
         'RootIndex' \
-        'Reconciliation' \
         'CustomPacketPayload' \
         'PayloadRegistrar' \
         'PacketDistributor' \
@@ -449,6 +462,11 @@ verify_static_ownership_and_phase_bounds() {
         forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" "${literal}" \
             "P4-D3/P4-E/network/test surface appeared in production (${literal})"
     done
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        'Reconciliation' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java' \
+        'reconciliation escaped the exact B2-A grouped-audit owner'
     for literal in \
         'P4D2BApiGateTest' \
         'SkillDefinitionSubmissionServiceTest'; do

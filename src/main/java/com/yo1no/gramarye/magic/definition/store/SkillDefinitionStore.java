@@ -97,53 +97,108 @@ public final class SkillDefinitionStore {
                 new SkillReference(skillId, history.revisions().lastKey()));
     }
 
+    /** Observes one exact history route without exposing Store persistence truth. */
+    P4E1StoreHistoryObservation observeExactHistoryForRootAudit(SkillId skillId) {
+        Objects.requireNonNull(skillId, "skillId");
+        var history = histories.get(skillId);
+        return history == null
+                ? P4E1StoreHistoryObservation.Absent.INSTANCE
+                : new P4E1StoreHistoryObservation.Present(skillId, history);
+    }
+
     /** Audits exact journal targets with at most one history lookup per distinct SkillId. */
     JournalTargetAuditResult auditJournalTargets(PendingAttachmentJournal journal) {
+        return auditJournalTargets(journal, this::observeExactHistoryForRootAudit);
+    }
+
+    JournalTargetAuditResult auditJournalTargets(
+            PendingAttachmentJournal journal, P4E1HistoryLookup historyLookup) {
         Objects.requireNonNull(journal, "journal");
-        var observed = new HashMap<SkillId, StoredSkillHistory>();
-        var absent = new HashSet<SkillId>();
-        for (var entryIndex = 0; entryIndex < journal.entries().size(); entryIndex++) {
-            var entry = journal.entries().get(entryIndex);
-            var skillId = entry.skillId();
-            StoredSkillHistory history;
-            if (absent.contains(skillId)) {
-                return new JournalTargetAuditResult.Rejected(
-                        targetAuditFailure(
-                                PendingAttachmentJournalFailure.Code.TARGET_MISSING,
-                                entryIndex,
-                                entry));
-            }
-            if (observed.containsKey(skillId)) {
-                history = observed.get(skillId);
-            } else {
-                history = histories.get(skillId);
-                if (history == null) {
-                    absent.add(skillId);
+        Objects.requireNonNull(historyLookup, "historyLookup");
+        var observed = new HashMap<SkillId, D1ObservationSlot>();
+        D1ObservationSlot firstSlot = null;
+        D1ObservationSlot lastSlot = null;
+        try {
+            for (var entryIndex = 0; entryIndex < journal.entries().size(); entryIndex++) {
+                var entry = journal.entries().get(entryIndex);
+                var skillId = entry.skillId();
+                var slot = observed.get(skillId);
+                if (slot == null) {
+                    var created = Objects.requireNonNull(
+                            historyLookup.observe(skillId), "historyObservation");
+                    var installed = false;
+                    try {
+                        slot = new D1ObservationSlot(created);
+                        observed.put(skillId, slot);
+                        if (firstSlot == null) {
+                            firstSlot = slot;
+                        } else {
+                            lastSlot.next = slot;
+                        }
+                        lastSlot = slot;
+                        installed = true;
+                    } finally {
+                        if (!installed) {
+                            discardHistoryObservation(created);
+                        }
+                    }
+                }
+                var observation = slot.observation;
+                if (observation instanceof P4E1StoreHistoryObservation.Absent) {
                     return new JournalTargetAuditResult.Rejected(
                             targetAuditFailure(
                                     PendingAttachmentJournalFailure.Code.TARGET_MISSING,
                                     entryIndex,
                                     entry));
                 }
-                observed.put(skillId, history);
+                var present = (P4E1StoreHistoryObservation.Present) observation;
+                if (!present.ownerMatches(entry.owner())) {
+                    return new JournalTargetAuditResult.Rejected(
+                            targetAuditFailure(
+                                    PendingAttachmentJournalFailure.Code.TARGET_OWNER_MISMATCH,
+                                    entryIndex,
+                                    entry));
+                }
+                if (!present.contains(entry.targetPointer())) {
+                    return new JournalTargetAuditResult.Rejected(
+                            targetAuditFailure(
+                                    PendingAttachmentJournalFailure.Code.TARGET_MISSING,
+                                    entryIndex,
+                                    entry));
+                }
             }
-            if (!history.owner().equals(entry.owner())) {
-                return new JournalTargetAuditResult.Rejected(
-                        targetAuditFailure(
-                                PendingAttachmentJournalFailure.Code.TARGET_OWNER_MISMATCH,
-                                entryIndex,
-                                entry));
+            return new JournalTargetAuditResult.Audited(
+                    new JournalTargetAuditProof.AuditedExisting(journal));
+        } finally {
+            var slot = firstSlot;
+            while (slot != null) {
+                var next = slot.next;
+                slot.discard();
+                slot = next;
             }
-            if (!history.revisions().containsKey(entry.targetPointer().revision())) {
-                return new JournalTargetAuditResult.Rejected(
-                        targetAuditFailure(
-                                PendingAttachmentJournalFailure.Code.TARGET_MISSING,
-                                entryIndex,
-                                entry));
-            }
+            observed.clear();
         }
-        return new JournalTargetAuditResult.Audited(
-                new JournalTargetAuditProof.AuditedExisting(journal));
+    }
+
+    private static void discardHistoryObservation(P4E1StoreHistoryObservation observation) {
+        if (observation instanceof P4E1StoreHistoryObservation.Present present) {
+            present.discard();
+        }
+    }
+
+    private static final class D1ObservationSlot {
+        private P4E1StoreHistoryObservation observation;
+        private D1ObservationSlot next;
+
+        private D1ObservationSlot(P4E1StoreHistoryObservation observation) {
+            this.observation = Objects.requireNonNull(observation, "observation");
+        }
+
+        private void discard() {
+            discardHistoryObservation(observation);
+            observation = null;
+            next = null;
+        }
     }
 
     private static PendingAttachmentJournalFailure targetAuditFailure(
@@ -160,6 +215,11 @@ public final class SkillDefinitionStore {
                 Optional.of(entry.skillId()),
                 Optional.of(entry.targetPointer()),
                 Optional.empty());
+    }
+
+    @FunctionalInterface
+    interface P4E1HistoryLookup {
+        P4E1StoreHistoryObservation observe(SkillId skillId);
     }
 
     /**

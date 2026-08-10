@@ -61,8 +61,8 @@ final class P4E1RawClaimBuffer {
     void discard() {
         requireOpen();
         discarded = true;
-        for (var segment : segments) {
-            segment.clear();
+        for (var index = 0; index < segments.size(); index++) {
+            segments.get(index).clear();
         }
         segments.clear();
         segments = null;

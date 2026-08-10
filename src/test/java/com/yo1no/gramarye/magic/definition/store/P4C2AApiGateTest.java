@@ -272,6 +272,15 @@ class P4C2AApiGateTest {
                 .map(P4C2AApiGateTest::read)
                 .map(P4C2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
+        var productionWithoutGroupedStoreAudit = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !path.toAbsolutePath().normalize().equals(
+                        MAIN_JAVA.resolve(
+                                "com/yo1no/gramarye/magic/definition/store/"
+                                        + "P4E1GroupedStoreAudit.java")
+                                .toAbsolutePath().normalize()))
+                .map(P4C2AApiGateTest::read)
+                .map(P4C2AApiGateTest::withoutCommentsAndLiterals)
+                .collect(Collectors.joining("\n"));
         var journalOwners = javaSources(MAIN_JAVA).stream()
                 .filter(path -> withoutCommentsAndLiterals(read(path))
                         .contains("PendingAttachmentJournal"))
@@ -305,13 +314,14 @@ class P4C2AApiGateTest {
                 "OfflineRoot",
                 "RootCollector",
                 "RootIndex",
-                "Reconciliation",
                 "CustomPacketPayload",
                 "PayloadRegistrar",
                 "PacketDistributor")) {
             assertFalse(allProduction.contains(forbidden),
                     () -> "Later phase production surface appeared: " + forbidden);
         }
+        assertFalse(productionWithoutGroupedStoreAudit.contains("Reconciliation"),
+                "reconciliation escaped the exact B2-A grouped-audit owner");
         assertTrue(reviewedD1JournalOwners.containsAll(journalOwners),
                 () -> "Pending journal escaped exact D1 allowlist: " + journalOwners);
         assertAll(

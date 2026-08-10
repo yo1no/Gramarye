@@ -182,7 +182,10 @@ final class P4E1AApiGateTest {
     void noPublicRawSignatureOrLaterPhaseCompositionExists() throws Exception {
         var e1Sources = p4ESources();
         for (var forbidden : P4EPhaseTypes.FORBIDDEN_LATER_PHASE_TOKENS) {
-            assertFalse(e1Sources.contains(forbidden), forbidden);
+            var reviewedSources = forbidden.equals("Reconciliation")
+                    ? p4ESourcesExcludingGroupedStoreAudit()
+                    : e1Sources;
+            assertFalse(reviewedSources.contains(forbidden), forbidden);
         }
         for (var forbidden : List.of(
                 "java.util.zip.GZIPInputStream",
@@ -261,11 +264,22 @@ final class P4E1AApiGateTest {
     }
 
     private static String p4ESources() throws Exception {
+        return p4ESources(null);
+    }
+
+    private static String p4ESourcesExcludingGroupedStoreAudit() throws Exception {
+        return p4ESources(STORE_ROOT.resolve("P4E1GroupedStoreAudit.java"));
+    }
+
+    private static String p4ESources(Path excluded) throws Exception {
         var paths = new ArrayList<Path>();
         try (var stream = Files.list(STORE_ROOT)) {
             stream.filter(path -> path.getFileName().toString().startsWith("P4E1")
                             || path.getFileName().toString().equals(
                                     "PlayerSkillAttachmentAdmissionSource.java"))
+                    .filter(path -> excluded == null
+                            || !path.toAbsolutePath().normalize().equals(
+                                    excluded.toAbsolutePath().normalize()))
                     .forEach(paths::add);
         }
         for (var name : P4EPhaseTypes.PLAYER_TYPE_NAMES) {

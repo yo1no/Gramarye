@@ -276,9 +276,10 @@ its focused A.1 review, implementation commit, push, and exact-SHA remote qualif
 passed. P4-E1-A.1 is complete. The renewed P4-E1-B read-only design review passed without a Stop
 Condition and forced the B1／B2 implementation split. P4-E1-B1 is committed, pushed, locally
 verified, and qualified by the exact-SHA remote run; it is complete. The P4-E1-B2 read-only design
-review is complete and forcibly split implementation into B2-A followed by B2-B. B2-A is ready but
-not started; B2-B is blocked until B2-A implementation, commit, push, and exact-SHA remote closure.
-P4-E1-B2 and P4-E1-B remain incomplete, and E2／E3 remain blocked. E1 must
+review is complete and forcibly split implementation into B2-A followed by B2-B. That historical
+review verdict made B2-A ready to start; B2-A is now implemented and fully verified in
+the local unstaged worktree, with commit, push, and exact-SHA remote closure pending. B2-B remains
+blocked until that closure. P4-E1-B2 and P4-E1-B remain incomplete, and E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1511,6 +1512,57 @@ The exact P4-E3 fixed `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` productio
 first／restart Gate remains mandatory; R2Q evidence cannot replace it. Branch-protection
 required-check configuration remains external governance unknown.
 
+## P4-E1-B2-A local implementation ledger
+
+P4-E1-B2-A is implemented and fully verified only in the local unstaged worktree. The exact
+implementation scope before this ledger update is 30 paths: three new package-private production
+owners (`P4E1StoreHistoryObservation`, `P4E1GroupedStoreAudit`, and `P4E1AuditedCapture`), six
+narrow production modifications in the existing B1／D1 Store package and normal GameTest holder,
+three new focused tests, ten exact existing API／phase-gate updates, and eight portable-verifier
+updates. There is no Gradle, workflow, resource, codex-spec, research-source, or README delta.
+
+The Store owns one package-private `observeExactHistoryForRootAudit(SkillId)` primitive. Each call
+performs exactly one `histories.get`, including absent routes, and returns an opaque clearable
+observation with only owner-match and exact-reference containment operations. D1 delegates only to
+that low-level primitive and retains its raw-order early terminal, owner-before-revision precedence,
+machine codes, entry metadata, proof identity, actual-owner privacy, and lookup timing. Its
+high-level coordinator was not shared or rewritten.
+
+The B2-A coordinator consumes a B1 capture with exact nominal owner, server, creation-thread, logic-
+thread, and captured-tick binding. Its first raw traversal validates claim metadata and establishes
+first-occurrence `SkillId` order; it then observes every distinct route exactly once. Its second raw
+traversal alone determines the terminal result. Player missing／owner mismatch wins before any later
+journal invalidity; journal ownership remains backed by the exact current D1 proof; valid nonlatest
+revisions remain valid; and reconciliation diagnostics intentionally publish only
+`staleObservedAtLeast = 1`. The actual Store owner never leaves the opaque observation.
+
+Every opaque history observation is cleared on success, domain failure, bounded
+`RuntimeException`, `Error`, and `OutOfMemoryError`. Runtime failures become bounded internal facts;
+`Error`／OOME are not caught or reclassified. Cleanup uses index／linked-slot walks, and the result-
+publication fallback now clears a just-created `AuditedCapture` directly without allocating a
+`Transfer`, preserving the original Error identity. Success transfers the original segmented B1
+backing into a package-private, same-tick, single-use, unpublished `AuditedCapture`; the second full
+root vector count is zero. No Store-history observation survives that transfer.
+
+Local verification passed with 1,342 unit tests and zero failures, errors, or skips. Normal GameTest
+remained exactly `12/12`; the dedicated-server smoke passed. Warning-mode production compilation,
+`jar`, `tasks --all`, `javap`, JAR/source-set isolation, focused B2-A／D1 tests, all eleven portable
+verifiers under `bash -n` and minimal PATH, and the unchanged configuration Gates passed. The full
+fixed-heap Gates also passed unchanged: P4-A3's three fixed-1-GiB workloads; P4-B's packaged,
+valid／hostile／malformed／trailing／second-member paired-restart matrix; P4-C's six
+Attachment-lifecycle first／restart cases; and P4-D's 16-JVM D–J1 plus combined first／restart Gate.
+The generated root Log4j rollover files were inventoried as run-owned, non-authoritative output and
+precisely removed; the rollover warning was not a Gate failure. Official R2Q remains the exact same
+six-file set and all controlled checksums pass; no research study or smoke was rerun.
+
+B2-A performs zero Store mutation, dirty publication, pin, snapshot, reclaim, Attachment `setData`,
+journal mutation, playerdata／filesystem write, DFU, event registration, network, chunk force, or
+background work. It creates no public audit service／result, index, generation, `Complete`, E3
+handoff, `SkillRetentionRootSnapshot`, or reconciliation mutation. Complete final freshness and
+index publication remain exclusively B2-B work. The local implementation has not been staged,
+committed, or pushed, and no exact-SHA remote run exists yet; branch-protection required-check
+configuration remains external governance unknown.
+
 ```text
 P4-C0.1 = COMPLETE
 P4-C1   = COMPLETE
@@ -1556,7 +1608,7 @@ P4-E1-A.1                      = COMPLETE
 P4-E1-B read-only design review  = PASS
 P4-E1-B1                         = COMPLETE
 P4-E1-B2 read-only design review = COMPLETE — FORCED B2-A / B2-B SPLIT
-P4-E1-B2-A implementation        = READY; NOT STARTED
+P4-E1-B2-A implementation        = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
 P4-E1-B2-B implementation        = BLOCKED UNTIL B2-A IMPLEMENTATION / COMMIT / PUSH / REMOTE CLOSURE
 P4-E1-B2                         = INCOMPLETE
 P4-E1-B                          = INCOMPLETE
@@ -1591,8 +1643,9 @@ committed, pushed, and qualified by its exact-SHA remote Gate. P4-E1-A.1 is comp
 read-only design review passed without a Stop Condition. B1 was committed at
 `011658f122809af7f9e63f40c980587d3b3d4c76`, pushed, locally verified, and qualified by exact-SHA
 remote run `31320097058`; it is complete. The B2 read-only design review is complete and forcibly
-split implementation into B2-A followed by B2-B. B2-A is ready but not started; B2-B is blocked
-until B2-A implementation, commit, push, and exact-SHA remote closure. B2 and E1-B remain
+split implementation into B2-A followed by B2-B. B2-A is implemented and fully verified in the
+local unstaged worktree; commit, push, and exact-SHA remote closure remain pending. B2-B remains
+blocked until that closure. B2 and E1-B remain
 incomplete; E2 and E3 remain blocked, and P4-E remains incomplete. The
 E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal

@@ -279,16 +279,25 @@ final class P4D2ApiGateTest {
         var allMain = javaSources(MAIN_JAVA).stream()
                 .map(P4D2ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
+        var mainWithoutGroupedStoreAudit = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !path.toAbsolutePath().normalize().equals(
+                        MAIN_JAVA.resolve(
+                                "com/yo1no/gramarye/magic/definition/store/"
+                                        + "P4E1GroupedStoreAudit.java")
+                                .toAbsolutePath().normalize()))
+                .map(P4D2ApiGateTest::read)
+                .collect(Collectors.joining("\n"));
         assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
                 relativeSourcesContaining("PlayerLoggedInEvent"));
         for (var forbidden : List.of(
                 "PlayerLoggedOutEvent",
                 "OfflineRoot",
-                "Reconciliation",
                 "CustomPacketPayload",
                 "PayloadRegistrar")) {
             assertFalse(allMain.contains(forbidden), forbidden);
         }
+        assertFalse(mainWithoutGroupedStoreAudit.contains("Reconciliation"),
+                "reconciliation escaped the exact B2-A grouped-audit owner");
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
         assertEquals(2, occurrences(build, "sourceSets.create('p4D3"));

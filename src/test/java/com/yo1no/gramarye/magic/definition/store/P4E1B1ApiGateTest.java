@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 import net.minecraft.nbt.Tag;
 import org.junit.jupiter.api.Test;
 
-/** Exact package, public-surface, lifetime, and later-phase absence gate for P4-E1-B1. */
+/** Exact package, public-surface, and owner-bound handoff gate for the P4-E1-B1 capture. */
 final class P4E1B1ApiGateTest {
     private static final Path PROJECT_ROOT = projectRoot();
     private static final Path MAIN_JAVA = PROJECT_ROOT.resolve("src/main/java");
@@ -114,7 +114,8 @@ final class P4E1B1ApiGateTest {
                 "ServerStartingEvent",
                 "PlayerEvent",
                 "CustomPacketPayload",
-                "P4E1B2ApiGateTest",
+                "P4E1B2BApiGateTest",
+                "SkillRetentionRootAuditResult",
                 "ReconciliationRequired",
                 "CompleteResult",
                 "RootIndex")) {
@@ -161,6 +162,7 @@ final class P4E1B1ApiGateTest {
         assertTrue(inventory.contains("case PENDING_ATTACHMENT_JOURNAL ->"));
         assertFalse(inventory.contains("default ->"));
         for (var cleared : List.of(
+                "ownerIdentity = null",
                 "serverIdentity = null",
                 "creationThreadIdentity = null",
                 "storeWitness = null",
@@ -191,6 +193,36 @@ final class P4E1B1ApiGateTest {
         }
         assertFalse(Arrays.stream(P4E1GlobalSourceCapture.class.getDeclaredFields())
                 .anyMatch(field -> Modifier.isStatic(field.getModifiers())));
+    }
+
+    @Test
+    void capturedHandoffIsBoundOnlyToTheExactGroupedAuditOwner() {
+        var captures = Arrays.stream(P4E1GlobalSourceCapture.class.getDeclaredMethods())
+                .filter(method -> method.getName().equals("capture"))
+                .toList();
+        assertEquals(1, captures.size());
+        assertEquals(
+                List.of(
+                        net.minecraft.server.MinecraftServer.class,
+                        SkillDefinitionStoreService.class,
+                        PlayerSkillAttachmentService.class,
+                        P4E1GroupedStoreAudit.class),
+                Arrays.asList(captures.getFirst().getParameterTypes()));
+
+        var claims = Arrays.stream(P4E1GlobalSourceCapture.Captured.class.getDeclaredMethods())
+                .filter(method -> method.getName().equals("claim"))
+                .toList();
+        assertEquals(1, claims.size());
+        var claim = claims.getFirst();
+        assertEquals(List.of(P4E1GroupedStoreAudit.class),
+                Arrays.asList(claim.getParameterTypes()));
+        assertEquals(P4E1GlobalSourceCapture.Claimed.class, claim.getReturnType());
+        assertFalse(Modifier.isPublic(claim.getModifiers()));
+        assertFalse(Modifier.isProtected(claim.getModifiers()));
+        assertFalse(Modifier.isPrivate(claim.getModifiers()));
+        assertFalse(Arrays.stream(P4E1GlobalSourceCapture.Captured.class.getDeclaredMethods())
+                .anyMatch(method -> method.getName().equals("claim")
+                        && method.getParameterCount() == 0));
     }
 
     private static Path projectRoot() {

@@ -15,6 +15,12 @@ final class P4E1PendingJournalObservation {
         JOURNAL_TARGET_INVALID
     }
 
+    enum Currentness {
+        CURRENT,
+        LIFECYCLE_UNAVAILABLE,
+        TARGET_INVALID
+    }
+
     sealed interface Result {
         record Available(Ready observation) implements Result {
             public Available {
@@ -127,20 +133,35 @@ final class P4E1PendingJournalObservation {
                 MinecraftServer server,
                 P4E1GlobalSourceCapture.StoreReadyWitness witness,
                 GramaryeSkillSavedData adapter) {
+            return currentness(candidate, server, witness, adapter) == Currentness.CURRENT;
+        }
+
+        Currentness currentness(
+                SkillDefinitionStoreSubmissionPort candidate,
+                MinecraftServer server,
+                P4E1GlobalSourceCapture.StoreReadyWitness witness,
+                GramaryeSkillSavedData adapter) {
             requireWitness(candidate, server, witness);
             if (adapter != adapterIdentity
                     || adapter.state() != savedDataReadyIdentity
                     || savedDataReadyIdentity.innerCarrier().pending() != innerPendingIdentity
                     || sourcePendingIdentity != innerPendingIdentity
-                    || journalReadyIdentity.sourcePending() != sourcePendingIdentity
-                    || journalReadyIdentity.targetAuditProof() != proofIdentity) {
-                return false;
+                    || journalReadyIdentity.sourcePending() != sourcePendingIdentity) {
+                return Currentness.LIFECYCLE_UNAVAILABLE;
             }
             if (!(savedDataReadyIdentity.journalLifecycle()
                     instanceof PendingAttachmentJournalLifecycle.Installed installed)) {
-                return false;
+                return Currentness.LIFECYCLE_UNAVAILABLE;
             }
-            return installed.state() == journalReadyIdentity;
+            if (installed.state() != journalReadyIdentity) {
+                return Currentness.LIFECYCLE_UNAVAILABLE;
+            }
+            if (journalReadyIdentity.targetAuditProof() != proofIdentity
+                    || !proofIsSatisfied(proofIdentity)
+                    || !proofIdentity.isFor(journalReadyIdentity.journal())) {
+                return Currentness.TARGET_INVALID;
+            }
+            return Currentness.CURRENT;
         }
 
         JournalTargetAuditProof proofIdentity() {
@@ -173,6 +194,14 @@ final class P4E1PendingJournalObservation {
             if (stage == Stage.DISCARDED) {
                 throw new IllegalStateException("P4E1_JOURNAL_WITNESS_DISCARDED");
             }
+        }
+
+        private static boolean proofIsSatisfied(JournalTargetAuditProof proof) {
+            return switch (proof) {
+                case JournalTargetAuditProof.AuditedExisting ignored -> true;
+                case JournalTargetAuditProof.ConditionalOnExactCommit conditional ->
+                        conditional.isSatisfied();
+            };
         }
     }
 

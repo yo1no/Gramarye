@@ -1,5 +1,6 @@
 package com.yo1no.gramarye.magic.definition.store;
 
+import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import java.util.ArrayList;
@@ -19,11 +20,14 @@ final class P4E1GlobalSourceCapture {
     static CaptureResult capture(
             MinecraftServer server,
             SkillDefinitionStoreService storeService,
-            PlayerSkillAttachmentService attachmentService) {
+            PlayerSkillAttachmentService attachmentService,
+            P4E1GroupedStoreAudit owner) {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(storeService, "storeService");
         Objects.requireNonNull(attachmentService, "attachmentService");
+        Objects.requireNonNull(owner, "owner");
         SkillDefinitionStoreService.requireServerThread(server);
+        owner.requireCaptureBinding(server, Thread.currentThread(), server.getTickCount());
 
         var preflight = P4E1SourceAdmissionPreflight.evaluate();
         if (preflight instanceof P4E1SourceAdmissionPreflight.Incomplete incomplete) {
@@ -140,8 +144,10 @@ final class P4E1GlobalSourceCapture {
             }
             var summary = Summary.from(sources, buffer.size());
             return new CaptureResult.Captured(new Captured(
+                    owner,
                     server,
                     Thread.currentThread(),
+                    server.getTickCount(),
                     qualified.observation(),
                     storeWitness,
                     journal,
@@ -507,8 +513,10 @@ final class P4E1GlobalSourceCapture {
     }
 
     static final class Captured {
+        private P4E1GroupedStoreAudit ownerIdentity;
         private MinecraftServer serverIdentity;
         private Thread creationThreadIdentity;
+        private int capturedTick;
         private P4E1HeapFloorObservation heapObservation;
         private StoreReadyWitness storeWitness;
         private P4E1PendingJournalObservation.Ready journalWitness;
@@ -521,8 +529,10 @@ final class P4E1GlobalSourceCapture {
         private boolean consumed;
 
         private Captured(
+                P4E1GroupedStoreAudit ownerIdentity,
                 MinecraftServer serverIdentity,
                 Thread creationThreadIdentity,
+                int capturedTick,
                 P4E1HeapFloorObservation heapObservation,
                 StoreReadyWitness storeWitness,
                 P4E1PendingJournalObservation.Ready journalWitness,
@@ -532,9 +542,11 @@ final class P4E1GlobalSourceCapture {
                 P4E1RawClaimBuffer claims,
                 ArrayList<SourceEntry> sources,
                 Summary summary) {
+            this.ownerIdentity = Objects.requireNonNull(ownerIdentity, "ownerIdentity");
             this.serverIdentity = Objects.requireNonNull(serverIdentity, "serverIdentity");
             this.creationThreadIdentity = Objects.requireNonNull(
                     creationThreadIdentity, "creationThreadIdentity");
+            this.capturedTick = capturedTick;
             this.heapObservation = Objects.requireNonNull(heapObservation, "heapObservation");
             this.storeWitness = Objects.requireNonNull(storeWitness, "storeWitness");
             this.journalWitness = Objects.requireNonNull(journalWitness, "journalWitness");
@@ -546,49 +558,87 @@ final class P4E1GlobalSourceCapture {
             this.summary = Objects.requireNonNull(summary, "summary");
         }
 
-        Claimed claim() {
-            requireNew();
+        Claimed claim(P4E1GroupedStoreAudit owner) {
+            requireUnconsumed();
             consumed = true;
-            var moved = new Claimed(
-                    serverIdentity,
-                    creationThreadIdentity,
-                    heapObservation,
-                    storeWitness,
-                    journalWitness,
-                    inventoryWitness,
-                    directoryWitness,
-                    integratedWitness,
-                    claims,
-                    sources,
-                    summary);
-            clearReferences();
-            return moved;
+            Claimed moved = null;
+            try {
+                moved = new Claimed(
+                        ownerIdentity,
+                        serverIdentity,
+                        creationThreadIdentity,
+                        capturedTick,
+                        heapObservation,
+                        storeWitness,
+                        journalWitness,
+                        inventoryWitness,
+                        directoryWitness,
+                        integratedWitness,
+                        claims,
+                        sources,
+                        summary);
+            } finally {
+                if (moved == null) {
+                    try {
+                        cleanupUnpublished(
+                                claims,
+                                sources,
+                                journalWitness,
+                                inventoryWitness,
+                                storeWitness);
+                    } finally {
+                        clearReferences();
+                    }
+                } else {
+                    clearReferences();
+                }
+            }
+            var accepted = false;
+            try {
+                moved.requireActive(owner);
+                accepted = true;
+                return moved;
+            } finally {
+                if (!accepted) {
+                    moved.discardAfterFailedClaim();
+                }
+            }
         }
 
         void discard() {
-            requireNew();
+            requireUnconsumed();
             consumed = true;
-            cleanup(claims, sources, journalWitness, inventoryWitness, storeWitness);
-            clearReferences();
-        }
-
-        Summary summary() {
-            requireNew();
-            return summary;
-        }
-
-        private void requireNew() {
-            if (consumed || claims == null) {
-                throw new IllegalStateException("P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED");
+            var correctThread = Thread.currentThread() == creationThreadIdentity;
+            try {
+                cleanupUnpublished(
+                        claims, sources, journalWitness, inventoryWitness, storeWitness);
+            } finally {
+                clearReferences();
             }
-            if (Thread.currentThread() != creationThreadIdentity) {
+            if (!correctThread) {
                 throw new IllegalStateException("P4E1_GLOBAL_CAPTURE_WRONG_THREAD");
             }
         }
 
+        Summary summary() {
+            requireUnconsumed();
+            if (Thread.currentThread() != creationThreadIdentity) {
+                throw new IllegalStateException("P4E1_GLOBAL_CAPTURE_WRONG_THREAD");
+            }
+            return summary;
+        }
+
+        private void requireUnconsumed() {
+            if (consumed || claims == null) {
+                throw new IllegalStateException("P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED");
+            }
+        }
+
         private void clearReferences() {
+            ownerIdentity = null;
             serverIdentity = null;
             creationThreadIdentity = null;
+            capturedTick = -1;
             heapObservation = null;
             storeWitness = null;
             journalWitness = null;
@@ -602,8 +652,10 @@ final class P4E1GlobalSourceCapture {
     }
 
     static final class Claimed {
+        private P4E1GroupedStoreAudit ownerIdentity;
         private MinecraftServer serverIdentity;
         private Thread creationThreadIdentity;
+        private int capturedTick;
         private P4E1HeapFloorObservation heapObservation;
         private StoreReadyWitness storeWitness;
         private P4E1PendingJournalObservation.Ready journalWitness;
@@ -616,8 +668,10 @@ final class P4E1GlobalSourceCapture {
         private boolean discarded;
 
         private Claimed(
+                P4E1GroupedStoreAudit ownerIdentity,
                 MinecraftServer serverIdentity,
                 Thread creationThreadIdentity,
+                int capturedTick,
                 P4E1HeapFloorObservation heapObservation,
                 StoreReadyWitness storeWitness,
                 P4E1PendingJournalObservation.Ready journalWitness,
@@ -627,8 +681,10 @@ final class P4E1GlobalSourceCapture {
                 P4E1RawClaimBuffer claims,
                 ArrayList<SourceEntry> sources,
                 Summary summary) {
+            this.ownerIdentity = ownerIdentity;
             this.serverIdentity = serverIdentity;
             this.creationThreadIdentity = creationThreadIdentity;
+            this.capturedTick = capturedTick;
             this.heapObservation = heapObservation;
             this.storeWitness = storeWitness;
             this.journalWitness = journalWitness;
@@ -640,8 +696,8 @@ final class P4E1GlobalSourceCapture {
             this.summary = summary;
         }
 
-        void visitClaims(ClaimVisitor visitor) {
-            requireActive();
+        void visitClaims(P4E1GroupedStoreAudit owner, ClaimVisitor visitor) {
+            requireActive(owner);
             Objects.requireNonNull(visitor, "visitor");
             for (var index = 0; index < claims.size(); index++) {
                 visitor.visit(
@@ -654,27 +710,145 @@ final class P4E1GlobalSourceCapture {
             }
         }
 
-        int sourceCount() {
-            requireActive();
+        int sourceCount(P4E1GroupedStoreAudit owner) {
+            requireActive(owner);
             return sources.size();
         }
 
-        SourceEntry sourceAt(int index) {
-            requireActive();
+        SourceEntry sourceAt(P4E1GroupedStoreAudit owner, int index) {
+            requireActive(owner);
             return sources.get(index);
         }
 
-        Summary summary() {
-            requireActive();
+        Summary summary(P4E1GroupedStoreAudit owner) {
+            requireActive(owner);
             return summary;
         }
 
-        void discard() {
-            requireActive();
+        P4E1GroupedStoreAudit.RawInput rawInput(P4E1GroupedStoreAudit owner) {
+            requireActive(owner);
+            return new P4E1GroupedStoreAudit.RawInput(owner, claims, sources, summary);
+        }
+
+        boolean journalProofMatches(
+                P4E1GroupedStoreAudit owner, JournalTargetAuditProof proof) {
+            requireActive(owner);
+            return journalWitness.proofIdentity() == Objects.requireNonNull(proof, "proof");
+        }
+
+        boolean storeCurrent(P4E1GroupedStoreAudit owner) {
+            requireActive(owner);
+            try {
+                return storeWitness.owner.isP4E1StoreReadyCurrent(
+                        serverIdentity, storeWitness);
+            } catch (SkillSubsystemLifecycleException exception) {
+                return switch (exception.code()) {
+                    case BOOTSTRAP_NOT_INSTALLED, OVERWORLD_UNAVAILABLE,
+                            CACHE_IDENTITY_MISMATCH -> false;
+                    case WRONG_THREAD, BOOTSTRAP_ALREADY_INSTALLED,
+                            JOURNAL_BOOTSTRAP_ALREADY_INSTALLED -> throw exception;
+                };
+            }
+        }
+
+        P4E1PendingJournalObservation.Currentness journalCurrentness(
+                P4E1GroupedStoreAudit owner) {
+            requireActive(owner);
+            var service = storeWitness.owner;
+            return journalWitness.currentness(
+                    service.submissionPort(),
+                    serverIdentity,
+                    storeWitness,
+                    service.installedAdapter(serverIdentity));
+        }
+
+        P4E1StoreHistoryObservation observeExactHistory(
+                P4E1GroupedStoreAudit owner, SkillId skillId) {
+            requireActive(owner);
+            return storeWitness.storeIdentity.observeExactHistoryForRootAudit(
+                    Objects.requireNonNull(skillId, "skillId"));
+        }
+
+        P4E1AuditedCapture moveToAudited(
+                P4E1GroupedStoreAudit owner, int distinctSkillIdCount) {
+            requireActive(owner);
+            if (distinctSkillIdCount < 0 || distinctSkillIdCount > claims.size()) {
+                throw new IllegalArgumentException("invalid distinct SkillId count");
+            }
             discarded = true;
-            cleanup(claims, sources, journalWitness, inventoryWitness, storeWitness);
+            P4E1AuditedCapture moved = null;
+            try {
+                moved = new P4E1AuditedCapture(
+                        ownerIdentity,
+                        serverIdentity,
+                        creationThreadIdentity,
+                        capturedTick,
+                        heapObservation,
+                        storeWitness,
+                        journalWitness,
+                        inventoryWitness,
+                        directoryWitness,
+                        integratedWitness,
+                        claims,
+                        sources,
+                        summary,
+                        distinctSkillIdCount);
+                return moved;
+            } finally {
+                if (moved == null) {
+                    cleanupUnpublished(
+                            claims,
+                            sources,
+                            journalWitness,
+                            inventoryWitness,
+                            storeWitness);
+                }
+                clearReferences();
+            }
+        }
+
+        void discard(P4E1GroupedStoreAudit owner) {
+            requireActive(owner);
+            discarded = true;
+            try {
+                cleanupUnpublished(
+                        claims, sources, journalWitness, inventoryWitness, storeWitness);
+            } finally {
+                clearReferences();
+            }
+        }
+
+        void discardIfActive(P4E1GroupedStoreAudit owner) {
+            if (discarded || claims == null) {
+                return;
+            }
+            if (ownerIdentity != Objects.requireNonNull(owner, "owner")) {
+                throw new IllegalStateException("P4E1_CLAIMED_CAPTURE_OWNER_MISMATCH");
+            }
+            discarded = true;
+            try {
+                cleanupUnpublished(
+                        claims, sources, journalWitness, inventoryWitness, storeWitness);
+            } finally {
+                clearReferences();
+            }
+        }
+
+        private void discardAfterFailedClaim() {
+            discarded = true;
+            try {
+                cleanupUnpublished(
+                        claims, sources, journalWitness, inventoryWitness, storeWitness);
+            } finally {
+                clearReferences();
+            }
+        }
+
+        private void clearReferences() {
+            ownerIdentity = null;
             serverIdentity = null;
             creationThreadIdentity = null;
+            capturedTick = -1;
             heapObservation = null;
             storeWitness = null;
             journalWitness = null;
@@ -686,13 +860,14 @@ final class P4E1GlobalSourceCapture {
             summary = null;
         }
 
-        private void requireActive() {
+        private void requireActive(P4E1GroupedStoreAudit owner) {
             if (discarded || claims == null) {
                 throw new IllegalStateException("P4E1_CLAIMED_CAPTURE_DISCARDED");
             }
-            if (Thread.currentThread() != creationThreadIdentity) {
-                throw new IllegalStateException("P4E1_CLAIMED_CAPTURE_WRONG_THREAD");
+            if (ownerIdentity != Objects.requireNonNull(owner, "owner")) {
+                throw new IllegalStateException("P4E1_CLAIMED_CAPTURE_OWNER_MISMATCH");
             }
+            owner.requireCaptureBinding(serverIdentity, creationThreadIdentity, capturedTick);
         }
     }
 
@@ -892,22 +1067,43 @@ final class P4E1GlobalSourceCapture {
         }
     }
 
-    private static void cleanup(
+    static void cleanupUnpublished(
             P4E1RawClaimBuffer claims,
             ArrayList<SourceEntry> sources,
             P4E1PendingJournalObservation.Ready journal,
             P4E1SourceInventory.Witness inventory,
             StoreReadyWitness store) {
-        for (var source : sources) {
+        for (var index = 0; index < sources.size(); index++) {
+            var source = sources.get(index);
             if (source.witness() instanceof SourceWitness.Online online) {
-                online.service().discardOnlineRootWitness(online.handle());
+                try {
+                    online.service().discardOnlineRootWitness(online.handle());
+                } catch (RuntimeException ignored) {
+                    // Unpublished cleanup must not replace the primary terminal result.
+                }
             }
         }
         sources.clear();
-        claims.discard();
-        journal.discardWitness();
-        inventory.discard();
-        store.discard();
+        try {
+            claims.discard();
+        } catch (RuntimeException ignored) {
+            // The owning handle drops the backing reference below even after lifecycle misuse.
+        }
+        try {
+            journal.discardWitness();
+        } catch (RuntimeException ignored) {
+            // The owning handle drops the witness reference below even after lifecycle misuse.
+        }
+        try {
+            inventory.discard();
+        } catch (RuntimeException ignored) {
+            // The owning handle drops the witness reference below even after lifecycle misuse.
+        }
+        try {
+            store.discard();
+        } catch (RuntimeException ignored) {
+            // The owning handle drops the witness reference below even after lifecycle misuse.
+        }
     }
 
     private record OnlineIdentity(
@@ -1013,7 +1209,8 @@ final class P4E1GlobalSourceCapture {
         }
 
         private CaptureResult fail(CaptureResult failure) {
-            for (var source : sources) {
+            for (var index = 0; index < sources.size(); index++) {
+                var source = sources.get(index);
                 if (source.witness() instanceof SourceWitness.Online online) {
                     online.service().discardOnlineRootAuditHandle(online.handle());
                 }
