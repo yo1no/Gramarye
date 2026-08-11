@@ -511,9 +511,9 @@ exact-SHA remote Gate have now passed. P4-E1-A.1 is complete. The renewed P4-E1-
 review passed without a Stop Condition and forced the B1／B2 split above. P4-E1-B1 is committed,
 pushed, locally verified, and qualified by the exact-SHA remote run; it is complete. The P4-E1-B2
 read-only design review is complete and forcibly split implementation into B2-A followed by B2-B.
-B2-A is implemented and fully verified in the local unstaged worktree; its commit, push, and
-exact-SHA remote closure remain pending. B2-B remains blocked until that closure. B2 and E1-B
-remain incomplete; E2／E3 remain blocked. No phase introduces
+B2-A is implemented, committed, pushed, and qualified by unique attempt-1 exact-SHA remote run
+`31415157794`; it is complete. B2-B is open only for its independent read-only design review, and
+its implementation has not started. B2 and E1-B remain incomplete; E2／E3 remain blocked. No phase introduces
 chunk force, periodic/background scanning, network, or a second persistent truth. The completed
 E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate; the B.1
 jobs and this authority correction do not waive it either.
@@ -587,9 +587,9 @@ governance unknown.
 ## P4-E1-B2 read-only design review closure
 
 The P4-E1-B2 read-only design review is complete and hit no Stop Condition. It forcibly splits the
-remaining implementation into B2-A followed by B2-B. At this documentation working-tree coordinate,
-the review closure is `IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING`; only the exact-SHA
-remote Gate for this closure commit can qualify B2-A to start.
+remaining implementation into B2-A followed by B2-B. At that historical precommit coordinate, the
+review closure was `IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING`; its subsequent unique
+attempt-1 exact-SHA remote Gate passed and qualified B2-A to start.
 
 The split is a semantic closure boundary rather than a file-count split. Grouped Store audit and the
 D1-sensitive Store seam form an independently reviewable surface. B2-A can produce a
@@ -687,14 +687,18 @@ The exact P4-E3 fixed `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` productio
 first／restart Gate remains mandatory; R2Q evidence cannot replace it. Branch-protection
 required-check configuration remains external governance unknown.
 
-## P4-E1-B2-A local implementation evidence
+## P4-E1-B2-A implementation and remote closure evidence
 
-P4-E1-B2-A is implemented and fully verified only in the local unstaged worktree. The exact
-implementation scope before this ledger update is 30 paths: three new package-private production
+P4-E1-B2-A is implemented, committed, pushed, and remote-validated. The implementation commit is
+`407471bfc01c3a3bb46d94d412be9bc86d80fa24`, its tree is
+`973b36ee0e6adc092ad1b1354b52bdabd11c1be9`, and its parent is
+`b910320271a09f5cbe24a5a78ed81a71ea27192f`. Its exact stat is 32 paths, 3,142 insertions, and 145
+deletions. The 30 non-ledger paths comprise three new package-private production
 owners (`P4E1StoreHistoryObservation`, `P4E1GroupedStoreAudit`, and `P4E1AuditedCapture`), six
 narrow production modifications in the existing B1／D1 Store package and normal GameTest holder,
 three new focused tests, ten exact existing API／phase-gate updates, and eight portable-verifier
-updates. There is no Gradle, workflow, resource, codex-spec, research-source, or README delta.
+updates; the remaining two paths are this ledger and the P4-0 ledger. There is no Gradle, workflow,
+resource, codex-spec, research-source, or README delta.
 
 The Store owns one package-private `observeExactHistoryForRootAudit(SkillId)` primitive. Each call
 performs exactly one `histories.get`, including absent routes, and returns an opaque clearable
@@ -719,8 +723,9 @@ publication fallback now clears a just-created `AuditedCapture` directly without
 backing into a package-private, same-tick, single-use, unpublished `AuditedCapture`; the second full
 root vector count is zero. No Store-history observation survives that transfer.
 
-Local verification passed with 1,342 unit tests and zero failures, errors, or skips. Normal GameTest
-remained exactly `12/12`; the dedicated-server smoke passed. Warning-mode production compilation,
+Local verification passed across 186 suites and 1,342 unit tests, with zero failures, errors, or
+skips. Normal GameTest remained exactly `12/12`; the dedicated-server smoke passed. Warning-mode
+production compilation,
 `jar`, `tasks --all`, `javap`, JAR/source-set isolation, focused B2-A／D1 tests, all eleven portable
 verifiers under `bash -n` and minimal PATH, and the unchanged configuration Gates passed. The full
 fixed-heap Gates also passed unchanged: P4-A3's three fixed-1-GiB workloads; P4-B's packaged,
@@ -734,9 +739,26 @@ B2-A performs zero Store mutation, dirty publication, pin, snapshot, reclaim, At
 journal mutation, playerdata／filesystem write, DFU, event registration, network, chunk force, or
 background work. It creates no public audit service／result, index, generation, `Complete`, E3
 handoff, `SkillRetentionRootSnapshot`, or reconciliation mutation. Complete final freshness and
-index publication remain exclusively B2-B work. The local implementation has not been staged,
-committed, or pushed, and no exact-SHA remote run exists yet; branch-protection required-check
-configuration remains external governance unknown.
+index publication remain exclusively B2-B work.
+
+The bounded evidence limitations remain explicit: the wrong-server rejection branch is locked by
+static/API evidence while the real GameTest exercises wrong owner, thread, and tick; outer
+coordinator runtime/result-wrapper allocation failures are covered by the pure core and static
+cleanup Gate rather than a separate injected server case; the zero-player lifecycle fixture makes
+Attachment non-mutation vacuous and is paired with the exact no-`setData` call-site Gate; and the
+nonempty Store side-effect evidence is provided by the pure/D1 tests rather than the empty full-
+coordinator fixture. Nested implementation classfiles may carry JLS-mandated public member flags,
+but their enclosing top-level owners and every operational entry remain package-private and are not
+externally nameable.
+
+The exact implementation-SHA push produced one canonical `Build` run, `31415157794`, at attempt 1;
+it completed successfully with the exact five-job set: `build` (`93542316416`), `P4-A3 memory
+gates` (`93543416201`), `P4-B memory gates` (`93544003612`), `P4-C memory gates`
+(`93545441197`), and `P4-D memory gates` (`93546527193`). Every job was bound to the exact
+implementation SHA and completed with `success`. The official R2Q root remains the exact six-file
+set, its manifest still passes, and `SHA256SUMS.txt` remains
+`cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`; no research study or smoke
+was rerun. Branch-protection required-check configuration remains external governance unknown.
 
 ## Status
 
@@ -769,8 +791,15 @@ P4-E1-A.1                          = COMPLETE
 P4-E1-B read-only design review     = PASS
 P4-E1-B1                            = COMPLETE
 P4-E1-B2 read-only design review    = COMPLETE — FORCED B2-A / B2-B SPLIT
-P4-E1-B2-A implementation           = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
-P4-E1-B2-B implementation           = BLOCKED UNTIL B2-A IMPLEMENTATION / COMMIT / PUSH / REMOTE CLOSURE
+P4-E1-B2-A implementation commit    = 407471bfc01c3a3bb46d94d412be9bc86d80fa24
+P4-E1-B2-A implementation tree      = 973b36ee0e6adc092ad1b1354b52bdabd11c1be9
+P4-E1-B2-A implementation parent    = b910320271a09f5cbe24a5a78ed81a71ea27192f
+P4-E1-B2-A implementation stat      = 32 files; 3,142 insertions; 145 deletions
+P4-E1-B2-A implementation remote run = 31415157794 (attempt 1)
+P4-E1-B2-A implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
+P4-E1-B2-A                          = COMPLETE
+P4-E1-B2-B read-only design review = OPEN
+P4-E1-B2-B implementation          = NOT STARTED
 P4-E1-B2                            = INCOMPLETE
 P4-E1-B                             = INCOMPLETE
 P4-E2 / P4-E3                      = BLOCKED
