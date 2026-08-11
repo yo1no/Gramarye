@@ -25,7 +25,7 @@ final class P4E1AApiGateTest {
             "com/yo1no/gramarye/magic/definition/player");
 
     @Test
-    void reviewedE1ATypesAreExactWithOneSealedPublicCapability() throws Exception {
+    void reviewedE1TypesAreExactWithOnlyTheReviewedPublicCapabilities() throws Exception {
         assertEquals(P4EPhaseTypes.STORE_TYPE_NAMES, p4EStoreTypeNames());
         for (var simpleName : P4EPhaseTypes.STORE_TYPE_NAMES) {
             assertEquals(
@@ -182,10 +182,7 @@ final class P4E1AApiGateTest {
     void noPublicRawSignatureOrLaterPhaseCompositionExists() throws Exception {
         var e1Sources = p4ESources();
         for (var forbidden : P4EPhaseTypes.FORBIDDEN_LATER_PHASE_TOKENS) {
-            var reviewedSources = forbidden.equals("Reconciliation")
-                    ? p4ESourcesExcludingGroupedStoreAudit()
-                    : e1Sources;
-            assertFalse(reviewedSources.contains(forbidden), forbidden);
+            assertFalse(e1Sources.contains(forbidden), forbidden);
         }
         for (var forbidden : List.of(
                 "java.util.zip.GZIPInputStream",
@@ -214,8 +211,13 @@ final class P4E1AApiGateTest {
                     P4EPhaseTypes.PUBLIC_STORE_TYPE_NAMES.contains(simpleName),
                     Modifier.isPublic(type.getModifiers()));
         }
-        assertEquals(1, occurrences(e1Sources, "public sealed abstract class"));
         assertFalse(e1Sources.contains("public interface"));
+        assertEquals(
+                Set.of(
+                        "P4E1GroupedStoreAudit.java",
+                        "SkillRetentionRootAuditResult.java",
+                        "SkillRetentionRootAuditService.java"),
+                p4EFilesContaining("Reconciliation"));
     }
 
     @Test
@@ -255,6 +257,8 @@ final class P4E1AApiGateTest {
         try (var stream = Files.list(STORE_ROOT)) {
             return stream
                     .filter(path -> path.getFileName().toString().startsWith("P4E1")
+                            || path.getFileName().toString().startsWith(
+                                    "SkillRetentionRootAudit")
                             || path.getFileName().toString().equals(
                                     "PlayerSkillAttachmentAdmissionSource.java"))
                     .filter(path -> path.toString().endsWith(".java"))
@@ -267,14 +271,12 @@ final class P4E1AApiGateTest {
         return p4ESources(null);
     }
 
-    private static String p4ESourcesExcludingGroupedStoreAudit() throws Exception {
-        return p4ESources(STORE_ROOT.resolve("P4E1GroupedStoreAudit.java"));
-    }
-
     private static String p4ESources(Path excluded) throws Exception {
         var paths = new ArrayList<Path>();
         try (var stream = Files.list(STORE_ROOT)) {
             stream.filter(path -> path.getFileName().toString().startsWith("P4E1")
+                            || path.getFileName().toString().startsWith(
+                                    "SkillRetentionRootAudit")
                             || path.getFileName().toString().equals(
                                     "PlayerSkillAttachmentAdmissionSource.java"))
                     .filter(path -> excluded == null
@@ -290,6 +292,25 @@ final class P4E1AApiGateTest {
             text.append(Files.readString(path)).append('\n');
         }
         return text.toString();
+    }
+
+    private static Set<String> p4EFilesContaining(String token) throws Exception {
+        try (var stream = Files.list(STORE_ROOT)) {
+            return stream
+                    .filter(path -> path.getFileName().toString().startsWith("P4E1")
+                            || path.getFileName().toString().startsWith(
+                                    "SkillRetentionRootAudit"))
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> {
+                        try {
+                            return Files.readString(path).contains(token);
+                        } catch (java.io.IOException exception) {
+                            throw new java.io.UncheckedIOException(exception);
+                        }
+                    })
+                    .map(path -> path.getFileName().toString())
+                    .collect(Collectors.toUnmodifiableSet());
+        }
     }
 
     private static String javaSources(Path root) throws Exception {

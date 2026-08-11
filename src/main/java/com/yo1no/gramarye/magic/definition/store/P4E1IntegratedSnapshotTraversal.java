@@ -68,7 +68,7 @@ final class P4E1IntegratedSnapshotTraversal {
                     P4E1AuditStage.SOURCE_SELECTION));
         }
         if (profileId == null || snapshot == null) {
-            return new Selection.Disk(Optional.ofNullable(profileId));
+            return new Selection.Disk(serverIdentity, Optional.ofNullable(profileId));
         }
 
         if (countRelevant) {
@@ -100,9 +100,23 @@ final class P4E1IntegratedSnapshotTraversal {
     }
 
     sealed interface Selection permits Selection.Disk, Selection.Integrated, Selection.Failure {
-        record Disk(Optional<UUID> profileId) implements Selection {
+        record Disk(Object serverIdentity, Optional<UUID> profileId) implements Selection {
             public Disk {
+                Objects.requireNonNull(serverIdentity, "serverIdentity");
                 Objects.requireNonNull(profileId, "profileId");
+            }
+
+            boolean isCurrent(MinecraftServer candidate) {
+                Objects.requireNonNull(candidate, "candidate");
+                return isCurrent(new MinecraftSnapshotAccess(candidate));
+            }
+
+            boolean isCurrent(SnapshotAccess candidate) {
+                Objects.requireNonNull(candidate, "candidate");
+                return candidate.isSameThread()
+                        && candidate.serverIdentity() == serverIdentity
+                        && profileId.equals(Optional.ofNullable(candidate.profileId()))
+                        && candidate.loadedPlayerSnapshot() == null;
             }
         }
 

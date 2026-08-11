@@ -539,13 +539,30 @@ final class P4E1B2AStoreAuditTest {
             var primary = 0;
             var old = 0;
             var journal = 0;
+            var playerRootClaims = 0;
+            var journalRootClaims = 0;
             for (var source : sources) {
                 switch (source.kind()) {
-                    case ONLINE -> online++;
-                    case INTEGRATED_RUNTIME_SNAPSHOT -> integrated++;
-                    case DISK_PRIMARY -> primary++;
-                    case DISK_OLD -> old++;
-                    case PENDING_JOURNAL -> journal++;
+                    case ONLINE -> {
+                        online++;
+                        playerRootClaims += source.claimCount();
+                    }
+                    case INTEGRATED_RUNTIME_SNAPSHOT -> {
+                        integrated++;
+                        playerRootClaims += source.claimCount();
+                    }
+                    case DISK_PRIMARY -> {
+                        primary++;
+                        playerRootClaims += source.claimCount();
+                    }
+                    case DISK_OLD -> {
+                        old++;
+                        playerRootClaims += source.claimCount();
+                    }
+                    case PENDING_JOURNAL -> {
+                        journal++;
+                        journalRootClaims += source.claimCount();
+                    }
                 }
             }
             var summary = new P4E1GlobalSourceCapture.Summary(
@@ -555,6 +572,8 @@ final class P4E1B2AStoreAuditTest {
                     integrated,
                     primary,
                     old,
+                    playerRootClaims,
+                    journalRootClaims,
                     claims.size());
             return new P4E1GroupedStoreAudit.RawInput(claims, sources, summary);
         }

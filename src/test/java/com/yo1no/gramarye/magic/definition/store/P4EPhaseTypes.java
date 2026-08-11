@@ -2,7 +2,7 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import java.util.Set;
 
-/** Exact P4-E1-B2-A production allowlist; B2-B and later P4-E phases remain absent. */
+/** Exact P4-E1-B production allowlist; P4-E2/E3 surfaces remain absent. */
 final class P4EPhaseTypes {
     static final Set<String> STORE_TYPE_NAMES = Set.of(
             "P4E1AuditBudget",
@@ -16,6 +16,8 @@ final class P4EPhaseTypes {
             "P4E1IntegratedSnapshotTraversal",
             "P4E1BoundPlayerSkillAttachmentAdmissionSource",
             "P4E1AuditedCapture",
+            "P4E1CompleteRootHandoff",
+            "P4E1FinalFreshness",
             "P4E1GlobalSourceCapture",
             "P4E1GroupedStoreAudit",
             "P4E1PendingJournalObservation",
@@ -29,33 +31,24 @@ final class P4EPhaseTypes {
             "P4E1SourceFailure",
             "P4E1SourceInventory",
             "P4E1StoreHistoryObservation",
-            "PlayerSkillAttachmentAdmissionSource");
+            "PlayerSkillAttachmentAdmissionSource",
+            "SkillRetentionRootAuditResult",
+            "SkillRetentionRootAuditService");
 
     static final Set<String> PUBLIC_STORE_TYPE_NAMES = Set.of(
-            "PlayerSkillAttachmentAdmissionSource");
+            "PlayerSkillAttachmentAdmissionSource",
+            "SkillRetentionRootAuditResult");
 
     static final Set<String> PLAYER_TYPE_NAMES = Set.of(
             "PlayerSkillAttachmentAdmission",
             "PlayerSkillAttachmentSourceObservation");
 
-    static final Set<String> MODIFIED_PRODUCTION_PATHS = Set.of(
-            "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java",
-            "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java",
-            "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java",
-            "com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java",
-            "com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java",
-            "com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java",
-            "com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java");
-
     static final Set<String> FORBIDDEN_LATER_PHASE_TOKENS = Set.of(
-            "SkillRetentionRootAuditService",
-            "SkillRetentionRootAuditResult",
             "P4E1RootIndex",
             "P4E1RootHandoff",
-            "P4E1Complete",
+            "P4E1Reconciliation",
             "OfflineRootIndex",
             "RootInventory",
-            "Reconciliation",
             "SkillRetentionRootSnapshot",
             ".reclaim(",
             "ServerStartingEvent",

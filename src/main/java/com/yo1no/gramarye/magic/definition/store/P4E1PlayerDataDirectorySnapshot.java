@@ -218,6 +218,99 @@ final class P4E1PlayerDataDirectorySnapshot {
                 : raceVerification();
     }
 
+    /**
+     * Performs the sole B2-B final directory enumeration and keeps directory races distinct from
+     * drift of a file that actually supplied player data.
+     *
+     * <p>The complete entry-name set, directory identity, ignored entries, and every unselected
+     * entry are checked on the same pass. Selected files are compared with their post-open stable
+     * selector witnesses only after the full entry set remains accounted for. No file content is
+     * opened or read.</p>
+     */
+    FinalVerificationResult verifyFinal(
+            List<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles) {
+        return verifyFinal(selectedFiles, Observer.NONE);
+    }
+
+    FinalVerificationResult verifyFinal(
+            List<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles,
+            Observer observer) {
+        Objects.requireNonNull(selectedFiles, "selectedFiles");
+        Objects.requireNonNull(observer, "observer");
+        observer.beforeFinalEnumeration();
+
+        var selectedByName = new HashMap<
+                String, P4E1PlayerDataSourceSelector.SelectedFileWitness>();
+        for (var selected : selectedFiles) {
+            Objects.requireNonNull(selected, "selected file witness");
+            if (selectedByName.put(selected.canonicalName(), selected) != null) {
+                throw new IllegalArgumentException("duplicate selected-file witness");
+            }
+        }
+
+        final boolean directoryIdentityLost;
+        try {
+            var finalDirectoryMetadata = P4E1FileMetadata.capture(
+                    fileSystem.readAttributes(directory));
+            directoryIdentityLost = !directoryMetadata.sameIdentityAndShape(
+                    finalDirectoryMetadata);
+        } catch (IOException exception) {
+            return FinalVerificationResult.DirectoryRace.INSTANCE;
+        }
+
+        var remaining = new HashMap<>(entries);
+        var selectedRemaining = new HashMap<>(selectedByName);
+        var selectedFileLost = false;
+        var count = 0;
+        try (var stream = fileSystem.openDirectory(directory)) {
+            for (var entry : stream) {
+                count++;
+                if (count > entries.size()) {
+                    return FinalVerificationResult.DirectoryRace.INSTANCE;
+                }
+                var name = entry.getFileName().toString();
+                var expected = remaining.remove(name);
+                if (expected == null) {
+                    return FinalVerificationResult.DirectoryRace.INSTANCE;
+                }
+                var actualMetadata = P4E1FileMetadata.capture(
+                        fileSystem.readAttributes(entry));
+                var actualKind = classifyName(name).kind();
+                var selected = selectedRemaining.remove(name);
+                if (selected == null) {
+                    if (!expected.metadata().sameIdentityAndShape(actualMetadata)
+                            || expected.kind() != actualKind) {
+                        return FinalVerificationResult.DirectoryRace.INSTANCE;
+                    }
+                    continue;
+                }
+
+                var selectedKind = switch (actualKind) {
+                    case PRIMARY -> P4E1PlayerDataSourceSelector.SourceKind.PRIMARY;
+                    case OLD -> P4E1PlayerDataSourceSelector.SourceKind.OLD;
+                    case IGNORED, NONCANONICAL -> null;
+                };
+                if (selectedKind == null
+                        || expected.kind() != actualKind
+                        || !selected.matches(name, selectedKind, actualMetadata)) {
+                    selectedFileLost = true;
+                }
+            }
+        } catch (DirectoryIteratorException | IOException exception) {
+            return FinalVerificationResult.DirectoryRace.INSTANCE;
+        }
+        if (!remaining.isEmpty()) {
+            return FinalVerificationResult.DirectoryRace.INSTANCE;
+        }
+        if (directoryIdentityLost) {
+            return FinalVerificationResult.DirectoryRace.INSTANCE;
+        }
+        if (!selectedRemaining.isEmpty() || selectedFileLost) {
+            return FinalVerificationResult.SelectedFileLost.INSTANCE;
+        }
+        return FinalVerificationResult.Unchanged.INSTANCE;
+    }
+
     private static CaptureResult.Failure failure(P4E1SourceFailure.Code code) {
         return new CaptureResult.Failure(P4E1SourceFailure.simple(
                 code, P4E1AuditStage.DIRECTORY_ENTRIES));
@@ -293,6 +386,20 @@ final class P4E1PlayerDataDirectorySnapshot {
             public Failure {
                 Objects.requireNonNull(failure, "failure");
             }
+        }
+    }
+
+    sealed interface FinalVerificationResult {
+        enum Unchanged implements FinalVerificationResult {
+            INSTANCE
+        }
+
+        enum DirectoryRace implements FinalVerificationResult {
+            INSTANCE
+        }
+
+        enum SelectedFileLost implements FinalVerificationResult {
+            INSTANCE
         }
     }
 

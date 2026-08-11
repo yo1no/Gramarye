@@ -47,7 +47,11 @@ final class P4E1PlayerDataSourceSelector {
                 observer);
         if (primary instanceof AttemptResult.Ready<T> ready) {
             return new SelectionResult.Ready<>(
-                    route.playerId(), SourceKind.PRIMARY, ready.value());
+                    route.playerId(),
+                    SourceKind.PRIMARY,
+                    ready.value(),
+                    new SelectedFileWitness(
+                            route.playerId(), SourceKind.PRIMARY, ready.metadata()));
         }
         if (primary instanceof AttemptResult.Failure<T> failed
                 && failed.category() != FailureCategory.PLATFORM_READ_FAILURE_PROVEN) {
@@ -65,7 +69,11 @@ final class P4E1PlayerDataSourceSelector {
                 observer);
         if (old instanceof AttemptResult.Ready<T> ready) {
             return new SelectionResult.Ready<>(
-                    route.playerId(), SourceKind.OLD, ready.value());
+                    route.playerId(),
+                    SourceKind.OLD,
+                    ready.value(),
+                    new SelectedFileWitness(
+                            route.playerId(), SourceKind.OLD, ready.metadata()));
         }
         if (old instanceof AttemptResult.Failure<T> failed) {
             return new SelectionResult.Failure<>(failed.failure());
@@ -168,7 +176,7 @@ final class P4E1PlayerDataSourceSelector {
                     "source read result");
             result = switch (read) {
                 case SourceReadResult.Ready<T> ready ->
-                        new AttemptResult.Ready<>(ready.value());
+                        new AttemptResult.Ready<>(ready.value(), baseline);
                 case SourceReadResult.Failure<T> failed ->
                         new AttemptResult.Failure<>(failed.category(), failed.failure());
             };
@@ -275,12 +283,21 @@ final class P4E1PlayerDataSourceSelector {
     }
 
     sealed interface SelectionResult<T> {
-        record Ready<T>(UUID playerId, SourceKind source, T value)
+        record Ready<T>(
+                UUID playerId,
+                SourceKind source,
+                T value,
+                SelectedFileWitness witness)
                 implements SelectionResult<T> {
             public Ready {
                 Objects.requireNonNull(playerId, "playerId");
                 Objects.requireNonNull(source, "source");
                 Objects.requireNonNull(value, "value");
+                Objects.requireNonNull(witness, "witness");
+                if (!witness.playerId().equals(playerId) || witness.source() != source) {
+                    throw new IllegalArgumentException(
+                            "selected-file witness does not match selection");
+                }
             }
         }
 
@@ -300,6 +317,34 @@ final class P4E1PlayerDataSourceSelector {
     enum SourceKind {
         PRIMARY,
         OLD
+    }
+
+    /** Transient exact metadata witness for the physical file that supplied one disk source. */
+    record SelectedFileWitness(
+            UUID playerId, SourceKind source, P4E1FileMetadata metadata) {
+        SelectedFileWitness {
+            Objects.requireNonNull(playerId, "playerId");
+            Objects.requireNonNull(source, "source");
+            Objects.requireNonNull(metadata, "metadata");
+            if (metadata.fileKey() == null
+                    || !metadata.regularFile()
+                    || metadata.symbolicLink()
+                    || metadata.directory()) {
+                throw new IllegalArgumentException(
+                        "selected-file witness requires an identified regular file");
+            }
+        }
+
+        String canonicalName() {
+            return playerId + (source == SourceKind.PRIMARY ? ".dat" : ".dat_old");
+        }
+
+        boolean matches(String name, SourceKind observedSource, P4E1FileMetadata observed) {
+            return canonicalName().equals(Objects.requireNonNull(name, "name"))
+                    && source == Objects.requireNonNull(observedSource, "observedSource")
+                    && metadata.sameIdentityAndShape(
+                            Objects.requireNonNull(observed, "observed"));
+        }
     }
 
     enum FailureCategory {
@@ -330,9 +375,10 @@ final class P4E1PlayerDataSourceSelector {
     }
 
     private sealed interface AttemptResult<T> {
-        record Ready<T>(T value) implements AttemptResult<T> {
+        record Ready<T>(T value, P4E1FileMetadata metadata) implements AttemptResult<T> {
             public Ready {
                 Objects.requireNonNull(value, "value");
+                Objects.requireNonNull(metadata, "metadata");
             }
         }
 

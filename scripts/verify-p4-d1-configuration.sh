@@ -247,13 +247,15 @@ verify_phase_boundary() {
         fi
     done
     while IFS= read -r -d '' source; do
-        if [[ "${source}" == "${GROUPED_STORE_AUDIT}" ]]; then
-            continue
-        fi
+        case "${source}" in
+            "${GROUPED_STORE_AUDIT}" | \
+            "${STORE_ROOT}/SkillRetentionRootAuditResult.java" | \
+            "${STORE_ROOT}/SkillRetentionRootAuditService.java") continue ;;
+        esac
         status=0
         grep -Fq -- 'Reconciliation' "${source}" || status=$?
         case "${status}" in
-            0) fail "reconciliation escaped the exact B2-A grouped-audit owner: ${source}" ;;
+            0) fail "reconciliation escaped the exact B2-A/B2-B owners: ${source}" ;;
             1) ;;
             *) fail "grep failed while checking reconciliation owner: ${source}" ;;
         esac

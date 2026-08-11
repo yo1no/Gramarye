@@ -244,11 +244,13 @@ is_reviewed_d3a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditedCapture.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditCounter.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditStage.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompressedCapacityRejected.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileMetadata.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileSystemAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FinalFreshness.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservation.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorStatus.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java | \
@@ -274,7 +276,9 @@ is_reviewed_d3a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java | \
-        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java) return 0 ;;
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java) return 0 ;;
         *) return 1 ;;
     esac
 }

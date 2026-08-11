@@ -282,8 +282,8 @@ by unique attempt-1 exact-SHA remote run `31415157794`, so it is complete. The f
 design review stopped at the index-generation／exhaustion authority gap. B.4 now defines that
 authority; its commit, push, and unique attempt-1 exact-SHA remote Gate have passed. The renewed
 B2-B read-only design review passed without a Stop Condition and requires no further implementation
-split. Its implementation is ready but has not started. P4-E1-B2 and P4-E1-B remain incomplete,
-and E2／E3 remain blocked. E1 must
+split. B2-B is now implemented locally, with commit／push／remote qualification still pending.
+P4-E1-B2 and P4-E1-B remain incomplete, and E2／E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1876,11 +1876,161 @@ branch-protection required-check configuration remains external governance unkno
 
 The documentation-only closure worktree passed `verifyPlatformBaseline`, `compileJava`, and the
 full unit suite. JUnit XML recorded 186 suites and 1,342 tests with zero failures, errors, or skips.
-No GameTest, dedicated-server smoke, fixed-heap Gate, or research study／smoke was run. The phase
-values below become effective only after this closure commit is pushed and its unique attempt-1
-exact-SHA `Build` run completes with exactly `build` and the P4-A3／P4-B／P4-C／P4-D memory jobs
-successful. Until that Gate passes, B2-B implementation remains blocked; the commit records no
-implementation evidence.
+No GameTest, dedicated-server smoke, fixed-heap Gate, or research study／smoke was run. That closure
+commit was subsequently pushed; its unique attempt-1 exact-SHA `Build` run `31482026050` completed
+with exactly `build` and the P4-A3／P4-B／P4-C／P4-D memory jobs successful, thereby qualifying B2-B
+implementation to begin. The review-closure commit records no implementation evidence.
+
+## P4-E1-B2-B local implementation evidence ledger
+
+P4-E1-B2-B is implemented and locally verified on `main` from base
+`9cd84898db5af858aaf992666b1869cdfd7f4357`, tree
+`559cb04d5bff2442e2618344519f0b3e8f69f678`, with `HEAD == origin/main` and zero ahead／behind.
+Those identifiers name the unchanged review-closure base, not an implementation commit or tree.
+The implementation remains entirely in the working tree; no file is staged, and no implementation
+commit, push, exact-SHA run, or remote job evidence exists yet. The reviewed scope is exactly 38
+paths: 12 production Java paths, 16 test／API-gate paths, eight portable verifiers, and these two
+architecture ledgers. Its final local stat is `38 paths; 7,457 insertions; 364 deletions` including the nine new,
+untracked Java files rather than only tracked `git diff` output:
+
+```text
+M docs/architecture/P4-0-persistence-boundary.md
+M docs/architecture/P4-E0-root-audit-boundary.md
+M scripts/verify-p4-c2-b-configuration.sh
+M scripts/verify-p4-d1-configuration.sh
+M scripts/verify-p4-d2-configuration.sh
+M scripts/verify-p4-d3-a-configuration.sh
+M scripts/verify-p4-d3-configuration.sh
+M scripts/verify-p4-e0-r-configuration.sh
+M scripts/verify-p4-e0-r2q-configuration.sh
+M scripts/verify-p4-e1-configuration.sh
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditedCapture.java
+A src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java
+A src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FinalFreshness.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataDirectorySnapshot.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelector.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1RawClaimBuffer.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.java
+M src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+A src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java
+A src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4D1ApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2ApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2AApiGateTest.java
+A src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java
+A src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java
+A src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BFinalFreshnessTest.java
+A src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BIndexLifecycleTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2AStoreAuditTest.java
+A src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1RootAuditBridgeTest.java
+M src/test/java/com/yo1no/gramarye/magic/definition/store/P4EPhaseTypes.java
+```
+
+The actual public boundary is one sealed abstract `SkillRetentionRootAuditResult` permitting only
+`Complete`, `Incomplete`, `OverLimit`, and `ReconciliationRequired`. Its nested public
+`AuditSummary` has the fixed eleven `OptionalLong`／`OptionalInt` coordinates and never fabricates an
+unobserved zero. `Complete` is a final non-record with a private constructor, package-private
+issuance, summary-only public access, identity equality, bounded `toString`, no Codec, and zero root
+accessors. `P4E1FinalFreshness` and `P4E1CompleteRootHandoff` are package-private final. The latter
+is the single-iterator, order／duplicate-preserving, partial-close-safe `Iterable<SkillReference>`／
+`AutoCloseable` bridge reserved for future E3.
+
+The package-private final `SkillRetentionRootAuditService` has a package-private constructor and
+owns the sole per-instance `IdentityHashMap<MinecraftServer, IndexSlot>`. Its four package-private
+instance lifecycle operations are audit, `consumeComplete`, reconciliation invalidation, and
+exact-server removal.
+There is no production service instance or B2-B event registration in this phase; future E3 owns
+composition through the existing lifecycle owner. Exact weak-identity stopped-server tombstones
+prevent reinserting the same live removed object without strongly retaining it. The production-used
+state engine is bound to exact service-owner and server identities; there is no unbound or second
+generation coordinate.
+
+The B.4 state machine is implemented with baseline `0`, first reservation `1`, one generation per
+accepted audit or E2 invalidation, same-generation `Incomplete` fallback for every normal failure
+and for propagating `Error`／OOME, state-identity plus generation checks, and terminal non-wrapping
+`GenerationExhausted(Long.MAX_VALUE)`. `Long.MAX_VALUE - 1 -> Long.MAX_VALUE` remains the final
+legal reservation; repeated exhaustion performs zero source work. Reentrant, wrong-owner／server,
+removed-server, and active-lease rejection occur before reservation. Exact-server removal revokes a
+live weakly registered permit or active handoff, discards the backing, removes the slot, and consumes
+no generation.
+
+The production orchestration consumes B1 and B2-A once, preserves their earlier terminal results,
+and runs final freshness only for an `Audited` candidate. Its checked order is exact service／server,
+thread／tick and `PlayerList`, initial reservation, Store tuple, journal lifecycle, journal proof,
+fixed-V0 inventory providers, one-pass directory and selected-file metadata, complete online set and
+identity, integrated four-state plus arbitration, and final reservation. It uses the fixed eleven
+machine codes from the review. It does not reopen playerdata content, rerun gzip／NBT／DFU or P4-C,
+reproject roots, retraverse the integrated tag, redrain the journal, reaudit Store history, retry,
+checksum, or lock.
+
+The exact original `P4E1RawClaimBuffer` advances
+`UNPUBLISHED_RAW -> AUDITED -> AUDITED_INDEX -> DISCARDED`; publication preserves raw order,
+duplicates, source index, local ordinal, claim kind, and equipped slot. Only at most 2,049 compact,
+witness-free source records are allocated; the second full root-vector count is zero. Before
+publication the original source table and Store／journal／inventory／directory／online／integrated
+runtime witnesses are dropped. The index retains neither B1 capture nor `P4E1AuditedCapture`,
+`Transfer`, `Path`, `Tag`, `ServerPlayer`, Store history／owner, journal proof, carrier, or public
+permit. A live public permit is held strongly only by its `Complete`; the index keeps at most a weak
+revocation registration.
+
+Permit consumption is irreversible before validation and binds exact service, server, thread,
+tick, state identity, generation, freshness seal, and unused state. Misuse and second use cannot
+retry and do not change index, backing, or generation. Successful consumption changes the same
+backing to an active lease; valid close returns to the same-generation index without issuing another
+permit. A lost-coordinate or leaked handoff fails closed and blocks audit／E2 until exact-server
+forced cleanup. There is no Cleaner, finalizer, timeout, executor, or background recovery. B2-B has
+zero production calls to `SkillRetentionRootSnapshot.fromCompleteRoots` and zero reclaim calls.
+
+Local verification passed:
+
+- focused B2-B tests passed `45/45`: final freshness `8`, index lifecycle `14`, complete handoff
+  `11`, B2-B API Gate `8`, and final B API Gate `4`;
+- the full unit suite recorded 191 suites and 1,387 tests with zero failures, errors, or skips;
+- `verifyPlatformBaseline`, production／test compilation, forced warning-mode compilation, `jar`,
+  `tasks --all`, JAR isolation, and `javap -p -s -v` passed;
+- all eight affected portable verifiers passed `bash -n`, normal execution, and
+  `PATH=/usr/bin:/bin`, while the existing A3／B／C／D configuration Gates remained exact;
+- normal GameTest remained `12/12`, and the dedicated-server Ready／clean-stop smoke passed;
+- unchanged P4-A3 fixed-1-GiB, P4-B packaged／valid／hostile／invalid paired-restart, P4-C six-case
+  Attachment lifecycle, and P4-D 16-JVM D–J1／combined first／restart Gates all passed.
+
+The zero-side-effect matrix remained exact: Store mutation／dirty／reclaim, Attachment `setData`,
+journal mutation, playerdata／filesystem write, DFU, event registration, network, chunk load／force,
+background work, snapshot-factory calls, and reclaim calls are all zero. No normal GameTest, source
+set, Gradle task, workflow job, P4-E heap Gate, resource, codex-spec, or architecture-index change
+was introduced. Runtime-created root Log4j files were inventoried as only six 378-byte-or-smaller
+Netty initialization logs plus an empty `latest.log`, then precisely removed; no user data was
+present.
+
+The locked NeoForge source JAR remains a regular non-symlink with SHA-256
+`0e1dcae8e21cd8d8c656e7fe76efe1e31260cf0f956f07aa749b86992cf4fe23`. Official R2Q remains the
+same exact six regular non-symlink files; its manifest passes and `SHA256SUMS.txt` remains
+`cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`. No R1／R2／R2Q study or
+research smoke was rerun. R2Q remains neither a universal theorem nor the complete E3 envelope.
+
+Known witness limits remain hostile same-object in-place integrated `CompoundTag` mutation and a
+hostile disk rewrite preserving fileKey／size／mtime. An unused `Complete` may remain reachable until
+GC but loses authority across tick／state change; a leaked handoff blocks until server stop. Because
+B2-B deliberately creates no production service instance and JUnit has no legal
+`MinecraftServer` fixture, the full real-server `audit -> Complete -> consume -> LeaseCell ->
+removeServer` chain was not dynamically invoked. The focused tests instead execute the same
+production-used owner／server-bound state engine, permit binding, lease authority, and exact raw
+backing, with static Gates locking the MinecraftServer adapters and production call graph; normal
+GameTest must not be misreported as B2-B service integration evidence.
+
+The exact production-shaped `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` E3 first／restart Gate
+remains mandatory and has not been created or run. Branch-protection required-check configuration
+remains external governance unknown. No Stop Condition was hit; B2-B is locally implemented but is
+not remotely qualified, B2 and E1-B remain incomplete, E2／E3 remain blocked, and P4-E remains
+incomplete.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -1944,7 +2094,7 @@ P4-E1-B2-A                       = COMPLETE
 P4-E1-B2-B prior read-only design review = STOPPED AT INDEX GENERATION / EXHAUSTION AUTHORITY GAP
 P4-E1-B2-B read-only design review = COMPLETE
 P4-E1-B2-B split                = NO FURTHER SPLIT
-P4-E1-B2-B implementation       = READY; NOT STARTED
+P4-E1-B2-B implementation       = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
 P4-E1-B2                         = INCOMPLETE
 P4-E1-B                          = INCOMPLETE
 P4-E2 / P4-E3                   = BLOCKED
@@ -1984,8 +2134,8 @@ split implementation into B2-A followed by B2-B. B2-A implementation commit
 read-only design review stopped at the index-generation／exhaustion authority gap. B.4 now defines
 that authority; its commit, push, and unique attempt-1 exact-SHA remote Gate have passed. The
 renewed B2-B read-only design review passed without a Stop Condition and requires no further split.
-Its implementation is ready but has not started. B2 and E1-B remain incomplete; E2 and E3 remain
-blocked, and P4-E remains incomplete. The
+It is now implemented locally, with commit／push／remote qualification pending. B2 and E1-B remain
+incomplete; E2 and E3 remain blocked, and P4-E remains incomplete. The
 E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still

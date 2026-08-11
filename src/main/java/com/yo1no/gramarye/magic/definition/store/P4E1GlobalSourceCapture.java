@@ -7,10 +7,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.TreeMap;
 import java.util.UUID;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.PlayerList;
 
 /** Checkpoints 1-15 of the unpublished, read-only P4-E1-B1 global source capture. */
 final class P4E1GlobalSourceCapture {
@@ -43,126 +45,146 @@ final class P4E1GlobalSourceCapture {
         }
         var storeWitness = ((StoreObservation.Ready) storeObservation).witness();
         var submissionPort = storeService.submissionPort();
-        var journalResult = submissionPort.observeP4E1Journal(server, storeWitness);
-        if (journalResult instanceof P4E1PendingJournalObservation.Result.Incomplete failed) {
-            storeWitness.discard();
-            return incomplete(mapJournalFailure(failed.code()), P4E1AuditStage.JOURNAL_READINESS);
-        }
-        var journal = ((P4E1PendingJournalObservation.Result.Available) journalResult)
-                .observation();
-
-        var inventoryResult = P4E1SourceInventory.capture(attachmentService, journal);
-        if (inventoryResult instanceof P4E1SourceInventory.Result.Missing) {
-            discardJournal(submissionPort, server, storeWitness, journal);
-            storeWitness.discard();
-            return incomplete(P4E1SourceFailure.Code.INVENTORY_PROVIDER_MISSING,
-                    P4E1AuditStage.JOURNAL_READINESS);
-        }
-        var inventory = ((P4E1SourceInventory.Result.Ready) inventoryResult).witness();
-
-        var directoryResult = P4E1PlayerDataDirectorySnapshot.capture(
-                P4E1PlayerDataDirectorySnapshot.resolveDirectory(server), budget);
-        if (directoryResult instanceof P4E1PlayerDataDirectorySnapshot.CaptureResult.Failure
-                failed) {
-            discardPreSourceState(submissionPort, server, storeWitness, journal, inventory);
-            return new CaptureResult.Incomplete(failed.failure());
-        }
-        var directory = ((P4E1PlayerDataDirectorySnapshot.CaptureResult.Ready) directoryResult)
-                .snapshot();
-
-        ArrayList<OnlineIdentity> online;
+        var preSource = new PreSourceOwnership(
+                server, attachmentService, submissionPort, storeWitness);
         try {
-            online = captureOnlineIdentities(
+            var journalResult = submissionPort.observeP4E1Journal(server, storeWitness);
+            if (journalResult instanceof P4E1PendingJournalObservation.Result.Incomplete failed) {
+                return incomplete(
+                        mapJournalFailure(failed.code()), P4E1AuditStage.JOURNAL_READINESS);
+            }
+            var journal = ((P4E1PendingJournalObservation.Result.Available) journalResult)
+                    .observation();
+            preSource.retainJournal(journal);
+
+            var inventoryResult = P4E1SourceInventory.capture(attachmentService, journal);
+            if (inventoryResult instanceof P4E1SourceInventory.Result.Missing) {
+                return incomplete(
+                        P4E1SourceFailure.Code.INVENTORY_PROVIDER_MISSING,
+                        P4E1AuditStage.JOURNAL_READINESS);
+            }
+            var inventory = ((P4E1SourceInventory.Result.Ready) inventoryResult).witness();
+            preSource.retainInventory(inventory);
+
+            var directoryResult = P4E1PlayerDataDirectorySnapshot.capture(
+                    P4E1PlayerDataDirectorySnapshot.resolveDirectory(server), budget);
+            if (directoryResult instanceof P4E1PlayerDataDirectorySnapshot.CaptureResult.Failure
+                    failed) {
+                return new CaptureResult.Incomplete(failed.failure());
+            }
+            var directory = ((P4E1PlayerDataDirectorySnapshot.CaptureResult.Ready) directoryResult)
+                    .snapshot();
+
+            var playerListIdentity = Objects.requireNonNull(
+                    server.getPlayerList(), "server PlayerList");
+            var onlineCapture = captureOnlineIdentities(
                     server,
+                    playerListIdentity,
                     attachmentService,
                     budget.maximum(P4E1AuditCounter.RELEVANT_RECORDS));
-        } catch (RuntimeException exception) {
-            discardPreSourceState(submissionPort, server, storeWitness, journal, inventory);
-            throw exception;
-        }
+            var online = onlineCapture.identities();
+            preSource.retainOnline(online);
 
-        final P4E1IntegratedSnapshotTraversal.Selection integrated;
-        try {
-            integrated = P4E1IntegratedSnapshotTraversal.captureForGlobal(server, budget);
-        } catch (RuntimeException exception) {
-            discardOnlineNew(attachmentService, online);
-            discardPreSourceState(submissionPort, server, storeWitness, journal, inventory);
-            throw exception;
-        }
-        if (integrated instanceof P4E1IntegratedSnapshotTraversal.Selection.Failure failed) {
-            discardOnlineNew(attachmentService, online);
-            discardPreSourceState(submissionPort, server, storeWitness, journal, inventory);
-            return new CaptureResult.Incomplete(failed.failure());
-        }
-
-        var selected = arbitrate(directory, integrated, online);
-        var buffer = new P4E1RawClaimBuffer();
-        var sources = new ArrayList<SourceEntry>(selected.size() + 1);
-        var unprocessedOnline = new ArrayList<>(online);
-        var context = new CaptureContext(
-                server,
-                attachmentService,
-                submissionPort,
-                storeWitness,
-                journal,
-                inventory,
-                directory,
-                integrated,
-                budget,
-                buffer,
-                sources,
-                unprocessedOnline);
-        try {
-            for (var selectedSource : selected.values()) {
-                var relevantExceeded = budget.checkpointSingle(
-                        P4E1AuditCounter.RELEVANT_RECORDS,
-                        P4E1AuditStage.RELEVANT_RECORDS,
-                        1L);
-                if (relevantExceeded.isPresent()) {
-                    return context.fail(new CaptureResult.Incomplete(
-                            P4E1SourceFailure.capacity(relevantExceeded.orElseThrow())));
-                }
-                var processed = processPlayerSource(context, selectedSource);
-                if (processed != null) {
-                    return context.fail(processed);
-                }
+            var integrated = P4E1IntegratedSnapshotTraversal.captureForGlobal(server, budget);
+            if (integrated instanceof P4E1IntegratedSnapshotTraversal.Selection.Failure failed) {
+                return new CaptureResult.Incomplete(failed.failure());
+            }
+            if (onlineCapture.relevantCapacityGuaranteed()) {
+                return onlineRelevantCapacityFailure(
+                        budget, onlineCapture.initialLiveSize());
             }
 
-            var directoryVerification = directory.verifyUnchanged();
-            if (directoryVerification
-                    instanceof P4E1PlayerDataDirectorySnapshot.VerificationResult.Failure failed) {
-                return context.fail(new CaptureResult.Incomplete(failed.failure()));
-            }
-
-            var journalResultCapture = processJournal(context);
-            if (journalResultCapture != null) {
-                return context.fail(journalResultCapture);
-            }
-
-            if (!unprocessedOnline.isEmpty()) {
-                throw new IllegalStateException("P4E1_ONLINE_SOURCE_TRANSFER_MISMATCH");
-            }
-            var summary = Summary.from(sources, buffer.size());
-            return new CaptureResult.Captured(new Captured(
-                    owner,
+            var selected = arbitrate(directory, integrated, online);
+            var buffer = new P4E1RawClaimBuffer();
+            var sources = new ArrayList<SourceEntry>(selected.size() + 1);
+            var selectedFiles = new ArrayList<
+                    P4E1PlayerDataSourceSelector.SelectedFileWitness>(selected.size());
+            var unprocessedOnline = new ArrayList<>(online);
+            var integratedOwnerCount = selectedIntegratedOwnerCount(integrated, online);
+            var diskOwnerCount = Math.subtractExact(
+                    Math.subtractExact(selected.size(), online.size()), integratedOwnerCount);
+            var context = new CaptureContext(
                     server,
-                    Thread.currentThread(),
-                    server.getTickCount(),
-                    qualified.observation(),
+                    attachmentService,
+                    submissionPort,
                     storeWitness,
                     journal,
                     inventory,
                     directory,
                     integrated,
+                    budget,
                     buffer,
                     sources,
-                    summary));
-        } catch (RuntimeException exception) {
-            var failure = P4E1SourceFailure.runtime(
-                    P4E1SourceFailure.Code.INTERNAL_RUNTIME_FAILURE,
-                    P4E1AuditStage.RAW_ROOT_CAPTURE,
-                    exception);
-            return context.fail(new CaptureResult.Incomplete(failure));
+                    selectedFiles,
+                    unprocessedOnline,
+                    selected.size(),
+                    online.size(),
+                    integratedOwnerCount,
+                    diskOwnerCount);
+            preSource.transferOwnership();
+            try {
+                for (var selectedSource : selected.values()) {
+                    var relevantExceeded = budget.checkpointSingle(
+                            P4E1AuditCounter.RELEVANT_RECORDS,
+                            P4E1AuditStage.RELEVANT_RECORDS,
+                            1L);
+                    if (relevantExceeded.isPresent()) {
+                        return context.fail(new CaptureResult.Incomplete(
+                                P4E1SourceFailure.capacity(
+                                        relevantExceeded.orElseThrow())));
+                    }
+                    var processed = processPlayerSource(context, selectedSource);
+                    if (processed != null) {
+                        return context.fail(processed);
+                    }
+                }
+                context.markPlayerRootsComplete();
+
+                var directoryVerification = directory.verifyUnchanged();
+                if (directoryVerification
+                        instanceof P4E1PlayerDataDirectorySnapshot.VerificationResult.Failure
+                                failed) {
+                    return context.fail(new CaptureResult.Incomplete(failed.failure()));
+                }
+
+                var journalResultCapture = processJournal(context);
+                if (journalResultCapture != null) {
+                    return context.fail(journalResultCapture);
+                }
+
+                if (!unprocessedOnline.isEmpty()) {
+                    throw new IllegalStateException("P4E1_ONLINE_SOURCE_TRANSFER_MISMATCH");
+                }
+                var summary = Summary.from(sources, buffer.size());
+                var published = new CaptureResult.Captured(new Captured(
+                        owner,
+                        server,
+                        Thread.currentThread(),
+                        server.getTickCount(),
+                        playerListIdentity,
+                        qualified.observation(),
+                        storeWitness,
+                        journal,
+                        inventory,
+                        directory,
+                        integrated,
+                        buffer,
+                        sources,
+                        selectedFiles,
+                        summary));
+                context.transferOwnership();
+                return published;
+            } catch (RuntimeException exception) {
+                var failure = P4E1SourceFailure.runtime(
+                        P4E1SourceFailure.Code.INTERNAL_RUNTIME_FAILURE,
+                        P4E1AuditStage.RAW_ROOT_CAPTURE,
+                        exception);
+                return context.fail(new CaptureResult.Incomplete(failure));
+            } finally {
+                context.discardIfOwned();
+            }
+        } finally {
+            preSource.discardIfOwned();
         }
     }
 
@@ -171,7 +193,9 @@ final class P4E1GlobalSourceCapture {
             P4E1IntegratedSnapshotTraversal.Selection integrated,
             ArrayList<OnlineIdentity> online) {
         var selected = new TreeMap<UUID, SelectedPlayerSource>(Comparator.naturalOrder());
-        for (var route : directory.records()) {
+        var directoryRecords = directory.records();
+        for (var index = 0; index < directoryRecords.size(); index++) {
+            var route = directoryRecords.get(index);
             if (selected.put(route.playerId(), new SelectedPlayerSource.Disk(route)) != null) {
                 throw new IllegalStateException("P4E1_DUPLICATE_DISK_ROUTE");
             }
@@ -179,22 +203,32 @@ final class P4E1GlobalSourceCapture {
         if (integrated instanceof P4E1IntegratedSnapshotTraversal.Selection.Integrated runtime) {
             selected.put(runtime.ownerId(), new SelectedPlayerSource.Integrated(runtime));
         }
-        for (var identity : online) {
+        for (var index = 0; index < online.size(); index++) {
+            var identity = online.get(index);
             selected.put(identity.playerId(), new SelectedPlayerSource.Online(identity));
         }
         return selected;
     }
 
-    private static ArrayList<OnlineIdentity> captureOnlineIdentities(
+    private static OnlineIdentityCapture captureOnlineIdentities(
             MinecraftServer server,
+            PlayerList playerListIdentity,
             PlayerSkillAttachmentService service,
             long relevantMaximum) {
-        var liveView = server.getPlayerList().getPlayers();
+        if (server.getPlayerList()
+                != Objects.requireNonNull(playerListIdentity, "playerListIdentity")) {
+            throw new IllegalStateException("P4E1_PLAYER_LIST_IDENTITY_CHANGED");
+        }
+        var liveView = playerListIdentity.getPlayers();
+        var initialLiveSize = liveView.size();
         var observed = new ArrayList<OnlineIdentity>();
         var unique = new TreeMap<UUID, ServerPlayer>(Comparator.naturalOrder());
         var observationLimit = Math.toIntExact(Math.addExact(relevantMaximum, 1L));
+        var complete = false;
+        PlayerSkillAttachmentService.OnlineRootAuditHandle pendingHandle = null;
         try {
-            for (var player : liveView) {
+            for (var index = 0; index < initialLiveSize; index++) {
+                var player = liveView.get(index);
                 Objects.requireNonNull(player, "online player");
                 if (player.getServer() != server) {
                     throw new IllegalStateException("P4E1_ONLINE_PLAYER_SERVER_MISMATCH");
@@ -203,18 +237,75 @@ final class P4E1GlobalSourceCapture {
                 if (unique.put(playerId, player) != null) {
                     throw new IllegalStateException("P4E1_ONLINE_PLAYER_UUID_DUPLICATE");
                 }
-                observed.add(new OnlineIdentity(
-                        playerId, player, service.observeOnlineForRootAudit(player)));
+                pendingHandle = service.observeOnlineForRootAudit(player);
+                observed.add(new OnlineIdentity(playerId, player, pendingHandle));
+                pendingHandle = null;
                 if (observed.size() == observationLimit) {
                     break;
                 }
             }
-        } catch (RuntimeException exception) {
-            discardOnlineNew(service, observed);
-            throw exception;
+            if (server.getPlayerList() != playerListIdentity
+                    || liveView.size() != initialLiveSize) {
+                throw new IllegalStateException("P4E1_ONLINE_PLAYER_LIST_CHANGED_DURING_CAPTURE");
+            }
+            observed.sort(Comparator.comparing(OnlineIdentity::playerId));
+            var result = new OnlineIdentityCapture(
+                    observed, initialLiveSize, observationLimit);
+            complete = true;
+            return result;
+        } finally {
+            try {
+                if (pendingHandle != null) {
+                    try {
+                        service.discardOnlineRootAuditHandle(pendingHandle);
+                    } catch (RuntimeException ignored) {
+                        // The local owner drops the handle reference below.
+                    }
+                }
+            } finally {
+                pendingHandle = null;
+                if (!complete) {
+                    discardOnlineNewSafely(service, observed);
+                }
+            }
         }
-        observed.sort(Comparator.comparing(OnlineIdentity::playerId));
-        return observed;
+    }
+
+    static CaptureResult.Incomplete onlineRelevantCapacityFailure(
+            P4E1AuditBudget budget, long exactInitialLiveSize) {
+        Objects.requireNonNull(budget, "budget");
+        var counter = P4E1AuditCounter.RELEVANT_RECORDS;
+        var maximum = budget.maximum(counter);
+        if (exactInitialLiveSize <= maximum) {
+            throw new IllegalArgumentException(
+                    "online live size does not prove relevant-record excess");
+        }
+        var remaining = Math.subtractExact(maximum, budget.observed(counter));
+        var firstExcess = budget.checkpointSingle(
+                counter,
+                P4E1AuditStage.RELEVANT_RECORDS,
+                Math.addExact(remaining, 1L));
+        if (firstExcess.isEmpty()) {
+            throw new IllegalStateException(
+                    "online relevant-record excess was not observed");
+        }
+        return new CaptureResult.Incomplete(
+                P4E1SourceFailure.capacity(firstExcess.orElseThrow()));
+    }
+
+    private static int selectedIntegratedOwnerCount(
+            P4E1IntegratedSnapshotTraversal.Selection integrated,
+            ArrayList<OnlineIdentity> online) {
+        if (!(integrated
+                instanceof P4E1IntegratedSnapshotTraversal.Selection.Integrated selected)) {
+            return 0;
+        }
+        for (var index = 0; index < online.size(); index++) {
+            if (online.get(index).playerId().equals(selected.ownerId())) {
+                return 0;
+            }
+        }
+        return 1;
     }
 
     private static CaptureResult processPlayerSource(
@@ -320,6 +411,7 @@ final class P4E1GlobalSourceCapture {
                 ? SourceKind.DISK_PRIMARY
                 : SourceKind.DISK_OLD;
         var attachment = ready.value().attachment();
+        context.selectedFiles().add(ready.witness());
         if (attachment instanceof P4E1PlayerDataNbtScanner.AttachmentObservation.Missing) {
             addZeroSource(context, route.playerId(), kind, SourceWitness.Disk.INSTANCE);
             return null;
@@ -370,25 +462,42 @@ final class P4E1GlobalSourceCapture {
                     playerId));
         }
         var ready = (PlayerSkillAttachmentService.RootAuditAdmitted) admitted;
-        var count = context.attachmentService().rootCount(ready);
-        var sourceIndex = context.sources().size();
-        var reservation = context.buffer().reserve(context.budget(), sourceIndex, count);
-        if (reservation instanceof P4E1RawClaimBuffer.ReservationResult.OverLimit over) {
-            context.attachmentService().discardRootProjection(ready);
-            return new CaptureResult.OverLimit(P4E1SourceFailure.rootCapacity(over.exceeded()));
+        var ownsProjection = true;
+        try {
+            var count = context.attachmentService().rootCount(ready);
+            var sourceIndex = context.sources().size();
+            var reservation = context.buffer().reserve(context.budget(), sourceIndex, count);
+            if (reservation instanceof P4E1RawClaimBuffer.ReservationResult.OverLimit over) {
+                context.attachmentService().discardRootProjection(ready);
+                ownsProjection = false;
+                return new CaptureResult.OverLimit(
+                        P4E1SourceFailure.rootCapacity(over.exceeded()));
+            }
+            var reserved = ((P4E1RawClaimBuffer.ReservationResult.Reserved) reservation)
+                    .reservation();
+            // The service consumes and clears this capability before issuing any callback.
+            var sink = new ReservationSink(reserved);
+            ownsProjection = false;
+            context.attachmentService().drainRootProjection(
+                    ready, sink);
+            reserved.finish();
+            context.sources().add(new SourceEntry(
+                    P4E1RootSourceFamily.PLAYER_SKILL_ATTACHMENT,
+                    kind,
+                    Optional.of(playerId),
+                    reserved.claimStart(),
+                    reserved.expectedCount(),
+                    witness));
+            return null;
+        } finally {
+            if (ownsProjection) {
+                try {
+                    context.attachmentService().discardRootProjection(ready);
+                } catch (RuntimeException ignored) {
+                    // The local owner drops the capability reference below.
+                }
+            }
         }
-        var reserved = ((P4E1RawClaimBuffer.ReservationResult.Reserved) reservation)
-                .reservation();
-        context.attachmentService().drainRootProjection(ready, new ReservationSink(reserved));
-        reserved.finish();
-        context.sources().add(new SourceEntry(
-                P4E1RootSourceFamily.PLAYER_SKILL_ATTACHMENT,
-                kind,
-                Optional.of(playerId),
-                reserved.claimStart(),
-                reserved.expectedCount(),
-                witness));
-        return null;
     }
 
     private static CaptureResult processJournal(CaptureContext context) {
@@ -401,22 +510,25 @@ final class P4E1GlobalSourceCapture {
         }
         var count = journal.rootCount(
                 context.submissionPort(), context.server(), context.storeWitness());
+        context.recordJournalRootCount(count);
         var sourceIndex = context.sources().size();
         var reservation = context.buffer().reserve(context.budget(), sourceIndex, count);
         if (reservation instanceof P4E1RawClaimBuffer.ReservationResult.OverLimit over) {
             journal.discardRoots(
                     context.submissionPort(), context.server(), context.storeWitness());
-            journal.discardWitness();
             context.journalConsumed = true;
             return new CaptureResult.OverLimit(P4E1SourceFailure.rootCapacity(over.exceeded()));
         }
         var reserved = ((P4E1RawClaimBuffer.ReservationResult.Reserved) reservation)
                 .reservation();
+        // The journal transitions to witness-only before issuing any callback.
+        P4E1PendingJournalObservation.TargetSink sink = reserved::appendJournal;
         journal.drain(
                 context.submissionPort(),
                 context.server(),
                 context.storeWitness(),
-                reserved::appendJournal);
+                sink);
+        context.journalConsumed = true;
         reserved.finish();
         context.sources().add(new SourceEntry(
                 P4E1RootSourceFamily.PENDING_ATTACHMENT_JOURNAL,
@@ -425,7 +537,6 @@ final class P4E1GlobalSourceCapture {
                 reserved.claimStart(),
                 reserved.expectedCount(),
                 new SourceWitness.Journal(journal.proofIdentity())));
-        context.journalConsumed = true;
         return null;
     }
 
@@ -448,23 +559,20 @@ final class P4E1GlobalSourceCapture {
                 witness));
     }
 
-    private static void discardOnlineNew(
+    private static void discardOnlineNewSafely(
             PlayerSkillAttachmentService service, ArrayList<OnlineIdentity> identities) {
-        for (var identity : identities) {
-            service.discardOnlineRootAuditHandle(identity.handle());
+        try {
+            for (var index = 0; index < identities.size(); index++) {
+                var identity = identities.get(index);
+                try {
+                    service.discardOnlineRootAuditHandle(identity.handle());
+                } catch (RuntimeException ignored) {
+                    // The local list drops the witness even if its lifecycle was already consumed.
+                }
+            }
+        } finally {
+            identities.clear();
         }
-        identities.clear();
-    }
-
-    private static void discardPreSourceState(
-            SkillDefinitionStoreSubmissionPort port,
-            MinecraftServer server,
-            StoreReadyWitness storeWitness,
-            P4E1PendingJournalObservation.Ready journal,
-            P4E1SourceInventory.Witness inventory) {
-        inventory.discard();
-        discardJournal(port, server, storeWitness, journal);
-        storeWitness.discard();
     }
 
     private static void discardJournal(
@@ -496,18 +604,64 @@ final class P4E1GlobalSourceCapture {
             }
         }
 
-        record Incomplete(P4E1SourceFailure failure) implements CaptureResult {
+        record Incomplete(P4E1SourceFailure failure, ObservedSummary observedSummary)
+                implements CaptureResult {
             public Incomplete {
                 Objects.requireNonNull(failure, "failure");
+                Objects.requireNonNull(observedSummary, "observedSummary");
+            }
+
+            Incomplete(P4E1SourceFailure failure) {
+                this(failure, ObservedSummary.empty());
             }
         }
 
-        record OverLimit(P4E1SourceFailure failure) implements CaptureResult {
+        record OverLimit(P4E1SourceFailure failure, ObservedSummary observedSummary)
+                implements CaptureResult {
             public OverLimit {
                 Objects.requireNonNull(failure, "failure");
+                Objects.requireNonNull(observedSummary, "observedSummary");
                 if (failure.code() != P4E1SourceFailure.Code.ROOT_CAPACITY_EXCEEDED) {
                     throw new IllegalArgumentException("OverLimit requires root capacity failure");
                 }
+            }
+
+            OverLimit(P4E1SourceFailure failure) {
+                this(failure, ObservedSummary.empty());
+            }
+        }
+    }
+
+    record ObservedSummary(
+            OptionalInt selectedOwnerCount,
+            OptionalInt onlineOwnerCount,
+            OptionalInt integratedOwnerCount,
+            OptionalInt diskOwnerCount,
+            OptionalInt playerRootClaimCount,
+            OptionalInt journalRootClaimCount,
+            OptionalInt totalRawRootClaimCount,
+            OptionalInt sourceCount) {
+        ObservedSummary {
+            requireNonNegative(selectedOwnerCount, "selectedOwnerCount");
+            requireNonNegative(onlineOwnerCount, "onlineOwnerCount");
+            requireNonNegative(integratedOwnerCount, "integratedOwnerCount");
+            requireNonNegative(diskOwnerCount, "diskOwnerCount");
+            requireNonNegative(playerRootClaimCount, "playerRootClaimCount");
+            requireNonNegative(journalRootClaimCount, "journalRootClaimCount");
+            requireNonNegative(totalRawRootClaimCount, "totalRawRootClaimCount");
+            requireNonNegative(sourceCount, "sourceCount");
+        }
+
+        static ObservedSummary empty() {
+            var absent = OptionalInt.empty();
+            return new ObservedSummary(
+                    absent, absent, absent, absent, absent, absent, absent, absent);
+        }
+
+        private static void requireNonNegative(OptionalInt value, String name) {
+            Objects.requireNonNull(value, name);
+            if (value.isPresent() && value.getAsInt() < 0) {
+                throw new IllegalArgumentException(name + " must be non-negative when present");
             }
         }
     }
@@ -517,6 +671,7 @@ final class P4E1GlobalSourceCapture {
         private MinecraftServer serverIdentity;
         private Thread creationThreadIdentity;
         private int capturedTick;
+        private PlayerList playerListIdentity;
         private P4E1HeapFloorObservation heapObservation;
         private StoreReadyWitness storeWitness;
         private P4E1PendingJournalObservation.Ready journalWitness;
@@ -525,6 +680,7 @@ final class P4E1GlobalSourceCapture {
         private P4E1IntegratedSnapshotTraversal.Selection integratedWitness;
         private P4E1RawClaimBuffer claims;
         private ArrayList<SourceEntry> sources;
+        private ArrayList<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles;
         private Summary summary;
         private boolean consumed;
 
@@ -533,6 +689,7 @@ final class P4E1GlobalSourceCapture {
                 MinecraftServer serverIdentity,
                 Thread creationThreadIdentity,
                 int capturedTick,
+                PlayerList playerListIdentity,
                 P4E1HeapFloorObservation heapObservation,
                 StoreReadyWitness storeWitness,
                 P4E1PendingJournalObservation.Ready journalWitness,
@@ -541,12 +698,15 @@ final class P4E1GlobalSourceCapture {
                 P4E1IntegratedSnapshotTraversal.Selection integratedWitness,
                 P4E1RawClaimBuffer claims,
                 ArrayList<SourceEntry> sources,
+                ArrayList<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles,
                 Summary summary) {
             this.ownerIdentity = Objects.requireNonNull(ownerIdentity, "ownerIdentity");
             this.serverIdentity = Objects.requireNonNull(serverIdentity, "serverIdentity");
             this.creationThreadIdentity = Objects.requireNonNull(
                     creationThreadIdentity, "creationThreadIdentity");
             this.capturedTick = capturedTick;
+            this.playerListIdentity = Objects.requireNonNull(
+                    playerListIdentity, "playerListIdentity");
             this.heapObservation = Objects.requireNonNull(heapObservation, "heapObservation");
             this.storeWitness = Objects.requireNonNull(storeWitness, "storeWitness");
             this.journalWitness = Objects.requireNonNull(journalWitness, "journalWitness");
@@ -555,6 +715,7 @@ final class P4E1GlobalSourceCapture {
             this.integratedWitness = Objects.requireNonNull(integratedWitness, "integratedWitness");
             this.claims = Objects.requireNonNull(claims, "claims");
             this.sources = Objects.requireNonNull(sources, "sources");
+            this.selectedFiles = Objects.requireNonNull(selectedFiles, "selectedFiles");
             this.summary = Objects.requireNonNull(summary, "summary");
         }
 
@@ -568,6 +729,7 @@ final class P4E1GlobalSourceCapture {
                         serverIdentity,
                         creationThreadIdentity,
                         capturedTick,
+                        playerListIdentity,
                         heapObservation,
                         storeWitness,
                         journalWitness,
@@ -576,6 +738,7 @@ final class P4E1GlobalSourceCapture {
                         integratedWitness,
                         claims,
                         sources,
+                        selectedFiles,
                         summary);
             } finally {
                 if (moved == null) {
@@ -639,6 +802,7 @@ final class P4E1GlobalSourceCapture {
             serverIdentity = null;
             creationThreadIdentity = null;
             capturedTick = -1;
+            playerListIdentity = null;
             heapObservation = null;
             storeWitness = null;
             journalWitness = null;
@@ -647,6 +811,7 @@ final class P4E1GlobalSourceCapture {
             integratedWitness = null;
             claims = null;
             sources = null;
+            selectedFiles = null;
             summary = null;
         }
     }
@@ -656,6 +821,7 @@ final class P4E1GlobalSourceCapture {
         private MinecraftServer serverIdentity;
         private Thread creationThreadIdentity;
         private int capturedTick;
+        private PlayerList playerListIdentity;
         private P4E1HeapFloorObservation heapObservation;
         private StoreReadyWitness storeWitness;
         private P4E1PendingJournalObservation.Ready journalWitness;
@@ -664,6 +830,7 @@ final class P4E1GlobalSourceCapture {
         private P4E1IntegratedSnapshotTraversal.Selection integratedWitness;
         private P4E1RawClaimBuffer claims;
         private ArrayList<SourceEntry> sources;
+        private ArrayList<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles;
         private Summary summary;
         private boolean discarded;
 
@@ -672,6 +839,7 @@ final class P4E1GlobalSourceCapture {
                 MinecraftServer serverIdentity,
                 Thread creationThreadIdentity,
                 int capturedTick,
+                PlayerList playerListIdentity,
                 P4E1HeapFloorObservation heapObservation,
                 StoreReadyWitness storeWitness,
                 P4E1PendingJournalObservation.Ready journalWitness,
@@ -680,11 +848,13 @@ final class P4E1GlobalSourceCapture {
                 P4E1IntegratedSnapshotTraversal.Selection integratedWitness,
                 P4E1RawClaimBuffer claims,
                 ArrayList<SourceEntry> sources,
+                ArrayList<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles,
                 Summary summary) {
             this.ownerIdentity = ownerIdentity;
             this.serverIdentity = serverIdentity;
             this.creationThreadIdentity = creationThreadIdentity;
             this.capturedTick = capturedTick;
+            this.playerListIdentity = playerListIdentity;
             this.heapObservation = heapObservation;
             this.storeWitness = storeWitness;
             this.journalWitness = journalWitness;
@@ -693,6 +863,7 @@ final class P4E1GlobalSourceCapture {
             this.integratedWitness = integratedWitness;
             this.claims = claims;
             this.sources = sources;
+            this.selectedFiles = selectedFiles;
             this.summary = summary;
         }
 
@@ -783,6 +954,7 @@ final class P4E1GlobalSourceCapture {
                         serverIdentity,
                         creationThreadIdentity,
                         capturedTick,
+                        playerListIdentity,
                         heapObservation,
                         storeWitness,
                         journalWitness,
@@ -791,6 +963,7 @@ final class P4E1GlobalSourceCapture {
                         integratedWitness,
                         claims,
                         sources,
+                        selectedFiles,
                         summary,
                         distinctSkillIdCount);
                 return moved;
@@ -849,6 +1022,7 @@ final class P4E1GlobalSourceCapture {
             serverIdentity = null;
             creationThreadIdentity = null;
             capturedTick = -1;
+            playerListIdentity = null;
             heapObservation = null;
             storeWitness = null;
             journalWitness = null;
@@ -857,6 +1031,7 @@ final class P4E1GlobalSourceCapture {
             integratedWitness = null;
             claims = null;
             sources = null;
+            selectedFiles = null;
             summary = null;
         }
 
@@ -952,7 +1127,28 @@ final class P4E1GlobalSourceCapture {
             int integratedSources,
             int diskPrimarySources,
             int diskOldSources,
+            int playerRootClaims,
+            int journalRootClaims,
             int rawClaims) {
+        Summary {
+            if (playerSources < 0
+                    || journalSources < 0
+                    || onlineSources < 0
+                    || integratedSources < 0
+                    || diskPrimarySources < 0
+                    || diskOldSources < 0
+                    || playerRootClaims < 0
+                    || journalRootClaims < 0
+                    || rawClaims < 0
+                    || Math.addExact(
+                                    Math.addExact(onlineSources, integratedSources),
+                                    Math.addExact(diskPrimarySources, diskOldSources))
+                            != playerSources
+                    || Math.addExact(playerRootClaims, journalRootClaims) != rawClaims) {
+                throw new IllegalArgumentException("invalid P4-E1 capture summary");
+            }
+        }
+
         private static Summary from(ArrayList<SourceEntry> sources, int rawClaims) {
             var player = 0;
             var journal = 0;
@@ -960,11 +1156,16 @@ final class P4E1GlobalSourceCapture {
             var integrated = 0;
             var primary = 0;
             var old = 0;
-            for (var source : sources) {
+            var playerClaims = 0;
+            var journalClaims = 0;
+            for (var index = 0; index < sources.size(); index++) {
+                var source = sources.get(index);
                 if (source.family() == P4E1RootSourceFamily.PLAYER_SKILL_ATTACHMENT) {
                     player++;
+                    playerClaims = Math.addExact(playerClaims, source.claimCount());
                 } else {
                     journal++;
+                    journalClaims = Math.addExact(journalClaims, source.claimCount());
                 }
                 switch (source.kind()) {
                     case ONLINE -> online++;
@@ -974,7 +1175,19 @@ final class P4E1GlobalSourceCapture {
                     case PENDING_JOURNAL -> { }
                 }
             }
-            return new Summary(player, journal, online, integrated, primary, old, rawClaims);
+            if (Math.addExact(playerClaims, journalClaims) != rawClaims) {
+                throw new IllegalStateException("P4E1_CAPTURE_SUMMARY_ROOT_COUNT_MISMATCH");
+            }
+            return new Summary(
+                    player,
+                    journal,
+                    online,
+                    integrated,
+                    primary,
+                    old,
+                    playerClaims,
+                    journalClaims,
+                    rawClaims);
         }
     }
 
@@ -1043,6 +1256,26 @@ final class P4E1GlobalSourceCapture {
                     && innerCarrierIdentity.pending() == pendingIdentity;
         }
 
+        boolean isCurrent(
+                SkillDefinitionStoreService candidate, MinecraftServer candidateServer) {
+            requireActive();
+            if (owner != Objects.requireNonNull(candidate, "candidate")
+                    || serverIdentity
+                            != Objects.requireNonNull(candidateServer, "candidateServer")) {
+                return false;
+            }
+            try {
+                return candidate.isP4E1StoreReadyCurrent(candidateServer, this);
+            } catch (SkillSubsystemLifecycleException exception) {
+                return switch (exception.code()) {
+                    case BOOTSTRAP_NOT_INSTALLED, OVERWORLD_UNAVAILABLE,
+                            CACHE_IDENTITY_MISMATCH -> false;
+                    case WRONG_THREAD, BOOTSTRAP_ALREADY_INSTALLED,
+                            JOURNAL_BOOTSTRAP_ALREADY_INSTALLED -> throw exception;
+                };
+            }
+        }
+
         SkillSavedDataState.Ready savedDataReadyIdentity() {
             requireActive();
             return savedDataReadyIdentity;
@@ -1073,36 +1306,227 @@ final class P4E1GlobalSourceCapture {
             P4E1PendingJournalObservation.Ready journal,
             P4E1SourceInventory.Witness inventory,
             StoreReadyWitness store) {
-        for (var index = 0; index < sources.size(); index++) {
-            var source = sources.get(index);
-            if (source.witness() instanceof SourceWitness.Online online) {
+        try {
+            for (var index = 0; index < sources.size(); index++) {
+                var source = sources.get(index);
+                if (source.witness() instanceof SourceWitness.Online online) {
+                    try {
+                        online.service().discardOnlineRootWitness(online.handle());
+                    } catch (RuntimeException ignored) {
+                        // Unpublished cleanup must not replace the primary terminal result.
+                    }
+                }
+            }
+        } finally {
+            sources.clear();
+            try {
                 try {
-                    online.service().discardOnlineRootWitness(online.handle());
+                    claims.discard();
                 } catch (RuntimeException ignored) {
-                    // Unpublished cleanup must not replace the primary terminal result.
+                    // The owning handle drops the backing reference below after lifecycle misuse.
+                }
+            } finally {
+                try {
+                    try {
+                        journal.discardWitness();
+                    } catch (RuntimeException ignored) {
+                        // The owning handle drops the witness reference below after misuse.
+                    }
+                } finally {
+                    try {
+                        try {
+                            inventory.discard();
+                        } catch (RuntimeException ignored) {
+                            // The owning handle drops the witness reference below after misuse.
+                        }
+                    } finally {
+                        try {
+                            store.discard();
+                        } catch (RuntimeException ignored) {
+                            // The owning handle drops the witness reference below after misuse.
+                        }
+                    }
                 }
             }
         }
-        sources.clear();
-        try {
-            claims.discard();
-        } catch (RuntimeException ignored) {
-            // The owning handle drops the backing reference below even after lifecycle misuse.
+    }
+
+    static boolean onlineSourcesCurrent(
+            MinecraftServer server,
+            PlayerList playerListIdentity,
+            PlayerSkillAttachmentService attachmentService,
+            ArrayList<SourceEntry> sources) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(playerListIdentity, "playerListIdentity");
+        Objects.requireNonNull(attachmentService, "attachmentService");
+        Objects.requireNonNull(sources, "sources");
+        if (server.getPlayerList() != playerListIdentity) {
+            return false;
         }
-        try {
-            journal.discardWitness();
-        } catch (RuntimeException ignored) {
-            // The owning handle drops the witness reference below even after lifecycle misuse.
+
+        var expected = new TreeMap<UUID, SourceWitness.Online>(Comparator.naturalOrder());
+        for (var source : sources) {
+            if (source.witness() instanceof SourceWitness.Online online) {
+                var playerId = source.playerId().orElse(null);
+                if (source.kind() != SourceKind.ONLINE
+                        || playerId == null
+                        || !playerId.equals(online.playerId())
+                        || online.service() != attachmentService
+                        || expected.put(playerId, online) != null) {
+                    return false;
+                }
+            }
         }
-        try {
-            inventory.discard();
-        } catch (RuntimeException ignored) {
-            // The owning handle drops the witness reference below even after lifecycle misuse.
+
+        var current = new TreeMap<UUID, ServerPlayer>(Comparator.naturalOrder());
+        for (var player : playerListIdentity.getPlayers()) {
+            if (player == null || player.getServer() != server) {
+                return false;
+            }
+            var playerId = player.getUUID();
+            if (playerId == null
+                    || current.put(playerId, player) != null
+                    || current.size() > sources.size()) {
+                return false;
+            }
         }
-        try {
-            store.discard();
-        } catch (RuntimeException ignored) {
-            // The owning handle drops the witness reference below even after lifecycle misuse.
+        if (!current.keySet().equals(expected.keySet())) {
+            return false;
+        }
+        for (var entry : expected.entrySet()) {
+            var online = entry.getValue();
+            var player = current.get(entry.getKey());
+            if (player != online.playerIdentity()
+                    || !attachmentService.isOnlineRootWitnessCurrent(
+                            online.handle(), player)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean journalProofsCurrent(
+            ArrayList<SourceEntry> sources,
+            P4E1PendingJournalObservation.Ready journal) {
+        Objects.requireNonNull(sources, "sources");
+        Objects.requireNonNull(journal, "journal");
+        var journalSources = 0;
+        for (var source : sources) {
+            if (source.witness() instanceof SourceWitness.Journal proof) {
+                journalSources++;
+                if (source.kind() != SourceKind.PENDING_JOURNAL
+                        || proof.proof() != journal.proofIdentity()) {
+                    return false;
+                }
+            }
+        }
+        return journalSources == 1;
+    }
+
+    static boolean integratedAndArbitrationCurrent(
+            MinecraftServer server,
+            P4E1PlayerDataDirectorySnapshot directory,
+            P4E1IntegratedSnapshotTraversal.Selection integrated,
+            ArrayList<SourceEntry> sources,
+            ArrayList<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(directory, "directory");
+        Objects.requireNonNull(integrated, "integrated");
+        Objects.requireNonNull(sources, "sources");
+        Objects.requireNonNull(selectedFiles, "selectedFiles");
+
+        final Optional<UUID> exactIntegratedOwner;
+        if (integrated instanceof P4E1IntegratedSnapshotTraversal.Selection.Integrated selected) {
+            if (!selected.isCurrent(server)) {
+                return false;
+            }
+            exactIntegratedOwner = Optional.of(selected.ownerId());
+        } else if (integrated instanceof P4E1IntegratedSnapshotTraversal.Selection.Disk disk) {
+            if (!disk.isCurrent(server)) {
+                return false;
+            }
+            exactIntegratedOwner = Optional.empty();
+        } else {
+            return false;
+        }
+
+        var selectedByOwner = new TreeMap<
+                UUID, P4E1PlayerDataSourceSelector.SelectedFileWitness>(
+                        Comparator.naturalOrder());
+        for (var selected : selectedFiles) {
+            if (selectedByOwner.put(selected.playerId(), selected) != null) {
+                return false;
+            }
+        }
+
+        var playerSources = new TreeMap<UUID, SourceEntry>(Comparator.naturalOrder());
+        for (var source : sources) {
+            if (source.family() != P4E1RootSourceFamily.PLAYER_SKILL_ATTACHMENT) {
+                continue;
+            }
+            var playerId = source.playerId().orElse(null);
+            if (playerId == null || playerSources.put(playerId, source) != null) {
+                return false;
+            }
+            var diskSource = source.kind() == SourceKind.DISK_PRIMARY
+                    || source.kind() == SourceKind.DISK_OLD;
+            if (diskSource) {
+                var selectedFile = selectedByOwner.remove(playerId);
+                var expectedKind = source.kind() == SourceKind.DISK_PRIMARY
+                        ? P4E1PlayerDataSourceSelector.SourceKind.PRIMARY
+                        : P4E1PlayerDataSourceSelector.SourceKind.OLD;
+                if (selectedFile == null || selectedFile.source() != expectedKind) {
+                    return false;
+                }
+            } else if (selectedByOwner.containsKey(playerId)) {
+                return false;
+            }
+        }
+
+        for (var route : directory.records()) {
+            var source = playerSources.get(route.playerId());
+            if (source == null) {
+                return false;
+            }
+            if (source.kind() == SourceKind.ONLINE) {
+                continue;
+            }
+            if (exactIntegratedOwner.filter(route.playerId()::equals).isPresent()) {
+                if (source.kind() != SourceKind.INTEGRATED_RUNTIME_SNAPSHOT) {
+                    return false;
+                }
+            } else if (source.kind() != SourceKind.DISK_PRIMARY
+                    && source.kind() != SourceKind.DISK_OLD) {
+                return false;
+            }
+        }
+
+        if (exactIntegratedOwner.isPresent()) {
+            var source = playerSources.get(exactIntegratedOwner.orElseThrow());
+            if (source == null
+                    || (source.kind() != SourceKind.ONLINE
+                            && source.kind() != SourceKind.INTEGRATED_RUNTIME_SNAPSHOT)) {
+                return false;
+            }
+        }
+        return selectedByOwner.isEmpty();
+    }
+
+    private record OnlineIdentityCapture(
+            ArrayList<OnlineIdentity> identities,
+            int initialLiveSize,
+            int observationLimit) {
+        private OnlineIdentityCapture {
+            Objects.requireNonNull(identities, "identities");
+            if (initialLiveSize < 0
+                    || observationLimit <= 0
+                    || identities.size() != Math.min(initialLiveSize, observationLimit)) {
+                throw new IllegalArgumentException("invalid online identity capture boundary");
+            }
+        }
+
+        private boolean relevantCapacityGuaranteed() {
+            return initialLiveSize >= observationLimit;
         }
     }
 
@@ -1130,6 +1554,89 @@ final class P4E1GlobalSourceCapture {
         }
     }
 
+    /** Owns the partial witness tuple until the full raw-capture context takes it over. */
+    private static final class PreSourceOwnership {
+        private final MinecraftServer server;
+        private final PlayerSkillAttachmentService attachmentService;
+        private final SkillDefinitionStoreSubmissionPort submissionPort;
+        private final StoreReadyWitness storeWitness;
+        private P4E1PendingJournalObservation.Ready journal;
+        private P4E1SourceInventory.Witness inventory;
+        private ArrayList<OnlineIdentity> online;
+        private boolean ownsState = true;
+
+        private PreSourceOwnership(
+                MinecraftServer server,
+                PlayerSkillAttachmentService attachmentService,
+                SkillDefinitionStoreSubmissionPort submissionPort,
+                StoreReadyWitness storeWitness) {
+            this.server = server;
+            this.attachmentService = attachmentService;
+            this.submissionPort = submissionPort;
+            this.storeWitness = storeWitness;
+        }
+
+        private void retainJournal(P4E1PendingJournalObservation.Ready retained) {
+            journal = Objects.requireNonNull(retained, "retained");
+        }
+
+        private void retainInventory(P4E1SourceInventory.Witness retained) {
+            inventory = Objects.requireNonNull(retained, "retained");
+        }
+
+        private void retainOnline(ArrayList<OnlineIdentity> retained) {
+            online = Objects.requireNonNull(retained, "retained");
+        }
+
+        private void transferOwnership() {
+            if (!ownsState || journal == null || inventory == null || online == null) {
+                throw new IllegalStateException("P4E1_PRE_SOURCE_OWNERSHIP_TRANSFER_MISMATCH");
+            }
+            ownsState = false;
+        }
+
+        private void discardIfOwned() {
+            if (!ownsState) {
+                return;
+            }
+            ownsState = false;
+            try {
+                if (online != null) {
+                    discardOnlineNewSafely(attachmentService, online);
+                }
+            } finally {
+                online = null;
+                try {
+                    if (journal != null) {
+                        try {
+                            journal.discardForFailure(submissionPort, server, storeWitness);
+                        } catch (RuntimeException ignored) {
+                            // The owner drops its final reference below.
+                        }
+                    }
+                } finally {
+                    journal = null;
+                    try {
+                        if (inventory != null) {
+                            try {
+                                inventory.discard();
+                            } catch (RuntimeException ignored) {
+                                // The owner drops its final reference below.
+                            }
+                        }
+                    } finally {
+                        inventory = null;
+                        try {
+                            storeWitness.discard();
+                        } catch (RuntimeException ignored) {
+                            // The owner drops its final reference below.
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private static final class CaptureContext {
         private final MinecraftServer server;
         private final PlayerSkillAttachmentService attachmentService;
@@ -1142,8 +1649,18 @@ final class P4E1GlobalSourceCapture {
         private final P4E1AuditBudget budget;
         private final P4E1RawClaimBuffer buffer;
         private final ArrayList<SourceEntry> sources;
+        private final ArrayList<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles;
         private final ArrayList<OnlineIdentity> unprocessedOnline;
+        private final int selectedOwnerCount;
+        private final int onlineOwnerCount;
+        private final int integratedOwnerCount;
+        private final int diskOwnerCount;
+        private boolean playerRootsComplete;
+        private int playerRootClaimCount;
+        private boolean journalRootsObserved;
+        private int journalRootClaimCount;
         private boolean journalConsumed;
+        private boolean ownsState = true;
 
         private CaptureContext(
                 MinecraftServer server,
@@ -1157,7 +1674,12 @@ final class P4E1GlobalSourceCapture {
                 P4E1AuditBudget budget,
                 P4E1RawClaimBuffer buffer,
                 ArrayList<SourceEntry> sources,
-                ArrayList<OnlineIdentity> unprocessedOnline) {
+                ArrayList<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles,
+                ArrayList<OnlineIdentity> unprocessedOnline,
+                int selectedOwnerCount,
+                int onlineOwnerCount,
+                int integratedOwnerCount,
+                int diskOwnerCount) {
             this.server = server;
             this.attachmentService = attachmentService;
             this.submissionPort = submissionPort;
@@ -1169,7 +1691,21 @@ final class P4E1GlobalSourceCapture {
             this.budget = budget;
             this.buffer = buffer;
             this.sources = sources;
+            this.selectedFiles = selectedFiles;
             this.unprocessedOnline = unprocessedOnline;
+            this.selectedOwnerCount = selectedOwnerCount;
+            this.onlineOwnerCount = onlineOwnerCount;
+            this.integratedOwnerCount = integratedOwnerCount;
+            this.diskOwnerCount = diskOwnerCount;
+            if (selectedOwnerCount < 0
+                    || onlineOwnerCount < 0
+                    || integratedOwnerCount < 0
+                    || diskOwnerCount < 0
+                    || Math.addExact(
+                            Math.addExact(onlineOwnerCount, integratedOwnerCount),
+                            diskOwnerCount) != selectedOwnerCount) {
+                throw new IllegalArgumentException("P4E1_CAPTURE_OWNER_COUNTS_INVALID");
+            }
         }
 
         private MinecraftServer server() {
@@ -1204,26 +1740,157 @@ final class P4E1GlobalSourceCapture {
             return sources;
         }
 
+        private ArrayList<P4E1PlayerDataSourceSelector.SelectedFileWitness> selectedFiles() {
+            return selectedFiles;
+        }
+
         private ArrayList<OnlineIdentity> unprocessedOnline() {
             return unprocessedOnline;
         }
 
+        private void markPlayerRootsComplete() {
+            if (playerRootsComplete) {
+                throw new IllegalStateException("P4E1_PLAYER_ROOT_COUNT_ALREADY_COMPLETE");
+            }
+            playerRootClaimCount = buffer.size();
+            playerRootsComplete = true;
+        }
+
+        private void recordJournalRootCount(int count) {
+            if (!playerRootsComplete || journalRootsObserved || count < 0) {
+                throw new IllegalStateException("P4E1_JOURNAL_ROOT_COUNT_OBSERVATION_MISMATCH");
+            }
+            journalRootClaimCount = count;
+            journalRootsObserved = true;
+        }
+
         private CaptureResult fail(CaptureResult failure) {
-            for (var index = 0; index < sources.size(); index++) {
-                var source = sources.get(index);
-                if (source.witness() instanceof SourceWitness.Online online) {
-                    online.service().discardOnlineRootAuditHandle(online.handle());
+            Objects.requireNonNull(failure, "failure");
+            var observed = observedSummary();
+            return switch (failure) {
+                case CaptureResult.Incomplete incomplete ->
+                        new CaptureResult.Incomplete(incomplete.failure(), observed);
+                case CaptureResult.OverLimit overLimit ->
+                        new CaptureResult.OverLimit(overLimit.failure(), observed);
+                case CaptureResult.Captured ignored ->
+                        throw new IllegalArgumentException("captured result is not a failure");
+            };
+        }
+
+        private ObservedSummary observedSummary() {
+            var playerRoots = playerRootsComplete
+                    ? OptionalInt.of(playerRootClaimCount)
+                    : OptionalInt.empty();
+            var journalRoots = journalRootsObserved
+                    ? OptionalInt.of(journalRootClaimCount)
+                    : OptionalInt.empty();
+            var totalRoots = playerRootsComplete && journalRootsObserved
+                    ? OptionalInt.of(Math.addExact(
+                            playerRootClaimCount, journalRootClaimCount))
+                    : OptionalInt.empty();
+            return new ObservedSummary(
+                    OptionalInt.of(selectedOwnerCount),
+                    OptionalInt.of(onlineOwnerCount),
+                    OptionalInt.of(integratedOwnerCount),
+                    OptionalInt.of(diskOwnerCount),
+                    playerRoots,
+                    journalRoots,
+                    totalRoots,
+                    OptionalInt.of(Math.addExact(selectedOwnerCount, 1)));
+        }
+
+        private void transferOwnership() {
+            if (!ownsState || !unprocessedOnline.isEmpty()) {
+                throw new IllegalStateException("P4E1_CAPTURE_OWNERSHIP_TRANSFER_MISMATCH");
+            }
+            ownsState = false;
+        }
+
+        private void discardIfOwned() {
+            if (!ownsState) {
+                return;
+            }
+            ownsState = false;
+            try {
+                discardOnlineHandles();
+            } finally {
+                sources.clear();
+                selectedFiles.clear();
+                unprocessedOnline.clear();
+                try {
+                    try {
+                        buffer.discard();
+                    } catch (RuntimeException ignored) {
+                        // Ownership is dropped below without replacing the primary terminal.
+                    }
+                } finally {
+                    try {
+                        try {
+                            if (journalConsumed) {
+                                journal.discardWitness();
+                            } else {
+                                discardJournal(submissionPort, server, storeWitness, journal);
+                            }
+                        } catch (RuntimeException ignored) {
+                            // Ownership is dropped below without replacing the primary terminal.
+                        }
+                    } finally {
+                        try {
+                            try {
+                                inventory.discard();
+                            } catch (RuntimeException ignored) {
+                                // Ownership is dropped below without replacing the primary terminal.
+                            }
+                        } finally {
+                            try {
+                                storeWitness.discard();
+                            } catch (RuntimeException ignored) {
+                                // Ownership is dropped below without replacing the primary terminal.
+                            }
+                        }
+                    }
                 }
             }
-            sources.clear();
-            discardOnlineNew(attachmentService, unprocessedOnline);
-            buffer.discard();
-            if (!journalConsumed) {
-                discardJournal(submissionPort, server, storeWitness, journal);
+        }
+
+        private void discardOnlineHandles() {
+            try {
+                for (var sourceIndex = 0; sourceIndex < sources.size(); sourceIndex++) {
+                    var source = sources.get(sourceIndex);
+                    if (source.witness() instanceof SourceWitness.Online online) {
+                        try {
+                            online.service().discardOnlineRootAuditHandle(online.handle());
+                        } catch (RuntimeException ignored) {
+                            // Ownership is dropped by the surrounding context.
+                        }
+                    }
+                }
+            } finally {
+                for (var identityIndex = 0;
+                        identityIndex < unprocessedOnline.size();
+                        identityIndex++) {
+                    var identity = unprocessedOnline.get(identityIndex);
+                    var alreadyDiscarded = false;
+                    for (var sourceIndex = 0;
+                            sourceIndex < sources.size();
+                            sourceIndex++) {
+                        var source = sources.get(sourceIndex);
+                        if (source.witness() instanceof SourceWitness.Online online
+                                && online.handle() == identity.handle()) {
+                            alreadyDiscarded = true;
+                            break;
+                        }
+                    }
+                    if (alreadyDiscarded) {
+                        continue;
+                    }
+                    try {
+                        attachmentService.discardOnlineRootAuditHandle(identity.handle());
+                    } catch (RuntimeException ignored) {
+                        // Ownership is dropped by the surrounding context.
+                    }
+                }
             }
-            inventory.discard();
-            storeWitness.discard();
-            return failure;
         }
     }
 

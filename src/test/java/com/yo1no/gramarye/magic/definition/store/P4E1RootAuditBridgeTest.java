@@ -2,6 +2,7 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -450,20 +451,40 @@ final class P4E1RootAuditBridgeTest {
         assertProjectionConsumed(owner, runtime);
 
         var error = admitted(owner, tag);
-        assertThrows(AssertionError.class, () -> owner.drainRootProjection(
-                error,
-                new PlayerSkillAttachmentService.RootAuditSink() {
-                    @Override
-                    public void latest(SkillReference reference) {
-                        throw new AssertionError("expected sink error");
-                    }
+        var exactError = new AssertionError("expected sink error");
+        assertSame(exactError, assertThrows(AssertionError.class,
+                () -> owner.drainRootProjection(
+                        error,
+                        new PlayerSkillAttachmentService.RootAuditSink() {
+                            @Override
+                            public void latest(SkillReference reference) {
+                                throw exactError;
+                            }
 
-                    @Override
-                    public void equipped(int slot, SkillReference reference) {
-                        throw new AssertionError("expected sink error");
-                    }
-                }));
+                            @Override
+                            public void equipped(int slot, SkillReference reference) {
+                                throw exactError;
+                            }
+                        })));
         assertProjectionConsumed(owner, error);
+
+        var oome = admitted(owner, tag);
+        var exactOome = new OutOfMemoryError("expected sink OOME");
+        assertSame(exactOome, assertThrows(OutOfMemoryError.class,
+                () -> owner.drainRootProjection(
+                        oome,
+                        new PlayerSkillAttachmentService.RootAuditSink() {
+                            @Override
+                            public void latest(SkillReference reference) {
+                                throw exactOome;
+                            }
+
+                            @Override
+                            public void equipped(int slot, SkillReference reference) {
+                                throw exactOome;
+                            }
+                        })));
+        assertProjectionConsumed(owner, oome);
     }
 
     private static void assertEquivalent(

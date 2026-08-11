@@ -254,11 +254,13 @@ is_reviewed_e1a_production_or_ledger_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditedCapture.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditCounter.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditStage.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompressedCapacityRejected.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileMetadata.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FileSystemAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FinalFreshness.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorObservation.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1HeapFloorStatus.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java | \
@@ -275,6 +277,8 @@ is_reviewed_e1a_production_or_ledger_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1RootSourceFamily.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1StoreHistoryObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \

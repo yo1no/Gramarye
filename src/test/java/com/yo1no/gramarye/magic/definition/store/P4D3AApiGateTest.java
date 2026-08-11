@@ -349,12 +349,18 @@ final class P4D3AApiGateTest {
         var allProduction = javaSources(MAIN_JAVA).stream()
                 .map(P4D3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
-        var productionWithoutGroupedStoreAudit = javaSources(MAIN_JAVA).stream()
-                .filter(path -> !path.toAbsolutePath().normalize().equals(
-                        MAIN_JAVA.resolve(
-                                "com/yo1no/gramarye/magic/definition/store/"
-                                        + "P4E1GroupedStoreAudit.java")
-                                .toAbsolutePath().normalize()))
+        var productionWithoutReviewedReconciliationOwners = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !Set.of(
+                                MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
+                                                + "P4E1GroupedStoreAudit.java")
+                                        .toAbsolutePath().normalize(),
+                                MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
+                                                + "SkillRetentionRootAuditResult.java")
+                                        .toAbsolutePath().normalize(),
+                                MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
+                                                + "SkillRetentionRootAuditService.java")
+                                        .toAbsolutePath().normalize())
+                        .contains(path.toAbsolutePath().normalize()))
                 .map(P4D3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         var allUnitTests = javaSources(PROJECT_ROOT.resolve("src/test/java")).stream()
@@ -371,8 +377,8 @@ final class P4D3AApiGateTest {
                 "PacketDistributor")) {
             assertFalse(allProduction.contains(forbidden), forbidden);
         }
-        assertFalse(productionWithoutGroupedStoreAudit.contains("Reconciliation"),
-                "reconciliation escaped the exact B2-A grouped-audit owner");
+        assertFalse(productionWithoutReviewedReconciliationOwners.contains("Reconciliation"),
+                "reconciliation escaped the exact B2-A/B2-B owners");
         assertAll(
                 () -> assertFalse(allProduction.contains("Runtime.getRuntime()" + ".halt")),
                 () -> assertFalse(allUnitTests.contains("Runtime.getRuntime()" + ".halt")),

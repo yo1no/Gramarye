@@ -183,10 +183,15 @@ final class P4D1ApiGateTest {
         var allMain = javaSources(MAIN_JAVA).stream()
                 .map(P4D1ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
-        var mainWithoutGroupedStoreAudit = javaSources(MAIN_JAVA).stream()
-                .filter(path -> !path.toAbsolutePath().normalize().equals(
-                        STORE_ROOT.resolve("P4E1GroupedStoreAudit.java")
-                                .toAbsolutePath().normalize()))
+        var mainWithoutReviewedReconciliationOwners = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !Set.of(
+                                STORE_ROOT.resolve("P4E1GroupedStoreAudit.java")
+                                        .toAbsolutePath().normalize(),
+                                STORE_ROOT.resolve("SkillRetentionRootAuditResult.java")
+                                        .toAbsolutePath().normalize(),
+                                STORE_ROOT.resolve("SkillRetentionRootAuditService.java")
+                                        .toAbsolutePath().normalize())
+                        .contains(path.toAbsolutePath().normalize()))
                 .map(P4D1ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
@@ -198,8 +203,8 @@ final class P4D1ApiGateTest {
                 "PayloadRegistrar")) {
             assertFalse(allMain.contains(forbidden), forbidden);
         }
-        assertFalse(mainWithoutGroupedStoreAudit.contains("Reconciliation"),
-                "reconciliation escaped the exact B2-A grouped-audit owner");
+        assertFalse(mainWithoutReviewedReconciliationOwners.contains("Reconciliation"),
+                "reconciliation escaped the exact B2-A/B2-B owners");
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
         assertTrue(build.contains("sourceSets.create('p4D3Probe')"));

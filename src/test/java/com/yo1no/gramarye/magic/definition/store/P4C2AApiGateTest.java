@@ -272,12 +272,18 @@ class P4C2AApiGateTest {
                 .map(P4C2AApiGateTest::read)
                 .map(P4C2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
-        var productionWithoutGroupedStoreAudit = javaSources(MAIN_JAVA).stream()
-                .filter(path -> !path.toAbsolutePath().normalize().equals(
-                        MAIN_JAVA.resolve(
-                                "com/yo1no/gramarye/magic/definition/store/"
-                                        + "P4E1GroupedStoreAudit.java")
-                                .toAbsolutePath().normalize()))
+        var productionWithoutReviewedReconciliationOwners = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !Set.of(
+                                MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
+                                                + "P4E1GroupedStoreAudit.java")
+                                        .toAbsolutePath().normalize(),
+                                MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
+                                                + "SkillRetentionRootAuditResult.java")
+                                        .toAbsolutePath().normalize(),
+                                MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
+                                                + "SkillRetentionRootAuditService.java")
+                                        .toAbsolutePath().normalize())
+                        .contains(path.toAbsolutePath().normalize()))
                 .map(P4C2AApiGateTest::read)
                 .map(P4C2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
@@ -320,8 +326,8 @@ class P4C2AApiGateTest {
             assertFalse(allProduction.contains(forbidden),
                     () -> "Later phase production surface appeared: " + forbidden);
         }
-        assertFalse(productionWithoutGroupedStoreAudit.contains("Reconciliation"),
-                "reconciliation escaped the exact B2-A grouped-audit owner");
+        assertFalse(productionWithoutReviewedReconciliationOwners.contains("Reconciliation"),
+                "reconciliation escaped the exact B2-A/B2-B owners");
         assertTrue(reviewedD1JournalOwners.containsAll(journalOwners),
                 () -> "Pending journal escaped exact D1 allowlist: " + journalOwners);
         assertAll(

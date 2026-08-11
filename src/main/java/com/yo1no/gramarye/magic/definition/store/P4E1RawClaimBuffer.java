@@ -10,12 +10,12 @@ final class P4E1RawClaimBuffer {
 
     private ArrayList<Segment> segments = new ArrayList<>();
     private int size;
-    private boolean discarded;
+    private Ownership ownership = Ownership.UNPUBLISHED_RAW;
     private boolean reservationOutstanding;
 
     ReservationResult reserve(
             P4E1AuditBudget budget, int sourceTableIndex, int rootCount) {
-        requireOpen();
+        requireOwnership(Ownership.UNPUBLISHED_RAW);
         Objects.requireNonNull(budget, "budget");
         if (sourceTableIndex < 0 || rootCount < 0) {
             throw new IllegalArgumentException("source index and root count must be non-negative");
@@ -60,7 +60,7 @@ final class P4E1RawClaimBuffer {
 
     void discard() {
         requireOpen();
-        discarded = true;
+        ownership = Ownership.DISCARDED;
         for (var index = 0; index < segments.size(); index++) {
             segments.get(index).clear();
         }
@@ -68,6 +68,26 @@ final class P4E1RawClaimBuffer {
         segments = null;
         size = 0;
         reservationOutstanding = false;
+    }
+
+    void markAudited() {
+        requireOwnership(Ownership.UNPUBLISHED_RAW);
+        if (reservationOutstanding) {
+            throw new IllegalStateException("P4E1_RAW_CLAIM_RESERVATION_OUTSTANDING");
+        }
+        ownership = Ownership.AUDITED;
+    }
+
+    void markIndexed() {
+        requireOwnership(Ownership.AUDITED);
+        if (reservationOutstanding) {
+            throw new IllegalStateException("P4E1_RAW_CLAIM_RESERVATION_OUTSTANDING");
+        }
+        ownership = Ownership.AUDITED_INDEX;
+    }
+
+    Ownership ownership() {
+        return ownership;
     }
 
     private void append(
@@ -105,8 +125,15 @@ final class P4E1RawClaimBuffer {
     }
 
     private void requireOpen() {
-        if (discarded || segments == null) {
+        if (ownership == Ownership.DISCARDED || segments == null) {
             throw new IllegalStateException("P4E1_RAW_CLAIM_BUFFER_DISCARDED");
+        }
+    }
+
+    private void requireOwnership(Ownership expected) {
+        requireOpen();
+        if (ownership != expected) {
+            throw new IllegalStateException("P4E1_RAW_CLAIM_OWNERSHIP_MISMATCH");
         }
     }
 
@@ -121,6 +148,13 @@ final class P4E1RawClaimBuffer {
         PLAYER_LATEST,
         PLAYER_EQUIPPED,
         JOURNAL_TARGET
+    }
+
+    enum Ownership {
+        UNPUBLISHED_RAW,
+        AUDITED,
+        AUDITED_INDEX,
+        DISCARDED
     }
 
     sealed interface ReservationResult {

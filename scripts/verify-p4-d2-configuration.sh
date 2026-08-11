@@ -155,11 +155,20 @@ forbid_fixed_in_file_list() {
 forbid_fixed_in_file_list_except() {
     local file_list="$1"
     local needle="$2"
-    local allowed_file="$3"
-    local message="$4"
+    local message="$3"
     local file=''
+    local allowed_file=''
+    local allowed=0
+    shift 3
     while IFS= read -r -d '' file; do
-        if [[ "${file}" == "${allowed_file}" ]]; then
+        allowed=0
+        for allowed_file in "$@"; do
+            if [[ "${file}" == "${allowed_file}" ]]; then
+                allowed=1
+                break
+            fi
+        done
+        if [[ "${allowed}" -eq 1 ]]; then
             continue
         fi
         forbid_fixed "${file}" "${needle}" "${message} (${file})"
@@ -465,8 +474,10 @@ verify_static_ownership_and_phase_bounds() {
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'Reconciliation' \
+        'reconciliation escaped the exact B2-A/B2-B owners' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java' \
-        'reconciliation escaped the exact B2-A grouped-audit owner'
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java'
     for literal in \
         'P4D2BApiGateTest' \
         'SkillDefinitionSubmissionServiceTest'; do

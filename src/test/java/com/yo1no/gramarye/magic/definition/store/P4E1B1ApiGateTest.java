@@ -165,6 +165,7 @@ final class P4E1B1ApiGateTest {
                 "ownerIdentity = null",
                 "serverIdentity = null",
                 "creationThreadIdentity = null",
+                "playerListIdentity = null",
                 "storeWitness = null",
                 "journalWitness = null",
                 "inventoryWitness = null",
@@ -172,11 +173,30 @@ final class P4E1B1ApiGateTest {
                 "integratedWitness = null",
                 "claims = null",
                 "sources = null",
+                "selectedFiles = null",
                 "summary = null")) {
             assertTrue(capture.contains(cleared), cleared);
         }
         assertTrue(capture.contains("claims.discard()"));
         assertTrue(capture.contains("sources.clear()"));
+
+        var witness = P4E1SourceInventory.Witness.class;
+        assertEquals(
+                Set.of(
+                        "coverage",
+                        "playerProviderIdentity",
+                        "journalProviderIdentity",
+                        "definitionIdentity"),
+                Arrays.stream(witness.getDeclaredFields())
+                        .map(field -> field.getName())
+                        .collect(Collectors.toSet()));
+        var current = witness.getDeclaredMethod(
+                "isCurrent",
+                PlayerSkillAttachmentService.class,
+                P4E1PendingJournalObservation.Ready.class);
+        assertFalse(Modifier.isPublic(current.getModifiers()));
+        assertFalse(Modifier.isProtected(current.getModifiers()));
+        assertFalse(Modifier.isPrivate(current.getModifiers()));
     }
 
     @Test

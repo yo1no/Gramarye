@@ -13,8 +13,12 @@ PREFLIGHT="$STORE_ROOT/P4E1SourceAdmissionPreflight.java"
 ADMISSION_SOURCE="$STORE_ROOT/PlayerSkillAttachmentAdmissionSource.java"
 BOUND_ADMISSION_SOURCE="$STORE_ROOT/P4E1BoundPlayerSkillAttachmentAdmissionSource.java"
 AUDITED_CAPTURE="$STORE_ROOT/P4E1AuditedCapture.java"
+COMPLETE_HANDOFF="$STORE_ROOT/P4E1CompleteRootHandoff.java"
+FINAL_FRESHNESS="$STORE_ROOT/P4E1FinalFreshness.java"
 GROUPED_STORE_AUDIT="$STORE_ROOT/P4E1GroupedStoreAudit.java"
 HISTORY_OBSERVATION="$STORE_ROOT/P4E1StoreHistoryObservation.java"
+AUDIT_RESULT="$STORE_ROOT/SkillRetentionRootAuditResult.java"
+AUDIT_SERVICE="$STORE_ROOT/SkillRetentionRootAuditService.java"
 STORE="$STORE_ROOT/SkillDefinitionStore.java"
 GLOBAL_CAPTURE="$STORE_ROOT/P4E1GlobalSourceCapture.java"
 PLAYER_SERVICE="$PLAYER_ROOT/PlayerSkillAttachmentService.java"
@@ -31,6 +35,11 @@ B1_API_GATE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/
 B1_CORE_TEST="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1CoreTest.java"
 B2A_API_GATE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2AApiGateTest.java"
 B2A_STORE_AUDIT_TEST="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2AStoreAuditTest.java"
+B2B_API_GATE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java"
+B2B_FINAL_FRESHNESS_TEST="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BFinalFreshnessTest.java"
+B2B_INDEX_LIFECYCLE_TEST="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BIndexLifecycleTest.java"
+B2B_COMPLETE_HANDOFF_TEST="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java"
+B_API_GATE="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java"
 HISTORY_OBSERVATION_TEST="$REPOSITORY_ROOT/src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1StoreHistoryObservationTest.java"
 E0_LEDGER="$REPOSITORY_ROOT/docs/architecture/P4-E0-root-audit-boundary.md"
 
@@ -90,6 +99,8 @@ is_allowed_changed_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditedCapture.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1FinalFreshness.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversal.java | \
@@ -101,6 +112,8 @@ is_allowed_changed_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1StoreHistoryObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStore.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
@@ -124,6 +137,11 @@ is_allowed_changed_path() {
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1CoreTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2AApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2AStoreAuditTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BFinalFreshnessTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BIndexLifecycleTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1StoreHistoryObservationTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversalTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelectorTest.java | \
@@ -231,6 +249,12 @@ self_regression() {
     is_allowed_changed_path \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java' \
         || fail "self-test rejected the exact bound source path"
+    is_allowed_changed_path \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java' \
+        || fail "self-test rejected the exact B2-B service path"
+    is_allowed_changed_path \
+        'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java' \
+        || fail "self-test rejected the exact B2-B API Gate path"
     if is_allowed_changed_path 'build.gradle'; then
         fail "self-test accepted a forbidden Gradle path"
     fi
@@ -240,6 +264,14 @@ self_regression() {
     if is_allowed_changed_path \
             'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSourceExtra.java'; then
         fail "self-test accepted a prefix-near production path"
+    fi
+    if is_allowed_changed_path \
+            'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditServiceExtra.java'; then
+        fail "self-test accepted a prefix-near B2-B service path"
+    fi
+    if is_allowed_changed_path \
+            'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTestExtra.java'; then
+        fail "self-test accepted a prefix-near B2-B API Gate path"
     fi
     if is_allowed_changed_path \
             'src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSourceExtra.java'; then
@@ -261,7 +293,7 @@ self_regression
 verify_changed_paths
 [ -x "$0" ] || fail "portable verifier is not executable"
 
-EXPECTED_STORE_TYPE_COUNT=24
+EXPECTED_STORE_TYPE_COUNT=26
 ACTUAL_STORE_TYPE_COUNT=$(find "$STORE_ROOT" -maxdepth 1 -name 'P4E1*.java' -print \
         | wc -l | tr -d ' ')
 [ "$ACTUAL_STORE_TYPE_COUNT" -eq "$EXPECTED_STORE_TYPE_COUNT" ] \
@@ -279,6 +311,8 @@ for name in \
         P4E1HeapFloorStatus \
         P4E1IntegratedSnapshotTraversal \
         P4E1BoundPlayerSkillAttachmentAdmissionSource \
+        P4E1CompleteRootHandoff \
+        P4E1FinalFreshness \
         P4E1GlobalSourceCapture \
         P4E1GroupedStoreAudit \
         P4E1PendingJournalObservation \
@@ -295,6 +329,11 @@ for name in \
     file="$STORE_ROOT/$name.java"
     [ -f "$file" ] || fail "required production source missing: $file"
     [ ! -L "$file" ] || fail "required production source is a symlink: $file"
+done
+
+for file in "$AUDIT_RESULT" "$AUDIT_SERVICE"; do
+    [ -f "$file" ] || fail "required B2-B production source missing: $file"
+    [ ! -L "$file" ] || fail "required B2-B production source is a symlink: $file"
 done
 
 for file in "$CEILINGS" "$BUDGET" "$PREFLIGHT" \
@@ -315,6 +354,12 @@ done
 for file in "$B2A_API_GATE" "$B2A_STORE_AUDIT_TEST" "$HISTORY_OBSERVATION_TEST"; do
     [ -f "$file" ] || fail "required B2-A reviewed file missing: $file"
     [ ! -L "$file" ] || fail "required B2-A reviewed file is a symlink: $file"
+done
+
+for file in "$B2B_API_GATE" "$B2B_FINAL_FRESHNESS_TEST" \
+        "$B2B_INDEX_LIFECYCLE_TEST" "$B2B_COMPLETE_HANDOFF_TEST" "$B_API_GATE"; do
+    [ -f "$file" ] || fail "required B2-B reviewed test missing: $file"
+    [ ! -L "$file" ] || fail "required B2-B reviewed test is a symlink: $file"
 done
 
 while IFS='|' read -r name value; do
@@ -502,6 +547,8 @@ require_fixed "$A1_API_GATE" 'final class P4E1A1ApiGateTest'
 require_fixed "$A1_VISIBILITY_GATE" 'final class P4E1A1VisibilityCompileTest'
 require_fixed "$A1_BRIDGE_TEST" 'final class P4E1RootAuditBridgeTest'
 require_fixed "$A1_TEST_SUPPORT" 'PlayerSkillAttachmentSerializer.INSTANCE.read('
+require_fixed "$B2B_API_GATE" 'final class P4E1B2BApiGateTest'
+require_fixed "$B_API_GATE" 'final class P4E1BApiGateTest'
 
 for source in "$ADMISSION_SOURCE" "$BOUND_ADMISSION_SOURCE" "$PLAYER_SERVICE"; do
     reject_fixed "$source" '@SuppressWarnings'
@@ -512,7 +559,9 @@ for source in "$ADMISSION_SOURCE" "$BOUND_ADMISSION_SOURCE" "$PLAYER_SERVICE"; d
 done
 
 E1_SOURCES="$(find "$STORE_ROOT" -maxdepth 1 -type f -name 'P4E1*.java' -print)
-$ADMISSION_SOURCE"
+$ADMISSION_SOURCE
+$AUDIT_RESULT
+$AUDIT_SERVICE"
 [ -n "$E1_SOURCES" ] || fail "P4-E1 source allowlist is empty"
 
 for token in \
@@ -536,6 +585,9 @@ for token in \
         'NbtIo.write' \
         'Files.write' \
         'FileOutputStream' \
+        'Files.delete' \
+        'Files.move' \
+        'Files.newOutputStream' \
         'PlayerDataStorage' \
         '.saveAll(' \
         '.saveWithoutId(' \
@@ -550,6 +602,9 @@ for token in \
         'PlayerEvent.Clone' \
         'CompletableFuture' \
         'parallelStream(' \
+        'java.lang.ref.Cleaner' \
+        'java.util.WeakHashMap' \
+        'finalize(' \
         'CustomPacketPayload' \
         'PayloadRegistrar'; do
     for source in $E1_SOURCES \
@@ -593,7 +648,6 @@ reject_fixed "$REPOSITORY_ROOT/.github/workflows/build.yml" 'p4-e1'
 reject_fixed "$REPOSITORY_ROOT/.github/workflows/build.yml" 'P4-E1'
 
 for forbidden_name in \
-        SkillRetentionRootAuditService.java \
         P4E1GlobalInventory.java \
         P4E1RootIndex.java \
         P4E1Reconciliation.java; do
@@ -626,12 +680,27 @@ verify_a1_jar_isolation() {
         for class_path in \
                 'com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.class' \
                 'com/yo1no/gramarye/magic/definition/store/P4E1AuditedCapture.class' \
+                'com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.class' \
+                'com/yo1no/gramarye/magic/definition/store/P4E1FinalFreshness.class' \
                 'com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.class' \
                 'com/yo1no/gramarye/magic/definition/store/P4E1PendingJournalObservation.class' \
                 'com/yo1no/gramarye/magic/definition/store/P4E1RawClaimBuffer.class' \
                 'com/yo1no/gramarye/magic/definition/store/P4E1RootSourceFamily.class' \
                 'com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.class' \
                 'com/yo1no/gramarye/magic/definition/store/P4E1StoreHistoryObservation.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult$AuditSummary.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult$Complete.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult$Incomplete.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult$OverLimit.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult$ReconciliationRequired.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService$IndexSlot.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService$IndexState.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService$IndexedBacking.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService$IndexedSource.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService$PermitCell.class' \
+                'com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService$LeaseCell.class' \
                 'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$OnlineRootAuditHandle.class'; do
             require_fixed "$listing" "$class_path"
         done
@@ -643,6 +712,11 @@ verify_a1_jar_isolation() {
                 P4E1B1CoreTest \
                 P4E1B2AApiGateTest \
                 P4E1B2AStoreAuditTest \
+                P4E1B2BApiGateTest \
+                P4E1B2BCompleteHandoffTest \
+                P4E1B2BFinalFreshnessTest \
+                P4E1B2BIndexLifecycleTest \
+                P4E1BApiGateTest \
                 P4E1StoreHistoryObservationTest \
                 PlayerSkillAttachmentServiceTestSupport; do
             reject_fixed "$listing" "$forbidden_class"
@@ -659,8 +733,60 @@ verify_a1_jar_isolation
 require_fixed "$PHASE_TYPES" '"P4E1CompressedCapacityRejected"'
 require_fixed "$PHASE_TYPES" '"P4E1SourceAdmissionPreflight"'
 require_fixed "$PHASE_TYPES" '"P4E1AuditedCapture"'
+require_fixed "$PHASE_TYPES" '"P4E1CompleteRootHandoff"'
+require_fixed "$PHASE_TYPES" '"P4E1FinalFreshness"'
 require_fixed "$PHASE_TYPES" '"P4E1GroupedStoreAudit"'
 require_fixed "$PHASE_TYPES" '"P4E1StoreHistoryObservation"'
+require_fixed "$PHASE_TYPES" '"SkillRetentionRootAuditResult"'
+require_fixed "$PHASE_TYPES" '"SkillRetentionRootAuditService"'
+
+require_fixed "$AUDIT_SERVICE" 'final class SkillRetentionRootAuditService'
+require_fixed "$AUDIT_SERVICE" \
+    'IdentityHashMap<MinecraftServer, IndexSlot> index = new IdentityHashMap<>()'
+require_exact_count "$AUDIT_SERVICE" \
+    'SkillRetentionRootAuditResult audit(MinecraftServer server)' 1
+require_exact_count "$AUDIT_SERVICE" 'P4E1CompleteRootHandoff consumeComplete(' 1
+require_exact_count "$AUDIT_SERVICE" \
+    'void invalidateForReconciliation(MinecraftServer server)' 1
+require_exact_count "$AUDIT_SERVICE" 'void removeServer(MinecraftServer server)' 1
+require_exact_count "$AUDIT_SERVICE" 'index.remove(server)' 1
+require_exact_count "$AUDIT_SERVICE" 'handoff.forceInvalidate(this)' 1
+reject_fixed "$AUDIT_SERVICE" 'WeakHashMap'
+require_fixed "$AUDIT_RESULT" 'public sealed abstract class SkillRetentionRootAuditResult'
+require_fixed "$AUDIT_RESULT" 'public static final class Complete'
+require_fixed "$AUDIT_RESULT" 'private Complete('
+require_fixed "$AUDIT_RESULT" 'public record AuditSummary('
+require_fixed "$FINAL_FRESHNESS" 'final class P4E1FinalFreshness'
+require_fixed "$COMPLETE_HANDOFF" \
+    'final class P4E1CompleteRootHandoff implements Iterable<SkillReference>, AutoCloseable'
+
+for source in "$AUDIT_SERVICE" "$AUDIT_RESULT" "$FINAL_FRESHNESS" "$COMPLETE_HANDOFF"; do
+    for forbidden in \
+            '.commit(' \
+            '.pin(' \
+            '.snapshot(' \
+            '.append(' \
+            '.reclaim(' \
+            '.setData(' \
+            '.setDirty(' \
+            'SkillRetentionRootSnapshot.fromCompleteRoots' \
+            'NbtIo.write' \
+            'DataFixer' \
+            'Files.write' \
+            'Files.move' \
+            'Files.delete' \
+            'Files.newOutputStream' \
+            'getChunk(' \
+            'setChunkForced' \
+            'List<SkillReference>' \
+            'ArrayList<SkillReference>' \
+            'SkillReference[]'; do
+        reject_fixed "$source" "$forbidden"
+    done
+done
+for production_source in $(find "$MAIN_JAVA" -type f -name '*.java' -print); do
+    reject_fixed "$production_source" 'new SkillRetentionRootAuditService('
+done
 
 for source in "$AUDITED_CAPTURE" "$GROUPED_STORE_AUDIT" "$HISTORY_OBSERVATION"; do
     reject_fixed "$source" 'public class '
@@ -688,7 +814,6 @@ reject_fixed "$AUDITED_CAPTURE" 'P4E1StoreHistoryObservation'
 reject_fixed "$AUDITED_CAPTURE" 'StoredSkillHistory'
 for source in "$AUDITED_CAPTURE" "$GROUPED_STORE_AUDIT"; do
     for forbidden in \
-            'SkillRetentionRootAuditService' \
             'SkillRetentionRootAuditResult' \
             'P4E1RootIndex' \
             'P4E1RootHandoff' \

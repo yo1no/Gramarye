@@ -135,6 +135,17 @@ public final class SkillDefinitionStoreService {
         return witness.matches(adapter);
     }
 
+    /**
+     * Reservation-before-source lifecycle gate for the memory-only P4-E1 audit owner.
+     * This deliberately does not observe the adapter, SavedData state, Store, or journal.
+     */
+    void requireP4E1AuditLifecycle(MinecraftServer server) {
+        requireServerThread(server);
+        if (!installedServers.containsKey(server)) {
+            throw lifecycle(SkillSubsystemLifecycleException.Code.BOOTSTRAP_NOT_INSTALLED);
+        }
+    }
+
     void install(MinecraftServer server) {
         requireServerThread(server);
         if (installedServers.containsKey(server)) {

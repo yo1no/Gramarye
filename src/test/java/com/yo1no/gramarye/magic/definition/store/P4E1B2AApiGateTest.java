@@ -133,14 +133,21 @@ final class P4E1B2AApiGateTest {
         assertFalse(audited.contains("StoredSkillHistory"));
         assertFalse(audited.contains("new P4E1RawClaimBuffer"));
         assertFalse(audited.contains("new ArrayList"));
-        assertTrue(audited.contains(
-                "this.claims = Objects.requireNonNull(claims, \"claims\")"));
+        var auditedConstructor = audited.substring(
+                audited.indexOf("P4E1AuditedCapture("),
+                audited.indexOf("    Transfer claim("));
+        var claimValidation = auditedConstructor.indexOf(
+                "var exactClaims = Objects.requireNonNull(claims, \"claims\");");
+        var auditedTransition = auditedConstructor.indexOf("exactClaims.markAudited();");
+        var exactAssignment = auditedConstructor.indexOf("this.claims = exactClaims;");
+        assertTrue(claimValidation >= 0);
+        assertTrue(auditedTransition > claimValidation);
+        assertTrue(exactAssignment > auditedTransition);
+        assertFalse(auditedConstructor.contains("this.claims = claims;"));
         var b2a = Files.readString(STORE_ROOT.resolve("P4E1StoreHistoryObservation.java"))
                 + Files.readString(STORE_ROOT.resolve("P4E1GroupedStoreAudit.java"))
                 + audited;
         for (var forbidden : List.of(
-                "SkillRetentionRootAuditService",
-                "SkillRetentionRootAuditResult",
                 "P4E1RootIndex",
                 "P4E1RootHandoff",
                 "P4E1Complete",
@@ -173,10 +180,10 @@ final class P4E1B2AApiGateTest {
             assertFalse(b2a.contains(forbidden), forbidden);
         }
         for (var forbiddenFile : List.of(
-                "SkillRetentionRootAuditService.java",
                 "P4E1RootIndex.java",
                 "P4E1RootHandoff.java",
-                "P4E1Complete.java")) {
+                "P4E1Complete.java",
+                "P4E1Reconciliation.java")) {
             assertFalse(Files.exists(STORE_ROOT.resolve(forbiddenFile)), forbiddenFile);
         }
     }
@@ -197,7 +204,7 @@ final class P4E1B2AApiGateTest {
         assertTrue(store.contains("while (slot != null)"));
         var unpublishedCleanup = capture.substring(
                 capture.indexOf("static void cleanupUnpublished("),
-                capture.indexOf("private record OnlineIdentity("));
+                capture.indexOf("static boolean onlineSourcesCurrent("));
         assertFalse(unpublishedCleanup.contains("for (var source : sources)"));
         assertTrue(unpublishedCleanup.contains(
                 "for (var index = 0; index < sources.size(); index++)"));
