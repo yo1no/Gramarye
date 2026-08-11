@@ -514,8 +514,9 @@ read-only design review is complete and forcibly split implementation into B2-A 
 B2-A is implemented, committed, pushed, and qualified by unique attempt-1 exact-SHA remote run
 `31415157794`; it is complete. The first B2-B read-only design review stopped at the
 index-generation／exhaustion authority gap. B.4 now defines that authority; its commit, push, and
-unique attempt-1 exact-SHA remote Gate have passed. B2-B read-only design review is open and its
-implementation has not started. B2 and E1-B remain incomplete; E2／E3 remain blocked. No phase introduces
+unique attempt-1 exact-SHA remote Gate have passed. The renewed B2-B read-only design review passed
+without a Stop Condition and requires no further implementation split. Its implementation is ready
+but has not started; B2 and E1-B remain incomplete, and E2／E3 remain blocked. No phase introduces
 chunk force, periodic/background scanning, network, or a second persistent truth. The completed
 E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate; the B.1
 jobs and this authority correction do not waive it either.
@@ -771,8 +772,9 @@ here. The documentation-only authority patch was committed as
 `b294791409bd34289b7c079a504ccd538c1c78bc` (`docs(persistence): define P4-E index generation
 authority`), with tree `4ccb6a093497799633ff548d376888555889f404`, parent
 `8a2d5033af1448cc037fb01191c985aa6e86d937`, and exact stat of six files changed, 561 insertions,
-and 32 deletions. Its unique exact-SHA remote Gate passed, so B2-B read-only design review is open
-again from the future clean closure HEAD; B2-B implementation remains not started.
+and 32 deletions. Its unique exact-SHA remote Gate passed. At that B.4 closure point, the B2-B
+read-only design review was reopened from the clean closure HEAD; B2-B implementation had not
+started.
 
 Local `verifyPlatformBaseline`, `compileJava`, and `test` all passed. The JUnit XML total was 186
 suites, 1,342 tests, zero failures, zero errors, and zero skipped tests. The authority commit changed
@@ -855,6 +857,205 @@ lease／reentrancy, generation reservation, exhaustion, and only then checkpoint
 audit order, beginning with the heap-floor Gate. This lifecycle does not add a 26th budget counter, change the 25-counter profile or heap
 floor, alter R2Q identity, or waive the mandatory production-shaped P4-E3 Gate.
 
+## P4-E1-B2-B read-only design review closure
+
+The renewed P4-E1-B2-B read-only design review is `PASS`; no Stop Condition was hit and the fixed
+split decision is `NO FURTHER SPLIT`. The clean review base was `main` commit
+`3854e06f29e5a3187f25975546095f6956f4e335`, tree
+`f1952b17217d7bec2ffc3cfa83f6fc06aa778852`, with `HEAD == origin/main`, zero ahead／behind, and a
+clean worktree／index. The locked NeoForge 21.1.241 source JAR remained a regular non-symlink with
+SHA-256 `0e1dcae8e21cd8d8c656e7fe76efe1e31260cf0f956f07aa749b86992cf4fe23`. The official R2Q root
+remained the exact six-file set and its manifest passed; `SHA256SUMS.txt` remained
+`cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`. No R1／R2／R2Q study or
+smoke was rerun. This section records a design decision only: no B2-B production type, test, index,
+result, permit, handoff, mutation, snapshot, or reclaim implementation existed at the review base.
+
+The only approved B2-B implementation chain is:
+
+```text
+P4E1AuditedCapture
+-> final freshness
+-> same segmented backing memory-only index publication
+-> bounded result
+-> same-tick nonforgeable Complete permit
+-> package-private single-use E3 handoff
+```
+
+The sole future coordinator is package-private final `SkillRetentionRootAuditService`, with a
+package-private constructor. Each service instance owns one
+`IdentityHashMap<MinecraftServer, IndexSlot>` keyed by exact server-object identity; there is no
+static, persistent, cross-server, or background index. B2-B creates only the reviewed types and their
+tests, not a production lifecycle instance or a second start／stop listener. Future E3 makes the
+existing `SkillDefinitionStoreService` lifecycle owner construct and invoke the audit service in its
+existing startup／shutdown composition. Future E2 may use only the reviewed package-private
+invalidation seam, and future E3 removes only the exact stopped server. The index never retains a B1
+capture, `P4E1AuditedCapture` handle, public `Complete` permit, `Tag`／`CompoundTag`, `Path`／filename,
+`ServerPlayer`, Attachment state, Store history／actual owner, journal entry／proof, carrier／SavedData,
+or P3-D snapshot.
+
+The one physical reference backing has this lifecycle:
+
+```text
+UNPUBLISHED_RAW -> B2-A AUDITED -> B2-B AUDITED_INDEX -> DISCARDED
+```
+
+The exact same `P4E1RawClaimBuffer` transfers ownership. Raw order, duplicates, source-table index,
+source-local ordinal, claim kind, and equipped slot remain unchanged. B2-B may construct only a
+bounded witness-free source metadata table of at most 2,049 entries; it may not construct a second
+full `SkillReference` vector. Runtime witnesses and the original witness-bearing source table are
+cleared before publication. The only later root-vector copy is the P3-D snapshot materialization
+owned by E3.
+
+The B.4 generation authority remains exact. Physical no-entry means externally Incomplete with an
+internal baseline `0`; the first accepted audit reserves `1`. An accepted audit from
+`Incomplete(g)` or `CompleteIndex(g)` revokes the old authority and reserves exactly `r = g + 1` as
+`AuditInProgress(r)`. Success publishes `CompleteIndex(r)`; every normal terminal publishes
+`Incomplete(r)`. `Error`／OOME propagates unchanged after the already-reserved generation is left
+non-Complete. Valid permit consumption enters `CompleteIndexWithActiveLease(g)`; valid close returns
+to `CompleteIndex(g)` without a new permit or generation. One accepted E2 invalidation from any
+non-lease state with `g < Long.MAX_VALUE` reserves once and publishes `Incomplete(g + 1)` without
+audit, projection, snapshot, reclaim, or Store／journal mutation; `Long.MAX_VALUE - 1 ->
+Long.MAX_VALUE` is the last legal reservation. Advancing from `Long.MAX_VALUE` clears the old
+permit／backing authority, installs `GenerationExhausted(Long.MAX_VALUE)`, returns bounded
+`Incomplete(GENERATION_EXHAUSTED)`, and performs zero source work. Repeated audit／invalidation in
+that terminal is idempotent. Null／programming, wrong-server／
+wrong-thread, removed-server, reentrant-audit, and active-lease rejection occur before reservation.
+Permit misuse, lease open／close, and exact-server removal consume no generation. Every authority
+check binds both exact state identity and generation; tick, P4-C generation, Store, journal, and
+SavedData are not generation substitutes.
+
+Only a B2-A `Audited` candidate enters final freshness. Its deterministic order is:
+
+1. exact audit-service／server／logic-thread／captured-tick and exact `PlayerList` identity;
+2. exact reserved `AuditInProgress` state identity and generation;
+3. Store service／adapter／Ready／Store／inner-carrier／Store-carrier／pending identity;
+4. journal lifecycle／Ready／source-pending／inner-pending identity;
+5. D1 proof identity, satisfaction, and exact-journal binding;
+6. exact V0 inventory coverage and Attachment／journal provider identities;
+7. one complete directory entry-set and metadata verification, including ignored entries;
+8. selected primary／old kind, classification, fileKey, size, and mtime;
+9. complete online UUID set plus exact player／server／presence／Attachment-state identity; and
+10. integrated profile／snapshot four-state plus metadata-only `online > integrated > disk` winner
+    arbitration.
+
+The bounded final-freshness codes are exactly:
+
+```text
+SERVER_FRESHNESS_LOST
+CALL_CHAIN_FRESHNESS_LOST
+INDEX_RESERVATION_LOST
+STORE_SOURCE_FRESHNESS_LOST
+JOURNAL_FRESHNESS_LOST
+JOURNAL_TARGET_PROOF_LOST
+INVENTORY_PROVIDER_FRESHNESS_LOST
+DIRECTORY_RACE_DETECTED
+SELECTED_FILE_FRESHNESS_LOST
+ONLINE_SOURCE_FRESHNESS_LOST
+INTEGRATED_OWNER_FRESHNESS_LOST
+```
+
+That phase performs no selected-file content reopen, gzip／NBT read, P4-C admission, root
+reprojection, integrated-tree retraversal, journal redrain, Store-history re-audit, retry, second
+traversal, whole-tree copy, checksum, or lock. It cannot run on or overwrite any earlier B1／B2-A
+terminal result.
+
+The future public diagnostics boundary is one sealed `SkillRetentionRootAuditResult` with exactly
+`Complete`, `Incomplete`, `OverLimit`, and `ReconciliationRequired` variants. `Complete` is a public
+final non-record with a private constructor and package-private issuance; its only public accessor is
+`summary()`. It has zero root accessors, excludes its permit from equality／hash／bounded `toString`,
+and has no Codec. Public `AuditSummary` uses `OptionalLong`／`OptionalInt` rather than fabricated zero
+for exactly `indexGeneration`, `selectedOwnerCount`, `onlineOwnerCount`, `integratedOwnerCount`,
+`diskOwnerCount`, `playerRootClaimCount`, `journalRootClaimCount`, `totalRawRootClaimCount`,
+`distinctSkillIdCount`, `auditedValidClaimCount`, and `sourceCount`. Operational failure retains
+only the already established bounded facts and an exception class name under the existing 160-character
+ceiling—never a message, stack, or `Throwable`.
+
+The nonforgeable permit binds exact service, server, thread, tick, `CompleteIndex` state identity,
+generation, freshness seal, and unused state. Every consume attempt first marks it used and clears
+the public `Complete` authority reference, then validates service, server, thread, tick, state,
+generation, and absence of a lease. Wrong-service, wrong-server, wrong-thread, cross-tick, stale-state,
+stale-generation, and second-use rejection fail fast, cannot retry, and leave the current index,
+backing, and generation—including any newer replacement—unchanged.
+
+The E3 bridge is package-private final `P4E1CompleteRootHandoff implements Iterable<SkillReference>,
+AutoCloseable`, with a nonpublic constructor. Only the audit service creates it. It binds exact
+service／server／thread／tick／active-state／generation／lease identity, permits exactly one iterator,
+preserves raw order and duplicates, throws `NoSuchElementException` after exhaustion, supports
+partial iteration, and has idempotent close. Close does not increment generation, reissue a permit,
+or clear the indexed backing. An active or leaked lease blocks audit and E2; exact server stop is the
+only forced cleanup. There is no Cleaner, finalizer, timeout, or background recovery, and a cross-
+tick operation fails closed; a wrong-tick close clears only local cursor authority and cannot mutate
+the lease, which remains blocked until exact-server stop. Future E3 alone performs
+`Complete -> consume -> try-with-resources handoff -> SkillRetentionRootSnapshot.fromCompleteRoots
+-> require Snapshot.Complete -> controlled reclaim exactly once -> close`. B2-B calls the snapshot
+factory and reclaim zero times.
+
+The existing public `SkillRetentionRootSnapshot.fromCompleteRoots(Iterable)` is a caller claim, not
+an authorization seam. It requests exactly one iterator, consumes it synchronously in order,
+preserves duplicates, observes at most the root maximum plus one, and does not retain the iterable.
+Only the E1 permit plus package-private handoff authorizes that future E3 call. E3's fixed-heap Gate
+must cover the simultaneous E1 indexed backing and P3-D snapshot materialization／copy.
+
+The exact future type plan is:
+
+| Type | Visibility／shape | Responsibility |
+| --- | --- | --- |
+| `SkillRetentionRootAuditService` | package-private final, package-private constructor | fixed dependencies, per-server index, audit／consume／invalidate／remove |
+| `SkillRetentionRootAuditResult` | public sealed diagnostics result | bounded terminal diagnostics; `Complete` hides the permit |
+| `AuditSummary` | public nested record | bounded optional counters／generation only |
+| `P4E1FinalFreshness` | package-private final coordinator | deterministic ordered witness currentness |
+| `P4E1CompleteRootHandoff` | package-private final, single-use `Iterable`／`AutoCloseable` | one-iterator E3 active lease |
+| `IndexSlot`／`IndexState`／`IndexedBacking`／`PermitCell`／`LeaseCell`／`IndexedSource` | private nested implementation types | generation, same backing, compact metadata, permit／lease revocation |
+
+No generic audit framework, `AuditUtils`, persistent index, public root query, or second backing is
+approved. Future focused tests include at least `P4E1B2BFinalFreshnessTest`,
+`P4E1B2BIndexLifecycleTest`, `P4E1B2BCompleteHandoffTest`, `P4E1B2BApiGateTest`, and final
+`P4E1BApiGateTest`, with exact-path／type allowlists; blanket `P4E1*`, `Audit*`, and `B2*`
+exemptions are forbidden. They must
+cover all freshness codes and precedence; NoEntry／baseline／first reservation／ordinary audit and E2
+invalidation; two-server isolation; exact-server `removeServer`; `Long.MAX_VALUE - 1 ->
+Long.MAX_VALUE`; idempotent exhaustion with source-work count zero; every normal terminal;
+`Error`／OOME identity with same-generation non-Complete fallback; permit misuse; lease leak and
+forced stop cleanup; same-backing／zero-second-vector; one iterator／order／duplicates／partial close;
+bounded public API with no root or internal exposure; and all zero-side-effect call counts. B2-B adds
+no normal GameTest, source set, Gradle task, workflow job, or P4-E fixed-heap Gate; the production-
+shaped fixed-1,536-MiB first／restart Gate remains E3-owned.
+
+The B2-B implementation must preserve:
+
+```text
+Store mutation calls        = 0
+Store reclaim calls         = 0
+Store dirty delta           = 0
+Attachment setData          = 0
+journal mutation            = 0
+playerdata/filesystem write = 0
+DFU calls                   = 0
+event registration          = 0
+network                     = 0
+chunk load/force            = 0
+background work             = 0
+snapshot factory calls      = 0
+```
+
+B2-B does not begin P4-E2 or P4-E3.
+
+Known limits remain explicit: hostile same-object in-place mutation of the integrated
+`CompoundTag` is outside the identity witness; hostile disk rewrite preserving fileKey／size／mtime
+is outside V0; an unused `Complete` may remain reachable until GC but loses authority after tick／
+state change; a leaked handoff blocks audit／E2 until server stop; R2Q is neither a universal theorem
+nor the complete E3 production envelope. The exact
+`-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` E3 first／restart Gate remains mandatory, and
+branch-protection required-check configuration remains external governance unknown.
+
+The documentation-only closure worktree passed `verifyPlatformBaseline`, `compileJava`, and the
+full unit suite. JUnit XML recorded 186 suites and 1,342 tests with zero failures, errors, or skips.
+No GameTest, dedicated-server smoke, fixed-heap Gate, or research study／smoke was run. The phase
+values below become effective only after this closure commit is pushed and its unique attempt-1
+exact-SHA `Build` run completes with exactly `build` and the P4-A3／P4-B／P4-C／P4-D memory jobs
+successful. Until that Gate passes, B2-B implementation remains blocked; the commit records no
+implementation evidence.
+
 ## Status
 
 ```text
@@ -875,6 +1076,7 @@ P4-E0-B.4 authority stat            = 6 files; 561 insertions; 32 deletions
 P4-E0-B.4 authority remote run      = 31468874016 (attempt 1)
 P4-E0-B.4 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
 P4-E0-B.4 index generation/exhaustion authority = COMPLETE
+P4-E0-B.4                          = COMPLETE
 P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review  = PASS (HISTORICAL)
@@ -900,8 +1102,9 @@ P4-E1-B2-A implementation remote run = 31415157794 (attempt 1)
 P4-E1-B2-A implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
 P4-E1-B2-A                          = COMPLETE
 P4-E1-B2-B prior read-only design review = STOPPED AT INDEX GENERATION / EXHAUSTION AUTHORITY GAP
-P4-E1-B2-B read-only design review = OPEN
-P4-E1-B2-B implementation          = NOT STARTED
+P4-E1-B2-B read-only design review = COMPLETE
+P4-E1-B2-B split                   = NO FURTHER SPLIT
+P4-E1-B2-B implementation          = READY; NOT STARTED
 P4-E1-B2                            = INCOMPLETE
 P4-E1-B                             = INCOMPLETE
 P4-E2 / P4-E3                      = BLOCKED
