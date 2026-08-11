@@ -259,6 +259,8 @@ P4-E0-B.2：documentation-only effective HotSpot MaxHeapSize observation／三�
          process-control authority；無floor／numeric／R2Q evidence／implementation change
 P4-E0-B.3：documentation-only online source counter applicability／online > integrated > disk／
          UUID ordering／final freshness／E3 obligation；無numeric／R2Q evidence／implementation change
+P4-E0-B.4：documentation-only memory-only root-index generation／exhaustion、E2 invalidation、
+         Complete permit／active handoff／removeServer authority；無counter／heap／evidence／implementation change
 P4-E1：read-only bounded online／integrated／disk scanner；online existing-state observation only，
       disk／integrated full P4-C；journal／Store audit、
       memory-only index與bounded completeness results；mutation／reclaim 0
@@ -542,7 +544,11 @@ commit／push／remote closure前P4-E1 review保持blocked，review核准前impl
 其後E1-B read-only review因online source counter applicability gap停止。P4-E0-B.3只固定online
 source coordinate／arbitration／ordering／freshness／E3 obligation；B.3 commit／push／remote closure前
 新的E1-B review blocked，closure後須從頭重開review，不直接開始implementation。E1完成前不得
-開始E2，E2完成前不得開始E3。E0-B／B.1／B.2／B.3
+開始E2，E2完成前不得開始E3。P4-E0-B.4只固定memory-only root-index generation／exhaustion、
+E2 invalidation、Complete permit／handoff lease與removeServer authority；B.4 commit／push／remote
+closure前（前次review已停止於`INDEX GENERATION / EXHAUSTION AUTHORITY GAP`）P4-E1-B2-B
+read-only review blocked，closure後只重開review，implementation維持
+`NOT STARTED`。E0-B／B.1／B.2／B.3／B.4
 不寫Java／Gradle／CI，不重跑R1／R2／R2Q formal study。
 
 P4-A1～A3、P4-B1／B2與P4-C～E不得重寫P3-D owner truth、quota counting、CAS、revision allocation或reclaim
@@ -1090,8 +1096,38 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
   不建立root-only parser；journal使用P4-D
   projection。Raw latest／equipped／journal claims在dedup前最多65,536、再作grouped exact
   reference／expected-owner Store audit，每distinct SkillId最多一次history lookup。
-- Index只memory-only、restart預設Incomplete，不存raw、Store truth或Complete token。E1的
-  player／Store／journal mutation與reclaim invocation均為0。
+- Index只memory-only、restart預設Incomplete，不存raw或Store truth。它可保存internal
+  `CompleteIndex`／`CompleteIndexWithActiveLease`與同一audited single backing，但不保存public
+  Complete permit或`SkillRetentionRootSnapshot.Complete`。E1的player／Store／journal mutation與
+  reclaim invocation均為0。
+- Index generation唯一owner是一個`SkillRetentionRootAuditService` identity × 一個exact
+  `MinecraftServer` object identity的slot；每slot使用memory-only `long` `0..Long.MAX_VALUE`。
+  NoEntry對外是Incomplete且沒有published generation，新slot internal baseline為0，first accepted
+  audit reservation為1；
+  tick、P4-C mutation generation、Store revision、journal generation與SavedData identity都不是本generation。
+- 只有accepted global audit attempt與P4-E2 explicit invalidation消耗generation。Audit在null／
+  programming、server、logic-thread、active-lease／reentrant checks後，heap與任何source work前reserve
+  `g + 1`並立即撤銷舊Complete backing／permit；success、Incomplete、OverLimit、
+  ReconciliationRequired、final freshness failure與RuntimeException只在同reserved generation完成，
+  Error／OOME原樣傳播且留下同generation non-Complete。E2每個accepted batch只reserve一次並發布
+  Incomplete，不reaudit／reproject／snapshot／reclaim；更早fail-fast都不改index／generation。這不是
+  第26個counter，也不改既有25維profile。
+- Internal state machine至少包含NoEntry、`Incomplete(g)`、`AuditInProgress(g)`、`CompleteIndex(g)`、
+  `CompleteIndexWithActiveLease(g)`、`GenerationExhausted(Long.MAX_VALUE)`與Removed；publication只作
+  單一完整state replacement，不逐項公開partial index。
+- `Long.MAX_VALUE - 1 → Long.MAX_VALUE`合法；current為MAX而audit／E2需要advance時不得
+  wrap／saturate／reset，必須清除舊Complete backing／permit，以new state identity發布terminal
+  `GenerationExhausted(Long.MAX_VALUE)`／
+  `Incomplete(GENERATION_EXHAUSTED)`，source work／roots／Store audit／snapshot／reclaim皆0，startup
+  繼續且source data不變；同slot
+  重複audit／invalidate idempotent，只有exact server stop的`removeServer`可刪除。Permit consume先
+  標used；second use或wrong service／server／thread／tick／state identity／generation只消耗permit與
+  清自身authority references，不改index／generation。成功consume
+  以同generation／backing開active lease；open／close不增加、active lease阻止audit／E2，close不重發
+  permit。`removeServer`強制清lease／backing／permit／slot且不增加generation；新exact server object
+  才從baseline 0開始，同一stopped object不得reset，移除後原handoff操作固定拒絕；不使用Cleaner／
+  finalizer／background lease timeout。Complete／handoff必須同時綁exact service、server、
+  state identity、generation、thread與tick，handoff另綁lease identity；generation相等不充分。
 
 ### P4-E2：Login-only reconciliation
 
@@ -1109,8 +1145,9 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
 - 在唯一`ServerStartingEvent`、same logic-thread call chain中固定
   P4-B install → P4-D bootstrap → fresh E1 audit → 若Complete即時建立
   `SkillRetentionRootSnapshot.Complete` 並呼叫
-  `SkillDefinitionStoreService.reclaim(server, snapshot)` exactly once。`Complete`不存field／index／
-  callback、不跨tick。
+  `SkillDefinitionStoreService.reclaim(server, snapshot)` exactly once。Fresh public Complete permit只屬
+  same-call-chain local，不存field／index／callback、不跨tick；internal `CompleteIndex`／active-lease
+  state與同一audited backing仍可留在memory-only index，但不保存public permit或snapshot。
 - Reclaim `Rejected`不retry，0不dirty，>0沿用P4-B publication-before-dirty；invariant
   failure沿用Unavailable／`setDirty(false)`。Audit／index／Incomplete／E2不改Store dirty。
 - 建立production-shaped exact fixed `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError`
@@ -1138,8 +1175,14 @@ raw Store exposure、Store rollback、offline enumeration、P4-E implementation�
 - P4-C admission classification等價、inventory coverage、journal Available／Unavailable、grouped Store
   audit、raw roots 65,536／65,537 before dedup、offline disk hash不變、recovery-before-E2、
   atomic multiprune／MAX、index invalidation與N／N+1。
+- Index generation Gate涵蓋NoEntry／baseline 0／first 1；success、全部normal terminal、
+  RuntimeException與Error／OOME各只消耗一次reservation，E2每batch一次；MAX−1→MAX、MAX後terminal
+  exhaustion、zero source work／reclaim、old Complete清除與repeated idempotence；programming／
+  wrong-thread／reentrant、permit misuse、lease open／close與removeServer皆delta 0。另驗permit misuse
+  consumed但index不變、active lease阻止audit／E2、server stop強制清lease、new server slots獨立、
+  exact state identity＋generation共同currentness，以及generation不進serialization／SavedData／R2Q。
 - E3 production fixed-1,536-MiB exact／MAX+1／restart Gate、no OOME／timeout、no chunk load／
-  background／cross-tick Complete／production-JAR fixture leakage。
+  background／cross-tick public Complete permit／production-JAR fixture leakage。
 
 ### 禁止
 

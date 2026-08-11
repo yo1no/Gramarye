@@ -255,7 +255,10 @@ DefinitionEnvelope
   `INCOMPLETE_AND_CONTINUE` 執行bounded read-only audit。Closed inventory恰為player skill
   Attachment與pending journal；restart預設Incomplete，任一source／counter／heap／Store audit
   無法證明完整時不得sweep。Index只memory-only，不強制載入chunk、不background／
-  periodic audit、不跨tick保存`Complete`。這個heap floor是產品選擇，不是universal
+  periodic audit。Fresh public Complete permit只屬same-call-chain local，不存field／index／callback、
+  不跨tick；memory-only index可保存internal `CompleteIndex`／`CompleteIndexWithActiveLease`與同一
+  audited single backing，但不保存public permit或`SkillRetentionRootSnapshot.Complete`。這個heap
+  floor是產品選擇，不是universal
   safe minimum。Heap-floor唯一判定座標是
   `HotSpotDiagnosticMXBean.getVMOption("MaxHeapSize").getValue()`的strict canonical base-10
   nonnegative `long`，不是requested `-Xmx`或`Runtime.maxMemory()`。小於floor為
@@ -287,6 +290,39 @@ DefinitionEnvelope
   全域first-failure依第18號§18固定18 checkpoints：programming／heap → Store → journal → inventory →
   directory／pair metadata → online identity → integrated observation → arbitration → UUID sort → relevant →
   source-local work → player roots → journal roots → grouped Store audit → final freshness → result／index。
+- 【Index generation owner】Memory-only root-index generation唯一屬於一個
+  `SkillRetentionRootAuditService` identity × 一個exact `MinecraftServer` object identity；每個slot
+  獨立使用`long` `0..Long.MAX_VALUE`，不global static、不跨server共享、不持久化。No-entry對外是
+  Incomplete且沒有published generation；新slot的internal baseline是0，第一個accepted audit
+  reservation使用1。Tick、P4-C mutation generation、Store revision、journal generation與SavedData
+  identity都不是本generation。
+- 【Index reservation／publication】只有accepted global audit attempt與P4-E2 explicit index
+  invalidation消耗一次generation。Audit依序完成null／programming、exact server、logic thread及
+  active-lease／reentrant checks後、heap與任何source work前reserve `g + 1`，立即撤銷舊Complete
+  backing／permit並進入同reserved generation的non-Complete state；success、Incomplete、OverLimit、
+  ReconciliationRequired、final freshness failure與RuntimeException都在同generation完成，不再增加，
+  Error／OOME原樣傳播且index留在該reserved generation的non-Complete state。E2每個accepted
+  reconciliation batch只reserve一次並發布Incomplete，不reaudit／reproject／snapshot／reclaim；
+  programming／wrong-thread／active-lease／
+  reentrant failure都不改generation或index。這個prelude不是第26個counter，不改25維profile。
+- 【Index states】Internal state machine至少包含NoEntry、`Incomplete(g)`、`AuditInProgress(g)`、
+  `CompleteIndex(g)`、`CompleteIndexWithActiveLease(g)`、`GenerationExhausted(Long.MAX_VALUE)`與
+  Removed；每次publication都是單一state replacement，不逐項發布partial index。
+- 【Exhaustion／permit／lease／remove】`Long.MAX_VALUE - 1 → Long.MAX_VALUE`合法；current為MAX而
+  audit／E2需要advance時不得wrap／saturate／reset，先清除舊Complete backing／permit，以新state
+  identity發布terminal
+  `GenerationExhausted(Long.MAX_VALUE)`與`Incomplete(GENERATION_EXHAUSTED)`，source work／roots／
+  Store audit／snapshot／reclaim皆0，startup繼續且source data不變；同slot後續audit／invalidate
+  idempotent，只有exact server stop的
+  `removeServer`可移除。Complete permit每次consume先標used；second use或wrong service／server／
+  thread／tick／state identity／generation會消耗permit並清除其authority
+  references，但不改index／generation。成功consume以相同generation／backing進active lease；lease
+  open／close不增加generation，active lease阻止audit與E2，close回Complete但不重發permit。
+  `removeServer`可強制失效lease並清除backing／permit／slot而不增加generation；新的exact server
+  object另從baseline 0開始，同一stopped object不得藉重插reset，移除後原handoff操作固定拒絕；
+  不使用Cleaner／finalizer／background lease timeout。Permit與handoff除service／server／
+  thread／tick外必須同時綁exact state identity與generation，handoff另綁exact lease identity；generation
+  相等不是currentness的充分條件。
 
 ## 8-B. 真相歸屬表與單一真相原則
 
@@ -753,6 +789,12 @@ PresentationEvent
   不得因online大多數counter為+0而省略online obligation。
   完整逐項矩陣以
   [18號P4修正案 §21](18_P4持久化與組合修正案.md#21-required-tests)為準。
+- P4-E index generation：NoEntry／baseline 0／first reservation 1，audit success與每種normal／
+  RuntimeException／Error／OOME terminal都恰消耗一次，E2每batch一次；MAX−1→MAX、MAX後terminal
+  exhaustion、zero source work、old Complete清除與repeated idempotence；programming／wrong-thread／
+  reentrant、permit misuse、lease open／close及removeServer均不增加。另驗permit misuse consumed但
+  index不變、active lease阻止audit／E2、stop強制清lease、new server slot獨立，以及Complete／handoff
+  同時以exact state identity與generation防ABA；generation不得進serialization／SavedData／R2Q。
 
 ## 36. 發布阻擋條件
 
@@ -887,6 +929,8 @@ P4-E0-B.2：documentation-only effective HotSpot MaxHeapSize observation／三�
           process-control authority；無floor／numeric／R2Q evidence／implementation change
 P4-E0-B.3：documentation-only online Attachment 25-counter applicability、online > integrated > disk、
           unified UUID ordering、final freshness與E3 obligation；無numeric／evidence／implementation change
+P4-E0-B.4：documentation-only memory-only root-index generation／exhaustion、E2 invalidation、
+          Complete permit／active handoff與removeServer authority；無counter／heap／evidence／implementation change
 P4-E1：read-only bounded online／integrated／disk audit；online existing-state observation only，
       disk／integrated full P4-C admission；journal／Store audit、
       memory-only index與Complete／Incomplete／ReconciliationRequired；reclaim／mutation 0
@@ -895,6 +939,10 @@ P4-E2：P4-D recovery後login-only immutable latest／equipped reconciliation；
 P4-E3：唯一ServerStarting composition、fresh Complete後immediate controlled reclaim exactly once、
       restart／fixed-1,536-MiB／CI／final gates；無chunk force／background sweep
 ```
+
+前次P4-E1-B2-B read-only review停止於`INDEX GENERATION / EXHAUSTION AUTHORITY GAP`。
+P4-E0-B.4 commit／push／remote closure前該review保持blocked，implementation
+維持`NOT STARTED`；closure只重新開啟從clean HEAD執行的read-only review，不直接核准implementation。
 
 P4-A2因document／migration package visibility只核准兩個public facade classes：
 `SkillDocumentStorePersistenceFacade` 同時提供只接受current-schema typed document的

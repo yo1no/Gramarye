@@ -432,8 +432,8 @@ Implementation is forcibly split into P4-E1-B1 followed by P4-E1-B2:
   result, updates the memory-only index, and creates the ephemeral same-call-chain `Complete` handoff.
   The index retains neither the B1 capture, source witnesses, nor unaudited raw-claim authority.
   After B2-A audit and B2-B freshness pass, the original segmented `SkillReference` backing may
-  transfer into index ownership as audited references; no second full root vector or `Complete`
-  token is retained. The handoff is not a `SkillRetentionRootSnapshot`.
+  transfer into index ownership as audited references; no second full root vector or public
+  `Complete` permit is retained. The handoff is not a `SkillRetentionRootSnapshot`.
 
 B1 must not construct `SkillRetentionRootSnapshot`, call either raw or controlled reclaim, publish
 raw roots, add a public result, perform grouped Store audit, or create the memory-only index. B2
@@ -457,7 +457,7 @@ Store seam verifies exact references and expected owners without exposing Store 
 owners.
 
 The world index is memory-only and incomplete after restart. It retains bounded source metadata,
-references, and status, never raw playerdata／Attachment, Store truth, or a cross-tick Complete token.
+references, and status, never raw playerdata／Attachment, Store truth, or a cross-tick public Complete permit.
 Missing or foreign offline player claims remain on disk and become
 `ReconciliationRequired(Deferred)`. P4-E2 may prune one online Ready Attachment only after P4-D
 recovery, without Store／journal mutation or reclaim. Audit N and the reconciliation save both keep
@@ -512,8 +512,10 @@ review passed without a Stop Condition and forced the B1／B2 split above. P4-E1
 pushed, locally verified, and qualified by the exact-SHA remote run; it is complete. The P4-E1-B2
 read-only design review is complete and forcibly split implementation into B2-A followed by B2-B.
 B2-A is implemented, committed, pushed, and qualified by unique attempt-1 exact-SHA remote run
-`31415157794`; it is complete. B2-B is open only for its independent read-only design review, and
-its implementation has not started. B2 and E1-B remain incomplete; E2／E3 remain blocked. No phase introduces
+`31415157794`; it is complete. The first B2-B read-only design review stopped at the
+index-generation／exhaustion authority gap. B.4 now defines that authority locally, but its
+commit／push／remote closure remains pending; B2-B review is blocked until that closure and its
+implementation has not started. B2 and E1-B remain incomplete; E2／E3 remain blocked. No phase introduces
 chunk force, periodic/background scanning, network, or a second persistent truth. The completed
 E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate; the B.1
 jobs and this authority correction do not waive it either.
@@ -760,6 +762,84 @@ set, its manifest still passes, and `SHA256SUMS.txt` remains
 `cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`; no research study or smoke
 was rerun. Branch-protection required-check configuration remains external governance unknown.
 
+## P4-E0-B.4 memory-only index-generation authority patch (local pre-closure)
+
+The subsequent P4-E1-B2-B read-only design review stopped at the exact
+`INDEX GENERATION / EXHAUSTION AUTHORITY GAP`; it did not approve an implementation. P4-E0-B.4
+closes that authority gap in the scoped codex-spec documents and records the resulting lifecycle
+here. The documentation-only patch is implemented locally, while its commit, push, and exact-SHA
+remote Gate remain pending. B2-B review therefore remains blocked until B.4 closure, and B2-B
+implementation remains not started.
+
+The sole generation owner is one `SkillRetentionRootAuditService` identity crossed with one exact
+`MinecraftServer` object identity. Each service owns independent per-server slots; no static,
+cross-server, per-`Complete`, tick, P4-C, Store, journal, or SavedData coordinate may substitute.
+Generation is memory-only `long` in `0..Long.MAX_VALUE`, is never serialized, and has an internal
+baseline of `0` for a newly created slot. No entry means `Incomplete` authority with no published
+generation; the first accepted audit reservation uses generation `1`.
+
+Exactly two operations consume generation: one accepted global-audit attempt reserves exactly one
+next generation, regardless of its eventual terminal, and one accepted P4-E2 explicit index
+invalidation reserves exactly one next generation for the entire reconciliation operation. Audit
+reservation occurs after null／programming, exact-server, logic-thread, active-lease, and reentrancy
+checks, but before any of the existing 18-step source work. A successful reservation immediately
+invalidates the old `Complete` authority and enters `AuditInProgress(reserved)`; success publishes
+`CompleteIndex(reserved)`, while `Incomplete`, `OverLimit`, `ReconciliationRequired`, final-
+freshness failure, or bounded operational `RuntimeException` publishes
+`IncompleteIndex(reserved)`. `Error`／OOME propagates unchanged and leaves a non-Complete state at
+the already-reserved generation. Success, failure, freshness, and result publication never consume
+a second generation, and an old `Complete` is never restored after reservation.
+
+P4-E2 may act only through its future reviewed package-private invalidation seam. With no active
+lease, one accepted invalidation advances once and publishes `Incomplete`; it neither re-audits nor
+projects roots, creates a snapshot, reclaims, or mutates Store／journal data. A reconciliation batch
+does not advance once per pointer. Programming or wrong-thread rejection, reentrant audit, active-
+lease rejection, permit misuse, lease open／close, result construction, diagnostics, and
+`removeServer` consume no generation.
+
+`Long.MAX_VALUE - 1 -> Long.MAX_VALUE` is legal. When an audit or E2 invalidation needs to advance
+from `Long.MAX_VALUE`, it does not wrap, retry, preserve old `Complete`, or begin source work. It
+clears old permit／backing authority and installs the terminal
+`GenerationExhausted(Long.MAX_VALUE)`, reported as bounded
+`Incomplete(GENERATION_EXHAUSTED)`. Repeated audit／invalidation is idempotent; source capture,
+Store audit, snapshot, and reclaim counts remain zero. Exhaustion affects only that exact server
+slot, and only exact-server `removeServer` after server stop can delete the slot.
+
+Every `Complete` permit is single-use: each consume attempt first marks it used. Wrong service,
+server, thread, tick, state identity, or generation rejects fail-fast after clearing the permit's
+own authority references, but neither increments generation nor modifies the current index. A
+successful consume changes `CompleteIndex(g)` to `CompleteIndexWithActiveLease(g)` without changing
+generation or backing identity. The lease is bound to exact service, server, thread, tick, active-
+lease state identity, generation, and lease identity. Close returns to `CompleteIndex(g)` without
+republishing a permit. While active, audit and E2 invalidation fail-fast with no state delta; server
+stop is the sole forced-cleanup exception and invalidates the lease, clears backing／cursor
+authority, and removes the exact slot without advancing generation.
+
+The required internal state machine includes:
+
+```text
+NoEntry -> baseline 0 -> reserve 1 -> AuditInProgress(1)
+Incomplete(g) / CompleteIndex(g) -> reserve g+1 -> AuditInProgress(g+1)
+AuditInProgress(g) -> success -> CompleteIndex(g)
+AuditInProgress(g) -> normal terminal -> Incomplete(g)
+AuditInProgress(g) -> Error/OOME -> non-Complete(g), then propagate
+CompleteIndex(g) -> permit consume -> CompleteIndexWithActiveLease(g)
+CompleteIndexWithActiveLease(g) -> close -> CompleteIndex(g)
+non-lease state(g < MAX) -> E2 invalidate -> Incomplete(g+1)
+state(g = MAX) requiring advance -> GenerationExhausted(MAX)
+GenerationExhausted(MAX) -> audit/invalidate -> GenerationExhausted(MAX)
+any state -> exact stopped-server removeServer -> Removed / no map entry
+```
+
+Reentrant audit preserves the original `AuditInProgress` state and generation. A different new
+server object begins from its own baseline `0`; the removed server object cannot be reinserted to
+reset exhaustion. `Complete` and handoff currentness require both exact state identity and exact
+generation—generation equality alone is insufficient—and all existing Store／journal／source
+witness checks remain required. First-failure precedence is programming／server／thread, then active
+lease／reentrancy, generation reservation, exhaustion, and only then checkpoints 2–18 of the existing
+audit order, beginning with the heap-floor Gate. This lifecycle does not add a 26th budget counter, change the 25-counter profile or heap
+floor, alter R2Q identity, or waive the mandatory production-shaped P4-E3 Gate.
+
 ## Status
 
 ```text
@@ -774,6 +854,7 @@ P4-E0-B.3 authority commit         = e23a2a6c0df298315fc726ec509d3f953d559a08
 P4-E0-B.3 authority tree           = ce1d6d379c763ed2824f831f6a1e81c73c3fec65
 P4-E0-B.3 authority remote run     = 31251807408 (attempt 1)
 P4-E0-B.3 authority remote jobs    = build + P4-A3/B/C/D memory gates PASS
+P4-E0-B.4 index generation/exhaustion authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
 P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review  = PASS (HISTORICAL)
@@ -798,7 +879,8 @@ P4-E1-B2-A implementation stat      = 32 files; 3,142 insertions; 145 deletions
 P4-E1-B2-A implementation remote run = 31415157794 (attempt 1)
 P4-E1-B2-A implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
 P4-E1-B2-A                          = COMPLETE
-P4-E1-B2-B read-only design review = OPEN
+P4-E1-B2-B prior read-only design review = STOPPED AT INDEX GENERATION / EXHAUSTION AUTHORITY GAP
+P4-E1-B2-B read-only design review = BLOCKED UNTIL B.4 CLOSURE
 P4-E1-B2-B implementation          = NOT STARTED
 P4-E1-B2                            = INCOMPLETE
 P4-E1-B                             = INCOMPLETE

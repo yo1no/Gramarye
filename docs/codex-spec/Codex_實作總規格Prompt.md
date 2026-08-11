@@ -675,6 +675,10 @@ P4固定拆分為：
   `online > integrated > disk` arbitration、統一UUID owner ordering、online final freshness與E3
   qualification；不改numeric profile、heap floor、R2Q evidence或implementation。B.3 closure前新的
   E1-B read-only review blocked，closure後須從頭重開review。
+- P4-E0-B.4：documentation-only固定memory-only root-index generation／exhaustion、E2 invalidation、
+  Complete permit／active handoff與exact server removal／restart authority；不改25 counters、heap
+  floor、R2Q evidence／profile／case plan或implementation。B.4 closure前P4-E1-B2-B read-only
+  review blocked，closure後只可從clean HEAD重開review，implementation仍為`NOT STARTED`。
 - P4-E1：read-only bounded online／integrated／disk audit；online只觀察existing admitted state，
   disk／integrated執行full P4-C admission；journal／grouped Store
   audit、memory-only index與bounded completeness results；player／Store／journal mutation與reclaim 0。
@@ -760,6 +764,36 @@ integrated snapshot與disk primary／old是player family內的source kinds，不
 materialized Tag必須經完整P4-C admission；online只觀察existing admitted state且本次
 `attachment_admissions += 0`。Raw roots在dedup前計capacity，index只memory-only且restart預設Incomplete。
 
+Root-index generation唯一owner是一個`SkillRetentionRootAuditService` identity × 一個exact
+`MinecraftServer` object identity的slot。每slot使用memory-only `long` `0..Long.MAX_VALUE`；NoEntry
+對外是Incomplete且沒有published generation，新slot internal baseline為0，第一個accepted audit
+reservation為1。
+Tick、P4-C mutation generation、Store revision、journal generation與SavedData identity都不得挪用。
+只有accepted global audit attempt與P4-E2 explicit invalidation消耗一次generation：audit在
+null／programming、exact server、logic-thread與active-lease／reentrant checks後、heap與source work
+前reserve `g + 1`，立即撤銷舊Complete backing／permit；success與所有normal／RuntimeException
+terminals只在同reserved generation發布，Error／OOME原樣傳播且留下同generation non-Complete。
+E2每個accepted batch只reserve一次並發布Incomplete，不reaudit／reproject／snapshot／reclaim；上述
+更早fail-fast均不改index／generation。
+這個lifecycle prelude不是第26個counter，也不改25維profile或既有source-first-failure順序。
+Internal state machine至少包含NoEntry、`Incomplete(g)`、`AuditInProgress(g)`、`CompleteIndex(g)`、
+`CompleteIndexWithActiveLease(g)`、`GenerationExhausted(Long.MAX_VALUE)`與Removed；publication必須
+單次replace完整state，不得逐項發布partial index。
+
+`Long.MAX_VALUE - 1 → Long.MAX_VALUE`合法；current為MAX而audit／E2需要advance時不得
+wrap／saturate／reset，必須清除舊Complete backing／permit並以new state identity轉為terminal
+`GenerationExhausted(Long.MAX_VALUE)`／
+`Incomplete(GENERATION_EXHAUSTED)`，source work、roots、Store audit、snapshot與reclaim皆0，startup
+繼續且source data不變；之後
+同slot idempotent直到exact server stop `removeServer`。Complete permit每次consume先標used；second
+use或wrong service／server／thread／tick／state identity／generation只消耗permit／清自身authority
+references，不改index／generation。Success consume在同generation／
+backing開active lease；lease open／close不增加generation、active lease阻止audit／E2、close不重發
+permit。`removeServer`可強制失效lease並刪slot且不增加generation；新exact server object才從baseline
+0開始，同一stopped object不可reset，移除後原handoff操作固定拒絕；不使用Cleaner／finalizer／
+background lease timeout。Complete／handoff必須同時綁exact service、server、state
+identity、generation、thread與tick，handoff另綁lease identity；generation相等不足以證明currentness。
+
 Heap-floor唯一normative observation是
 `HotSpotDiagnosticMXBean.getVMOption("MaxHeapSize").getValue()`的strict canonical base-10
 nonnegative `long`。Effective value小於floor為`HEAP_FLOOR_NOT_MET`，大於等於為
@@ -804,7 +838,10 @@ discard claims／capability、index Incomplete、reclaim 0，且不得覆蓋較�
 Offline missing／foreign pointer只defer-to-login，disk不變，當輪reclaim 0；P4-E2只在P4-D
 recovery後對online Ready作一次immutable prune，也不reclaim。只有P4-E3能在唯一
 `ServerStartingEvent` call chain中使用fresh E1 `Complete`，立即呼叫
-`SkillDefinitionStoreService.reclaim` exactly once，不存Complete token或跨tick重用。
+`SkillDefinitionStoreService.reclaim` exactly once。Fresh public Complete permit只屬same-call-chain
+local，不存field／index／callback、不跨tick；memory-only index可保存internal `CompleteIndex`／
+`CompleteIndexWithActiveLease`與同一audited single backing，但不保存public permit或
+`SkillRetentionRootSnapshot.Complete`。
 P4-B2 controlled API負責實際Store reclaim、matching carrier publication與dirty：Rejected／
 reclaimed=0不改state，reclaimed>0先發布carrier再dirty，filter invariant failure轉
 Unavailable且不使用舊carrier。P4-E3仍需production-shaped fixed-1,536-MiB combined
@@ -1264,6 +1301,8 @@ P4-E0-B.2：documentation-only effective HotSpot MaxHeapSize observation／三�
            process-control authority；無floor／numeric／R2Q evidence／implementation change
 P4-E0-B.3：documentation-only online source counter applicability／arbitration／UUID order／freshness／
            E3 obligation；無numeric／R2Q evidence／implementation change
+P4-E0-B.4：documentation-only memory-only root-index generation／exhaustion、E2 invalidation、
+           Complete permit／handoff lease／removeServer authority；無counter／heap／evidence／implementation change
 P4-E1：read-only bounded online／integrated／disk scanner；online existing-state observation only，
       disk／integrated full P4-C；journal／Store audit與memory-only index；
       mutation／reclaim 0
@@ -1396,6 +1435,13 @@ composition outcome、report identity、journal與recovery以
   path或reviewed machine-checked domination proof；online另須actual Missing＋Ready＋source exclusion＋
   freshness，或machine-checked domination加actual freshness runtime test，並維持relevant 2,048／
   roots 65,536 exact。R2Q不能取代integrated alias或online runtime evidence。
+- P4-E memory-only index generation：NoEntry／baseline 0／first reservation 1；audit的success、
+  Incomplete、OverLimit、ReconciliationRequired、freshness failure、RuntimeException及Error／OOME
+  都恰消耗一次reservation，E2每batch恰一次。驗MAX−1→MAX、MAX後terminal exhaustion、zero source
+  work／reclaim、old Complete清除與repeated idempotence；programming／wrong-thread／reentrant、permit
+  misuse、lease open／close與removeServer不增加。另驗misused permit已consume但index不變、active
+  lease阻止audit／E2、stop強制清lease、new-server slots獨立，以及state identity＋generation共同綁定
+  Complete／handoff；index generation不序列化、不進SavedData或R2Q profile。
 - scheduler stable ordering。
 - cancellation idempotence。
 - event re-entry guard。
@@ -1476,7 +1522,7 @@ composition outcome、report identity、journal與recovery以
 - 任一migration／decode／restore failure會安裝partial Store。
 - 無法證明complete player roots卻需要執行reclaim，需要offline playerdata rewrite、
   root-only Attachment parser、DFU、dynamic provider completeness、chunk force、background／periodic
-  audit、cross-tick Complete，或讓E1／E2直接reclaim。
+  audit、cross-tick public Complete permit，或讓E1／E2直接reclaim。
 - Integrated source無法以單次logical traversal量測／重查identity，或必須copy、完整
   序列化、second checksum、重讀`level.dat`、再次DFU、double-count disk、callback／retry或
   cross-tick retention。
