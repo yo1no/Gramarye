@@ -513,8 +513,8 @@ pushed, locally verified, and qualified by the exact-SHA remote run; it is compl
 read-only design review is complete and forcibly split implementation into B2-A followed by B2-B.
 B2-A is implemented, committed, pushed, and qualified by unique attempt-1 exact-SHA remote run
 `31415157794`; it is complete. The first B2-B read-only design review stopped at the
-index-generation／exhaustion authority gap. B.4 now defines that authority locally, but its
-commit／push／remote closure remains pending; B2-B review is blocked until that closure and its
+index-generation／exhaustion authority gap. B.4 now defines that authority; its commit, push, and
+unique attempt-1 exact-SHA remote Gate have passed. B2-B read-only design review is open and its
 implementation has not started. B2 and E1-B remain incomplete; E2／E3 remain blocked. No phase introduces
 chunk force, periodic/background scanning, network, or a second persistent truth. The completed
 E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate; the B.1
@@ -762,14 +762,29 @@ set, its manifest still passes, and `SHA256SUMS.txt` remains
 `cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`; no research study or smoke
 was rerun. Branch-protection required-check configuration remains external governance unknown.
 
-## P4-E0-B.4 memory-only index-generation authority patch (local pre-closure)
+## P4-E0-B.4 memory-only index-generation authority closure
 
 The subsequent P4-E1-B2-B read-only design review stopped at the exact
 `INDEX GENERATION / EXHAUSTION AUTHORITY GAP`; it did not approve an implementation. P4-E0-B.4
 closes that authority gap in the scoped codex-spec documents and records the resulting lifecycle
-here. The documentation-only patch is implemented locally, while its commit, push, and exact-SHA
-remote Gate remain pending. B2-B review therefore remains blocked until B.4 closure, and B2-B
-implementation remains not started.
+here. The documentation-only authority patch was committed as
+`b294791409bd34289b7c079a504ccd538c1c78bc` (`docs(persistence): define P4-E index generation
+authority`), with tree `4ccb6a093497799633ff548d376888555889f404`, parent
+`8a2d5033af1448cc037fb01191c985aa6e86d937`, and exact stat of six files changed, 561 insertions,
+and 32 deletions. Its unique exact-SHA remote Gate passed, so B2-B read-only design review is open
+again from the future clean closure HEAD; B2-B implementation remains not started.
+
+Local `verifyPlatformBaseline`, `compileJava`, and `test` all passed. The JUnit XML total was 186
+suites, 1,342 tests, zero failures, zero errors, and zero skipped tests. The authority commit changed
+only the exact six approved Markdown files; Java, tests, scripts, Gradle, workflow, resources,
+architecture README, and official evidence remained unchanged. Its unique canonical `Build` run
+was `31468874016`, attempt 1. The exact five successful jobs, all bound to the authority SHA and
+that run／attempt, were `build` (`93707549612`), `P4-A3 memory gates` (`93708054139`), `P4-B memory
+gates` (`93708447417`), `P4-C memory gates` (`93709597170`), and `P4-D memory gates`
+(`93710471670`). A post-completion exact-SHA query still returned one run and exactly five jobs.
+The official R2Q root remained the exact six-file set, its manifest passed, and `SHA256SUMS.txt`
+remained `cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`; no study or smoke
+was rerun.
 
 The sole generation owner is one `SkillRetentionRootAuditService` identity crossed with one exact
 `MinecraftServer` object identity. Each service owns independent per-server slots; no static,
@@ -854,7 +869,12 @@ P4-E0-B.3 authority commit         = e23a2a6c0df298315fc726ec509d3f953d559a08
 P4-E0-B.3 authority tree           = ce1d6d379c763ed2824f831f6a1e81c73c3fec65
 P4-E0-B.3 authority remote run     = 31251807408 (attempt 1)
 P4-E0-B.3 authority remote jobs    = build + P4-A3/B/C/D memory gates PASS
-P4-E0-B.4 index generation/exhaustion authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+P4-E0-B.4 authority commit          = b294791409bd34289b7c079a504ccd538c1c78bc
+P4-E0-B.4 authority tree            = 4ccb6a093497799633ff548d376888555889f404
+P4-E0-B.4 authority stat            = 6 files; 561 insertions; 32 deletions
+P4-E0-B.4 authority remote run      = 31468874016 (attempt 1)
+P4-E0-B.4 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
+P4-E0-B.4 index generation/exhaustion authority = COMPLETE
 P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review  = PASS (HISTORICAL)
@@ -880,7 +900,7 @@ P4-E1-B2-A implementation remote run = 31415157794 (attempt 1)
 P4-E1-B2-A implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
 P4-E1-B2-A                          = COMPLETE
 P4-E1-B2-B prior read-only design review = STOPPED AT INDEX GENERATION / EXHAUSTION AUTHORITY GAP
-P4-E1-B2-B read-only design review = BLOCKED UNTIL B.4 CLOSURE
+P4-E1-B2-B read-only design review = OPEN
 P4-E1-B2-B implementation          = NOT STARTED
 P4-E1-B2                            = INCOMPLETE
 P4-E1-B                             = INCOMPLETE
