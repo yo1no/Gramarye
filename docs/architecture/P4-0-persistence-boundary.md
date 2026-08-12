@@ -282,8 +282,10 @@ by unique attempt-1 exact-SHA remote run `31415157794`, so it is complete. The f
 design review stopped at the index-generation／exhaustion authority gap. B.4 now defines that
 authority; its commit, push, and unique attempt-1 exact-SHA remote Gate have passed. The renewed
 B2-B read-only design review passed without a Stop Condition and requires no further implementation
-split. B2-B is now implemented locally, with commit／push／remote qualification still pending.
-P4-E1-B2 and P4-E1-B remain incomplete, and E2／E3 remain blocked. E1 must
+split. B2-B is implemented, committed, pushed, locally verified, and qualified by unique attempt-1
+exact-SHA remote run `31512359031`; P4-E1-B2, P4-E1-B, and P4-E1 are complete. The P4-E2 read-only
+design review is open only, P4-E2 implementation has not started, and P4-E3 remains blocked until
+P4-E2 closure. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -1881,17 +1883,21 @@ commit was subsequently pushed; its unique attempt-1 exact-SHA `Build` run `3148
 with exactly `build` and the P4-A3／P4-B／P4-C／P4-D memory jobs successful, thereby qualifying B2-B
 implementation to begin. The review-closure commit records no implementation evidence.
 
-## P4-E1-B2-B local implementation evidence ledger
+## P4-E1-B2-B implementation and remote closure evidence ledger
 
-P4-E1-B2-B is implemented and locally verified on `main` from base
-`9cd84898db5af858aaf992666b1869cdfd7f4357`, tree
-`559cb04d5bff2442e2618344519f0b3e8f69f678`, with `HEAD == origin/main` and zero ahead／behind.
-Those identifiers name the unchanged review-closure base, not an implementation commit or tree.
-The implementation remains entirely in the working tree; no file is staged, and no implementation
-commit, push, exact-SHA run, or remote job evidence exists yet. The reviewed scope is exactly 38
-paths: 12 production Java paths, 16 test／API-gate paths, eight portable verifiers, and these two
-architecture ledgers. Its final local stat is `38 paths; 7,457 insertions; 364 deletions` including the nine new,
-untracked Java files rather than only tracked `git diff` output:
+P4-E1-B2-B was implemented and locally verified on `main` from review-closure parent
+`9cd84898db5af858aaf992666b1869cdfd7f4357`, whose tree is
+`559cb04d5bff2442e2618344519f0b3e8f69f678`. The implementation was committed as
+`59b8ba8ad590f6960e740aed2be21fed0eecd6bc` (`feat(persistence): add root audit index and complete
+handoff`), with tree `e9416857e74040ae6b8afb10e8e0c364452b5b20`, parent
+`9cd84898db5af858aaf992666b1869cdfd7f4357`, and was pushed to `main`. At the implementation push
+closure, `HEAD == origin/main` at that exact SHA with zero ahead／behind. The committed scope is
+exactly 38 paths: 12 production Java paths, 16 test／API-gate paths, eight portable verifiers, and
+these two architecture ledgers. Its exact stat is `38 paths; 7,457 insertions; 364 deletions`, with
+29 modifications and nine additions; the normalized inventory SHA-256 is
+`2f9997af2c3f4c5ad50755b33b52af45dd425be0d1ce51916918fde622861a73`. The exact production JAR is
+`build/libs/gramarye-1.0.0.jar`, 2,907,659 bytes, with SHA-256
+`2f62a8fac3d66ad0245621fef2218b8a86a7975c6fbe3f36332b6101909c723d`:
 
 ```text
 M docs/architecture/P4-0-persistence-boundary.md
@@ -2016,6 +2022,13 @@ same exact six regular non-symlink files; its manifest passes and `SHA256SUMS.tx
 `cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`. No R1／R2／R2Q study or
 research smoke was rerun. R2Q remains neither a universal theorem nor the complete E3 envelope.
 
+The exact implementation-SHA push produced one canonical `Build` run,
+[31512359031](https://github.com/yo1no/Gramarye/actions/runs/31512359031), at attempt 1. A
+post-completion exact-SHA query returned exactly that one `push`／`main` run and exactly five jobs.
+All were bound to implementation SHA `59b8ba8ad590f6960e740aed2be21fed0eecd6bc` and completed with
+`success`: `build` (`93849058823`), `P4-A3 memory gates` (`93850366061`), `P4-B memory gates`
+(`93851071549`), `P4-C memory gates` (`93852657954`), and `P4-D memory gates` (`93853877303`).
+
 Known witness limits remain hostile same-object in-place integrated `CompoundTag` mutation and a
 hostile disk rewrite preserving fileKey／size／mtime. An unused `Complete` may remain reachable until
 GC but loses authority across tick／state change; a leaked handoff blocks until server stop. Because
@@ -2028,9 +2041,10 @@ GameTest must not be misreported as B2-B service integration evidence.
 
 The exact production-shaped `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` E3 first／restart Gate
 remains mandatory and has not been created or run. Branch-protection required-check configuration
-remains external governance unknown. No Stop Condition was hit; B2-B is locally implemented but is
-not remotely qualified, B2 and E1-B remain incomplete, E2／E3 remain blocked, and P4-E remains
-incomplete.
+remains external governance unknown. No Stop Condition was hit. B2-B implementation is committed,
+pushed, and remotely qualified; B2-B, B2, E1-B, and E1 are complete. The P4-E2 read-only design
+review is open only; P4-E2 implementation has not started. P4-E3 remains blocked until P4-E2
+closure, and P4-E remains incomplete.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -2094,10 +2108,19 @@ P4-E1-B2-A                       = COMPLETE
 P4-E1-B2-B prior read-only design review = STOPPED AT INDEX GENERATION / EXHAUSTION AUTHORITY GAP
 P4-E1-B2-B read-only design review = COMPLETE
 P4-E1-B2-B split                = NO FURTHER SPLIT
-P4-E1-B2-B implementation       = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
-P4-E1-B2                         = INCOMPLETE
-P4-E1-B                          = INCOMPLETE
-P4-E2 / P4-E3                   = BLOCKED
+P4-E1-B2-B implementation commit = 59b8ba8ad590f6960e740aed2be21fed0eecd6bc
+P4-E1-B2-B implementation tree   = e9416857e74040ae6b8afb10e8e0c364452b5b20
+P4-E1-B2-B implementation parent = 9cd84898db5af858aaf992666b1869cdfd7f4357
+P4-E1-B2-B implementation stat   = 38 files; 7,457 insertions; 364 deletions
+P4-E1-B2-B implementation remote run = 31512359031 (attempt 1)
+P4-E1-B2-B implementation remote jobs = build + P4-A3/B/C/D memory gates PASS
+P4-E1-B2-B implementation       = COMPLETE
+P4-E1-B2                         = COMPLETE
+P4-E1-B                          = COMPLETE
+P4-E1                             = COMPLETE
+P4-E2 read-only design review    = OPEN
+P4-E2 implementation             = NOT STARTED
+P4-E3                             = BLOCKED UNTIL P4-E2 CLOSURE
 P4-E                            = INCOMPLETE
 ```
 
@@ -2134,8 +2157,10 @@ split implementation into B2-A followed by B2-B. B2-A implementation commit
 read-only design review stopped at the index-generation／exhaustion authority gap. B.4 now defines
 that authority; its commit, push, and unique attempt-1 exact-SHA remote Gate have passed. The
 renewed B2-B read-only design review passed without a Stop Condition and requires no further split.
-It is now implemented locally, with commit／push／remote qualification pending. B2 and E1-B remain
-incomplete; E2 and E3 remain blocked, and P4-E remains incomplete. The
+Its implementation commit `59b8ba8ad590f6960e740aed2be21fed0eecd6bc` and unique attempt-1
+exact-SHA remote run `31512359031` passed the build and P4-A3／B／C／D memory jobs. B2-B, B2, E1-B,
+and E1 are complete. The P4-E2 read-only design review is open only; its implementation has not
+started. P4-E3 remains blocked until P4-E2 closure, and P4-E remains incomplete. The
 E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
