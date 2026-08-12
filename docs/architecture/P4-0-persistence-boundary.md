@@ -285,9 +285,9 @@ B2-B read-only design review passed without a Stop Condition and requires no fur
 split. B2-B is implemented, committed, pushed, locally verified, and qualified by unique attempt-1
 exact-SHA remote run `31512359031`; P4-E1-B2, P4-E1-B, and P4-E1 are complete. The prior P4-E2
 read-only design review stopped at the production-trigger／owner-authority Gate. P4-E0-B.5 is
-implemented locally but is not yet committed, pushed, or remotely qualified; the renewed P4-E2
-review is blocked until that closure, P4-E2 implementation has not started, and P4-E3 remains
-blocked. E1 must
+committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA remote run
+`31610627262`; it is complete. The renewed P4-E2 read-only design review is open, P4-E2
+implementation has not started, and P4-E3 is blocked until P4-E2 closure. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -2051,9 +2051,10 @@ remains mandatory and has not been created or run. Branch-protection required-ch
 remains external governance unknown. No Stop Condition was hit. B2-B implementation is committed,
 pushed, and remotely qualified; B2-B, B2, E1-B, and E1 are complete. The subsequent P4-E2
 read-only design review stopped at the production-trigger／owner-authority Gate. P4-E0-B.5 is
-implemented locally but is not yet committed, pushed, or remotely qualified; a renewed P4-E2
-review remains blocked until B.5 closure, P4-E2 implementation has not started, P4-E3 is blocked,
-and P4-E remains incomplete.
+committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA remote run
+`31610627262`; it is complete. The renewed P4-E2 read-only design review is open, no renewed-review
+body has begun, P4-E2 implementation has not started, P4-E3 is blocked until P4-E2 closure, and
+P4-E remains incomplete.
 
 ## P4-E0-B.5 production trigger and shared audit-service ownership authority
 
@@ -2061,7 +2062,8 @@ The prior P4-E2 read-only design review stopped at its first blocker, the produc
 shared-owner authority gap; it did not approve an implementation or adjudicate any later E2 design
 question. The ledger's earlier `OPEN` label was stale only because the strict read-only Stop Rule
 forbade that stopped review from modifying documentation. P4-E0-B.5 is expressly authorized to
-correct the label. This documentation-only patch neither reopens the E2 review nor starts E2 or E3.
+correct the label. The authority patch itself did not reopen the E2 review or start E2 or E3; the
+renewed review becomes `OPEN` only after the commit／push／remote closure recorded below.
 
 P4-E2 is the first phase that adds a production `SkillRetentionRootAuditService` instance to
 composition. Gramarye composition constructs the exact existing `SkillDefinitionStoreService`;
@@ -2160,6 +2162,51 @@ ceiling, P4-E `long` generation model, P4-C Attachment `int` generation model, R
 plan／identity, or E3 fixed-heap obligation. It adds no 26th counter or heap tier. Branch-protection
 required-check configuration remains external governance unknown.
 
+## P4-E0-B.5 authority closure evidence
+
+The documentation-only authority patch was committed as
+`4c1e758914a86668aa569cad2b6bc0ab335c3716` with tree
+`7a7bf38f37bc9c7e14ff6f92140ad3ee904ec0fa`, parent
+`6a1f5b68adc82cd9206aa791b7eb4684dacea32f`, and subject
+`docs(persistence): define P4-E reconciliation trigger ownership`. Its exact stat was six files
+changed, 682 insertions, and 57 deletions, comprising exactly:
+
+```text
+docs/codex-spec/18_P4持久化與組合修正案.md
+docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md
+docs/codex-spec/Codex_實作總規格Prompt.md
+docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md
+docs/architecture/P4-E0-root-audit-boundary.md
+docs/architecture/P4-0-persistence-boundary.md
+```
+
+Local `verifyPlatformBaseline`, `compileJava`, and `test` all passed. The JUnit XML total was 191
+suites, 1,387 tests, zero failures, zero errors, and zero skipped tests. The authority commit
+changed no Java, tests, scripts, Gradle, workflow, resources, architecture README, or official
+evidence.
+
+The push produced exactly one workflow-scoped canonical `Build` run, `31610627262`, for
+`.github/workflows/build.yml`: event `push`, branch `main`, exact authority SHA, attempt 1,
+`completed`／`success`. Its exact five-job set, each bound to that SHA and attempt and completed with
+`success`, was `build` (`94160738755`), `P4-A3 memory gates` (`94161511511`), `P4-B memory gates`
+(`94162128891`), `P4-C memory gates` (`94163652947`), and `P4-D memory gates`
+(`94164888558`). The post-completion exact-SHA query still returned exactly that one run and those
+five jobs, with no duplicate run, rerun, or extra job.
+
+The locked `build/moddev/artifacts/neoforge-21.1.241-sources.jar` remained a regular non-symlink
+file of 9,393,663 bytes with SHA-256
+`0e1dcae8e21cd8d8c656e7fe76efe1e31260cf0f956f07aa749b86992cf4fe23`. The official R2Q root
+remained the exact six regular non-symlink files, all controlled checksums passed, and
+`SHA256SUMS.txt` remained
+`cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`; no R2Q study, smoke,
+GameTest, dedicated-server run, or fixed-heap run was rerun. Branch-protection required-check
+configuration remains external governance unknown.
+
+P4-E0-B.5 is therefore complete. The earlier stale `OPEN` label remains documented as a historical
+Stop-Rule artifact, and the prior E2 review remains `STOPPED AT PRODUCTION TRIGGER / OWNER AUTHORITY
+GATE`. The renewed P4-E2 read-only design review is now `OPEN`, but no renewed-review body or E2
+implementation has begun. P4-E3 remains blocked until P4-E2 closure, and P4-E remains incomplete.
+
 ```text
 P4-C0.1 = COMPLETE
 P4-C1   = COMPLETE
@@ -2195,7 +2242,13 @@ P4-E0-B.4 authority remote run      = 31468874016 (attempt 1)
 P4-E0-B.4 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
 P4-E0-B.4 index generation/exhaustion authority = COMPLETE
 P4-E0-B.4                     = COMPLETE
-P4-E0-B.5 production trigger / shared audit-service ownership authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+P4-E0-B.5 authority commit          = 4c1e758914a86668aa569cad2b6bc0ab335c3716
+P4-E0-B.5 authority tree            = 7a7bf38f37bc9c7e14ff6f92140ad3ee904ec0fa
+P4-E0-B.5 authority parent          = 6a1f5b68adc82cd9206aa791b7eb4684dacea32f
+P4-E0-B.5 authority stat            = 6 files; 682 insertions; 57 deletions
+P4-E0-B.5 authority remote run      = 31610627262 (attempt 1)
+P4-E0-B.5 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
+P4-E0-B.5 production trigger / shared audit-service ownership authority = COMPLETE
 P4-E0                          = COMPLETE
 P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review = PASS (HISTORICAL)
@@ -2234,9 +2287,9 @@ P4-E1-B2                         = COMPLETE
 P4-E1-B                          = COMPLETE
 P4-E1                             = COMPLETE
 P4-E2 prior read-only design review = STOPPED AT PRODUCTION TRIGGER / OWNER AUTHORITY GATE
-P4-E2 read-only design review    = BLOCKED UNTIL P4-E0-B.5 CLOSURE
+P4-E2 read-only design review    = OPEN
 P4-E2 implementation             = NOT STARTED
-P4-E3                             = BLOCKED
+P4-E3                             = BLOCKED UNTIL P4-E2 CLOSURE
 P4-E                            = INCOMPLETE
 ```
 
@@ -2276,9 +2329,10 @@ renewed B2-B read-only design review passed without a Stop Condition and require
 Its implementation commit `59b8ba8ad590f6960e740aed2be21fed0eecd6bc` and unique attempt-1
 exact-SHA remote run `31512359031` passed the build and P4-A3／B／C／D memory jobs. B2-B, B2, E1-B,
 and E1 are complete. The subsequent P4-E2 read-only design review stopped at the
-production-trigger／owner-authority Gate. P4-E0-B.5 is implemented locally with commit／push／remote
-qualification pending; a renewed E2 review remains blocked until B.5 closure, E2 implementation
-has not started, P4-E3 is blocked, and P4-E remains incomplete. The
+production-trigger／owner-authority Gate. P4-E0-B.5 is committed, pushed, locally verified, and
+qualified by unique attempt-1 exact-SHA remote run `31610627262`; it is complete. The renewed E2
+read-only design review is open, but no renewed-review body or E2 implementation has begun. P4-E3
+is blocked until P4-E2 closure, and P4-E remains incomplete. The
 E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still
