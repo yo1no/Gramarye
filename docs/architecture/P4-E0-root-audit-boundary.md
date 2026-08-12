@@ -517,8 +517,10 @@ index-generation／exhaustion authority gap. B.4 now defines that authority; its
 unique attempt-1 exact-SHA remote Gate have passed. The renewed B2-B read-only design review passed
 without a Stop Condition and requires no further implementation split. B2-B is implemented,
 committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA remote run
-`31512359031`; B2, E1-B, and E1 are complete. The P4-E2 read-only design review is open only,
-P4-E2 implementation has not started, and P4-E3 remains blocked until P4-E2 closure. No phase
+`31512359031`; B2, E1-B, and E1 are complete. The prior P4-E2 read-only design review stopped at
+the production-trigger／owner-authority Gate. P4-E0-B.5 is implemented locally but is not yet
+committed, pushed, or remotely qualified; the renewed P4-E2 review is blocked until that closure,
+P4-E2 implementation has not started, and P4-E3 remains blocked. No phase
 introduces chunk force, periodic/background scanning, network, or a second persistent truth. The completed
 E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate; the B.1
 jobs and this authority correction do not waive it either.
@@ -883,13 +885,16 @@ P4E1AuditedCapture
 -> package-private single-use E3 handoff
 ```
 
-The sole future coordinator is package-private final `SkillRetentionRootAuditService`, with a
+At that historical review boundary, the sole future coordinator was package-private final
+`SkillRetentionRootAuditService`, with a
 package-private constructor. Each service instance owns one
 `IdentityHashMap<MinecraftServer, IndexSlot>` keyed by exact server-object identity; there is no
 static, persistent, cross-server, or background index. B2-B creates only the reviewed types and their
-tests, not a production lifecycle instance or a second start／stop listener. Future E3 makes the
-existing `SkillDefinitionStoreService` lifecycle owner construct and invoke the audit service in its
-existing startup／shutdown composition. Future E2 may use only the reviewed package-private
+tests, not a production lifecycle instance or a second start／stop listener. That review assigned
+future E3 to make the existing `SkillDefinitionStoreService` lifecycle owner construct and invoke
+the audit service in its existing startup／shutdown composition. P4-E0-B.5 supersedes only that
+future construction timing: E2 now adds the construction and active production login wiring while
+the existing Store service remains the long-term owner. Future E2 may use only the reviewed package-private
 invalidation seam, and future E3 removes only the exact stopped server. The index never retains a B1
 capture, `P4E1AuditedCapture` handle, public `Complete` permit, `Tag`／`CompoundTag`, `Path`／filename,
 `ServerPlayer`, Attachment state, Store history／actual owner, journal entry／proof, carrier／SavedData,
@@ -1127,8 +1132,10 @@ The package-private final `SkillRetentionRootAuditService` has a package-private
 owns the sole per-instance `IdentityHashMap<MinecraftServer, IndexSlot>`. Its four package-private
 instance lifecycle operations are audit, `consumeComplete`, reconciliation invalidation, and
 exact-server removal.
-There is no production service instance or B2-B event registration in this phase; future E3 owns
-composition through the existing lifecycle owner. Exact weak-identity stopped-server tombstones
+There was no production service instance or B2-B event registration in that phase. Its then-future
+E3 construction statement is historical and is superseded by P4-E0-B.5: E2 first adds the
+production instance, while the existing `SkillDefinitionStoreService` remains its lifecycle owner.
+Exact weak-identity stopped-server tombstones
 prevent reinserting the same live removed object without strongly retaining it. The production-used
 state engine is bound to exact service-owner and server identities; there is no unbound or second
 generation coordinate.
@@ -1216,9 +1223,116 @@ GameTest must not be misreported as B2-B service integration evidence.
 The exact production-shaped `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` E3 first／restart Gate
 remains mandatory and has not been created or run. Branch-protection required-check configuration
 remains external governance unknown. No Stop Condition was hit. B2-B implementation is committed,
-pushed, and remotely qualified; B2-B, B2, E1-B, and E1 are complete. The P4-E2 read-only design
-review is open only; P4-E2 implementation has not started. P4-E3 remains blocked until P4-E2
-closure, and P4-E remains incomplete.
+pushed, and remotely qualified; B2-B, B2, E1-B, and E1 are complete. The subsequent P4-E2
+read-only design review stopped at the production-trigger／owner-authority Gate. P4-E0-B.5 is
+implemented locally but is not yet committed, pushed, or remotely qualified; a renewed P4-E2
+review remains blocked until B.5 closure, P4-E2 implementation has not started, P4-E3 is blocked,
+and P4-E remains incomplete.
+
+## P4-E0-B.5 production trigger and shared audit-service ownership authority
+
+The prior P4-E2 read-only design review stopped at its first blocker, the production-trigger and
+shared-owner authority gap; it did not approve an implementation or adjudicate any later E2 design
+question. The ledger's earlier `OPEN` label was stale only because the strict read-only Stop Rule
+forbade that stopped review from modifying documentation. P4-E0-B.5 is expressly authorized to
+correct the label. This documentation-only patch neither reopens the E2 review nor starts E2 or E3.
+
+P4-E2 is the first phase that adds a production `SkillRetentionRootAuditService` instance to
+composition. Gramarye composition constructs the exact existing `SkillDefinitionStoreService`;
+each Store-service composition instance constructs and holds exactly one final audit-service
+object. The Store service is the long-term lifecycle owner, while E2 is only the implementation
+phase that adds construction and active login wiring. Construction completes before any login
+reconciliation. Server start／stop does not replace the service object: exact
+`MinecraftServer`-identity slots remain isolated inside it, stop removes only the exact stopped
+server's slot, and a new server object obtains a new identity-isolated slot in the same service.
+There is no static singleton, global registry, service locator, lazy-per-login construction,
+caller-selected audit service, direct construction by `SkillSubmissionRecoveryService`, or second
+construction by E3. E2 and E3 must use the exact same object identity, and E3's production
+audit-service constructor-call delta is zero.
+
+The unique normative composition is:
+
+```text
+Gramarye composition
+|
+|-- PlayerSkillAttachmentService
+|
+|-- SkillDefinitionStoreService
+|   `-- exact final SkillRetentionRootAuditService
+|
+|-- P4-E2 reconciliation dependency
+|   |-- bound to exact SkillDefinitionStoreService
+|   `-- bound to its exact SkillRetentionRootAuditService
+|
+`-- SkillSubmissionRecoveryService
+    `-- sole PlayerLoggedInEvent handler
+        |-- P4-D recovery
+        `-- P4-E2 continuation
+
+Future P4-E3
+`-- same SkillDefinitionStoreService
+    `-- same SkillRetentionRootAuditService
+        |-- ServerStarting fresh audit / reclaim composition
+        `-- ServerStopped exact-server slot removal
+```
+
+`SkillSubmissionRecoveryService` remains the sole `PlayerLoggedInEvent` owner. The existing handler
+is extended narrowly and synchronously: validate the exact current `ServerPlayer`, complete P4-D
+recovery, retain its typed outcome, invoke the E2 continuation on the same call chain, then return.
+The entire chain remains on the same server logic thread with no yield, future, executor, second
+event dispatch, cross-tick plan, next-tick or background reconciliation, periodic retry,
+admin／manual entry point, or callback to unreviewed external code. E2 may not observe or modify the
+Attachment before P4-D recovery completes.
+
+At composition time, the recovery service receives one narrow constructor-injected E2
+reconciliation dependency／coordinator. That dependency is already bound to the exact Store-service
+identity, the exact audit-service identity held in a final field by that Store service, and the
+other exact E2 dependencies. The recovery service must neither construct nor accept an arbitrary
+audit service, and its E2-facing call must not expose the audit service, index, Store history, or
+raw state. The
+recovery service may not obtain audit authority from a static accessor, service locator, per-call
+supplier, generic callback, or reflection. The
+final Java class name, package, and sealed-capability shape remain for the renewed E2 read-only
+review; constructor injection, immutable identity binding, non-replaceability, per-server identity
+correctness, no per-login construction, and no public audit-internal type do not.
+
+B.5 fixes only the ordering boundary: P4-D recovery completes first, its typed outcome is retained,
+and that outcome is passed to the E2 dependency. The renewed E2 review must decide the outcome
+admissibility matrix, including `Unavailable`, `NoChanges`, `Failed`, and `Deferred` behavior;
+post-recovery fresh observation; latest／equipped pruning; and reconciliation atomicity and failure
+details. This patch does not pre-adjudicate those matters.
+
+P4-E2 closure requires active production login wiring from the existing sole handler, through
+completed P4-D recovery, to the exact E2 dependency. A pure core, test-only caller, unwired
+package-private operation, manual trigger, next-tick／background path, or deferral of login wiring to
+E3 cannot be called complete. E3 must instead reuse the exact audit-service final field for the
+existing unique `ServerStarting` chain's fresh E1 audit, Complete handoff, snapshot, and controlled
+reclaim, and for exact-server `removeServer` in the existing stop lifecycle. E3 adds no Store or
+audit service, replacement, lazy creation, login listener, or second startup listener. Its exact
+`-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` production-shaped first／restart Gate remains
+mandatory; R2Q does not substitute for it.
+
+Future E2／E3 production, API, and static Gates must prove all of the following without B.5 adding
+those tests now:
+
+- exactly one production audit-service constructor callsite, owned by
+  `SkillDefinitionStoreService` or its exact package-private construction helper;
+- exact Store ownership, E2／E3 same-object identity, and zero E3 constructor-call delta;
+- exactly one `PlayerLoggedInEvent` owner, `SkillSubmissionRecoveryService`, with P4-D recovery
+  ordered before the same-call-chain E2 continuation;
+- no second listener, next-tick continuation, background continuation, or E2-complete result without
+  active production wiring;
+- rejection of a wrong injected dependency／identity pairing, no audit-service construction on
+  repeated login, no owner replacement across server restart, and identity-isolated exact-server
+  slots;
+- E3 reuse of only the same instance and no public／protected API exposure of the audit internal
+  type.
+
+This authority changes none of the 25 counter maxima, effective-MaxHeapSize floor, DataVersion
+`3955`, zero-DFU rule, `online > integrated > disk` precedence, capacity-before-dedup rule, raw-root
+ceiling, P4-E `long` generation model, P4-C Attachment `int` generation model, R2Q profile／case
+plan／identity, or E3 fixed-heap obligation. It adds no 26th counter or heap tier. Branch-protection
+required-check configuration remains external governance unknown.
 
 ## Status
 
@@ -1241,6 +1355,7 @@ P4-E0-B.4 authority remote run      = 31468874016 (attempt 1)
 P4-E0-B.4 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
 P4-E0-B.4 index generation/exhaustion authority = COMPLETE
 P4-E0-B.4                          = COMPLETE
+P4-E0-B.5 production trigger / shared audit-service ownership authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
 P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review  = PASS (HISTORICAL)
@@ -1278,9 +1393,10 @@ P4-E1-B2-B implementation          = COMPLETE
 P4-E1-B2                            = COMPLETE
 P4-E1-B                             = COMPLETE
 P4-E1                               = COMPLETE
-P4-E2 read-only design review      = OPEN
+P4-E2 prior read-only design review = STOPPED AT PRODUCTION TRIGGER / OWNER AUTHORITY GATE
+P4-E2 read-only design review      = BLOCKED UNTIL P4-E0-B.5 CLOSURE
 P4-E2 implementation               = NOT STARTED
-P4-E3                               = BLOCKED UNTIL P4-E2 CLOSURE
+P4-E3                               = BLOCKED
 P4-E                               = INCOMPLETE
 ```
 

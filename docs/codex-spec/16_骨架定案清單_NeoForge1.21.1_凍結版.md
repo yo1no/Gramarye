@@ -323,6 +323,37 @@ DefinitionEnvelope
   不使用Cleaner／finalizer／background lease timeout。Permit與handoff除service／server／
   thread／tick外必須同時綁exact state identity與generation，handoff另綁exact lease identity；generation
   相等不是currentness的充分條件。
+- 【Production construction／owner】P4-E2是第一個將production
+  `SkillRetentionRootAuditService` instance接入composition的phase；runtime長期lifecycle owner
+  固定為既有`SkillDefinitionStoreService`。`Gramarye` composition建立exact Store service，
+  每個Store service instance在自身lifecycle內精確建立並以一個`final` field持有一個
+  audit service，且必須在任何login reconciliation前存在；production constructor callsite必須
+  exactly 1，且只能位於Store lifecycle owner
+  或其exact package-private construction helper。不得使用static／global registry／service
+  locator／lazy-per-login，`SkillSubmissionRecoveryService`與P4-E3均不得自行建立、替換或
+  lazy-create另一個instance。
+- 【Sole login trigger】`SkillSubmissionRecoveryService`固定是唯一
+  `PlayerLoggedInEvent` owner。既有handler在same server logic thread且same synchronous call
+  chain中固定執行：validate exact current `ServerPlayer` → P4-D recovery完成 → 保留typed
+  recovery outcome → 呼叫P4-E2 continuation → return。不得增加第二listener／yield／
+  future／executor／second dispatch／cross-tick／background／periodic／manual reconciliation；E2
+  不得在P4-D recovery之前觀察或修改Attachment。
+- 【Exact identity injection／phase closure】Recovery service只接收一個窄、
+  constructor-injected的E2 reconciliation dependency，該dependency必須在composition時已綁定
+  exact `SkillDefinitionStoreService` identity、該Store持有的exact audit-service identity與E2所需
+  其他exact dependencies；handler不直接看audit／index／Store／history／raw state，也不接受
+  任意caller-provided audit service、supplier、generic callback／service locator或reflection。P4-E2
+  closure必須包含這條active production login wiring；pure core／test-only caller／未接入login的
+  package-private operation或延後至E3均不可宣稱E2 COMPLETE。B.5不裁決typed recovery
+  outcomes的admissibility matrix，也不裁決E2 atomic reconciliation／prune細節；這些留給
+  B.5 closure後重新開始的E2 read-only review。
+- 【E3 exact-same-instance reuse】P4-E2與P4-E3必須重用Store service的exact same
+  audit-service object identity。Server start／stop不替換service owner；per-server slot仍依exact
+  `MinecraftServer` object identity隔離，stop只由同一service field對exact server執行
+  `removeServer`，新server object由同一service instance建立新slot。P4-E3在既有唯一
+  `ServerStartingEvent` chain中以該same field執行fresh audit／Complete handoff／snapshot／controlled
+  reclaim；其audit-service production constructor delta與login wiring delta
+  均必須為0。
 
 ## 8-B. 真相歸屬表與單一真相原則
 
@@ -795,6 +826,13 @@ PresentationEvent
   reentrant、permit misuse、lease open／close及removeServer均不增加。另驗permit misuse consumed但
   index不變、active lease阻止audit／E2、stop強制清lease、new server slot獨立，以及Complete／handoff
   同時以exact state identity與generation防ABA；generation不得進serialization／SavedData／R2Q。
+- P4-E production owner／trigger：production audit-service constructor callsite精確為1且owner
+  為`SkillDefinitionStoreService`；E2／E3取得same object identity而E3 constructor delta為0；
+  sole `PlayerLoggedInEvent` owner精確為`SkillSubmissionRecoveryService`，且P4-D recovery
+  call先於same-call-chain E2 continuation。另驗no second listener／next-tick／background、缺
+  production wiring時E2 Gate失敗、wrong dependency／identity pairing拒絕、repeated login不新建
+  service、server restart不替換owner、exact-server slots仍identity-isolated、E3只重用同一
+  instance，且public／protected API不暴露audit internal type。
 
 ## 36. 發布阻擋條件
 
@@ -931,18 +969,26 @@ P4-E0-B.3：documentation-only online Attachment 25-counter applicability、onli
           unified UUID ordering、final freshness與E3 obligation；無numeric／evidence／implementation change
 P4-E0-B.4：documentation-only memory-only root-index generation／exhaustion、E2 invalidation、
           Complete permit／active handoff與removeServer authority；無counter／heap／evidence／implementation change
+P4-E0-B.5：documentation-only P4-E2 production construction trigger、Store-service exact-final ownership、
+          sole login handler／recovery→E2 synchronous ordering、exact-identity injection與E3 same-instance reuse；
+          不裁決recovery outcome admissibility或atomic reconciliation final design
 P4-E1：read-only bounded online／integrated／disk audit；online existing-state observation only，
       disk／integrated full P4-C admission；journal／Store audit、
       memory-only index與Complete／Incomplete／ReconciliationRequired；reclaim／mutation 0
-P4-E2：P4-D recovery後login-only immutable latest／equipped reconciliation；offline／Store／
-      journal／reclaim mutation 0
-P4-E3：唯一ServerStarting composition、fresh Complete後immediate controlled reclaim exactly once、
-      restart／fixed-1,536-MiB／CI／final gates；無chunk force／background sweep
+P4-E2：首次建立production audit service，由Store service以exact final field長期持有；
+      P4-D recovery後由既有sole login handler同步呼叫active immutable latest／equipped
+      reconciliation；offline／Store／journal／reclaim mutation 0
+P4-E3：重用E2接入且Store持有的exact same audit service；唯一ServerStarting
+      composition、fresh Complete後immediate controlled reclaim exactly once、exact-server stop removal，
+      restart／fixed-1,536-MiB／CI／final gates；無audit constructor／login wiring／chunk force／background sweep
 ```
 
-前次P4-E1-B2-B read-only review停止於`INDEX GENERATION / EXHAUSTION AUTHORITY GAP`。
-P4-E0-B.4 commit／push／remote closure前該review保持blocked，implementation
-維持`NOT STARTED`；closure只重新開啟從clean HEAD執行的read-only review，不直接核准implementation。
+P4-E1已`COMPLETE`。前次P4-E2 read-only review實際已依Stop Rule停止於
+`PRODUCTION TRIGGER / OWNER AUTHORITY GAP`；當時因read-only不得修改文件，ledger保留的
+`OPEN`為stale status。P4-E0-B.5 authority／closure完成前當前E2 review為`BLOCKED`，E2
+implementation為`NOT STARTED`且E3為`BLOCKED`；B.5 closure後只重新開啟從clean HEAD
+執行的E2 read-only review，不直接核准implementation，blocker之後的outcome／atomic
+reconciliation設計也不視為已裁決。
 
 P4-A2因document／migration package visibility只核准兩個public facade classes：
 `SkillDocumentStorePersistenceFacade` 同時提供只接受current-schema typed document的
@@ -1067,9 +1113,14 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - [ ] Store-first journal使用bounded generation且只在persisted readback確認後清除；
       composition outcome不把Prepared冒充Committed；strict `writeAnyTag` framing、partial availability、
       continuous chain與single-process fixed-1-GiB combined Gate均通過。
-- [ ] P4-E0-B.1／B.2與E1-A已closure。前次E1-B read-only review因online source counter
-      applicability authority gap停止；只有P4-E0-B.3 commit／push／remote closure後才可從頭重開
-      E1-B read-only review，不直接開始implementation。E1只作read-only
+- [ ] P4-E1已closure。前次E2 read-only review因production trigger／owner authority gap停止；
+      P4-E0-B.5 commit／push／remote closure前當前E2 review blocked，implementation維持
+      `NOT STARTED`，closure後也只是從clean HEAD重開review。P4-E2是首次將production
+      audit service接入composition的phase；每個`SkillDefinitionStoreService`exactly owns one
+      final instance，既有sole recovery login handler在P4-D recovery後以窄constructor-injected
+      dependency同步呼叫E2，且active production wiring是E2 closure條件。E3只重用same
+      instance作fresh audit／reclaim／exact-server removal，constructor與login wiring delta均0。
+- [ ] E1只作read-only
       bounded online／integrated／disk audit、E2只作login reconciliation，二者reclaim 0。Player roots包含online／offline
       players與journal targets，restart預設Incomplete，只有E3在同一ServerStarting call
       chain使用fresh Complete即時controlled reclaim exactly once；25-counter／disk DataVersion／
