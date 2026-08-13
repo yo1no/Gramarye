@@ -520,8 +520,9 @@ committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA
 `31512359031`; B2, E1-B, and E1 are complete. The prior P4-E2 read-only design review stopped at
 the production-trigger／owner-authority Gate. P4-E0-B.5 is committed, pushed, locally verified,
 and qualified by unique attempt-1 exact-SHA remote run `31610627262`; it is complete. The renewed
-P4-E2 read-only design review is open, P4-E2 implementation has not started, and P4-E3 is blocked
-until P4-E2 closure. No phase
+P4-E2 read-only design review passed without a Stop Condition and requires no split. P4-E2
+implementation is ready but has not started, and P4-E3 remains blocked until P4-E2 implementation
+commit／push／remote closure. No phase
 introduces chunk force, periodic/background scanning, network, or a second persistent truth. The completed
 E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate; the B.1
 jobs and this authority correction do not waive it either.
@@ -1227,9 +1228,10 @@ remains external governance unknown. No Stop Condition was hit. B2-B implementat
 pushed, and remotely qualified; B2-B, B2, E1-B, and E1 are complete. The subsequent P4-E2
 read-only design review stopped at the production-trigger／owner-authority Gate. P4-E0-B.5 is
 committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA remote run
-`31610627262`; it is complete. The renewed P4-E2 read-only design review is open, no renewed-review
-body has begun, P4-E2 implementation has not started, P4-E3 is blocked until P4-E2 closure, and
-P4-E remains incomplete.
+`31610627262`; it is complete. The renewed P4-E2 read-only design review subsequently passed
+without a Stop Condition and requires no split. P4-E2 implementation is ready but has not started,
+P4-E3 remains blocked until P4-E2 implementation commit／push／remote closure, and P4-E remains
+incomplete.
 
 ## P4-E0-B.5 production trigger and shared audit-service ownership authority
 
@@ -1379,8 +1381,220 @@ configuration remains external governance unknown.
 
 P4-E0-B.5 is therefore complete. The earlier stale `OPEN` label remains documented as a historical
 Stop-Rule artifact, and the prior E2 review remains `STOPPED AT PRODUCTION TRIGGER / OWNER AUTHORITY
-GATE`. The renewed P4-E2 read-only design review is now `OPEN`, but no renewed-review body or E2
-implementation has begun. P4-E3 remains blocked until P4-E2 closure, and P4-E remains incomplete.
+GATE`. At that B.5 closure revision, the renewed P4-E2 read-only design review was reopened but no
+renewed-review body or E2 implementation had begun. The later review closure below supersedes that
+historical current-state snapshot.
+
+## P4-E2 read-only design review closure
+
+The renewed review was performed from clean B.5 closure `978ac3cd41bb1b0123cbd3f62db54f1a69e7ef69`
+with tree `2109c85891676934610e23d7b40bcb463a1de11d`. B.5 authority
+`4c1e758914a86668aa569cad2b6bc0ab335c3716`, P4-E1 implementation
+`59b8ba8ad590f6960e740aed2be21fed0eecd6bc`, and P4-E1 closure
+`6a1f5b68adc82cd9206aa791b7eb4684dacea32f` are ancestors. The locked NeoForge source remained a
+regular non-symlink file of 9,393,663 bytes with SHA-256
+`0e1dcae8e21cd8d8c656e7fe76efe1e31260cf0f956f07aa749b86992cf4fe23`. The official R2Q root
+remained the exact six regular non-symlink files, its controlled manifest passed, and
+`SHA256SUMS.txt` remained
+`cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`; the review did not rerun
+R1／R2／R2Q, GameTest, dedicated-server, or fixed-heap work. No Stop Condition was hit. The verdict is
+`COMPLETE — PASS; NO SPLIT`; E2 implementation is `READY; NOT STARTED`.
+
+The only approved production chain is:
+
+```text
+sole PlayerLoggedInEvent handler
+-> complete P4-D recovery
+-> retain typed recovery outcome
+-> account for recovery source change
+-> fresh E2-only online observation
+-> grouped Store validation
+-> complete immutable replacement
+-> exactly one index invalidation per changed batch
+-> final exact identity recheck
+-> E2-owned setData at most once
+```
+
+B.5 remains controlling for construction and lifecycle ownership. P4-E2 first adds the production
+audit-service instance; each exact `SkillDefinitionStoreService` owns exactly one final
+`SkillRetentionRootAuditService`; E2 and E3 use that same object identity;
+`SkillSubmissionRecoveryService` remains the sole `PlayerLoggedInEvent` owner; and E2 closure must
+include active production login wiring. E3 constructs no replacement service and adds no login
+listener.
+
+The typed P4-D outcome matrix is fixed as follows:
+
+| P4-D outcome | E2 fresh validation | E2 disposition |
+| --- | ---: | --- |
+| `NoPending` | Yes | Continue |
+| `Cleared` | Yes | Continue after source-change invalidation |
+| `Replayed` | Yes | Continue after source-change invalidation |
+| `ClearedAndReplayed` | Yes | Continue after source-change invalidation |
+| `Conflict` | No | Failed |
+| `TargetInvalid` | No | Failed |
+| lifecycle／Store／journal／authority／quarantine `Unavailable` | No | Deferred |
+| runtime `Unavailable` | No | Failed |
+| Error／OOME before a typed outcome | No E2 invocation | Original throwable propagates |
+
+`recoveryChanged` is exactly `entriesCleared > 0 || stepsReplayed > 0`. Any recovery source change
+causes the batch's one index invalidation even if E2 later has no Attachment prune. Every typed
+outcome reaches the E2 dependency; only the successful outcomes above admit fresh player
+validation. Error／OOME remains uncaught and untranslated.
+
+E2 never saves or reuses an E1 `Complete`, handoff, raw backing, source witness,
+`ReconciliationRequired` authority, offline handle, or integrated startup `Tag`. Every eligible
+login obtains the exact current `ServerPlayer`, authenticated UUID／player-list identity, Attachment
+state identity, Store Ready observation, and audit-service identity. Missing Attachment is
+`NoChanges`; Ready validates all latest and equipped claims; PreservedRaw／Oversize is `Deferred`
+with mutation zero; any identity drift cancels the batch with publication zero.
+
+Grouped Store validation first records distinct `SkillId` values in insertion order, performs
+exactly one history lookup per distinct ID, and evaluates owner match before revision membership.
+An exact valid nonlatest reference is retained. Missing history, missing revision, or opaque owner
+mismatch is stale; duplicate references reuse the same observation. The actual foreign owner is
+never retrieved or exposed, and all observations are discarded in `finally`. E2 does not query
+Store latest, read `SkillDocument`, pin, mutate, or dirty Store state.
+
+For stale latest state, E2 retains the route, changes its pointer to explicit empty, and advances
+that route's mutation generation exactly once. For stale equipped state, E2 removes the slot entry
+without changing latest generation. Valid latest, equipped, and exact nonlatest references remain;
+latest and equipped occurrences are classified independently and are not automatically deduplicated
+or promoted. E2 does not sequence existing per-entry mutation operations: it constructs one full
+immutable replacement.
+
+`MutationGeneration.successor(int)` remains the only P4-C generation owner, with legal range
+`0..Integer.MAX_VALUE`; the P4-E index's `long` generation is never reused. Every required successor
+and the entire replacement are prepared before publication. If any stale latest route is already at
+`Integer.MAX_VALUE`, the whole player batch has publication zero, including otherwise-stale equipped
+entries. That failure is not reported as a successful player mutation and still has Store,
+journal, and reclaim calls of zero.
+
+The one immutable rebuild preserves drafts, editor state, valid routes, empty latest routes, valid
+equipped entries, canonical ordering, carrier／schema state, and every unrelated hydrated field. It
+does not serialize and reparse, re-admit, copy raw `Tag`, rehydrate a Draft, convert quarantine to
+Ready, or create a second semantic core.
+
+The approved crossing is a sealed Store-owned exact reconciliation capability following the A.1
+opaque nominal-bridge discipline. A public nominal boundary exists only where Java package crossing
+requires it; construction／issuance stays closed; it is bound to exact service, player, and state
+identities; single-use; same-call-chain; and not retained across a tick. Public／protected signatures
+contain no `Tag`, Store, history, document, Ready state, root collection, generic callback／predicate
+authority, raw type, unchecked cast, or suppression. Forgeable callbacks, public stale-coordinate
+plans, relocation of the P4-C semantic core, and public raw Store／Attachment state are rejected.
+
+Invalidation and publication order is fixed:
+
+```text
+if recoveryChanged:
+    invalidate once before fresh E2 observation
+
+fresh observation
+-> grouped validation
+-> prepare every int successor
+-> build complete immutable replacement
+-> exact player/state recheck
+-> if not already invalidated: invalidate once
+-> require invalidation ACCEPTED
+-> final no-yield identity recheck
+-> E2-owned setData exactly once
+```
+
+One batch has at most one accepted invalidation. E2 never publishes before invalidation, performs a
+second invalidation, or calls `setData` after invalidation failure, with an active lease, for a
+stopped server, or after index-generation exhaustion. If invalidation succeeds but `setData` fails,
+the index remains non-Complete, player publication is not reported successful, reclaim remains
+zero, and E2 neither rolls back nor retries. The implementation must narrow the existing
+package-private `invalidateForReconciliation` from `void` to a bounded result that distinguishes
+`ACCEPTED(generation)` from `GENERATION_EXHAUSTED`; it exposes no public `long` coordinate.
+
+Let `R` mean `recoveryChanged` and `P` mean at least one E2 prune:
+
+| R | P | Result | accepted invalidation | E2-owned `setData` |
+| ---: | ---: | --- | ---: | ---: |
+| 0 | 0 | `NoChanges` | 0 | 0 |
+| 1 | 0 | `RecoveryChanged` | 1 | 0 |
+| 0 | 1 | `Changed` | 1 | 1 |
+| 1 | 1 | `Changed` with recovery counts | 1 total | 1 |
+
+A recovery-only source change is never called `NoChanges`. The package-private sealed
+`P4E2ReconciliationResult` contains `NoChanges`, `RecoveryChanged`, `Changed`, `Deferred`, `Failed`,
+and `GenerationExhausted`. It carries only bounded recovery counts, removed latest／equipped counts,
+bounded missing／owner-mismatch counts, a bounded machine reason, optional accepted index generation,
+and an exception class name of at most 160 characters. It never retains a message, stack, `Throwable`,
+`Tag`, `Path`, Store／history, actual owner, Ready state, mutation plan, or root list.
+
+Only the exact current authenticated online `ServerPlayer` with Ready Attachment may be mutated.
+Offline disk and integrated startup snapshot cases are `Deferred`, with disk and `Tag` writes zero.
+An integrated owner who later authenticates uses only the normal fresh login path. Respawn, clone,
+and dimension change add no reconciliation trigger.
+
+Crash after accepted invalidation and before `setData` leaves the index Incomplete, player state
+unchanged, and reclaim zero. Crash after `setData` but before save may leave new memory and old disk,
+while the index remains Incomplete and reclaim zero. Normal logout may persist the new state but
+does not permit same-session reclaim. Save failure causes no force-save or reclaim; restart audits
+actual disk truth. E2 claims no cross-file transaction, fsync durability, rollback, or atomic
+Store／playerdata commit.
+
+P4-E2 implementation is not split. Grouped validation, the nominal capability, immutable rebuild,
+index invalidation, final freshness, and publication remain one synchronous call chain and one
+implementation closure. E2 creates no cross-tick E2-A plan and does not defer active production
+wiring to E3.
+
+The reviewed future type／API plan is:
+
+| Type／change | Visibility／shape | Responsibility |
+| --- | --- | --- |
+| `SkillOnlineReconciliationDependency` | public sealed nominal; no public constructor | only legal recovery-to-E2 continuation |
+| `P4E2OnlineReconciliationCoordinator` | package-private final | exact Store／audit／Attachment-bound coordinator |
+| `RecoveryContinuation` | public opaque nested; private construction | single-use typed P4-D outcome carrier |
+| `PlayerSkillAttachmentReconciliationCapability` | public sealed nominal | nonforgeable Store validation／invalidation authority |
+| `P4E2BoundPlayerSkillAttachmentReconciliationCapability` | package-private final | one batch's exact identities and opaque observations |
+| `P4E2GroupedStoreValidation` | package-private final | distinct lookup and owner-before-revision classification |
+| `P4E2ReconciliationResult` | package-private sealed | bounded internal terminal diagnostics |
+| `SkillRetentionRootAuditService.InvalidationResult` | package-private | accepted versus exhausted invalidation |
+| `SkillDefinitionStoreService` | existing public owner | exact final audit-service and E2-dependency ownership |
+| `PlayerSkillAttachmentService` reconciliation operation | one nominal public crossing operation | player-owned immutable rebuild and publication |
+
+Concrete names may be narrowed during implementation for actual Java constraints, but visibility,
+nominal security, single-use, same-call-chain, identity binding, and no-raw-surface contracts may
+not change.
+
+Future evidence must include `P4E2ApiGateTest`, `P4E2VisibilityCompileTest`,
+`P4E2GroupedStoreValidationTest`, `P4E2AtomicReconciliationTest`,
+`P4E2LifecycleOrderingTest`, `P4E2PhaseTypes`, and executable
+`scripts/verify-p4-e2-configuration.sh`; it extends `SkillSubmissionRecoveryServiceTest` and one
+existing recovery GameTest while keeping the normal required GameTest count at 12. Static Gates
+must prove exactly one Store-owned audit-service construction, one login listener owner,
+recovery-before-E2, exactly one E2 continuation callsite, at most one E2 publisher and invalidation
+callsite, invalidation before publication, no Store／journal mutation, no snapshot／reclaim,
+no offline／integrated write, no background or second listener, unchanged Gradle／workflow, exact
+allowlists rather than `P4E2*`／`Audit*` blanket exemptions, and no test fixture in the production
+JAR.
+
+P4-E2 implementation is complete only when active production login wiring proves:
+
+```text
+P4-D typed outcome
+-> recovery source-change accounting
+-> fresh exact Ready observation
+-> grouped Store validation
+-> all P4-C successors prepared
+-> complete immutable replacement
+-> exactly one accepted index invalidation
+-> exact final freshness
+-> at most one E2-owned setData
+-> reclaim 0
+```
+
+Implementation then requires its own commit／push／unique attempt-1 exact-SHA five-job Gate and a
+separate two-ledger closure commit／push／unique attempt-1 exact-SHA five-job Gate. P4-E3 remains
+blocked through that closure. Its exact
+production-shaped fixed `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` first／restart Gate remains
+mandatory and R2Q remains non-substitutive. Branch-protection required-check configuration remains
+external governance unknown. This documentation closure changes no production, test, script,
+Gradle, workflow, resource, codex-spec, or official evidence file and does not begin E2 or E3
+implementation. Its phase transition becomes effective only after this closure commit's unique
+attempt-1 exact-SHA `Build` run and exact five required jobs all complete with `success`.
 
 ## Status
 
@@ -1448,9 +1662,9 @@ P4-E1-B2                            = COMPLETE
 P4-E1-B                             = COMPLETE
 P4-E1                               = COMPLETE
 P4-E2 prior read-only design review = STOPPED AT PRODUCTION TRIGGER / OWNER AUTHORITY GATE
-P4-E2 read-only design review      = OPEN
-P4-E2 implementation               = NOT STARTED
-P4-E3                               = BLOCKED UNTIL P4-E2 CLOSURE
+P4-E2 read-only design review      = COMPLETE — PASS; NO SPLIT
+P4-E2 implementation               = READY; NOT STARTED
+P4-E3                               = BLOCKED UNTIL P4-E2 IMPLEMENTATION / COMMIT / PUSH / REMOTE CLOSURE
 P4-E                               = INCOMPLETE
 ```
 
