@@ -522,9 +522,11 @@ the production-trigger／owner-authority Gate. P4-E0-B.5 is committed, pushed, l
 and qualified by unique attempt-1 exact-SHA remote run `31610627262`; it is complete. The renewed
 P4-E2 read-only design review passed without a Stop Condition and requires no split. P4-E2
 implementation is now suspended in its verified repaired backup after M1 qualification. A0.1 and
-A0.2 stopped at the nonpublic receiver and direct-coordinate authority Gates; B.6 resolves only the
-authority locally, with commit／push／remote closure still pending. The FML／public-nominal technical
-review and P4-E3 remain blocked. No phase
+A0.2 stopped at the nonpublic receiver and direct-coordinate authority Gates. The B.6 authority
+implementation is committed, pushed, and qualified by unique exact-SHA attempt-1 remote run
+`31785326383`. Its separate two-ledger closure becomes effective only after this closure commit's
+unique exact-SHA attempt-1 remote Gate passes. The FML／public-nominal receiver technical review opens
+only after that Gate and its review body has not started; P4-E3 remains blocked. No phase
 introduces chunk force, periodic/background scanning, network, or a second persistent truth. The completed
 E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate; the B.1
 jobs and this authority correction do not waive it either.
@@ -1233,8 +1235,11 @@ committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA
 `31610627262`; it is complete. The renewed P4-E2 read-only design review subsequently passed
 without a Stop Condition and requires no split. P4-E2 implementation is now suspended in its
 verified repaired backup; A0.1 and A0.2 later stopped at the receiver-route and direct-coordinate
-authority Gates. B.6 is implemented locally but not committed or remotely closed, so the
-FML／public-nominal technical review and P4-E3 remain blocked and P4-E remains incomplete.
+authority Gates. The B.6 authority implementation is committed, pushed, and qualified by unique
+exact-SHA attempt-1 remote run `31785326383`. Its separate two-ledger closure becomes effective only
+after this closure commit's unique exact-SHA attempt-1 remote Gate passes. The FML／public-nominal
+receiver technical review opens only after that Gate and its review body has not started; P4-E3
+remains blocked and P4-E remains incomplete.
 
 ## P4-E0-B.5 production trigger and shared audit-service ownership authority
 
@@ -1604,8 +1609,11 @@ attempt-1 exact-SHA `Build` run and exact five required jobs all complete with `
 Two later read-only qualification reviews exposed authority gaps without changing the approved
 P4-E2 gameplay design. `P4-E2-M1-D2-A0.1` stopped at `NONPUBLIC ACCESS ROUTE ABSENT`;
 `P4-E2-M1-D2-A0.2` stopped at `DIRECT COORDINATE AUTHORITY GAP`. The Stop Rule kept those results out
-of the ledgers until this documentation-only patch. B.6 is implemented locally; commit, push,
-unique exact-SHA remote qualification, and the separate two-ledger closure remain pending. The P4-E2
+of the ledgers until the documentation-only authority patch. At that authority-patch revision, B.6
+was implemented locally while commit, push, remote qualification, and closure were pending. The
+authority implementation prerequisites later passed through commit
+`03b16d835c9f63896de17d514564765849835b3a` and remote run `31785326383`; only this separate
+two-ledger closure remains conditionally pending. The P4-E2
 implementation is suspended in its verified repaired backup. This authority starts no implementation
 and makes no claim that an FML extension API or exact receiver route exists.
 
@@ -1721,9 +1729,171 @@ B.6 changes recovery, E2 result, invalidation, setData, Attachment content, Stor
 generation, listener, network, persistence, background thread, and callback semantics by zero. It
 adds no 26th counter and changes none of the 25 maxima, `DataVersion = 3955`, zero-DFU rule, heap
 floor, B.4 authority, R2Q, E3 same-service identity, or the fixed-1,536-MiB E3 obligation. Direct
-evidence never substitutes for E3. Next is B.6 commit／push／unique exact-SHA remote qualification and
-the separate two-ledger closure; only then may the receiver technical review begin. Branch-protection
+evidence never substitutes for E3. The B.6 authority commit, push, and unique exact-SHA remote
+qualification are complete. Next is this separate two-ledger closure; only after its unique
+attempt-1 exact-SHA remote Gate passes may the receiver technical review open. Branch-protection
 required-check configuration remains external governance unknown.
+
+## P4-E0-B.6 separate two-ledger closure
+
+This synchronized documentation-only closure records the already committed, pushed, and remotely
+qualified B.6 authority implementation. It starts neither the FML／public-nominal receiver technical
+review nor direct-observation implementation. The phase transition below becomes effective only
+after this closure commit's unique exact-SHA attempt-1 `Build` run and its exact five required jobs
+all complete with `success`.
+
+### Authority implementation identity
+
+| Coordinate | Value |
+| --- | --- |
+| Commit | `03b16d835c9f63896de17d514564765849835b3a` |
+| Tree | `74221d2d2f2a71ed777fac30438dcab9d197eadd` |
+| Parent | `b97741ee634ee2529864023a5449d34dc288e1e8` |
+| Subject | `docs(persistence): define direct qualification observation authority` |
+| Stat | 6 files; 1,266 insertions; 46 deletions |
+| Full-index binary patch SHA-256 | `3e960a3a19086e0543e64edd3037eb05797c5b0d2886893e12f8769b1f0c1d9b` |
+
+The commit contains exactly the four synchronized codex-spec documents and these two architecture
+ledgers. It contains no Java, test, script, Gradle, workflow, resource, architecture README,
+fixture, combined-worktree, evidence, or R2Q delta.
+
+### Authority remote Gate
+
+The implementation SHA has exactly one canonical `Build` run: `31785326383`, attempt 1, event
+`push`, branch `main`, `completed`／`success`. Its exact five-job set is:
+
+| Job | Job ID | Result |
+| --- | ---: | --- |
+| `build` | `94719845505` | `completed`／`success` |
+| `P4-A3 memory gates` | `94720338540` | `completed`／`success` |
+| `P4-B memory gates` | `94720809941` | `completed`／`success` |
+| `P4-C memory gates` | `94722023877` | `completed`／`success` |
+| `P4-D memory gates` | `94722843966` | `completed`／`success` |
+
+Canonical exact-SHA run count is one. Duplicate runs, reruns, cancelled jobs, skipped jobs, missing
+jobs, and extra jobs are all zero. Branch-protection required-check configuration remains external
+governance unknown.
+
+### Direct qualification coordinates
+
+```text
+RECOVERY_OUTCOME_DIRECT_COORDINATE
+= HANDLER_LOCAL_EXHAUSTIVE_CLASSIFICATION
+
+E2_RESULT_DIRECT_COORDINATE
+= COORDINATOR_LOCAL_EXHAUSTIVE_CLASSIFICATION
+
+E2_INVALIDATION_ATTEMPT
+= ACTUAL CENTRAL INVALIDATION OPERATION INVOCATION
+
+E2_INVALIDATION_ACCEPTED
+= ACTUAL ACCEPTED NORMAL-RETURN BRANCH
+
+E2_SET_DATA_ATTEMPT
+= ACTUAL E2-BOUND SETDATA JVM CALLSITE
+
+E2_SET_DATA_SUCCESS
+= IMMEDIATE NORMAL RETURN FROM THAT CALLSITE
+
+APPLIED
+= SEMANTIC CROSS-CHECK ONLY
+```
+
+These are the sole direct coordinates. State or generation change, publisher entry, Attachment-byte
+equality, later result formation, and `APPLIED` cannot substitute for them.
+
+### Restricted diagnostic authority
+
+The authorized mechanism is qualification-only, test-armed, instance-owned, memory-only, bounded,
+single-use, and inert during normal unarmed runtime. Each exact owner has at most one active record
+and one completed-unconsumed record. Java package crossing may use at most one public top-level
+platform-facing facade and only necessary nested sealed session／view types. Submission-, Store-,
+and player-local cells may share only the same exact nonforgeable session identity.
+
+A per-`ModContainer` FML extension or officially supported equivalent exact-instance receiver route
+remains conditional authorization only. API existence, lifecycle, registration, retrieval,
+pre-login availability, GameTest access, and exact first／restart instance identity have not been
+technically adjudicated.
+
+The following remain prohibited: a static or global registry, `ThreadLocal`, service locator,
+reflection／`Unsafe`, second login listener, callback or functional sink, log／stdout／file／JFR side
+channel, second reconciliation, state inference, public E2 result, diagnostic player Attachment,
+diagnostic data in the actual Attachment map, SavedData backlink, persistent or queued diagnostics,
+and an always-written last-login record.
+
+### Historical Stops
+
+```text
+P4-E2-M1-D2-A0.1
+= STOPPED AT NONPUBLIC ACCESS ROUTE ABSENT
+  [HISTORICAL]
+
+P4-E2-M1-D2-A0.2
+= STOPPED AT DIRECT COORDINATE AUTHORITY GAP
+  [HISTORICAL; CLOSED BY B.6]
+```
+
+Both Stops were design／authority Gates. Neither produced observation implementation, direct runtime
+evidence, an FML route verdict, or a production／test delta.
+
+### Preserved boundaries and fixture evidence
+
+B.6 changes none of the 25 counters, their maxima, the effective-`MaxHeapSize` coordinate, the
+`1_610_612_736`-byte／1,536-MiB floor, disk `DataVersion = 3955`, zero P4-E DFU policy, B.4
+generation authority, P4-E2 gameplay semantics, R2Q profile／case plan／evidence, or P4-E3
+same-service and fixed-heap obligations. P4-E3 still requires the exact production-shaped
+`-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError` first／restart Gate; direct evidence cannot replace
+it.
+
+The official R2Q root remains exactly six regular non-symlink files. Its five payload checks pass
+and `SHA256SUMS.txt` remains
+`cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`. No R1／R2／R2Q study or
+smoke was rerun.
+
+Authority integration advanced `main` by a non-overlapping fast-forward. Authority paths and the
+fixture paths have intersection zero. The fixture remains exactly eight tracked paths with 648
+insertions and 8 deletions. Its canonical full-index binary patch SHA-256 remains
+`84b4b0f55df4cfb6c5c146a82e9627e8c19d8d730c3ffc3d7caac670f9f72904`; pre／post patch bytes are
+identical. The index is empty, untracked count is zero, and the stash remains empty.
+
+### Conditional phase transition
+
+```text
+P4-E0-B.6 direct qualification observation authority
+= COMPLETE UPON THIS CLOSURE COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
+
+P4-E2-M1-D2 FML/public nominal receiver technical review
+= OPEN ONLY AFTER THAT REMOTE GATE PASSES;
+  REVIEW BODY NOT STARTED
+
+P4-E2 direct observation implementation
+= NOT STARTED
+
+P4-E2 implementation
+= SUSPENDED IN VERIFIED REPAIRED BACKUP
+
+P4-C2 fixture compatibility
+= BLOCKED AT DIRECT RUNTIME OBSERVATION
+
+P4-E3
+= BLOCKED
+
+P4-E
+= INCOMPLETE
+```
+
+The exact next work item, and only after the closure remote Gate passes, is the
+`P4-E2-M1-D2 FML/public nominal receiver read-only technical review`. That review must begin from
+fresh preflight and must stop at `NO SAFE RECEIVER ROUTE` if no official exact-instance route is
+proven.
+
+Known limitations remain explicit: this closure does not prove that any FML API exists, does not
+approve any exact receiver route, selects no public nominal facade as the unique technical solution,
+starts no observation seam,
+produces no combined direct-runtime result, resumes no E2 implementation, completes no fixture
+compatibility, and opens no P4-E3 work. R2Q remains bounded empirical qualification rather than a
+universal theorem or the complete P4-E3 envelope.
 
 ## Status
 
@@ -1753,7 +1923,15 @@ P4-E0-B.5 authority stat            = 6 files; 682 insertions; 57 deletions
 P4-E0-B.5 authority remote run      = 31610627262 (attempt 1)
 P4-E0-B.5 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
 P4-E0-B.5 production trigger / shared audit-service ownership authority = COMPLETE
-P4-E0-B.6 direct qualification observation authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+P4-E0-B.6 authority commit          = 03b16d835c9f63896de17d514564765849835b3a
+P4-E0-B.6 authority tree            = 74221d2d2f2a71ed777fac30438dcab9d197eadd
+P4-E0-B.6 authority parent          = b97741ee634ee2529864023a5449d34dc288e1e8
+P4-E0-B.6 authority stat            = 6 files; 1,266 insertions; 46 deletions
+P4-E0-B.6 authority patch SHA-256   = 3e960a3a19086e0543e64edd3037eb05797c5b0d2886893e12f8769b1f0c1d9b
+P4-E0-B.6 authority remote run      = 31785326383 (attempt 1; push/main; success)
+P4-E0-B.6 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
+P4-E0-B.6 direct qualification observation authority = COMPLETE UPON THIS CLOSURE COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
 P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review  = PASS (HISTORICAL)
@@ -1793,14 +1971,20 @@ P4-E1-B                             = COMPLETE
 P4-E1                               = COMPLETE
 P4-E2 prior read-only design review = STOPPED AT PRODUCTION TRIGGER / OWNER AUTHORITY GATE
 P4-E2 read-only design review      = COMPLETE — PASS; NO SPLIT
-P4-E2-M1-D2-A0.1                   = STOPPED AT NONPUBLIC ACCESS ROUTE ABSENT
-P4-E2-M1-D2-A0.2                   = STOPPED AT DIRECT COORDINATE AUTHORITY GAP
+P4-E2-M1-D2-A0.1                   = STOPPED AT NONPUBLIC ACCESS ROUTE ABSENT [HISTORICAL]
+P4-E2-M1-D2-A0.2                   = STOPPED AT DIRECT COORDINATE AUTHORITY GAP [HISTORICAL; CLOSED BY B.6]
 RecoveryOutcome direct coordinate  = HANDLER_LOCAL_EXHAUSTIVE_CLASSIFICATION
 E2 result direct coordinate        = COORDINATOR_LOCAL_EXHAUSTIVE_CLASSIFICATION
+E2 invalidation attempt             = ACTUAL CENTRAL INVALIDATION OPERATION INVOCATION
+E2 invalidation accepted            = ACTUAL ACCEPTED NORMAL-RETURN BRANCH
 E2 setData attempt                 = ACTUAL E2-BOUND SETDATA JVM CALLSITE
 E2 setData success                 = IMMEDIATE NORMAL RETURN FROM THAT CALLSITE
-FML/public nominal route technical review = BLOCKED UNTIL B.6 COMMIT / PUSH / REMOTE CLOSURE
+APPLIED                             = SEMANTIC CROSS-CHECK ONLY
+P4-E2-M1-D2 FML/public nominal receiver technical review = OPEN ONLY AFTER THAT REMOTE GATE PASSES;
+  REVIEW BODY NOT STARTED
+P4-E2 direct observation implementation = NOT STARTED
 P4-E2 implementation               = SUSPENDED IN VERIFIED REPAIRED BACKUP
+P4-C2 fixture compatibility        = BLOCKED AT DIRECT RUNTIME OBSERVATION
 P4-E3                               = BLOCKED
 P4-E                               = INCOMPLETE
 ```
