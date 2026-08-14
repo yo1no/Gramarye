@@ -287,13 +287,15 @@ exact-SHA remote run `31512359031`; P4-E1-B2, P4-E1-B, and P4-E1 are complete. T
 read-only design review stopped at the production-trigger／owner-authority Gate. P4-E0-B.5 is
 committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA remote run
 `31610627262`; it is complete. The renewed P4-E2 read-only design review passed without a Stop
-Condition and requires no split. P4-E2 implementation is now suspended in its verified repaired
-backup after M1 qualification. A0.1 and A0.2 stopped at the nonpublic receiver and direct-coordinate
-authority Gates. The B.6 authority implementation is committed, pushed, and qualified by unique
-exact-SHA attempt-1 remote run `31785326383`. Its separate two-ledger closure becomes effective only
-after this closure commit's unique exact-SHA attempt-1 remote Gate passes. The FML／public-nominal
-receiver technical review opens only after that Gate and its review body has not started; P4-E3
-remains blocked. E1 must
+Condition and requires no split. P4-E2 implementation remains suspended in its verified repaired
+backup after M1 qualification. A0.1 and A0.2 are historical Stops at the nonpublic receiver and
+direct-coordinate authority Gates. The B.6 authority implementation and separate closure
+prerequisites are complete at `a7bb7712c9a176a24949e62f01e43ab48f4f65f8`. The
+P4-E2-M1-D2-A0.3 FML／public-nominal
+exact-instance receiver read-only technical review passed with the unique per-`ModContainer`
+custom-extension route. Its separate two-ledger closure remains conditional; direct-observation
+implementation becomes READY only after that closure's unique exact-SHA attempt-1 remote Gate
+passes. P4-E3 remains blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -2060,12 +2062,13 @@ read-only design review stopped at the production-trigger／owner-authority Gate
 committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA remote run
 `31610627262`; it is complete. The renewed P4-E2 read-only design review subsequently passed
 without a Stop Condition and requires no split. P4-E2 implementation is now suspended in its
-verified repaired backup; A0.1 and A0.2 later stopped at the receiver-route and direct-coordinate
-authority Gates. The B.6 authority implementation is committed, pushed, and qualified by unique
-exact-SHA attempt-1 remote run `31785326383`. Its separate two-ledger closure becomes effective only
-after this closure commit's unique exact-SHA attempt-1 remote Gate passes. The FML／public-nominal
-receiver technical review opens only after that Gate and its review body has not started; P4-E3
-remains blocked and P4-E remains incomplete.
+verified repaired backup; A0.1 and A0.2 are historical Stops at the receiver-route and
+direct-coordinate authority Gates. The B.6 authority implementation and closure prerequisites are
+complete. The P4-E2-M1-D2-A0.3 FML／public-nominal exact-instance receiver read-only technical
+review passed with the unique per-`ModContainer` custom-extension route. Its separate closure
+becomes effective only after this closure commit's unique exact-SHA attempt-1 remote Gate passes;
+direct-observation implementation remains blocked until then. P4-E3 remains blocked and P4-E
+remains incomplete.
 
 ## P4-E0-B.5 production trigger and shared audit-service ownership authority
 
@@ -2682,7 +2685,7 @@ insertions and 8 deletions. Its canonical full-index binary patch SHA-256 remain
 `84b4b0f55df4cfb6c5c146a82e9627e8c19d8d730c3ffc3d7caac670f9f72904`; pre／post patch bytes are
 identical. The index is empty, untracked count is zero, and the stash remains empty.
 
-### Conditional phase transition
+### Conditional phase transition (historical B.6 closure-time snapshot; condition satisfied)
 
 ```text
 P4-E0-B.6 direct qualification observation authority
@@ -2690,8 +2693,8 @@ P4-E0-B.6 direct qualification observation authority
   UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
 
 P4-E2-M1-D2 FML/public nominal receiver technical review
-= OPEN ONLY AFTER THAT REMOTE GATE PASSES;
-  REVIEW BODY NOT STARTED
+= OPENED AFTER THAT REMOTE GATE PASSED
+  [HISTORICAL B.6 CLOSURE TRANSITION]
 
 P4-E2 direct observation implementation
 = NOT STARTED
@@ -2720,6 +2723,405 @@ starts no observation seam,
 produces no combined direct-runtime result, resumes no E2 implementation, completes no fixture
 compatibility, and opens no P4-E3 work. R2Q remains bounded empirical qualification rather than a
 universal theorem or the complete P4-E3 envelope.
+
+## P4-E2-M1-D2-A0.3 FML／public nominal exact-instance receiver review closure
+
+This synchronized documentation-only closure records the completed read-only locked-artifact
+technical review. It changes no gameplay or persistence authority, modifies no implementation or
+test artifact, and does not begin direct-observation implementation. The phase transition below is
+effective only after this closure commit's unique exact-SHA attempt-1 `Build` run and its exact five
+required jobs all complete with `success`.
+
+### Review identity and technical verdict
+
+```text
+P4-E2-M1-D2-A0.3
+FML/public nominal exact-instance receiver
+read-only technical review
+= PASS
+
+Technical verdict
+= OFFICIAL PER-MODCONTAINER CUSTOM EXTENSION
+  + CLOSED NOMINAL QUALIFICATION FACADE
+```
+
+| Review coordinate | Value |
+| --- | --- |
+| Base HEAD | `a7bb7712c9a176a24949e62f01e43ab48f4f65f8` |
+| Base tree | `d25542f848bfbbfe67c03ecaccd2425a04c5e14c` |
+| Review worktree | `/private/tmp/gramarye-p4-e2-fml-receiver-review-20260814T110129Z` |
+| Evidence root | `/private/tmp/gramarye-p4-e2-fml-receiver-review-evidence-20260814T115608Z-verified` |
+| Evidence `SHA256SUMS.txt` SHA-256 | `1c2c2561e576e79a77e3757af3c8a590bae0bd7e9ec5c71d8679379e178ed365` |
+| Evidence payload result | 146/146 PASS |
+| Regular files／symlinks／bytes | 147／0／730818 |
+
+The review made zero repository modifications, ran zero tests and zero Gradle invocations, and
+performed zero stage, commit, or push operations. It read no actual user world or playerdata and
+created zero observation-implementation files. The verified evidence retains the review report,
+artifact and owner inventories, probe sources, positive and negative compiler records, `javap` and
+`jdeps` output, and the final postflight.
+
+### Locked FML artifact and unique receiver route
+
+The actual READY first／restart 68-entry classpath gives each of `ModContainer`, `ModList`,
+`ModLoadingContext`, `FMLModContainer`, and `IExtensionPoint` exactly one owner:
+
+| Artifact coordinate | Value |
+| --- | --- |
+| Maven coordinate | `net.neoforged.fancymodloader:loader:4.0.43` |
+| Absolute binary JAR | `/Users/yashen/.gradle/caches/modules-2/files-2.1/net.neoforged.fancymodloader/loader/4.0.43/fb10b7bf2f568a9676ad8b426b19c23badbbd98a/loader-4.0.43.jar` |
+| Binary JAR SHA-256 | `ba406038d0ce8242391bb23b9974648748d217b67332c0db620fcabf50edbc37` |
+| Module | `fml_loader@4.0.43` automatic |
+| Route class owner count | 1 for each of the five route classes |
+
+The one approved receiver route is Candidate B:
+
+```text
+ModList.get()
+-> getModContainerById(Gramarye.MOD_ID)
+-> getCustomExtension(P4E2QualificationFacade.class)
+-> exact same registered facade object identity
+```
+
+Registration uses the exact injected `ModContainer` and the direct-object overload:
+
+```text
+exactContainer.registerExtensionPoint(
+    P4E2QualificationFacade.class,
+    exactPreconstructedFacade)
+```
+
+The four exact official route methods are:
+
+```text
+ModList.get()
+ModList.getModContainerById(String)
+ModContainer.registerExtensionPoint(Class, IExtensionPoint)
+ModContainer.getCustomExtension(Class)
+```
+
+`IExtensionPoint` is an arbitrary mod-defined extension contract, not a client-, display-, or
+configuration-only facility. Each exact `ModContainer` owns its own extension `IdentityHashMap`;
+the registry is neither static nor global. Registration occurs during mod construction. Retrieval
+occurs after `ModList` construction and before the GameTest calls `placeNewPlayer`. It uses the
+class literal as the nominal key, performs direct-object registration, and returns the same facade
+identity. No mod-authored Supplier route and no runtime `ModLoadingContext` lookup is allowed.
+
+The route is common-side and dedicated-safe; the locked route and facade constant-pool scan has zero
+client-class references. READY first and restart are separate `JavaExec` JVMs and therefore own
+separate `ModList`, `ModContainer`, facade, view, and service identities with no static carry-over.
+
+Candidate A, `DIRECT MOD-OBJECT RECEIVER`, fails. Locked FML has no public exact mod-object retrieval
+method. `FMLModContainer.constructMod()` constructs `Gramarye`, but the constructor return is not
+retained as a retrievable mod instance; `ModList` exposes only `ModContainer`. There is no legal
+`getMod()`, `getModInstance()`, or equivalent route. Candidate A would require reflection or a new
+locator, both forbidden. Candidate B is therefore the unique legal receiver route, not one of
+several interchangeable passing choices.
+
+### Closed nominal facade and probe evidence
+
+The only approved future public top-level candidate is:
+
+```text
+com.yo1no.gramarye.P4E2QualificationFacade
+
+public final class P4E2QualificationFacade
+        implements IExtensionPoint
+```
+
+Its constructor, `arm`, `consume`, `discard`, and all view accessors are package-private. The facade
+declares zero public instance operations and exposes no public view accessor. It owns exactly three
+public nested sealed nominal views:
+
+```text
+SubmissionView
+StoreView
+PlayerView
+```
+
+Each is a public nested sealed abstract class with a private constructor, one unique private-final
+implementation, and only public-final bounded recording methods. The only necessary public bounded
+vocabulary is the nested recovery and reconciliation variant／detail enums. External callers cannot
+obtain a valid view, construct or subclass a view, construct the facade, arm or consume a record,
+forge completion, or forge or cross-consume a session.
+
+The internal `Session` is nonpublic, private-constructed, and paired by exact object identity. It is
+not returned publicly and is not retained inside the completed diagnostic DTO. A public Session is
+unnecessary and forbidden. Public or protected surfaces contain no generic arbitrary source,
+`Object` observation transport, callback or functional sink, raw type, unchecked cast, suppression,
+raw outcome or result, Store／SavedData／Attachment state, path, bytes, or throwable.
+
+The canonical Java 21 probe used:
+
+```text
+javac --release 21 -proc:none -Xlint:all -Werror
+```
+
+The positive direct-registration, typed-retrieval, same-identity, dedicated-safe, same-package
+adapter, and three exact cross-package view-owner probe compiled successfully. Eight negative probes
+failed as required: external facade construction, external `arm`, external `consume`, external view
+access, nested-view construction, sealed `StoreView` subclassing, `EvilView`, and `EvilSession`.
+`javap -p -s -c -v` and `jdeps` passed. Client-reference count is zero, and source scans found no
+raw／unchecked／suppression, callback, or `Object` observer route. The live 140-file probe root was
+removed exactly; verified source and output copies remain in the review evidence.
+
+### Unique future construction and injection graph
+
+The sole future root constructor is:
+
+```text
+public Gramarye(IEventBus modBus, ModContainer exactContainer)
+```
+
+The approved graph is:
+
+```text
+exact ModContainer
+-> Gramarye(IEventBus, ModContainer)
+   -> create exact P4E2QualificationFacade and its three exact views
+   -> register the exact preconstructed facade by direct object
+   -> SkillSubmissionRecoveryService(SubmissionView)
+   -> SkillDefinitionStoreService(StoreView, PlayerView)
+      -> P4E2OnlineReconciliationCoordinator(StoreView, PlayerView)
+         -> sealed E2 reconciliation capability(PlayerView)
+            -> private prepared token
+               -> actual PlayerSkillAttachmentService setData seam
+```
+
+A Store-only cell fails because it cannot directly observe both the submission-local and
+player-local coordinates. Three independent cells fail because they cannot prove one exact session.
+One facade-owned bounded cell with three owner-bound views is the unique smaller passing model.
+`SubmissionView` is constructor-injected into the recovery service. `PlayerView` uses the narrow P2
+route through the existing sealed E2 reconciliation capability and private prepared token; the
+broader P1 change to the whole `PlayerSkillAttachmentService` constructor is rejected. No public
+Session or public E2 result is permitted, and the public reconciliation dependency remains `void`.
+
+### Preserved direct coordinates
+
+The review does not rewrite any B.6 coordinate.
+
+- Recovery records the actual `RecoveryOutcome` local in `SkillSubmissionRecoveryService` through
+  handler-local exhaustive classification with no `default`, then passes that same object to the
+  existing continuation. Only bounded variant, detail, count, and changed facts cross the view;
+  the raw outcome and its identity do not cross packages or enter the completed record.
+- E2 reconciliation retains the actual package-private `P4E2ReconciliationResult` as a coordinator
+  local, exhaustively classifies it with no `default`, and then lets the reviewed public `void`
+  wrapper return. The result remains package-private and is never serialized or publicly returned.
+- Invalidation attempt is the actual central audit invalidation operation invocation. Accepted is
+  recorded only in the actual `Accepted` normal-return branch. Mutually exclusive upper callers do
+  not duplicate the count; `GenerationExhausted` is attempt 1／accepted 0.
+- setData attempt is immediately before the actual E2-bound JVM
+  `ServerPlayer.setData(PLAYER_SKILLS, replacement)` invocation. Success is the immediate
+  normal-return checkpoint. Only the E2 path carries `PlayerView`; non-E2 callers do not count.
+  Publisher invocation is not attempt: `STATE_CHANGED` may have publisher invocation 1 and setData
+  0／0. `APPLIED` is only a cross-check.
+
+If `setData` returns successfully and an `Error` occurs before `APPLIED` formation, the raw success
+checkpoint may have occurred but the completed observation aborts. `Error` and OOME retain their
+original identity and propagate; no production rollback is claimed or introduced.
+
+### Bounded state, failure, retention, and unarmed behavior
+
+The fixed state machine is:
+
+```text
+IDLE -> ARMED -> RECORDING -> COMPLETED -> CONSUMED -> IDLE
+ARMED / RECORDING -> ABORTED / CLEARED -> IDLE
+```
+
+Maximum active records are one, maximum completed-unconsumed records are one, and queue, history,
+static state, and `ThreadLocal` counts are zero. Arm binds the exact facade, exact server object,
+exact logic thread, exact expected player UUID, bounded case ID, first／restart phase, and exact
+internal session identity.
+
+Completion occurs only after the actual login continuation returns normally and all mandatory
+submission, Store, and player coordinates are present. Partial evidence cannot complete. Completion
+clears server, player, thread, service, and raw-state strong references and retains only bounded
+enums, booleans, counts, UUID value, case／phase, and completion state. Consume succeeds once; a
+second consume fails fast. Only the package-private same-package test adapter may receive the
+package-private completed record.
+
+Abort and failure use allocation-free clearing. `Error` and OOME are not caught, translated, or
+reclassified, and partial records cannot be consumed. Server stop reuses the existing
+`SkillDefinitionStoreService` stop owner to clear active and completed state; no new listener is
+introduced.
+
+The bounded retention graph is:
+
+```text
+ModContainer
+-> exact facade extension
+-> three small owner-bound view implementations
+-> at most one active or completed bounded state
+
+services -> exact views -> same facade
+```
+
+Service／view backreferences match the existing mod lifecycle and do not extend server, player, or
+raw-data lifetime. Completion retains no `MinecraftServer`, `ServerPlayer`, Tag, Ready state,
+Store／history, journal proof, path, throwable, or root list. IDLE is a small fixed facade and three
+views; ARMED is bounded session identity and primitive metadata; COMPLETED is a bounded
+primitive／enum／UUID record. Each state is far below 4 KiB.
+
+The unarmed production route is an exact no-op: it allocates no diagnostic record or String, writes
+no file or log, performs no network call or callback, creates no telemetry history, and changes no
+production branch, result, failure, persistence, Attachment, Store, journal, index, listener, or
+thread semantics.
+
+### Exhaustive candidate adjudication
+
+```text
+Candidate A  direct mod object                          = FAIL
+Candidate B  per-ModContainer custom extension         = PASS
+Candidate C  runtime ModLoadingContext locator         = FAIL
+Candidate D  static Gramarye/service locator           = FAIL
+Candidate E  diagnostic player Attachment              = FAIL
+Candidate F  SavedData backlink                        = FAIL
+Candidate G  callback/sink                             = FAIL
+Candidate H  second event listener                     = FAIL
+Candidate I  log/file/JFR/stdout side channel          = FAIL
+Candidate J  second reconciliation/state inference     = FAIL
+```
+
+Candidate B is the only passing route. Implementation may not select a fallback or reinterpret any
+failed candidate as an alternative receiver.
+
+### Future direct evidence and runtime route
+
+READY first and restart must each produce this direct record:
+
+```text
+recovery_handler_calls            = 1
+typed_recovery_outcome            = NoPending
+entries_cleared                   = 0
+steps_replayed                    = 0
+recovery_changed                  = false
+
+e2_continuation_calls             = 1
+e2_result_variant                 = NoChanges
+
+invalidation_attempts             = 0
+invalidation_accepted             = 0
+invalidation_generation_present   = false
+
+e2_set_data_attempts              = 0
+e2_set_data_successes             = 0
+```
+
+The only future runtime evidence route is:
+
+```text
+P4-C2 GameTest
+-> ModList exact Gramarye container
+-> exact custom-extension facade
+-> root-package p4C2GameTest same-package adapter
+-> package-private arm immediately before placeNewPlayer
+-> synchronous actual login and three local direct records
+-> placeNewPlayer normal return
+-> package-private consume
+-> bounded test-only DTO
+-> canonical bounded JSON
+-> strict external verifier
+```
+
+The adapter, DTO, writer, and verifier may exist only in the `p4C2GameTest`, `p4C2Probe`, or `test`
+source sets and must not enter the production JAR. Existing Attachment and Store checksums remain
+cross-checks and cannot replace the direct record.
+
+### Future negative controls
+
+The implementation and tests must cover:
+
+```text
+NoChanges:                          invalidation 0/0; setData 0/0
+RecoveryChanged:                    invalidation 1/1; setData 0/0
+Changed:                            invalidation 1/1; setData 1/1
+GenerationExhausted:                invalidation 1/0; setData 0/0
+publisher state drift:              publisher invoked; setData 0/0
+accepted invalidation then failure: invalidation 1/1; setData success 0
+```
+
+They must also cover wrong server, wrong UUID, wrong thread, second arm, second consume, missing local
+coordinate, wrong-`ModContainer` facade, active-session server stop, `RuntimeException`, `Error`,
+OOME, and unarmed normal-login exact no-op. The normal required GameTest count remains exactly 12.
+
+### Future implementation scope
+
+The maximum reviewed production allowlist is exact, not a `P4E2*` or `Qualification*` prefix scope:
+
+```text
+src/main/java/com/yo1no/gramarye/Gramarye.java
+src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java
+src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationCoordinator.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentReconciliationCapability.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java
+src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java
+```
+
+The two exact sealed／bound E2 capability paths are allowed only if required to carry `PlayerView` by
+the approved P2 route. Future test／probe scope is limited to the same-package P4-C2 GameTest adapter,
+bounded DTO／writer／verifier, facade lifecycle and FML retrieval tests, visibility compile tests,
+direct-coordinate tests, API／phase Gates, and the portable verifier's exact allowlist and
+production-JAR exclusion.
+
+Future implementation may not modify codex-spec; invent a new authority; alter Gradle
+heap, fork, workflow, R2Q, fixture Store-truth, E2 gameplay semantics, or E3; add a listener,
+network, or resources; or introduce a diagnostic Attachment, SavedData alias, static／global registry,
+`ThreadLocal`, reflection, callback, raw observer, public result, service getter, public `arm`, or
+public `consume`.
+
+### Conditional phase transition
+
+```text
+P4-E2-M1-D2-A0.3
+FML/public nominal exact-instance receiver
+read-only technical review
+= COMPLETE UPON THIS CLOSURE COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
+
+Technical verdict
+= OFFICIAL PER-MODCONTAINER CUSTOM EXTENSION
+  + CLOSED NOMINAL QUALIFICATION FACADE
+
+P4-E2-M1-D2 direct observation implementation
+= READY ONLY AFTER THAT REMOTE GATE PASSES;
+  NOT STARTED
+
+P4-E2 implementation
+= SUSPENDED IN VERIFIED REPAIRED BACKUP
+
+P4-C2 fixture compatibility
+= BLOCKED AT DIRECT RUNTIME OBSERVATION
+
+P4-E3
+= BLOCKED
+
+P4-E
+= INCOMPLETE
+```
+
+This closure does not claim that the facade exists in production, that the extension is registered,
+that READY direct JSON exists, that direct observation has passed, that fixture compatibility is
+complete, that E2 is restored, or that P4-E3 is open.
+
+### Known limitations and exact next work item
+
+The FML route currently has technical source and compile-probe evidence only and no production
+implementation. The public facade, extension registration, direct READY first／restart record,
+same-package adapter, DTO, and canonical JSON do not yet exist. Fixture compatibility remains
+incomplete, and E2 implementation remains suspended in its verified repaired external backup.
+
+The repository exact-source／Java unnamed-module model is not a hostile third-party Java sandbox;
+integrated hostile mutation and disk same-metadata rewrite limitations remain unchanged. R2Q is
+bounded empirical qualification and does not replace the P4-E3 fixed-1,536-MiB production Gate.
+Branch-protection required-check configuration remains external governance unknown.
+
+The exact next work item, and only after this closure commit's unique exact-SHA attempt-1 remote Gate
+passes, is a fresh `P4-E2-M1-D2 direct observation implementation` task constrained by this exact
+route, facade/view model, coordinate set, negative controls, and path allowlist. That implementation
+is READY only after the Gate and is not started by this closure.
 
 ```text
 P4-C0.1 = COMPLETE
@@ -2770,8 +3172,7 @@ P4-E0-B.6 authority stat            = 6 files; 1,266 insertions; 46 deletions
 P4-E0-B.6 authority patch SHA-256   = 3e960a3a19086e0543e64edd3037eb05797c5b0d2886893e12f8769b1f0c1d9b
 P4-E0-B.6 authority remote run      = 31785326383 (attempt 1; push/main; success)
 P4-E0-B.6 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
-P4-E0-B.6 direct qualification observation authority = COMPLETE UPON THIS CLOSURE COMMIT'S
-  UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
+P4-E0-B.6 direct qualification observation authority = COMPLETE
 P4-E0                          = COMPLETE
 P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review = PASS (HISTORICAL)
@@ -2820,9 +3221,12 @@ E2 invalidation accepted          = ACTUAL ACCEPTED NORMAL-RETURN BRANCH
 E2 setData attempt               = ACTUAL E2-BOUND SETDATA JVM CALLSITE
 E2 setData success               = IMMEDIATE NORMAL RETURN FROM THAT CALLSITE
 APPLIED                           = SEMANTIC CROSS-CHECK ONLY
-P4-E2-M1-D2 FML/public nominal receiver technical review = OPEN ONLY AFTER THAT REMOTE GATE PASSES;
-  REVIEW BODY NOT STARTED
-P4-E2 direct observation implementation = NOT STARTED
+P4-E2-M1-D2-A0.3 FML/public nominal exact-instance receiver review
+= COMPLETE UPON THIS CLOSURE COMMIT'S UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
+A0.3 technical route              = OFFICIAL PER-MODCONTAINER CUSTOM EXTENSION
+                                    + CLOSED NOMINAL QUALIFICATION FACADE
+P4-E2-M1-D2 direct observation implementation
+= READY ONLY AFTER THAT REMOTE GATE PASSES; NOT STARTED
 P4-E2 implementation             = SUSPENDED IN VERIFIED REPAIRED BACKUP
 P4-C2 fixture compatibility      = BLOCKED AT DIRECT RUNTIME OBSERVATION
 P4-E3                             = BLOCKED
@@ -2869,12 +3273,12 @@ production-trigger／owner-authority Gate. P4-E0-B.5 is committed, pushed, local
 qualified by unique attempt-1 exact-SHA remote run `31610627262`; it is complete. The renewed E2
 read-only design review passed without a Stop Condition and requires no split. Later qualification
 review A0.1 stopped at the missing nonpublic exact-instance receiver route, and A0.2 stopped at the
-direct-coordinate authority gap. The B.6 authority implementation is committed, pushed, and
-qualified by unique exact-SHA attempt-1 remote run `31785326383`. Its separate two-ledger closure
-becomes effective only after this closure commit's unique exact-SHA attempt-1 remote Gate passes.
-E2 implementation is suspended in its verified repaired backup; the FML／public-nominal receiver
-technical review opens only after that Gate and its review body has not started. P4-E3 remains
-blocked, and P4-E remains incomplete.
+direct-coordinate authority gap. Those Stops are historical; B.6 authority and closure are
+complete. The P4-E2-M1-D2-A0.3 FML／public-nominal exact-instance receiver read-only technical
+review passed with Candidate B as the unique route. This separate closure becomes effective only
+after its unique exact-SHA attempt-1 remote Gate passes. E2 implementation remains suspended in its
+verified repaired backup; direct-observation implementation is READY only after that Gate and is
+not started. P4-E3 remains blocked, and P4-E remains incomplete.
 The
 E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
