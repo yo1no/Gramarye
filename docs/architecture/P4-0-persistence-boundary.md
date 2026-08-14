@@ -287,8 +287,10 @@ exact-SHA remote run `31512359031`; P4-E1-B2, P4-E1-B, and P4-E1 are complete. T
 read-only design review stopped at the production-trigger／owner-authority Gate. P4-E0-B.5 is
 committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA remote run
 `31610627262`; it is complete. The renewed P4-E2 read-only design review passed without a Stop
-Condition and requires no split. P4-E2 implementation is ready but has not started, and P4-E3 is
-blocked until P4-E2 implementation commit／push／remote closure. E1 must
+Condition and requires no split. P4-E2 implementation is now suspended in its verified repaired
+backup after M1 qualification. A0.1 and A0.2 stopped at the nonpublic receiver and direct-coordinate
+authority Gates; B.6 resolves only the authority locally, with commit／push／remote closure pending.
+The FML／public-nominal technical review and P4-E3 remain blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -2054,9 +2056,10 @@ pushed, and remotely qualified; B2-B, B2, E1-B, and E1 are complete. The subsequ
 read-only design review stopped at the production-trigger／owner-authority Gate. P4-E0-B.5 is
 committed, pushed, locally verified, and qualified by unique attempt-1 exact-SHA remote run
 `31610627262`; it is complete. The renewed P4-E2 read-only design review subsequently passed
-without a Stop Condition and requires no split. P4-E2 implementation is ready but has not started,
-P4-E3 remains blocked until P4-E2 implementation commit／push／remote closure, and P4-E remains
-incomplete.
+without a Stop Condition and requires no split. P4-E2 implementation is now suspended in its
+verified repaired backup; A0.1 and A0.2 later stopped at the receiver-route and direct-coordinate
+authority Gates. B.6 is implemented locally but not committed or remotely closed, so the
+FML／public-nominal technical review and P4-E3 remain blocked and P4-E remains incomplete.
 
 ## P4-E0-B.5 production trigger and shared audit-service ownership authority
 
@@ -2421,6 +2424,132 @@ Gradle, workflow, resource, codex-spec, or official evidence file and does not b
 implementation. Its phase transition becomes effective only after this closure commit's unique
 attempt-1 exact-SHA `Build` run and exact five required jobs all complete with `success`.
 
+## P4-E0-B.6 direct qualification observation authority ledger
+
+Two later read-only qualification reviews exposed authority gaps without changing the approved
+P4-E2 gameplay design. `P4-E2-M1-D2-A0.1` stopped at `NONPUBLIC ACCESS ROUTE ABSENT`;
+`P4-E2-M1-D2-A0.2` stopped at `DIRECT COORDINATE AUTHORITY GAP`. The Stop Rule kept those results out
+of the ledgers until this documentation-only patch. B.6 is implemented locally; commit, push,
+unique exact-SHA remote qualification, and the separate two-ledger closure remain pending. The P4-E2
+implementation is suspended in its verified repaired backup. This authority starts no implementation
+and makes no claim that an FML extension API or exact receiver route exists.
+
+### Unique direct coordinates
+
+| Coordinate | Sole qualification checkpoint |
+| --- | --- |
+| `RECOVERY_OUTCOME_DIRECT_COORDINATE` | `HANDLER_LOCAL_EXHAUSTIVE_CLASSIFICATION` of the actual sealed outcome while it remains the sole login-handler／consume-chain local |
+| `E2_RESULT_DIRECT_COORDINATE` | `COORDINATOR_LOCAL_EXHAUSTIVE_CLASSIFICATION` of the actual package-private result before the reviewed public `void` wrapper discards it |
+| `E2_INVALIDATION_ATTEMPT` | the one central reconciliation helper entering the exact audit-service invalidation operation |
+| `E2_INVALIDATION_ACCEPTED` | the actual `Accepted` branch after that operation returns normally |
+| `E2_SET_DATA_ATTEMPT` | immediately before the actual JVM `ServerPlayer.setData(PLAYER_SKILLS, replacement)` invoke on the exact E2-bound path |
+| `E2_SET_DATA_SUCCESS` | the immediate normal-return checkpoint from that exact invoke |
+
+Recovery recording uses an exhaustive switch with no `default` over the actual object returned by
+`recoverPersistedPlayer(...)`. It retains only the sealed variant, `entriesCleared`, `stepsReplayed`,
+an already-bounded reason／kind, and
+`recoveryChanged = entriesCleared > 0 || stepsReplayed > 0`. It is not reconstructed from
+`RecoveryKind`, journal bytes, pending state, or later state. Existing
+`RecoveryContinuation.consume(...)` same-object pairing remains a production invariant, but direct
+evidence neither transports nor retains object identity; a completed record holds no
+`RecoveryOutcome`, continuation, throwable, or raw journal state.
+
+The coordinator retains the actual `P4E2ReconciliationResult` as a local and exhaustively classifies
+`NoChanges`, `RecoveryChanged`, `Changed`, `Deferred`, `Failed`, and `GenerationExhausted` before the
+public reviewed `void` wrapper discards it. The record holds only the variant, existing bounded
+counts／reason, and accepted-generation presence. The result remains package-private and unserialized;
+no public result, raw `long` coordinate, state-equality inference, second invocation, or log may
+substitute for this checkpoint.
+
+Invalidation attempt is counted once at the central operation boundary, not at both mutually
+exclusive callers. Accepted is counted only from the returned actual `Accepted` variant;
+`GenerationExhausted` is attempt 1／accepted 0. Generation or state change and the final E2 result do
+not infer either counter. If `Error`／OOME occurs after transition but before the `Accepted` wrapper,
+accepted remains 0, partial evidence is unpublished, and the original throwable propagates.
+
+The E2 setData coordinate is not publisher entry. A publisher that returns `STATE_CHANGED` before
+the JVM invoke has publisher invocation 1 but setData attempt 0／success 0. Only the exact E2-bound
+call counts; recovery, submission, and other callers do not. Shared private publication must use the
+exact nominal E2 session／capability to distinguish origin. Attempt is immediately before the invoke;
+success is immediately after normal return and before enum lookup, result allocation, callback, or
+fallible evidence publication. Existing `APPLIED` is only a normal-path semantic cross-check. If
+setData returns and later `APPLIED` formation or cleanup throws `Error`／OOME, the raw success point
+occurred but the whole observation aborts, no completed record is published, and production does not
+roll back. E2-owned setData 0 is proven only at the actual callsite, never by equal Attachment bytes.
+
+### Bounded qualification transport
+
+V0 authorizes one test-armed, instance-owned, memory-only, bounded, single-use mechanism on the same
+synchronous call chain. It is qualification evidence only—not gameplay API, runtime authority,
+persistence truth, index authority, reconciliation authorization, network protocol, or telemetry:
+
+```text
+IDLE -> ARMED -> RECORDING -> COMPLETED -> CONSUMED -> IDLE
+ARMED / RECORDING -> ABORTED / CLEARED -> IDLE
+```
+
+Each exact owner has at most one active and one completed-unconsumed record; queue and history are
+forbidden. Armed state binds exact mod／service, server, authenticated UUID, logic thread, bounded case
+token, first／restart phase, and exact session identity. Completed state contains only enums,
+booleans, bounded primitives, UUID value, bounded phase／case identity, and completion marker. It
+never retains server／player, Tag／Ready, Store／history／carrier, journal proof, actual owner, roots,
+Path, throwable／message／stack, callback, or raw bytes. Completion, consume, discard, failure, and
+server stop clear strong references immediately. `Error`／OOME is not caught or reclassified;
+cleanup is allocation-free and partial evidence cannot publish. Unarmed production creates no
+per-login record or diagnostic result, records no classification, writes no file, and changes no
+branch, failure, or result.
+
+Java package crossing may use at most one public top-level platform-facing facade and only necessary
+public nested sealed session／view types, with package-private／private implementations and factories.
+The same nonforgeable session reaches the submission-, Store-, and player-local cells. No public
+signature may expose internal results, outcome, Tag／Dynamic, Ready／Store／SavedData, owner／roots,
+Path／File／bytes, throwable, callback／functional sink, arbitrary generic source, `Object`, raw type,
+unchecked cast, or suppression. External code cannot create or subclass a valid session, arm an
+unauthorized record, forge completion, consume another session, or retrieve internals. Only an exact
+allowlisted synthetic source through a same-package adapter and nonpublic factory creates a session;
+this is an exact-source model, not a hostile-third-party sandbox guarantee.
+
+A per-`ModContainer` FML extension or officially supported equivalent exact-instance route is only
+conditionally authorized. A later technical review must prove official registration／retrieval,
+per-container identity and lifecycle, pre-login retrieval, GameTest exact-facade access, distinct
+first／restart instances, no global fallback, and no client／display-only misuse. B.6 selects no FML
+method and asserts no API exists. If no route is proven, the review stops at `NO SAFE RECEIVER ROUTE`.
+
+The session may coordinate a submission-local cell for actual outcome classification, Store-local
+cell for continuation／actual result／invalidation, and player-local cell for actual E2 setData. Each
+semantic owner records only its local fact; cells do not coordinate semantics, change control flow,
+transport raw objects, or retain them after completion. A cell may be omitted only if all exact
+coordinates remain direct.
+
+Static registry, `ThreadLocal`, global locator, second login listener, callback injection,
+log／stdout／file／JFR side channel, reflection／`Unsafe`, second reconcile, state inference, public E2
+result, transient diagnostic player Attachment, diagnostic data in the actual Attachment map,
+SavedData backlink, persistent record, queued history, and always-written last-login result are
+explicitly unauthorized.
+
+### Evidence and unchanged authority
+
+Only a test/probe after consuming a completed record may atomically publish canonical UTF-8 JSON as
+a regular non-symlink file no larger than 65,536 bytes. Duplicate, unknown, or missing fields fail.
+It contains `schema_version`, case／phase, handler call and direct outcome/counts, recovery-changed,
+continuation calls, direct E2 variant, invalidation attempt／accepted／generation-presence, E2 setData
+attempt／success, and completion marker—never an absolute path, raw object, message, stack, or
+throwable. Existing probes append Attachment／Store checksums outside the cell.
+
+READY first and restart each require handler 1, `NoPending`, cleared 0, replayed 0,
+recovery-changed false, continuation 1, `NoChanges`, invalidation 0／0, no accepted generation, and E2
+setData 0／0. Negative controls cover recovery-only change, `Changed`, `GenerationExhausted`, publisher
+drift before setData, failure after accepted invalidation and before setData, and `Error`／OOME partial
+abort. The normal GameTest count remains 12; unit／probe tests may own negative cases.
+
+B.6 changes recovery, E2 result, invalidation, setData, Attachment content, Store／journal, index
+generation, listener, network, persistence, background thread, and callback semantics by zero. It
+adds no 26th counter and changes none of the 25 maxima, `DataVersion = 3955`, zero-DFU rule, heap
+floor, B.4 authority, R2Q, E3 same-service identity, or the fixed-1,536-MiB E3 obligation. Direct
+evidence never substitutes for E3. Next is B.6 commit／push／unique exact-SHA remote qualification and
+the separate two-ledger closure; only then may the receiver technical review begin. Branch-protection
+required-check configuration remains external governance unknown.
+
 ```text
 P4-C0.1 = COMPLETE
 P4-C1   = COMPLETE
@@ -2463,6 +2592,7 @@ P4-E0-B.5 authority stat            = 6 files; 682 insertions; 57 deletions
 P4-E0-B.5 authority remote run      = 31610627262 (attempt 1)
 P4-E0-B.5 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
 P4-E0-B.5 production trigger / shared audit-service ownership authority = COMPLETE
+P4-E0-B.6 direct qualification observation authority = IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
 P4-E0                          = COMPLETE
 P4-E1 prior read-only review   = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review = PASS (HISTORICAL)
@@ -2502,8 +2632,15 @@ P4-E1-B                          = COMPLETE
 P4-E1                             = COMPLETE
 P4-E2 prior read-only design review = STOPPED AT PRODUCTION TRIGGER / OWNER AUTHORITY GATE
 P4-E2 read-only design review    = COMPLETE — PASS; NO SPLIT
-P4-E2 implementation             = READY; NOT STARTED
-P4-E3                             = BLOCKED UNTIL P4-E2 IMPLEMENTATION / COMMIT / PUSH / REMOTE CLOSURE
+P4-E2-M1-D2-A0.1                 = STOPPED AT NONPUBLIC ACCESS ROUTE ABSENT
+P4-E2-M1-D2-A0.2                 = STOPPED AT DIRECT COORDINATE AUTHORITY GAP
+RecoveryOutcome direct coordinate = HANDLER_LOCAL_EXHAUSTIVE_CLASSIFICATION
+E2 result direct coordinate      = COORDINATOR_LOCAL_EXHAUSTIVE_CLASSIFICATION
+E2 setData attempt               = ACTUAL E2-BOUND SETDATA JVM CALLSITE
+E2 setData success               = IMMEDIATE NORMAL RETURN FROM THAT CALLSITE
+FML/public nominal route technical review = BLOCKED UNTIL B.6 COMMIT / PUSH / REMOTE CLOSURE
+P4-E2 implementation             = SUSPENDED IN VERIFIED REPAIRED BACKUP
+P4-E3                             = BLOCKED
 P4-E                            = INCOMPLETE
 ```
 
@@ -2545,9 +2682,12 @@ exact-SHA remote run `31512359031` passed the build and P4-A3／B／C／D memory
 and E1 are complete. The subsequent P4-E2 read-only design review stopped at the
 production-trigger／owner-authority Gate. P4-E0-B.5 is committed, pushed, locally verified, and
 qualified by unique attempt-1 exact-SHA remote run `31610627262`; it is complete. The renewed E2
-read-only design review passed without a Stop Condition and requires no split. E2 implementation is
-ready but has not started; P4-E3 is blocked until E2 implementation commit／push／remote closure,
-and P4-E remains incomplete. The
+read-only design review passed without a Stop Condition and requires no split. Later qualification
+review A0.1 stopped at the missing nonpublic exact-instance receiver route, and A0.2 stopped at the
+direct-coordinate authority gap. B.6 now fixes the authority locally but remains uncommitted and
+unqualified remotely. E2 implementation is suspended in its verified repaired backup; the
+FML／public-nominal receiver technical review and P4-E3 remain blocked, and P4-E remains incomplete.
+The
 E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
 study, and P4-E3 still

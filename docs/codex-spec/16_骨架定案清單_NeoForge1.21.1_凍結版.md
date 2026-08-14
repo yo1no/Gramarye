@@ -355,6 +355,102 @@ DefinitionEnvelope
   reclaim；其audit-service production constructor delta與login wiring delta
   均必須為0。
 
+### P4-E0-B.6 qualification-only direct observation
+
+B.6固定下列唯一direct coordinates；這些座標只用於synthetic qualification，
+不是runtime、index、persistence或gameplay authority：
+
+| Coordinate | Unique definition |
+| --- | --- |
+| `RECOVERY_OUTCOME_DIRECT_COORDINATE` | `HANDLER_LOCAL_EXHAUSTIVE_CLASSIFICATION` |
+| `E2_RESULT_DIRECT_COORDINATE` | `COORDINATOR_LOCAL_EXHAUSTIVE_CLASSIFICATION` |
+| `E2_INVALIDATION_ATTEMPT` | actual central reconciliation invalidation operation invocation |
+| `E2_INVALIDATION_ACCEPTED` | actual `Accepted` result branch after normal return |
+| `E2_SET_DATA_ATTEMPT` | actual JVM callsite immediately before the exact E2-bound `ServerPlayer.setData(PLAYER_SKILLS, replacement)` invocation |
+| `E2_SET_DATA_SUCCESS` | immediate normal-return checkpoint after that exact invocation |
+
+- 【Recovery direct】`recoverPersistedPlayer(...)`回傳actual sealed `RecoveryOutcome`後，
+  當該exact object仍是sole login-handler／consume call-chain local時，立即以exhaustive
+  no-default pattern switch分類。只記錄exact variant、`entriesCleared`、`stepsReplayed`、
+  既有bounded reason／kind及`recoveryChanged = entriesCleared > 0 || stepsReplayed > 0`。
+  Same object仍傳入`RecoveryContinuation.consume(...)`，但object identity不傳Store、不進
+  completed record、不序列化／公開／跨tick；不從journal bytes、`RecoveryKind`或post-state
+  推導direct result。
+- 【E2 result direct】Actual package-private `P4E2ReconciliationResult`從`reconcile(...)`
+  回傳後先作coordinator local，在public reviewed `void` wrapper丟棄前以exhaustive
+  no-default switch分類。Record只保存actual variant、既有bounded counts／reason與optional
+  accepted-generation-presence；result維持package-private、dependency維持`void`。禁止public
+  result return／serialization、state-equality inference、second reconcile或log-only proof。
+- 【Invalidation direct】Attempt只在唯一central helper真正進入
+  `SkillRetentionRootAuditService` exact invalidation operation計數，上層mutually-exclusive
+  entries不重複計數；accepted只在operation正常回傳後的actual `Accepted`
+  branch計數。`GenerationExhausted = attempt 1 / accepted 0`。Post-index／pre-wrapper
+  `Error`／OOME不標accepted、不發partial record，原identity外拋。不得用generation、
+  index state或E2 result反推。
+- 【`setData` direct】Attempt不是publisher entry；它在actual E2-bound JVM invoke前立即
+  計數，success在invoke正常返回後立即計數，並早於enum lookup、result wrapper、
+  callback或可失敗diagnostic publication。Publisher先回`STATE_CHANGED`時publisher call = 1
+  但`setData = 0/0`；P4-D recovery、submission或shared-method其他caller不計入，shared
+  path只能用exact E2-bound nominal session區分。`APPLIED`只是normal semantic
+  cross-check，不是success coordinate。Post-return／pre-`APPLIED` `Error`／OOME可已發生
+  raw success，但official record必須abort，production mutation不rollback，原throwable外拋。
+- 【Bounded state】V0只授權`IDLE -> ARMED -> RECORDING -> COMPLETED -> CONSUMED ->
+  IDLE`與`ARMED/RECORDING -> ABORTED/CLEARED -> IDLE`。Mechanism必須test-armed、
+  instance-owned、memory-only、single-use、same synchronous call chain與normal-runtime inert；每exact
+  owner最多一active與一completed-unconsumed record，無queue／history／last-login record。
+  Session綁定exact mod／service、server、authenticated UUID、logic thread、bounded case／phase與
+  exact session identity。Completed只含enums／booleans／bounded primitives／UUID／case／phase／
+  marker，不含Server／Player／Tag／Ready state／Store／journal／root／Path／Throwable／callback／
+  raw bytes。Consume／discard／failure／server stop立即clear strong references；Error／OOME
+  allocation-free clear、no partial publication、original identity propagation。
+- 【Closed nominal package crossing】Qualification-only受限例外最多允許一個public
+  top-level platform-facing facade、必要的public nested sealed session／view types與nonpublic
+  construction／implementation。Valid session只由exact allowlisted synthetic source經same-package test
+  adapter建立；external caller不得construct／subclass／arm／forge／cross-consume或取得
+  internal diagnostics。Public／protected surface禁止internal result／raw state／Store／SavedData／
+  journal／owner／roots／Path／bytes／Throwable／callback／generic source／`Object`／raw type／
+  unchecked cast／suppression。這是exact-source／unnamed-module contract，不是惡意Java
+  sandbox保證。
+- 【Conditional receiver route】只在後續locked-artifact technical review證明official
+  per-`ModContainer` FML extension或semantic-equivalent exact-instance route具備registration／
+  retrieval API、exact identity／lifecycle／pre-login access、GameTest first／restart new-instance與
+  no client-only misuse時，才授權該route。B.6不指定method、不宣稱API存在或
+  review PASS。無合格route必須`STOPPED — NO SAFE RECEIVER ROUTE`，不得fallback至
+  public static locator、`ThreadLocal`、global registry、reflection、second listener、log／file／
+  JFR／system-property side channel或second reconcile。
+- 【Local cells／no split】最多允許submission-local記actual recovery classification、store-local記
+  continuation／E2 result／invalidation、player-local記exact E2-bound `setData`。三者共用same
+  nonforgeable session，只記自己local fact，不跨package傳raw object／callback／保留actual
+  object，不建立second coordinator或改production result／failure／control flow；因此不改
+  P4-E2 `PASS; NO SPLIT`。Store-only若已足夠可省略無用cell，但不可降低coordinate。
+- 【Forbidden alternatives】不授權static registry、`ThreadLocal`、global service locator、
+  second login listener、callback／observer／function injection、log／stdout／file／JFR evidence、
+  reflection／Unsafe、second reconcile、state／generation-derived counters、public E2 result、transient
+  diagnostic player `AttachmentType`／actual Attachment-map session、SavedData runtime backlink、
+  persistent diagnostic record、queued／multi-login history或normal-login last-result record。需要任一項必須Stop。
+- 【Evidence JSON】Production cell不寫檔；synthetic test／probe只在valid session成功consume
+  completed record後才可atomic publish canonical UTF-8 regular non-symlink JSON，最大65,536
+  bytes，duplicate／unknown／missing field拒絕，failed／partial／aborted session無artifact。Exact
+  fields至少為`schema_version`、`case_id`、`phase`、`recovery_handler_calls`、
+  `typed_recovery_outcome`、`entries_cleared`、`steps_replayed`、`recovery_changed`、
+  `e2_continuation_calls`、`e2_result_variant`、`invalidation_attempts`、
+  `invalidation_accepted`、`invalidation_generation_present`、`e2_set_data_attempts`、
+  `e2_set_data_successes`與`completion_marker`；Attachment／Store checksum在cell外附加。
+  不得寫absolute path、raw object／bytes或message／stack／Throwable。
+- 【READY／negative controls】First與restart同時要求recovery calls 1、`NoPending`、
+  cleared/replayed 0/0、changed false；E2 calls 1、`NoChanges`；invalidation 0/0、generation
+  absent；E2 `setData` 0/0。Bytes／Attachment／Store／generation／call graph只是cross-check。
+  Negative controls至少包含`NoChanges` 0/0＋0/0、recovery-changed-only true＋1/1＋0/0、
+  `Changed` 1/1＋1/1、`GenerationExhausted` 1/0＋0/0、publisher drift＋`setData`
+  0/0、accepted-before-setData failure＋invalidation 1/1＋setData success 0，以及Error／OOME
+  no-consumable-partial-record／original-identity propagation。Normal GameTest required count仍為12。
+- 【Zero semantics／preserved obligations】Unarmed normal path不建立record／classification result／
+  file，persistence／network／thread／callback／second listener。Recovery、E2 result、invalidation、
+  `setData`、Attachment content、Store／journal mutation與index generation delta全為0。B.6不改
+  25 counters、DataVersion 3955、DFU 0、1,536-MiB floor／effective-MaxHeap coordinate、B.4、
+  R2Q profile／cases／identity／evidence、E3 same-service／snapshot／reclaim／fixed-heap obligation；
+  direct evidence不取代E3 Gate。
+
 ## 8-B. 真相歸屬表與單一真相原則
 
 - 【原則】每一種執行期資料恰有一個持久化真相；其他副本只能是可重建索引、指標或客戶端快照。
@@ -833,6 +929,21 @@ PresentationEvent
   production wiring時E2 Gate失敗、wrong dependency／identity pairing拒絕、repeated login不新建
   service、server restart不替換owner、exact-server slots仍identity-isolated、E3只重用同一
   instance，且public／protected API不暴露audit internal type。
+- P4-E direct qualification：actual RecoveryOutcome／E2 result exhaustive no-default local
+  classification、invalidation operation-entry／Accepted-branch、actual E2-bound JVM `setData`
+  pre-invoke／immediate-return coordinates及`APPLIED` cross-check。驗publisher drift、shared non-E2
+  caller、GenerationExhausted、post-mutation／pre-wrapper Error／OOME與no indirect inference。
+- P4-E diagnostic lifecycle：bounded state的single-use／wrong-session／wrong-thread／stop／abort、
+  closed nominal facade無external construction／forgery／raw exposure、最多三local cells不形成
+  split，並掃描no static／global／reflection／second listener／diagnostic Attachment／SavedData
+  backlink／callback。FML route必須在獨立locked-artifact review證明official exact-instance
+  registration／retrieval後才可實作；無safe route直接Stop。
+- P4-E diagnostic evidence：canonical UTF-8 JSON exact fields、65,536 bytes exact／+1、
+  symlink／duplicate／unknown／missing／partial-publication rejection；READY first／restart exact
+  `NoPending`／`NoChanges`／invalidation 0/0／`setData` 0/0，以及`NoChanges`、recovery
+  changed、`Changed`、`GenerationExhausted`、publisher drift、accepted-before-setData failure、
+  Error／OOME negative controls。Unarmed path要求record／file allocation與所有production semantic
+  delta為0；normal GameTest count、25 counters、R2Q與E3 Gate不變。
 
 ## 36. 發布阻擋條件
 
@@ -972,6 +1083,9 @@ P4-E0-B.4：documentation-only memory-only root-index generation／exhaustion、
 P4-E0-B.5：documentation-only P4-E2 production construction trigger、Store-service exact-final ownership、
           sole login handler／recovery→E2 synchronous ordering、exact-identity injection與E3 same-instance reuse；
           不裁決recovery outcome admissibility或atomic reconciliation final design
+P4-E0-B.6：documentation-only direct RecoveryOutcome／E2 result classification、invalidation／setData
+          exact coordinates、test-armed bounded state、closed nominal transport、conditional FML route與
+          local-cell authority；無implementation／FML API existence claim／production semantics／E3／R2Q delta
 P4-E1：read-only bounded online／integrated／disk audit；online existing-state observation only，
       disk／integrated full P4-C admission；journal／Store audit、
       memory-only index與Complete／Incomplete／ReconciliationRequired；reclaim／mutation 0
@@ -983,12 +1097,15 @@ P4-E3：重用E2接入且Store持有的exact same audit service；唯一ServerSt
       restart／fixed-1,536-MiB／CI／final gates；無audit constructor／login wiring／chunk force／background sweep
 ```
 
-P4-E1已`COMPLETE`。前次P4-E2 read-only review實際已依Stop Rule停止於
-`PRODUCTION TRIGGER / OWNER AUTHORITY GAP`；當時因read-only不得修改文件，ledger保留的
-`OPEN`為stale status。P4-E0-B.5 authority／closure完成前當前E2 review為`BLOCKED`，E2
-implementation為`NOT STARTED`且E3為`BLOCKED`；B.5 closure後只重新開啟從clean HEAD
-執行的E2 read-only review，不直接核准implementation，blocker之後的outcome／atomic
-reconciliation設計也不視為已裁決。
+P4-E1已`COMPLETE`；P4-E2 read-only design review已`COMPLETE — PASS; NO SPLIT`，
+implementation仍`SUSPENDED IN VERIFIED REPAIRED BACKUP`。P4-E2-M1 memory repair的root
+cause／repair／three-cold-run qualification已完成，但P4-C2 READY fixture compatibility仍
+`BLOCKED AT DIRECT RUNTIME OUTCOME / COUNTER OBSERVATION`。A0.1正式停在
+`NONPUBLIC ACCESS ROUTE ABSENT`，A0.2正式停在`DIRECT COORDINATE AUTHORITY GAP`。
+P4-E0-B.6當前為`IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING`；只有B.6
+commit／push／remote closure後才可開始獨立FML／public nominal route technical review，該review
+當前`BLOCKED`，且必須對locked API存在與safe exact-instance route另行舉證。P4-E3
+仍`BLOCKED`，P4-E仍`INCOMPLETE`。
 
 P4-A2因document／migration package visibility只核准兩個public facade classes：
 `SkillDocumentStorePersistenceFacade` 同時提供只接受current-schema typed document的
@@ -1113,12 +1230,15 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - [ ] Store-first journal使用bounded generation且只在persisted readback確認後清除；
       composition outcome不把Prepared冒充Committed；strict `writeAnyTag` framing、partial availability、
       continuous chain與single-process fixed-1-GiB combined Gate均通過。
-- [ ] P4-E1已closure。前次E2 read-only review因production trigger／owner authority gap停止；
-      P4-E0-B.5 commit／push／remote closure前當前E2 review blocked，implementation維持
-      `NOT STARTED`，closure後也只是從clean HEAD重開review。P4-E2是首次將production
-      audit service接入composition的phase；每個`SkillDefinitionStoreService`exactly owns one
-      final instance，既有sole recovery login handler在P4-D recovery後以窄constructor-injected
-      dependency同步呼叫E2，且active production wiring是E2 closure條件。E3只重用same
+- [ ] P4-E1已closure，E2 read-only review已`COMPLETE — PASS; NO SPLIT`而implementation
+      仍封存於verified repaired backup。A0.1／A0.2分別因nonpublic receiver route與direct
+      coordinate authority gap停止；B.6當前只是local documentation patch，commit／push／
+      remote closure後還必須獨立證明locked FML exact-instance route才可實作，不得宣稱
+      API已存在。Direct evidence必須使用B.6 actual-object／result／invalidation／JVM
+      `setData` coordinates、bounded nonforgeable session與canonical JSON；unarmed semantics delta 0，
+      無safe receiver直接Stop而不用static／global／Attachment／SavedData fallback。P4-E2仍是
+      首次將production audit service接入composition的phase；每個Store service exact-one-final、
+      sole recovery login handler same-call-chain E2與active wiring條件不變。E3只重用same
       instance作fresh audit／reclaim／exact-server removal，constructor與login wiring delta均0。
 - [ ] E1只作read-only
       bounded online／integrated／disk audit、E2只作login reconciliation，二者reclaim 0。Player roots包含online／offline
