@@ -525,10 +525,11 @@ implementation remains suspended in its verified repaired backup after M1 qualif
 A0.2 are historical Stops at the nonpublic receiver and direct-coordinate authority Gates. The B.6
 authority implementation and separate closure prerequisites are complete at
 `a7bb7712c9a176a24949e62f01e43ab48f4f65f8`. The
-P4-E2-M1-D2-A0.3 FML／public-nominal exact-instance receiver read-only technical review passed with
-the unique per-`ModContainer` custom-extension route. Its separate two-ledger closure remains
-conditional; direct-observation implementation becomes READY only after that closure's unique
-exact-SHA attempt-1 remote Gate passes. P4-E3 remains blocked. No phase
+P4-E2-M1-D2-A0.3 FML／public-nominal exact-instance receiver read-only technical review and closure
+are complete, and its source／test implementation is locally focused-validated. The later B.7
+COMMIT_READY／final-receipt authority patch is implemented locally with commit／push／remote closure
+pending; Candidate12 remains stopped pending that closure and a new read-only technical review.
+Cold qualification v1／v2 are failed at 0／3, v3 is not started, and P4-E3 remains blocked. No phase
 introduces chunk force, periodic/background scanning, network, or a second persistent truth. The completed
 E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate; the B.1
 jobs and this authority correction do not waive it either.
@@ -2297,6 +2298,168 @@ passes, is a fresh `P4-E2-M1-D2 direct observation implementation` task constrai
 route, facade/view model, coordinate set, negative controls, and path allowlist. That implementation
 is READY only after the Gate and is not started by this closure.
 
+## P4-E0-B.7 COMMIT_READY／final receipt publication authority
+
+This synchronized documentation-only ledger records the sole authority change required by the
+Candidate12 implementation-feasibility Stop. The prior requirement that the final no-replace
+receipt link complete by H was not implementable with the allowed same-process macOS filesystem
+operations: userspace could not distinguish an H-minus-epsilon link linearization from an
+H-plus-epsilon linearization when both syscalls returned after H. B.7 changes that one boundary
+only. It does not implement Candidate12, run a harness, open cold v3, select T1, or modify any
+gameplay／persistence／fixture authority. B.6 direct-evidence JSON is separate from the B.7 final
+qualification receipt and is unchanged.
+
+### COMMIT_READY deadline
+
+~~~text
+H = COMMIT_READY_DEADLINE
+
+H strictly bounds COMMIT_READY and LINK_PREINVOKE_ELIGIBLE.
+H does not bound normal return from the one final no-replace receipt link.
+~~~
+
+COMMIT_READY must close the complete formal observation, normal bounded ps／jcmd completion and
+reap, native process-identity classification, CLEAR／SAME_EXPECTED_DAEMON candidate, every formal
+field, immutable receipt payload, fixed source path／inode and target path, same-filesystem proof,
+target-expected-absent state, all link arguments, and the COMMIT_READY seal. No parse,
+classification, hash, serialization, fsync, rename, readback, or reconciliation work may remain.
+The monotonic commit-ready coordinate must be no later than H. Otherwise the result is
+COMMIT_READY_DEADLINE_EXCEEDED, link invocation count is zero, and no receipt may publish.
+
+The reviewed T2 branch-aware 4.100-second ledger ends at COMMIT_READY preparation. H remains
+5.750 seconds. Link latency is not represented as a bounded stage and cannot be absorbed by
+increasing H, changing a watchdog, deleting ps／jcmd, weakening process identity, or reducing the
+three-CLEAR requirement.
+
+### Adjacent preinvoke eligibility and one publication
+
+The sole LINK_PREINVOKE_ELIGIBLE check must be immediately adjacent to the syscall and prove all of:
+
+~~~text
+commit_ready == true
+current_monotonic_time <= H
+link_attempts == 0
+target_not_previously_used
+session_not_aborted
+~~~
+
+No callback, logging, file read, allocation-heavy work, retry, yield, second process,
+wrapper／DONE protocol, or another clock-dependent branch may occur between that check and the
+syscall. A late check produces LINK_NOT_INVOKED and COMMIT_READY_DEADLINE_EXCEEDED with zero link
+attempts.
+
+After COMMIT_READY, the same supervisor may directly invoke exactly one same-filesystem, atomic,
+no-replace link／linkat. Copy, replace-existing, rename-overwrite, retry, fallback API, wrapper
+process, ln subprocess, DONE file／pipe, and a second publication path are forbidden. The exact
+macOS／JDK route is intentionally unselected until the post-B.7 read-only technical review.
+
+If COMMIT_READY and eligibility are both established no later than H, normal return may occur before
+or after H. The only success coordinate is same-process normal return from that exact authorized
+call, which is RECEIPT_COMMITTED. A crossed-H normal return is eligible to PASS and must not be
+rejected by a later clock check. Reports must separate commit_ready_by_h,
+link_preinvoke_eligible_by_h, receipt_link_normal_return, and receipt_link_crossed_h. They must not
+claim transaction finished by H, receipt committed by H, or link completed within H unless the
+return actually occurred by H, and even then timing is diagnostic rather than an extra
+qualification requirement.
+
+### Failure, orphan, post-link, and durability boundaries
+
+Directly observed EEXIST, ENOENT, EXDEV, EACCES, EPERM, EIO, ENOSPC, EINTR, RuntimeException, or
+other non-success return is RECEIPT_COMMIT_FAILED. Error and OOME must propagate with original
+identity; they, process termination, external timeout, unknown syscall completion, or a possible link without observed same-process normal return
+is RECEIPT_COMMIT_UNADJUDICATED. Neither state permits retry, alternate path, target readback,
+stat／exists／open, reconciliation, backfill, cleanup-to-success, or later recovery.
+
+Receipt-path existence alone is not restart authority. Restart scan, orphan adoption, readback
+classification, later manifest reconciliation, and backfill are prohibited. A possible orphan
+remains only in that failed attempt's unique namespace; the namespace is never reused and cannot
+affect another run.
+
+The final link is the observation's last persistent state-changing operation. After normal return,
+only nonallocating local status propagation, normal control return, and normal process exit are
+allowed. File／receipt／manifest mutation, link／rename, readback, checksum, fsync claim,
+reconciliation, callback, external process, and retry are forbidden. This authority claims only
+that the live qualification process observed normal return of the no-replace directory-entry
+publication. It adds no fsync, crash-durability, cross-file transaction, reboot-recovery,
+filesystem-journal, or directory-persistence claim.
+
+### Preserved strictness, future review, and tests
+
+B.7 changes neither H's numeric value nor the settling deadline, poll interval, maximum
+observations, three CLEAR, ps, jcmd, PID／birth identity, client／worker／foreign checks, collector,
+heap, fork, test order, Gradle command, qualification counts, fixture, P4-E2 gameplay semantics,
+P4-C2 evidence, R2Q, or P4-E3 obligations.
+
+B.7 closure does not authorize implementation. A new read-only technical review must prove the
+exact macOS／JDK API, same-process direct syscall, same-filesystem no-replace behavior, sealed source
+inode, unique target, adjacent preinvoke check, one invocation, no retry, no readback, no post-link
+persistent mutation, termination-as-UNADJUDICATED, no orphan adoption, preserved T2 4.100-second
+preparation ledger, honest unbounded link latency, and no durability overclaim. If normal return
+still requires another operation to make RECEIPT_COMMITTED authoritative, Candidate12 must stop.
+
+Future deterministic tests must cover ready-before-H with return before and after H as PASS; late
+ready and late preinvoke with zero link calls; single EEXIST／EXDEV／EINTR; RuntimeException;
+Error／OOME original-identity propagation and mid-link termination as UNADJUDICATED; orphan non-adoption; unique namespaces; zero
+target-readback callsites; exactly one link callsite; zero wrapper／DONE／ln subprocess; zero
+post-link persistent mutation; no post-clock rejection of crossed-H return; byte-identical payload
+after COMMIT_READY; and unchanged process strictness.
+
+Candidate direct-observation cold qualification v1／v2 is distinct from the earlier completed
+P4-E2-M1 memory-repair three-cold-run campaign. Focused-validated source／test does not mean that
+P4-E2 production implementation resumed or completed.
+
+~~~text
+P4-E0-B.6
+= COMPLETE
+
+P4-E2-M1-D2-A0.3
+= COMPLETE
+
+P4-E2-M1-D2 source/test implementation
+= LOCALLY FOCUSED-VALIDATED
+
+cold qualification v1
+= FAILED; 0/3
+
+cold qualification v2
+= FAILED; 0/3
+
+Candidate11
+= FAILED AT TRANSACTION WATCHDOG BUDGET GAP
+
+Candidate12 protocol review
+= STOPPED AT NO UNIQUE STRICT PROTOCOL
+
+Candidate12 prior implementation feasibility
+= STOPPED AT FINAL LINK DEADLINE IMPOSSIBILITY
+
+P4-E0-B.7 COMMIT_READY / final receipt publication authority
+= IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+
+Candidate12 protocol
+= T2 SUPERVISOR-OWNED OBSERVATION
+  REMAINS THE ONLY SELECTED PREPARATION PROTOCOL
+
+Candidate12 final receipt boundary
+= REQUIRES B.7 CLOSURE
+  AND A NEW READ-ONLY TECHNICAL REVIEW
+
+cold qualification v3
+= NOT STARTED
+
+P4-C2 and later Gates
+= BLOCKED
+
+P4-E3
+= BLOCKED
+
+P4-E
+= INCOMPLETE
+~~~
+
+This local patch does not make Candidate12 READY, pass its implementation, open cold v3 or P4-C2,
+complete E2, or open E3.
+
 ## Status
 
 ```text
@@ -2333,7 +2496,9 @@ P4-E0-B.6 authority patch SHA-256   = 3e960a3a19086e0543e64edd3037eb05797c5b0d28
 P4-E0-B.6 authority remote run      = 31785326383 (attempt 1; push/main; success)
 P4-E0-B.6 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
 P4-E0-B.6 direct qualification observation authority = COMPLETE
-P4-E0                              = COMPLETE
+P4-E0-B.7 COMMIT_READY / final receipt publication authority
+= IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+P4-E0                              = COMPLETE THROUGH B.6; B.7 LOCAL AUTHORITY CLOSURE PENDING
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review  = PASS (HISTORICAL)
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
@@ -2382,11 +2547,15 @@ E2 setData attempt                 = ACTUAL E2-BOUND SETDATA JVM CALLSITE
 E2 setData success                 = IMMEDIATE NORMAL RETURN FROM THAT CALLSITE
 APPLIED                             = SEMANTIC CROSS-CHECK ONLY
 P4-E2-M1-D2-A0.3 FML/public nominal exact-instance receiver review
-= COMPLETE UPON THIS CLOSURE COMMIT'S UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
+= COMPLETE
 A0.3 technical route              = OFFICIAL PER-MODCONTAINER CUSTOM EXTENSION
                                     + CLOSED NOMINAL QUALIFICATION FACADE
-P4-E2-M1-D2 direct observation implementation
-= READY ONLY AFTER THAT REMOTE GATE PASSES; NOT STARTED
+P4-E2-M1-D2 source/test implementation = LOCALLY FOCUSED-VALIDATED
+Candidate12 prior implementation feasibility = STOPPED AT FINAL LINK DEADLINE IMPOSSIBILITY
+Candidate12 final receipt boundary = REQUIRES B.7 CLOSURE + NEW READ-ONLY TECHNICAL REVIEW
+cold qualification v1             = FAILED; 0/3
+cold qualification v2             = FAILED; 0/3
+cold qualification v3             = NOT STARTED
 P4-E2 implementation               = SUSPENDED IN VERIFIED REPAIRED BACKUP
 P4-C2 fixture compatibility        = BLOCKED AT DIRECT RUNTIME OBSERVATION
 P4-E3                               = BLOCKED

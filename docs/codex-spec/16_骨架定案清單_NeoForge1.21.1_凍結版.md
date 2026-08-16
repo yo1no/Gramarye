@@ -451,6 +451,121 @@ B.6固定下列唯一direct coordinates；這些座標只用於synthetic qualifi
   R2Q profile／cases／identity／evidence、E3 same-service／snapshot／reclaim／fixed-heap obligation；
   direct evidence不取代E3 Gate。
 
+### P4-E0-B.7 qualification receipt COMMIT_READY boundary
+
+- 【Scope】B.7是documentation-only authority patch，只修正「final no-replace receipt link
+  must complete by H」這個已證不可實作的命題。它不建立Candidate12 harness／test、
+  不執行cold campaign、不重選T1；T2 supervisor-owned observation仍是唯一選定的
+  preparation protocol。B.7 final qualification receipt與B.6 test/probe direct-evidence JSON
+  是不同authority layer，互不取代。
+- 【Deadline】H的唯一名稱與語意是COMMIT_READY_DEADLINE。H嚴格約束
+  COMMIT_READY與LINK_PREINVOKE_ELIGIBLE，不約束唯一final no-replace link的normal-return
+  時間；H數值保持5.750秒。
+- 【COMMIT_READY】H前必須完成formal observation、ps／jcmd正常完成與完整reap、
+  native process identity、CLEAR／SAME_EXPECTED_DAEMON classification、全部正式欄位、
+  immutable receipt payload、fixed source path／inode與target path、same-filesystem proof、target expected
+  absent、全部link參數與seal。此後不得仍有parse、classification、hash、serialization、
+  fsync、rename、readback或reconciliation。commit_ready_time必須不晚於H。
+- 【Late readiness】任一ready條件或seal晚於H固定為COMMIT_READY_DEADLINE_EXCEEDED；
+  link invocation count = 0且不得建立receipt。T2 4.100秒branch-aware ledger只涵蓋
+  COMMIT_READY preparation；link latency不是bounded stage。
+- 【Preinvoke】唯一LINK_PREINVOKE_ELIGIBLE check必須緊鄰syscall，並同時證明
+  commit_ready、current monotonic time不晚於H、link attempts為0、target未使用且session未
+  abort。Check與link之間禁止callback、logging、file read、allocation-heavy work、retry、
+  yield、second process、wrapper／DONE或另一clock branch。Late check固定不呼叫link。
+- 【Publication】COMMIT_READY後只允許同一supervisor直接執行一次same-filesystem、
+  atomic、no-replace link／linkat。禁止copy、overwrite／replace、rename-overwrite、
+  temporary retry、fallback API、wrapper、ln subprocess、DONE carrier與second publication path。
+- 【Success】只要ready與eligibility都不晚於H，link可在H前或H後normal return。Exact
+  authorized link的same-process normal return是唯一RECEIPT_COMMITTED coordinate；
+  crossed-H normal return仍可PASS，且不得以post-return clock重新否決。
+- 【Failure】EEXIST／ENOENT／EXDEV／EACCES／EPERM／EIO／ENOSPC／EINTR、
+  RuntimeException及其他direct non-success為RECEIPT_COMMIT_FAILED。Error／OOME保留原identity；它們與
+  process termination、external timeout、unknown completion或沒有觀察到same-process normal
+  return為RECEIPT_COMMIT_UNADJUDICATED。兩者都禁止retry、alternate path、target
+  readback／stat／exists／open、reconciliation、backfill與cleanup-to-success。
+- 【No restart authority】Receipt path存在本身不能重建success。禁止restart scan、
+  orphan adoption、later manifest reconciliation或backfill。可能orphan只留在該attempt的
+  unique namespace；namespace不得重用。
+- 【Post-link】Final link是observation最後persistent mutation。Normal return後禁止file
+  write／link／rename、receipt／manifest mutation、readback、checksum、fsync claim、
+  reconciliation、callback、external process或retry；只允許nonallocating local status
+  propagation、normal return與normal exit。
+- 【No durability overclaim】只宣稱live process觀察到no-replace directory-entry
+  publication normal return；不宣稱fsync、crash durability、cross-file transaction、reboot
+  recovery、journal或directory persistence。
+- 【Reporting】未來分開報告commit_ready_by_h、link_preinvoke_eligible_by_h、
+  receipt_link_normal_return、receipt_link_crossed_h。crossed_h=true可PASS；不得把
+  transaction finished／receipt committed／link completed by H當qualification requirement。
+- 【Preserved strictness】H numeric value、settling deadline、poll interval、maximum
+  observations、three CLEAR、ps、jcmd、PID／birth identity、client／worker／foreign checks、
+  collector、heap、fork、test order、Gradle command、qualification counts、fixture、P4-E2、
+  P4-C2、R2Q與P4-E3 obligation全部不變。
+- 【Next Gate】B.7 closure後仍只開啟新的read-only technical review；必須證明exact
+  macOS／JDK same-process API、same-filesystem no-replace、source inode sealed、unique target、
+  adjacent preinvoke、one invocation、no retry／readback／post-link mutation、termination
+  UNADJUDICATED、orphan不認領、T2 4.100秒preparation ledger與cross-H deterministic tests。
+  若normal return後仍需額外operation才能形成authority，Candidate12必須STOP。
+
+Future tests至少覆蓋ready-before-H的before／after-H return PASS、late ready／preinvoke零link、
+single EEXIST／EXDEV／EINTR、RuntimeException、Error／OOME original-identity propagation、
+mid-link termination、
+orphan隔離、unique namespace、zero readback、one link callsite、zero wrapper／DONE／ln、
+zero post-link mutation、cross-H不被post-clock否決、payload在COMMIT_READY後byte-identical及
+process strictness不變。
+
+~~~text
+P4-E0-B.6
+= COMPLETE
+
+P4-E2-M1-D2-A0.3
+= COMPLETE
+
+P4-E2-M1-D2 source/test implementation
+= LOCALLY FOCUSED-VALIDATED
+
+cold qualification v1
+= FAILED; 0/3
+
+cold qualification v2
+= FAILED; 0/3
+
+Candidate11
+= FAILED AT TRANSACTION WATCHDOG BUDGET GAP
+
+Candidate12 protocol review
+= STOPPED AT NO UNIQUE STRICT PROTOCOL
+
+Candidate12 prior implementation feasibility
+= STOPPED AT FINAL LINK DEADLINE IMPOSSIBILITY
+
+P4-E0-B.7 COMMIT_READY / final receipt publication authority
+= IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+
+Candidate12 protocol
+= T2 SUPERVISOR-OWNED OBSERVATION
+  REMAINS THE ONLY SELECTED PREPARATION PROTOCOL
+
+Candidate12 final receipt boundary
+= REQUIRES B.7 CLOSURE
+  AND A NEW READ-ONLY TECHNICAL REVIEW
+
+cold qualification v3
+= NOT STARTED
+
+P4-C2 and later Gates
+= BLOCKED
+
+P4-E3
+= BLOCKED
+
+P4-E
+= INCOMPLETE
+~~~
+
+本地B.7 patch不得宣告Candidate12 READY／implementation PASS、cold v3 OPEN、P4-C2 OPEN、
+E2 COMPLETE或E3 OPEN；本輪不得建立Candidate12 implementation或cold-requal-v3 namespace。
+
 ## 8-B. 真相歸屬表與單一真相原則
 
 - 【原則】每一種執行期資料恰有一個持久化真相；其他副本只能是可重建索引、指標或客戶端快照。
@@ -1086,6 +1201,9 @@ P4-E0-B.5：documentation-only P4-E2 production construction trigger、Store-ser
 P4-E0-B.6：documentation-only direct RecoveryOutcome／E2 result classification、invalidation／setData
           exact coordinates、test-armed bounded state、closed nominal transport、conditional FML route與
           local-cell authority；無implementation／FML API existence claim／production semantics／E3／R2Q delta
+P4-E0-B.7：documentation-only COMMIT_READY／final receipt publication authority；H只約束ready與
+          preinvoke eligibility，single no-replace link normal return可跨H；無retry／readback／backfill、
+          implementation／cold-v3／strictness／durability claim delta
 P4-E1：read-only bounded online／integrated／disk audit；online existing-state observation only，
       disk／integrated full P4-C admission；journal／Store audit、
       memory-only index與Complete／Incomplete／ReconciliationRequired；reclaim／mutation 0
@@ -1099,13 +1217,11 @@ P4-E3：重用E2接入且Store持有的exact same audit service；唯一ServerSt
 
 P4-E1已`COMPLETE`；P4-E2 read-only design review已`COMPLETE — PASS; NO SPLIT`，
 implementation仍`SUSPENDED IN VERIFIED REPAIRED BACKUP`。P4-E2-M1 memory repair的root
-cause／repair／three-cold-run qualification已完成，但P4-C2 READY fixture compatibility仍
-`BLOCKED AT DIRECT RUNTIME OUTCOME / COUNTER OBSERVATION`。A0.1正式停在
-`NONPUBLIC ACCESS ROUTE ABSENT`，A0.2正式停在`DIRECT COORDINATE AUTHORITY GAP`。
-P4-E0-B.6當前為`IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING`；只有B.6
-commit／push／remote closure後才可開始獨立FML／public nominal route technical review，該review
-當前`BLOCKED`，且必須對locked API存在與safe exact-instance route另行舉證。P4-E3
-仍`BLOCKED`，P4-E仍`INCOMPLETE`。
+cause／repair／three-cold-run qualification已完成。B.6與A0.3現為`COMPLETE`；其舊local-pending
+敘述只保留為歷史snapshot。當前B.7為`IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING`；
+Candidate12仍停在final-link deadline feasibility，且須等B.7 closure後另開read-only technical
+review。cold qualification v1／v2均`FAILED; 0/3`，v3`NOT STARTED`；P4-C2及later Gates、
+P4-E3仍`BLOCKED`，P4-E仍`INCOMPLETE`。
 
 P4-A2因document／migration package visibility只核准兩個public facade classes：
 `SkillDocumentStorePersistenceFacade` 同時提供只接受current-schema typed document的
@@ -1231,10 +1347,11 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
       composition outcome不把Prepared冒充Committed；strict `writeAnyTag` framing、partial availability、
       continuous chain與single-process fixed-1-GiB combined Gate均通過。
 - [ ] P4-E1已closure，E2 read-only review已`COMPLETE — PASS; NO SPLIT`而implementation
-      仍封存於verified repaired backup。A0.1／A0.2分別因nonpublic receiver route與direct
-      coordinate authority gap停止；B.6當前只是local documentation patch，commit／push／
-      remote closure後還必須獨立證明locked FML exact-instance route才可實作，不得宣稱
-      API已存在。Direct evidence必須使用B.6 actual-object／result／invalidation／JVM
+      仍封存於verified repaired backup。A0.1／A0.2是歷史Stop；B.6與A0.3已`COMPLETE`，
+      source／test implementation為`LOCALLY FOCUSED-VALIDATED`。B.7當前只是local
+      documentation patch；其commit／push／remote closure後仍須新的read-only technical review
+      證明exact same-process no-replace route、COMMIT_READY／preinvoke boundary及zero post-link
+      persistent mutation，不能直接實作Candidate12或開啟cold v3。Direct evidence仍必須使用B.6 actual-object／result／invalidation／JVM
       `setData` coordinates、bounded nonforgeable session與canonical JSON；unarmed semantics delta 0，
       無safe receiver直接Stop而不用static／global／Attachment／SavedData fallback。P4-E2仍是
       首次將production audit service接入composition的phase；每個Store service exact-one-final、

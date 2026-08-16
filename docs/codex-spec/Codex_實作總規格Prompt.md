@@ -690,6 +690,11 @@ P4固定拆分為：
   package crossing，以及只在locked platform technical review證明存在時才可採用的per-container
   FML extension／officially supported equivalent exact-instance route；不宣稱FML API存在，不寫
   Java／test／Gradle／workflow，不改25 counters／heap／R2Q／P4-E3 obligation或production語意。
+- P4-E0-B.7：documentation-only修正final qualification receipt authority；H唯一為
+  `COMMIT_READY_DEADLINE`並只約束ready與preinvoke eligibility。符合資格後，同一supervisor
+  只能直接呼叫一次same-filesystem atomic no-replace link，其normal return可跨H且是唯一success
+  coordinate；禁止retry／readback／reconciliation／backfill、wrapper／DONE、orphan adoption、
+  post-link persistent mutation與durability overclaim，且不實作Candidate12或開啟cold v3。
 - P4-E1：read-only bounded online／integrated／disk audit；online只觀察existing admitted state，
   disk／integrated執行full P4-C admission；journal／grouped Store
   audit、memory-only index與bounded completeness results；player／Store／journal mutation與reclaim 0。
@@ -704,11 +709,10 @@ P4固定拆分為：
 
 目前P4-E1為`COMPLETE`，P4-E2 read-only design review為`COMPLETE — PASS; NO SPLIT`，
 P4-E2 implementation仍`suspended in verified repaired backup`，P4-E2-M1 root cause／repair／
-three-cold-run qualification已完成。P4-C2 READY fixture compatibility仍blocked於direct runtime
-outcome／counter observation；P4-E2-M1-D2-A0.1停止於`NONPUBLIC ACCESS ROUTE ABSENT`，A0.2停止於
-`DIRECT COORDINATE AUTHORITY GAP`。P4-E0-B.6本地authority patch完成後仍須獨立commit／push／
-remote closure；在該closure前FML／public nominal route technical review保持blocked。P4-E2
-implementation不因此恢復，P4-E3仍`BLOCKED`，P4-E整體仍`INCOMPLETE`。
+three-cold-run qualification已完成。B.6與A0.3已`COMPLETE`；舊local-pending敘述只作歷史snapshot。
+當前B.7為`IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING`，Candidate12 final receipt boundary
+須等B.7 closure後另做read-only technical review。cold qualification v1／v2均`FAILED; 0/3`，v3
+`NOT STARTED`；P4-C2及later Gates、P4-E3仍`BLOCKED`，P4-E整體仍`INCOMPLETE`。
 
 P4-B的whole root固定為unnamed Compound，exact fields只有`data` Compound與`DataVersion` Int；
 inner `data` exact fields只有`saved_data_schema_version` Int、`store_blob` ByteArray與
@@ -1103,6 +1107,9 @@ B.4 generation authority、R2Q profile／case plan／evidence及P4-E3 fixed-1,53
 全部不變。Direct-observation evidence不能取代E3 Gate；E3仍須使用same audit-service identity及既有
 snapshot／reclaim call graph。
 
+下列是B.6 local-authority patch當時的歷史phase snapshot；後置B.7 phase block supersede其
+「當前」語意，但不回寫此歷史：
+
 ```text
 P4-E1 = COMPLETE
 P4-E2 READ-ONLY DESIGN REVIEW = COMPLETE — PASS; NO SPLIT
@@ -1119,6 +1126,143 @@ P4-E = INCOMPLETE
 
 Local authority patch只解決A0.1／A0.2揭示的authority boundary；FML／public nominal technical review、
 implementation及runtime qualification均是後續獨立工作。
+
+### P4-E0-B.7 COMMIT_READY／final receipt publication authority
+
+B.7是documentation-only scoped amendment。它只把不可實作的「final no-replace receipt link
+must complete by H」改為下列唯一authority，不建立Candidate12 implementation／test、不執行
+cold qualification，也不允許T1 fallback。T2 supervisor-owned observation仍是唯一選定的
+preparation protocol；B.6 direct-evidence JSON與B.7 final qualification receipt是不同layer。
+
+~~~text
+H = COMMIT_READY_DEADLINE
+
+H strictly bounds:
+- COMMIT_READY
+- LINK_PREINVOKE_ELIGIBLE
+
+H does not bound:
+- normal return time of the one final no-replace receipt link
+~~~
+
+COMMIT_READY必須於H前完成：formal observation、ps／jcmd正常完成／bounded read／完整reap、
+native process identity、CLEAR／SAME_EXPECTED_DAEMON classification、全部正式欄位、完整且
+immutable receipt payload、fixed source path／inode與target path、same-filesystem proof、target expected
+absent、sealed link arguments及COMMIT_READY seal。Ready後不得仍有parse、classification、hash、
+serialization、fsync、rename、readback或reconciliation。commit_ready_time晚於H時固定
+COMMIT_READY_DEADLINE_EXCEEDED、link invocation count 0、receipt publication 0。
+
+既有T2 4.100秒branch-aware ledger只涵蓋COMMIT_READY preparation。Final link latency不屬於
+bounded stage，且不得用增加H、watchdog、取消ps／jcmd或降低identity strictness來吸收。
+
+Final syscall前的唯一LINK_PREINVOKE_ELIGIBLE coordinate必須緊鄰link，並驗證
+commit_ready、current monotonic time <= H、link_attempts == 0、target未使用且session未abort。
+Check與syscall之間禁止callback、logging、file read、allocation-heavy work、retry、yield、
+second process、wrapper／DONE與另一clock branch。Late preinvoke固定LINK_NOT_INVOKED。
+
+COMMIT_READY後只允許同一supervisor直接呼叫一次same-filesystem atomic no-replace
+link／linkat；禁止copy、replace／overwrite、rename-overwrite、retry、fallback API、wrapper、
+ln subprocess、DONE carrier與第二publication path。Exact macOS／JDK route須等B.7 closure後另作
+read-only technical review。
+
+若ready與eligibility都不晚於H，該唯一link可在H前或H後normal return。唯一成功coordinate是：
+
+~~~text
+same-process normal return from the exact authorized link
+= RECEIPT_COMMITTED
+~~~
+
+跨H normal return合法，不得以post-return clock否決。未來分開報告commit_ready_by_h、
+link_preinvoke_eligible_by_h、receipt_link_normal_return及receipt_link_crossed_h；
+crossed_h=true可PASS。不得再把transaction／receipt／link finished by H當qualification requirement。
+
+Directly observed EEXIST／ENOENT／EXDEV／EACCES／EPERM／EIO／ENOSPC／EINTR、
+RuntimeException及其他non-success是RECEIPT_COMMIT_FAILED。Error／OOME保留原identity；它們與process termination、
+external timeout、unknown completion或未觀察到same-process normal return是
+RECEIPT_COMMIT_UNADJUDICATED。兩者一律no retry、no alternate path、no target
+readback／stat／exists／open、no reconciliation／backfill、no cleanup-to-success。
+
+Receipt artifact存在本身不是restart authority。禁止restart scan、orphan adoption、later manifest
+reconciliation及backfill。可能orphan只留在該attempt的unique namespace；namespace不重用。
+
+Final link是最後persistent mutation。Normal return後只允許nonallocating local status
+propagation、normal control return與normal process exit；禁止任何file／receipt／manifest mutation、
+readback、checksum、fsync claim、reconciliation、callback、external process或retry。本authority
+不宣稱fsync、crash durability、cross-file transaction、reboot recovery、journal或directory
+persistence，只宣稱live process觀察到directory-entry publication normal return。
+
+B.7不改H數值、settling deadline、poll interval、maximum observations、three CLEAR、ps／jcmd、
+PID／birth identity、client／worker／foreign checks、collector、heap、fork、test order、Gradle
+command、qualification counts、fixture、P4-E2／P4-C2、R2Q或P4-E3 obligation。
+
+B.7 closure後只可進入新的read-only technical review。該review必須證明same-process exact
+macOS／JDK route、same-filesystem no-replace、sealed source、unique target、adjacent preinvoke、
+one invocation、no retry／readback／post-link mutation、termination UNADJUDICATED、orphan不認領、
+T2 4.100秒ready ledger、link latency不冒充bounded及無durability overclaim；若normal return後
+仍需額外operation才能形成authority，Candidate12必須STOP。
+
+Required future tests包含before／after-H normal-return PASS、late ready／preinvoke零link、
+single EEXIST／EXDEV／EINTR、RuntimeException、Error／OOME original-identity propagation、
+mid-link termination、
+orphan isolation、unique namespace、zero readback、exact-one link callsite、zero
+wrapper／DONE／ln、zero post-link mutation、cross-H no post-clock rejection、ready後payload
+byte-identical及process strictness不變。
+
+此處的cold qualification v1／v2是Candidate direct-observation campaign，與既有
+P4-E2-M1 memory repair three-cold-run qualification不是同一campaign；後者的歷史COMPLETE不變。
+Focused-validated source／test也不表示P4-E2 production implementation已恢復或完成。
+
+~~~text
+P4-E0-B.6
+= COMPLETE
+
+P4-E2-M1-D2-A0.3
+= COMPLETE
+
+P4-E2-M1-D2 source/test implementation
+= LOCALLY FOCUSED-VALIDATED
+
+cold qualification v1
+= FAILED; 0/3
+
+cold qualification v2
+= FAILED; 0/3
+
+Candidate11
+= FAILED AT TRANSACTION WATCHDOG BUDGET GAP
+
+Candidate12 protocol review
+= STOPPED AT NO UNIQUE STRICT PROTOCOL
+
+Candidate12 prior implementation feasibility
+= STOPPED AT FINAL LINK DEADLINE IMPOSSIBILITY
+
+P4-E0-B.7 COMMIT_READY / final receipt publication authority
+= IMPLEMENTED LOCALLY; COMMIT / PUSH / REMOTE PENDING
+
+Candidate12 protocol
+= T2 SUPERVISOR-OWNED OBSERVATION
+  REMAINS THE ONLY SELECTED PREPARATION PROTOCOL
+
+Candidate12 final receipt boundary
+= REQUIRES B.7 CLOSURE
+  AND A NEW READ-ONLY TECHNICAL REVIEW
+
+cold qualification v3
+= NOT STARTED
+
+P4-C2 and later Gates
+= BLOCKED
+
+P4-E3
+= BLOCKED
+
+P4-E
+= INCOMPLETE
+~~~
+
+不得宣告Candidate12 READY／implementation PASS、cold v3 OPEN、P4-C2 OPEN、E2 COMPLETE或
+E3 OPEN；本輪不得建立Candidate12 implementation或cold-requal-v3 namespace。
 
 ## 8.2 RuntimePersistentStore
 
@@ -1576,6 +1720,9 @@ P4-E0-B.5：documentation-only E2 production audit-service construction trigger�
 P4-E0-B.6：documentation-only direct qualification coordinates、test-armed bounded observation、
            closed nominal public transport與conditional exact-instance FML route authority；
            不宣稱平台API存在，不改production semantics／25 counters／heap／R2Q／E3
+P4-E0-B.7：documentation-only COMMIT_READY／final receipt publication authority；H只約束ready與
+           preinvoke eligibility，single no-replace link normal return可跨H；無implementation／cold-v3、
+           retry／readback／backfill、strictness或durability delta
 P4-E1：read-only bounded online／integrated／disk scanner；online existing-state observation only，
       disk／integrated full P4-C；journal／Store audit與memory-only index；
       mutation／reclaim 0
