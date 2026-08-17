@@ -526,11 +526,12 @@ A0.2 are historical Stops at the nonpublic receiver and direct-coordinate author
 authority implementation and separate closure prerequisites are complete at
 `a7bb7712c9a176a24949e62f01e43ab48f4f65f8`. The
 P4-E2-M1-D2-A0.3 FML／public-nominal exact-instance receiver read-only technical review and closure
-are complete, and its source／test implementation is locally focused-validated. The later B.7
-COMMIT_READY／final-receipt authority implementation is committed, pushed, and qualified by its
-unique exact-SHA attempt-1 remote Gate. This separate two-ledger closure becomes complete only upon
-its own unique exact-SHA attempt-1 remote Gate PASS; Candidate12 remains stopped until that PASS and
-a new read-only technical review.
+are complete, and its source／test implementation is locally focused-validated. The B.7
+COMMIT_READY／final-receipt authority implementation, push, unique exact-SHA remote Gate, and
+separate two-ledger closure are complete at `9c5fe439855538c97a5846716c68d9751c6358fe`.
+The subsequent P4-E2-M1-D2-C12-A0.4 exact macOS/JDK same-process atomic no-replace receipt read-only
+technical review is PASS. Its separate two-ledger closure becomes complete only upon its own unique
+exact-SHA attempt-1 remote Gate PASS; Candidate12 implementation remains stopped until that PASS.
 Cold qualification v1／v2 are failed at 0／3, v3 is not started, and P4-E3 remains blocked. No phase
 introduces chunk force, periodic/background scanning, network, or a second persistent truth. The completed
 E0-B remote jobs do not waive P4-E3's production-shaped fixed-1,536-MiB first／restart Gate; the B.1
@@ -2547,6 +2548,463 @@ SHA-256 = bffb00aa19279e92abeac99585781ae01fb75ac21e54625521eee2b7a2faae71
 two-ledger cmp = PASS
 ~~~
 
+<!-- P4_E2_M1_D2_C12_A04_CLOSURE_COMMON_BEGIN -->
+## P4-E2-M1-D2-C12-A0.4 exact final-receipt technical review closure
+
+This synchronized documentation-only closure records the completed repository-external read-only
+technical review required after P4-E0-B.7. It changes no gameplay, persistence, fixture,
+qualification, or receipt-publication authority; modifies no implementation, test, Gradle,
+workflow, resource, codex-spec, or official evidence; and starts neither Candidate12
+implementation nor cold qualification v3. The transition below becomes effective only after this
+closure commit's unique exact-SHA attempt-1 `Build` run and its exact five required jobs all
+complete with `success`. Earlier active-looking A0.4 `OPEN / NOT STARTED` and Candidate12
+implementation `NOT READY` text outside the immutable B.7 historical block is superseded by this
+later current-phase closure.
+
+### Formal verdict and selected route
+
+```text
+P4-E2-M1-D2-C12-A0.4
+Candidate12 exact macOS/JDK same-process
+atomic no-replace receipt read-only technical review
+= PASS
+
+Verdict C
+= PREBOUND CTYPES.PYDLL LINKAT
+  + SAME-PROCESS CPYTHON SUPERVISOR
+
+Exact route
+= ctypes.PyDLL(
+      "/usr/lib/libSystem.B.dylib",
+      mode=ctypes.RTLD_LOCAL,
+      use_errno=False,
+  ).linkat
+
+Exact owner
+= EXACT T2 CPYTHON SUPERVISOR
+```
+
+This is the only passing route. `Python os.link`, `Java Files.createLink`, provider `createLink`,
+`PyDLL(None)`, `ctypes.CDLL`, `/bin/ln`, JNI/native helper, Java FFM, and JDK internal APIs are not
+alternate implementation routes.
+
+### Review identity, lineage, and sealed evidence
+
+| Coordinate | Exact value |
+| --- | --- |
+| Review base HEAD | `9c5fe439855538c97a5846716c68d9751c6358fe` |
+| Review base tree | `0e1154c3e7ba04d23db879802aadf6654b2ff4e8` |
+| Review worktree | `/private/tmp/gramarye-p4-e2-candidate12-link-review-20260816T143312Z` |
+| Verified evidence | `/private/tmp/gramarye-p4-e2-candidate12-link-review-20260816T155547Z-v2r3-verified` |
+| `SHA256SUMS.txt` SHA-256 | `bd1e0026b6e02bacaf659a22fddd399219508c219e4a2094043792fb6c99c3af` |
+| Manifest lines / bytes | 70 / 7,026 |
+| Payload count / bytes | 69 / 295,617 |
+| Root / payload modes | 0555 / 0444 |
+| Payload verification | 69/69 PASS; regular files only; symlink and special-file count zero |
+
+The B.7 authority is commit `26d93bde02e1436f103d8643afbcddbf51acd7e6`, tree
+`2ed598ed2ef7935558b5ed51027819bc91c24c60`; its verified backup manifest is
+`a99388a3b19678d9f42a9d68b69ed8a1e6ab3e11df047a2a9ac32b01a04dbdbd` with 5/5 PASS. Its
+separate closure is direct-child commit `9c5fe439855538c97a5846716c68d9751c6358fe`, tree
+`0e1154c3e7ba04d23db879802aadf6654b2ff4e8`; that verified backup manifest is
+`df4c018030c48b207b92edc06f079b3b8ce0b0e56b82b9105bbc57e7096e8b3d` with 8/8 PASS. Both
+unique exact-SHA attempt-1 remote Gates passed. Branch-protection required-check configuration
+remains external governance unknown.
+
+Review repository modifications, stage, commit, push, actual user-world/playerdata reads, and
+Candidate12 implementation delta were all zero. The only Gradle work was the authorized baseline;
+GameTest, dedicated, fixed-heap, cold qualification, and formal Candidate12 executions were zero.
+Sealed payload prose that retains `DRAFT_NOT_SEALED` or pre-seal wording is immutable creation-time
+provenance; it does not override the independently verified 0555/0444 root, complete manifest, and
+69/69 final sealed audit.
+
+### Required future formal process ownership
+
+The read-only review established the existing T2 observer-ownership prefix. The final `linkat` edge
+below is the required future formal graph selected by this review, not an assertion that current
+staging has implemented it.
+
+```text
+launcher Python
+-> execve /bin/bash --noprofile --norc
+-> bash starts /usr/bin/python3 -B -c
+-> that exact CPython process loads Candidate12 core
+-> the same exact CPython process launches, fully reads, and reaps bounded ps and jcmd
+-> the same exact CPython process owns any bounded identity jcmd/lsof/final-ps children
+-> the same exact CPython process parses, validates, classifies, constructs and seals the receipt
+-> the same exact CPython process invokes the final prebound linkat
+```
+
+Publication wrapper, DONE protocol/polling, external publisher, `/bin/ln`, Java helper, C helper,
+JNI helper, and 124-to-125 translation counts are zero. Bash and launcher Python are not the
+final-receipt owner. Observer subprocesses remain mandatory, bounded, captured, fully read, and
+fully reaped; none owns publication.
+
+### Locked platform and runtime
+
+```text
+macOS        = 26.5.1 build 25F80
+Darwin       = 25.5.0 RELEASE_ARM64_T6000
+architecture = arm64
+Xcode        = 16.0 build 16A242d
+SDK          = 15.0
+SDK root     = /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+CPython      = 3.9.6 arm64
+launcher     = /usr/bin/python3
+```
+
+| Python / native artifact | Bytes / identity | Full SHA-256 / identity |
+| --- | ---: | --- |
+| `/usr/bin/python3` | 118,928 | `179301dcb41ea78accc3fa0048a7e6f6710d891945a751a34addd622020c1818` |
+| resolved `/Applications/Xcode.app/Contents/Developer/usr/bin/python3` symlink | 67 | `046eadfc2df25f14eaba814894c2f2db468cc77a989c2a8faed87f81c86c14a4` |
+| `/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/Python3` | 5,815,472 | `9653a1abac39d9cad06dce48b3d4c2ffe8763cd634719ca59179bbdf495dbf90` |
+| `/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/ctypes/__init__.py` | 17,667 | `b61f8ca06c08d02bbd09eeb7f72a5af5fac78e7303475aad7cde65f4856896aa` |
+| `/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/lib-dynload/_ctypes.cpython-39-darwin.so` | 312,224 | `e93a4743f677f8d9ea511cc61a807b2b7e554f0c8346b093ce4fefa7dafc1b87` |
+| `/usr/lib/libSystem.B.dylib` | dyld shared cache | explicit absolute public handle; no regular-file SHA claimed |
+| `/usr/lib/system/libsystem_kernel.dylib` | 1,349,008 | `d0f2900dbb9ee71645984d43602b5f54adb15a90d751fb303ff89956b1eafdc4` |
+| libsystem kernel codesign | `com.apple.libsystem_kernel` | `CDHash c8c58aa6082ff951024166f75b780c9b5f5f7a78` |
+
+The selected handle must resolve through `dladdr` to that exact `libsystem_kernel` owner before
+COMMIT_READY. `PyDLL` flags are `ctypes._FUNCFLAG_CDECL | ctypes._FUNCFLAG_PYTHONAPI = 5`;
+`ctypes.RTLD_LOCAL = 4`; `use_errno=False` is fixed.
+
+| SDK semantic evidence | Bytes | Full SHA-256 |
+| --- | ---: | --- |
+| `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/unistd.h` | 28,820 | `b2f2a37d44e415206f3168bc78ab3675d2fafe93654443ce044574c4d188af70` |
+| `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/sys/unistd.h` | 9,677 | `a3c7d6da838b8858cf04711dcbbab6e28fa5a58cc72175fcf4366158f548369a` |
+| `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/fcntl.h` | 1,002 | `289f3be20c07d8eae5589f43994cfdb5fb33b3b099a6aee67f63e00d90039a8f` |
+| `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/sys/stat.h` | 20,575 | `31c8f252b05785343ca577c007657c0fbab45a182b60fc5b73994c621dc318d4` |
+| `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/errno.h` | 1,003 | `ff95a158e0799dcf0622e83882e64d88f1783b98a91d9b206bcba2a12f8425e6` |
+| `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/sys/errno.h` | 12,965 | `80dc0ead0d8a003014c02d1f2bf63808000af9babc63a67ea1f36252c0a05212` |
+| `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/dlfcn.h` | 3,235 | `ea855ec88de7736f654d8e55a8bdc14a44d46e7caa5212dd563cfd5333c4a386` |
+| `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/libSystem.B.tbd` | 326,610 | `b3200b9f3bb6231c6db328d144857f09910f728c46462a522e09dae4a1716690` |
+| `/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/share/man/man2/link.2` | 7,879 | `0d1687e7dfd2907711fd83cf764b82decd4e74d583919108b2f77f1d7354d33b` |
+
+The eliminated Java candidates were inspected against Eclipse Temurin 21.0.8+9-LTS aarch64 at
+`/Users/yashen/.gradle/jdks/eclipse_adoptium-21-aarch64-os_x.2/jdk-21.0.8+9/Contents/Home`.
+Relevant exact artifacts are
+`/Users/yashen/.gradle/jdks/eclipse_adoptium-21-aarch64-os_x.2/jdk-21.0.8+9/Contents/Home/bin/java`
+SHA-256 `0045ae168ee132bbf469a26fb17dac6d1dee431c9b7826474f3b6ee574a997c9`,
+`/Users/yashen/.gradle/jdks/eclipse_adoptium-21-aarch64-os_x.2/jdk-21.0.8+9/Contents/Home/bin/javac`
+SHA-256 `7be7937fc6bae0ca89f0866f9ce94fc40a935dfb87806d3c701eca3402cfb90a`,
+`/Users/yashen/.gradle/jdks/eclipse_adoptium-21-aarch64-os_x.2/jdk-21.0.8+9/Contents/Home/lib/modules`
+SHA-256 `f46f9d1583250afaa5e81ea6747860345416ff155dd6dd717548f9f73f80a46c`,
+`/Users/yashen/.gradle/jdks/eclipse_adoptium-21-aarch64-os_x.2/jdk-21.0.8+9/Contents/Home/lib/src.zip`
+SHA-256 `5440baccc6c54b18671ab9cb9bf6ffdd7698d3a85ee74faa0b47b111312f200c`, and
+`/Users/yashen/.gradle/jdks/eclipse_adoptium-21-aarch64-os_x.2/jdk-21.0.8+9/Contents/Home/lib/libnio.dylib`
+SHA-256 `459d57393cd479594b81240fab92a7fe53b2cb87d4b44c1a58695475f89a3161`. The JDK is elimination
+evidence, not the selected-route owner.
+
+### Prebound route and exact native operation
+
+Before COMMIT_READY the supervisor must create the explicit libSystem handle, resolve and owner-lock
+`linkat`, fix `argtypes=(c_int,c_char_p,c_int,c_char_p,c_int)` and `restype=c_int`, retain the same
+directory fd, encoded source/target leaves, exact five-element ctypes tuple, function object, clock
+callable/id, exact built-in facts/latches, and precreated result identities. After COMMIT_READY there
+is no attribute/library/global lookup, path encoding, tuple or callable construction, dynamic
+library path, custom converter/subclass, callable restype, or `errcheck`.
+
+The only native operation is:
+
+```text
+linkat(
+    attempt_dir_fd, b"receipt.payload",
+    attempt_dir_fd, b"receipt.committed",
+    0
+)
+```
+
+It uses one same directory fd, validated relative leaves, and flags zero. Native callsite count is
+one; invocation count is zero or one; native, Python, and wrapper retry counts are zero. Locked
+arm64 evidence is `_linkat -> one svc #0x80`, with no userspace retry loop. `EINTR` returns `-1`,
+maps to `RECEIPT_COMMIT_FAILED`, and causes neither retry nor readback.
+
+### A0.4 exhaustive candidate adjudication
+
+| Candidate | Verdict | Decisive reason |
+| --- | --- | --- |
+| `Java Files.createLink` | FAIL | wrong exact owner / extra helper process, locked `libnio` retries `_link` on EINTR, broader post-link path |
+| `FileSystemProvider.createLink` | FAIL | same wrong-owner/internal-retry defects and no narrower boundary |
+| `Python os.link` | FAIL | emits `os.link` audit event; an installed audit hook executes before native invocation |
+| explicit-handle `ctypes.PyDLL(...).linkat` | PASS — selected only | exact process/owner, RTLD_LOCAL, retained GIL, bounded direct `_FuncPtr` supporting probe observed audit count zero, one `linkat`, no native retry, S2 proof, closable post-link boundary; final construction remains a future Gate |
+| `PyDLL(None)` | FAIL | RTLD_DEFAULT/global-image/interposition owner is not unique |
+| `ctypes.CDLL` | FAIL | releases the GIL on the locked runtime; positive controls observed nonzero worker progress |
+| Java FFM | FAIL | wrong owner; JDK 21 preview/native-access contract is not admitted |
+| JNI/native helper | FAIL | new native artifact, wrong owner and extra loader/publication lifecycle |
+| JDK internal API | FAIL | nonpublic/module-encapsulated unstable route |
+| `/bin/ln` | FAIL | forbidden extra process; not same-process |
+
+Exactly one candidate passes; none is an implementation fallback.
+
+### S2 filesystem, immutable source, and target namespace
+
+```text
+S2
+= SAME OPENED DIRECTORY FD
+  + VALIDATED RELATIVE LEAVES
+  + LINKAT
+
+private unique attempt-root/       mode 0700; non-symlink
+|-- receipt.payload                regular; non-symlink; mode 0444
+`-- receipt.committed              initially absent
+```
+
+The supervisor opens the private attempt root once with `O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC` and
+retains that fd. Both `linkat` directory arguments are the exact same integer fd. Both byte-string
+leaves contain no separator, `.`, `..`, absolute path, embedded NUL, or alternate target and satisfy
+`NAME_MAX`. This structural same-dirfd proof, not `FileStore.equals`, path prefix, mount text, or
+st_dev-only inference, establishes one mounted filesystem with no separately resolved parent race.
+
+Before COMMIT_READY, `receipt.payload` is canonical and complete, at most 65,536 bytes,
+writer-closed, regular/non-symlink, 0444, and fixed by complete bytes/SHA, device, inode, owner UID,
+size, link count, and path; no write-capable descriptor remains open. The source is retained
+permanently in that attempt namespace after link. Unlink, rename, truncate, chmod, rewrite, and
+post-link cleanup are forbidden.
+
+Every formal attempt uses a fresh cryptographically unique private namespace that is never reused.
+Target absence is checked once before COMMIT_READY but is not race authority; native `EEXIST` is the
+no-replace authority. The adjacent `target_not_previously_used` fact is exact-bool cached namespace
+history, not another filesystem lookup. Existing target means one failed call, no deletion,
+alternate name, retry, readback, or later orphan adoption.
+
+### COMMIT_READY, adjacent eligibility, and success
+
+```text
+H                       = 5.750 seconds
+T2 preparation maximum  = 4.100 seconds
+minimum headroom         = 1.650 seconds
+```
+
+H and the T2 ledger remain unchanged. H bounds the earlier COMMIT_READY coordinate and the later
+adjacent LINK_PREINVOKE_ELIGIBLE coordinate; it does not bound native link latency or normal return.
+
+One composed T2 supervisor function/frame first performs an earlier exact
+`clock_gettime_ns(CLOCK_MONOTONIC)` read. A coordinate after H returns precreated
+`COMMIT_READY_DEADLINE_EXCEEDED; LINK_NOT_INVOKED`, accepted count zero, adjacent-clock count zero,
+and additional native invocation count zero. A coordinate at or before H stores exact local
+`commit_ready=True` and continues immediately in the same frame.
+
+The adjacent sequence is then fixed:
+
+```text
+require commit_ready is True
+-> exactly one adjacent clock_gettime_ns(CLOCK_MONOTONIC)
+-> require eligibility_now_ns <= H_ns
+-> require exact-int link_attempts == 0
+-> require exact-bool target_not_previously_used is True
+-> require exact-bool session_not_aborted is True
+-> link_attempts = 1
+-> linkat_call(*retained_5_tuple)
+```
+
+The primary repository-external synthetic production-shaped CPython 3.9.6 CFG has 60 semantic
+instructions / 120 bytes / flags 67, two total `CALL_FUNCTION 1` clock sites (the earlier ready
+coordinate and the distinct adjacent coordinate), and one `CALL_FUNCTION_EX 0` link site. Its
+normalized AST SHA-256 is `1e027e13f3d6ff8f91e99d7487ded73283c636aadef09e9002bafb08ad9f3309`;
+its normalized bytecode SHA-256 is
+`7478623ac73fe0badf947f0a21e440853f86227e57676565ffa4c1ebfc670ef2`. The earlier late branch
+cannot reach the second clock, latch, link, or committed result. The separate 14-instruction /
+28-byte and 42-instruction / 84-byte functions are secondary regression evidence only.
+
+Within the adjacent Gate, defensive ready-false reads zero clocks; every clock-reaching path reads
+exactly one. There is no second adjacent clock, attribute/global lookup, file/target read, callback,
+log, retry, helper, build/loop/with, reflection/injection, separated/reopened Gate, or work between
+the final guard and the one-shot latch plus retained-tuple call.
+
+The sole success coordinate is normal same-process return from that exact authorized call with
+`rc == 0`, immediately yielding precreated `RECEIPT_COMMITTED`. Return before H and return after H
+are both legal; `receipt_link_crossed_h=true` may be PASS. No post-return H check, target
+stat/open/read/hash, checksum, receipt/manifest write, retry, reconciliation, backfill,
+cleanup-to-success, or orphan adoption is permitted.
+
+After normal return the only permitted work is cached-rc handling, local comparison, selection of a
+precreated status, local control return, and normal process exit. Success-path clock, errno read,
+target readback, file/log/manifest mutation, retry, cleanup mutation, external process, and callback
+counts are zero. The future static Gate must extend through caller return and frame cleanup. A later
+forensic copy may only be `FORENSIC_ONLY / NOT_QUALIFICATION_AUTHORITY` and cannot repair or
+reclassify an observation.
+
+### Failure, EINTR, existing-target, and EXDEV boundaries
+
+```text
+normal rc == 0
+-> RECEIPT_COMMITTED
+
+normal rc == -1
+-> RECEIPT_COMMIT_FAILED
+
+observed Python RuntimeError / B.7 RuntimeException-equivalent,
+before or after possible native linearization, without observed normal return
+-> RECEIPT_COMMIT_FAILED
+
+fatal Error-equivalent excluding RuntimeError,
+MemoryError/OOME, process termination/kill, native/runtime crash,
+or otherwise unknown completion without observed normal return
+-> RECEIPT_COMMIT_UNADJUDICATED
+```
+
+`use_errno=False` means the formal route does not read errno; probe-only errno diagnostics do not
+affect authority. Original fatal identity is preserved where observed. Every non-success lane has
+accepted count zero and forbids retry, alternate route, target readback, reconciliation, backfill,
+rollback claim, namespace reuse, or orphan adoption. Cleanup observations and daemon normal-exit
+logs remain non-formal.
+
+Synthetic existing-target evidence made exactly one invocation, observed an EEXIST-like failure,
+preserved target bytes, and performed no replacement/retry/alternate path. No second writable
+filesystem existed, so `ACTUAL_EXDEV_PROBE = NOT_AVAILABLE`; no disk image, mount, or downloaded
+tool was used. EXDEV semantics are supported only by the locked local man page, SDK headers/TBD,
+and exact runtime call chain. A future deterministic injected EXDEV lane may test mapping but may
+not be described as an actual EXDEV integration PASS.
+
+### Cross-H model, audit hook, and shutdown
+
+The approved cross-H test model is `T1 PRIVATE SEALED DELAYED OPERATION`: production has one unique
+closed/nonforgeable concrete PyDLL-linkat operation, while a private test-only delayed operation
+verifies only the caller contract. This `T1` label is not Candidate12 protocol T1, is not an
+implementation fallback, and does not change the selected T2 supervisor protocol. Production
+accepts no arbitrary callback; the delayed test does not impersonate real link latency.
+
+```text
+COMMIT_READY before H + normal return before H = PASS
+COMMIT_READY before H + normal return after H  = PASS
+COMMIT_READY after H                           = link 0 / FAIL
+adjacent eligibility after H                   = link 0 / FAIL
+```
+
+Sleep between eligibility and the real syscall, DYLD interposition, dtrace, ptrace, FUSE, sandbox
+hook, and native shim are forbidden. `os.link` is rejected because it emits an `os.link` audit
+event and permits an installed hook before native invocation. The prebound explicit PyDLL
+`_FuncPtr` observed audit-event count zero, retains the GIL, and uses only the prebuilt
+callable/arguments; dynamic hook injection is forbidden.
+
+A future third-CLEAR success path must have formal stdout/stderr authority writes,
+atexit/finalizer persistent mutation, shell-side authority writes, and DONE protocol all equal to
+zero. If formal success depends on any post-link manifest, DONE, flush, or other persistent write,
+implementation must stop.
+
+### Future repository-external implementation and verification
+
+Implementation may occur only in a fresh repository-external Candidate12 root, using controlled
+copies of verified artifacts. Existing Candidate12 staging remains immutable,
+`NOT QUALIFIED / NOT IMPLEMENTED`, and may not be renamed into a final Candidate. Its current
+`os.link`, post-link readback/reconciliation, later writes/printing, and shell publication are
+disqualifying implementation blockers.
+
+The future external root may contain only copied shell/Python launchers, a new or rebuilt Python
+supervisor core, repository-external static/self-tests, independent review artifacts, the reviewed
+`PROTOCOL_BUDGET.tsv`, and a new sealed manifest. It may not modify the Gramarye repository, Java,
+tests/GameTests, Gradle, workflow, fixture, authority, ledgers, R2Q, E2 semantics, P4-E3, any prior
+Candidate/campaign/evidence root, or select protocol T1.
+
+At minimum, future self-tests must rerun Candidate11's 108 direct cases and 108 clean-env cases; T2
+budget/remaining-time/atomic-observation tests; L2 append-race; v2-1 deterministic replay; ready
+and adjacent coordinates before/at/after H; before-H and cross-H normal return; rc 0/-1; EEXIST,
+injected EXDEV and EINTR; the six RuntimeError/fatal/MemoryError lanes; termination and unobserved
+completion; zero-or-one invocation and blocked second invocation; no target readback/retry/wrapper/
+DONE/ln; retained source and unique namespace; no orphan adoption/post-link mutation/stdout-stderr
+authority write/atexit-finalizer mutation; audit count zero; exact-type impostors; wrong
+function/owner; PyDLL(None); post-ready callable/tuple creation; caller/frame cleanup; bash -n,
+minimal PATH, clean environment; repository delta zero; and an independent second review. Cold v3
+cannot be created until every implementation, self-test, and independent-review Gate passes.
+
+Static Gates must lock the exact Python path/hash, explicit libSystem handle and dladdr owner,
+`PyDLL`, RTLD_LOCAL=4, use_errno=False, prebound `linkat`, retained tuple, exact dirfd/leaves/flags,
+the earlier and adjacent clock coordinates, one link callsite and zero-or-one invocation, the
+one-shot latch, primary 60-instruction composed CFG, fixed-route dominating FAST locals, and closed
+delayed-operation seam. They must prove absence of PyDLL(None), CDLL, os.link, Files.createLink,
+`/bin/ln`, wrapper/DONE/helper process, retry, target readback, post-return clock, post-link
+persistent mutation, invocation-time attribute/global lookup, loop/build/with/reflection/injection,
+test operation in formal runtime, and any second production construction site.
+
+The future formal runtime Gate must additionally prove one Python thread, `-I -S -B`, trace and
+profile hooks `None`, cyclic GC disabled with callbacks empty, faulthandler/wakeup-fd/pending-
+callback lanes closed, blockable signals blocked, and the H timer disarmed before both monotonic
+coordinates. These are future implementation requirements, not current-staging facts.
+
+Stop immediately if implementation requires protocol-T1 fallback, an H/watchdog increase, ps/jcmd
+removal, weaker immutable process identity, another handle/owner/API, callback/injection,
+internal/preview API, new native artifact or process, retry/readback/backfill/adoption, post-link
+authority write, repository change, or cold-v3 before all Gates pass.
+
+### A0.4 conditional phase transition
+
+```text
+P4-E0-B.7
+= COMPLETE
+
+P4-E2-M1-D2-C12-A0.4
+Candidate12 exact macOS/JDK same-process
+atomic no-replace receipt read-only technical review
+= COMPLETE UPON THIS CLOSURE COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
+
+Selected route
+= PREBOUND CTYPES.PYDLL(
+      "/usr/lib/libSystem.B.dylib",
+      mode=RTLD_LOCAL,
+      use_errno=False,
+  ).linkat
+
+Same-process owner
+= EXACT T2 CPYTHON SUPERVISOR
+
+Candidate12 implementation
+= READY ONLY AFTER THAT REMOTE GATE PASSES;
+  NOT STARTED
+
+cold qualification v1
+= FAILED; 0/3
+
+cold qualification v2
+= FAILED; 0/3
+
+cold qualification v3
+= NOT STARTED
+
+P4-C2 and later Gates
+= BLOCKED UNTIL CANDIDATE12 IMPLEMENTATION
+  AND COLD-V3 3/3 PASS
+
+P4-E2 implementation
+= SUSPENDED IN VERIFIED REPAIRED BACKUP
+
+P4-E3
+= BLOCKED
+
+P4-E
+= INCOMPLETE
+```
+
+This closure does not claim Candidate12 is implemented, current staging is qualified, cold v3 is
+open or passed, P4-C2 is open, P4-E2 is complete, or P4-E3 is open.
+
+### Known limitations and exact next work
+
+No actual EXDEV probe was executed. Cross-H evidence is a closed caller-contract synthetic test,
+not real link-latency integration. The route is locked to macOS 26.5.1 / Darwin 25.5.0 / arm64 /
+Xcode CPython 3.9.6 / exact `_ctypes` / explicit libSystem-and-kernel coordinate. Future
+implementation must still prove inline dominating locals, outer caller/frame cleanup, no
+post-return authority write, and no atexit/finalizer persistent mutation. Current staging remains
+unqualified; cold v3 does not exist. No fsync, power-loss/crash durability, cross-file transaction,
+reboot recovery, filesystem-journal, or directory-persistence claim is added. R2Q does not replace
+P4-E3's fixed-1,536-MiB production Gate, and branch-protection required-check configuration remains
+external governance unknown.
+
+The exact next work item, only after this closure commit's unique exact-SHA attempt-1 remote Gate
+passes, is fresh repository-external Candidate12 implementation, self-tests, and independent review
+under Verdict C. That work may open cold v3 only after all of its own Gates pass.
+<!-- P4_E2_M1_D2_C12_A04_CLOSURE_COMMON_END -->
+
+Common decision block identity (payload strictly between the marker lines, UTF-8 with LF and one
+terminal LF):
+
+```text
+lines   = 444
+bytes   = 25,345
+SHA-256 = 5a376645f54589459024aba04a8c3c13de6e86b6c8bd318cefd3b4b3c75e76be
+two-ledger cmp = PASS
+```
+
 ## Status
 
 ```text
@@ -2584,8 +3042,8 @@ P4-E0-B.6 authority remote run      = 31785326383 (attempt 1; push/main; success
 P4-E0-B.6 authority remote jobs     = build + P4-A3/B/C/D memory gates PASS
 P4-E0-B.6 direct qualification observation authority = COMPLETE
 P4-E0-B.7 COMMIT_READY / final receipt publication authority
-= COMPLETE UPON THIS CLOSURE COMMIT'S UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
-P4-E0                              = B.7 TWO-LEDGER CLOSURE CONDITIONAL ON THAT REMOTE PASS
+= COMPLETE
+P4-E0                              = COMPLETE
 P4-E1 prior read-only review       = STOPPED AT INTEGRATED SNAPSHOT AUTHORITY GATE
 P4-E1-A enabling read-only review  = PASS (HISTORICAL)
 P4-E1-A previous implementation attempt = STOPPED AT ACTIVE HEAP-FLOOR AUTHORITY COORDINATE CONFLICT
@@ -2639,14 +3097,16 @@ A0.3 technical route              = OFFICIAL PER-MODCONTAINER CUSTOM EXTENSION
                                     + CLOSED NOMINAL QUALIFICATION FACADE
 P4-E2-M1-D2 source/test implementation = LOCALLY FOCUSED-VALIDATED
 Candidate12 prior implementation feasibility = STOPPED AT FINAL LINK DEADLINE IMPOSSIBILITY [HISTORICAL]
-Candidate12 exact macOS/JDK same-process no-replace receipt read-only technical review
-= OPEN ONLY AFTER THIS CLOSURE REMOTE PASS; NOT STARTED
-Candidate12 implementation         = NOT READY
+P4-E2-M1-D2-C12-A0.4 exact macOS/JDK same-process atomic no-replace receipt read-only technical review
+= COMPLETE UPON THIS CLOSURE COMMIT'S UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
+Candidate12 selected route         = PREBOUND CTYPES.PYDLL LIBSYSTEM LINKAT
+Candidate12 same-process owner     = EXACT T2 CPYTHON SUPERVISOR
+Candidate12 implementation         = READY ONLY AFTER THAT REMOTE GATE PASSES; NOT STARTED
 cold qualification v1             = FAILED; 0/3
 cold qualification v2             = FAILED; 0/3
 cold qualification v3             = NOT STARTED
 P4-E2 implementation               = SUSPENDED IN VERIFIED REPAIRED BACKUP
-P4-C2 fixture compatibility        = BLOCKED AT DIRECT RUNTIME OBSERVATION
+P4-C2 and later Gates              = BLOCKED UNTIL CANDIDATE12 IMPLEMENTATION AND COLD-V3 3/3 PASS
 P4-E3                               = BLOCKED
 P4-E                               = INCOMPLETE
 ```
