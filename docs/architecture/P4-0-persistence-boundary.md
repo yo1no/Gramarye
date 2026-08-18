@@ -296,9 +296,10 @@ are complete, and its source／test implementation is locally focused-validated.
 COMMIT_READY／final-receipt authority implementation, push, unique exact-SHA remote Gate, and
 separate two-ledger closure are complete at `9c5fe439855538c97a5846716c68d9751c6358fe`.
 The subsequent P4-E2-M1-D2-C12-A0.4 exact macOS/JDK same-process atomic no-replace receipt read-only
-technical review is PASS. Its separate two-ledger closure becomes complete only upon its own unique
-exact-SHA attempt-1 remote Gate PASS; Candidate12 implementation remains stopped until that PASS.
-Cold qualification v1／v2 are failed at 0／3, v3 is not started, and P4-E3 remains blocked. E1 must
+technical review is complete as historical research. P4-E0-B.8 supersedes B.7／A0.4 only for release
+qualification and discontinues Candidate10–12 formal receipt infrastructure. P4-E2 product implementation
+is locally implemented in its verified repaired backup with focused validation, while simplified release
+qualification is ready but not started at 0／3. The remaining release product Gates and P4-E3 stay blocked. E1 must
 have zero player/Store/journal mutation and zero reclaim calls; E2 may publish at most one online
 Attachment replacement after P4-D recovery but still has zero offline/Store/journal/reclaim
 mutation. E3 alone owns the fresh-complete reclaim composition and the exact fixed-1,536-MiB
@@ -3830,6 +3831,269 @@ SHA-256 = 5a376645f54589459024aba04a8c3c13de6e86b6c8bd318cefd3b4b3c75e76be
 two-ledger cmp = PASS
 ```
 
+## P4-E0-B.8 P4-E2 release-qualification simplification amendment
+<!-- P4_E0_B8_QUALIFICATION_SIMPLIFICATION_COMMON_BEGIN -->
+
+本節是較晚且限於P4-E2 release qualification的scoped amendment，也是本次單一
+documentation commit內的governance／phase closure。它不改寫上方歷史B.7／A0.4內容，
+不改production Java、資料真相、Store／Attachment／journal、reconciliation、reclaim或
+玩家資料安全契約。若本節與本檔較早的Candidate／receipt／cold-v3前瞻文字衝突，本節是
+active release policy；較早文字只保留為immutable historical research snapshot。
+
+### Verification recursion limit
+
+```text
+VERIFICATION_RECURSION_LIMIT = ONE LEVEL
+
+allowed:
+product implementation
+-> direct tests / qualification Gates
+
+disallowed:
+product
+-> verifier
+-> verifier-authority protocol
+-> receipt publication authority
+-> receipt numeric qualification
+```
+
+若qualification工具自身要求新的多階段authority、generation／transaction protocol、
+persistent receipt、filesystem publication protocol、第二層meta-verifier或另一份codex-spec
+amendment，預設處置固定為`SIMPLIFY_OR_REPLACE_VERIFIER`，不是繼續發展驗證器。
+
+### Discontinued non-product receipt track
+
+```text
+Candidate10
+Candidate11
+Candidate12
+COMMIT_READY receipt
+three-CLEAR receipt authority
+PyDLL linkat publication
+P4-E0-B.8-R numeric qualification
+= DISCONTINUED AS OVER-COMPLEX
+  NON-PRODUCT VERIFICATION INFRASTRUCTURE
+```
+
+這些工具不進production JAR、不在Minecraft server runtime執行、不保存玩家資料，也不參與
+Store／Attachment／journal truth、revision audit、reconciliation或reclaim。既有evidence仍是
+immutable historical research；不得刪除、重寫或重新seal，但未來工作不再重驗全部Candidate
+manifest、不維護其phase lineage、不建立Candidate13，也不繼續B.8-R2／B.8-P。
+
+```text
+P4-E0-B.7
+= COMPLETE AS HISTORICAL TECHNICAL AUTHORITY;
+  SUPERSEDED FOR RELEASE QUALIFICATION
+
+P4-E2-M1-D2-C12-A0.4
+= COMPLETE AS HISTORICAL TECHNICAL RESEARCH;
+  SUPERSEDED FOR RELEASE QUALIFICATION
+```
+
+因此H=5.750s、three CLEAR、COMMIT_READY、LINK_PREINVOKE_ELIGIBLE、atomic linkat receipt、
+same-process receipt publication與session budget ledger都不再是P4-E2 release requirements，
+也不得套回下述簡化qualification。此定位不撤銷任何歷史commit或技術研究結論。
+
+### Product implementation and release qualification are separate
+
+```text
+P4-E2 product implementation
+= LOCALLY IMPLEMENTED IN VERIFIED REPAIRED BACKUP;
+  FOCUSED TESTS PASS;
+  NOT YET COMMITTED TO MAIN
+
+P4-E2 product code completion
+= NOT INVALIDATED BY QUALIFICATION-HARNESS FAILURE
+
+P4-E2 release qualification
+= PENDING SIMPLIFIED GATE
+
+P4-E2 production wiring
+= NOT ACTIVE UNTIL QUALIFICATION AND COMMIT
+```
+
+本文件在B.8之前任何稱P4-E2 implementation為`SUSPENDED`或`NOT STARTED`的phase narration，
+一律是pre-B.8 historical coordinate，不是現行狀態；本節與下方active phase block明文
+supersede該狀態，但不改寫或刪除其歷史文字。
+
+Qualification infrastructure failure不得把implementation退回`NOT STARTED`；產品test失敗仍可
+阻擋code completion。External collector或cleanup失敗只屬qualification infrastructure failure。
+Release qualification完成前不得啟用production wiring或進入P4-E3 reclaim composition。
+
+### SIMPLIFIED_COLD_FULL_SUITE_GATE
+
+新的最低充分release Gate是在repaired-E2／fixture qualification source上，依序建立
+`simplified-cold-1`、`simplified-cold-2`、`simplified-cold-3`。歷史cold-final／cold-requal
+run不得補足；namespace不得使用Candidate或receipt命名。每次固定執行：
+
+```text
+./gradlew --stop
+./gradlew test --rerun-tasks --console=plain
+./gradlew --stop
+```
+
+每次結束後只做普通有界cleanup check：最多15秒、每500ms檢查一次該run已知test worker與
+Gradle client是否退出；daemon退出只是diagnostic／cleanup requirement。此流程不建立formal
+process authority、three CLEAR、H deadline、atomic receipt、DONE、wrapper、generation或新authority
+patch。Cleanup check失敗時該run為`QUALIFICATION_INFRA_FAILURE`，P4-E2 product implementation
+state不變，且不得因此建立Candidate13。
+
+每次run必須同時滿足：
+
+```text
+Gradle rc                         = 0
+BUILD SUCCESSFUL                  = exactly once
+:test execution                   = exactly once
+JUnit suites                      = 199
+unique tests                      = 1458
+failures / errors / skipped       = 0 / 0 / 0
+duplicate tests                   = 0
+OOME markers                      = 0
+memory-scan infrastructure errors = 0
+test worker count                 = 1
+effective test worker heap        = 512 MiB unchanged
+effective daemon heap             = 1 GiB unchanged
+effective maxParallelForks        = 1
+effective forkEvery               = 0
+effective JUnit parallel          = off
+```
+
+這些effective settings須由ordinary run evidence觀察並保持不變；不宣稱目前repository已用額外
+literal配置釘死Gradle defaults。不得exclude／split tests、增加heap、改fork、retry、ignore
+failure或改class order。JUnit XML canonical inventory是suite／test／duplicate count authority；
+普通console log本身不足以取代它。
+
+每次只保存command、runtime/environment identity（包含被測source／worktree HEAD與tree）、
+effective heap/fork settings、exit code、JUnit
+counts、OOME count、canonical test inventory與SHA、必要concise log及Gate summary；不建立sealed
+receipt。只有三次各自PASS且三份canonical inventories byte-identical，才可宣告
+`SIMPLIFIED_COLD_FULL_SUITE_GATE = 3/3 PASS`。
+
+本次docs-only amendment的clean-base local regression仍是191 suites／1,387 tests／0 failure／
+error／skipped；它不是未來repaired-E2／fixture cold Gate的199／1,458 qualification count。
+
+### Direct product evidence and later product Gates
+
+Simplification保留P4-C2 READY first／restart actual login chain的direct runtime evidence：
+
+```text
+P4-D outcome                 = NoPending
+P4-E2 result                 = NoChanges
+accepted index invalidations = 0
+E2-owned setData attempts    = 0
+E2-owned setData successes   = 0
+```
+
+這些coordinate保護READY player state、P4-C fixture compatibility、E2 no-equivalent-publication與
+E1 index stability；只需由GameTest／probe assertion、normal test output與fixed-heap Gate log直接
+證明，不需要filesystem receipt authority。
+較早B.6的canonical JSON、atomic publication或sealed filesystem artifact文字，僅在其歷史研究
+與implementation-test設計範圍保留；作為active release-evidence transport的要求由本B.8
+supersede。B.6 actual-object／result／invalidation／JVM-call coordinates與上述zero-delta產品
+assertions仍是mandatory direct product evidence，不得一併移除或弱化。
+
+只有simplified cold 3/3 PASS後，才依序執行：P4-C2 fixed-heap READY first／restart、normal
+GameTest 12/12、dedicated-server smoke、P4-A3 relevant Gate、P4-B fixed-heap／restart、P4-C
+fixed-heap Attachment、P4-D fixed-heap crash／restart、portable verifier matrix、warning compilation、
+JAR isolation與javap／API Gates。任何一項都不得再建立formal receipt protocol。
+
+P4-C／P4-D／P4-E的資料安全、fixed-heap、restart、journal、reconciliation與reclaim obligations
+維持不變。Gate等級只控制verification成本：A級persistence／journal／reconciliation／reclaim
+仍須strict product design與fixed-heap／restart；B級runtime core／integration使用targeted、full unit、
+GameTest且heavy matrix只在major closure；C級content／UI／Trigger／Action／材料／配方使用build、
+targeted unit／GameTest並在release前整體回歸。Repository-external CI harness internals不是產品authority。
+本節的「P4-C2 and later Gates」只指尚待執行的release product Gate，不回退已完成的P4-C2
+code phase或其既有產品證據。
+
+### Implementation closure, evidence minimization, and stop policy
+
+Qualification通過後，在fresh worktree整合verified repaired E2 implementation、M1 repair與8-path
+fixture compatibility，重跑必要產品Gates，建立一個implementation commit，取得唯一exact-SHA
+remote PASS，再建立一次two-ledger phase closure。不再建立qualification／harness／receipt
+authority／numeric qualification closure。
+
+Ordinary qualification evidence限於command、runtime identity、heap／fork settings、exit code、test
+counts、OOME count、canonical inventory SHA、required log與Gate summary；不要求manifest-of-manifest、
+immutable nested bundle、filesystem receipt、generation、transaction authority或multiple closure commits。
+完整sealed evidence只保留給fixed-heap formal study、migration、irreversible reclaim與release-candidate
+final qualification。
+
+只有產品安全或regression問題會停止implementation：玩家資料可能損壞／誤刪、Store owner／revision
+validation錯誤、reconciliation非原子replacement、production regression失敗、required fixed-heap
+OOME／timeout、public API暴露禁止raw state，或E3 reclaim completeness無法證明。Daemon慢退出、
+cleanup script錯誤、非必要collector欄位缺失、原始證據仍完整時的manifest格式問題、receipt時序未證、
+branch protection未知或repository-external diagnostic不精確，只標為
+`QUALIFICATION_INFRA_FAILURE`、`KNOWN_LIMITATION`或`RELEASE_EVIDENCE_PENDING`，不把產品實作退回
+`NOT STARTED`。
+
+若qualification工具需要第二層meta-verifier、新authority amendment、persistent receipt／generation，
+工具量接近被驗證功能，或連續兩次只修工具而未增加產品覆蓋率，固定：
+
+```text
+STOP VERIFICATION RECURSION
+-> simplify or replace harness
+-> preserve product evidence
+-> do not create a new Candidate generation
+```
+
+### Single-commit conditional closure and active phase
+
+本次單一commit同時是authority amendment、governance closure與phase-ledger update；不得再建立第二個
+documentation closure commit。本次local Gate僅為Markdown consistency、official R2Q exact-six checksum
+重驗，以及clean detached base上的：
+
+```text
+./gradlew verifyPlatformBaseline compileJava test --console=plain
+```
+
+Closure-time local result是`PASS`：Gradle rc 0、`BUILD SUCCESSFUL`，detached clean-base JUnit XML
+為191 suites／1,387 tests／1,387 testcase nodes／0 failures／0 errors／0 skipped。Official R2Q
+只重驗既有exact-six checksum，5/5 payload PASS；其`SHA256SUMS.txt` SHA-256固定為
+`cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9`，未重跑R2Q study。
+
+它不執行GameTest、dedicated、fixed-heap、cold qualification、Candidate harness或R2Q study。
+
+```text
+P4-E0-B.8
+P4-E2 qualification simplification amendment
+= COMPLETE UPON THIS COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
+
+Candidate10–12 formal receipt track
+= DISCONTINUED AS OVER-COMPLEX
+  NON-PRODUCT VERIFICATION INFRASTRUCTURE
+
+P4-E2 product implementation
+= LOCALLY IMPLEMENTED IN VERIFIED REPAIRED BACKUP;
+  PRODUCT CODE COMPLETION NOT INVALIDATED
+  BY HARNESS FAILURE
+
+P4-E2 simplified release qualification
+= READY; NOT STARTED
+
+simplified cold qualification
+= 0/3
+
+P4-C2 and later Gates
+= BLOCKED UNTIL SIMPLIFIED COLD 3/3 PASS
+
+P4-E3
+= BLOCKED UNTIL P4-E2 IMPLEMENTATION
+  AND RELEASE CLOSURE
+
+P4-E
+= INCOMPLETE
+```
+
+本節不宣告P4-E2 COMPLETE、simplified cold PASS、P4-C2 OPEN、P4-E3 OPEN或Candidate12
+implemented。Branch-protection required-check configuration仍是external governance unknown。
+本commit的unique exact-SHA attempt-1 remote `Build`與現行exact five jobs全success後，條件解析為
+`P4-E0-B.8 = COMPLETE`；不需也不得再為解析條件改寫文件。
+
+Exact next work item是執行三次新的`SIMPLIFIED_COLD_FULL_SUITE_GATE`；在3/3 PASS前，P4-C2
+及later product Gates保持blocked，P4-E3保持blocked，P4-E保持incomplete。
+<!-- P4_E0_B8_QUALIFICATION_SIMPLIFICATION_COMMON_END -->
+
 ```text
 P4-C0.1 = COMPLETE
 P4-C1   = COMPLETE
@@ -3936,18 +4200,18 @@ A0.3 technical route              = OFFICIAL PER-MODCONTAINER CUSTOM EXTENSION
                                     + CLOSED NOMINAL QUALIFICATION FACADE
 P4-E2-M1-D2 source/test implementation = LOCALLY FOCUSED-VALIDATED
 Candidate12 prior implementation feasibility = STOPPED AT FINAL LINK DEADLINE IMPOSSIBILITY [HISTORICAL]
-P4-E2-M1-D2-C12-A0.4 exact macOS/JDK same-process atomic no-replace receipt read-only technical review
-= COMPLETE UPON THIS CLOSURE COMMIT'S UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
-Candidate12 selected route         = PREBOUND CTYPES.PYDLL LIBSYSTEM LINKAT
-Candidate12 same-process owner     = EXACT T2 CPYTHON SUPERVISOR
-Candidate12 implementation         = READY ONLY AFTER THAT REMOTE GATE PASSES; NOT STARTED
-cold qualification v1           = FAILED; 0/3
-cold qualification v2           = FAILED; 0/3
-cold qualification v3           = NOT STARTED
-P4-E2 implementation             = SUSPENDED IN VERIFIED REPAIRED BACKUP
-P4-C2 and later Gates            = BLOCKED UNTIL CANDIDATE12 IMPLEMENTATION AND COLD-V3 3/3 PASS
-P4-E3                             = BLOCKED
-P4-E                            = INCOMPLETE
+P4-E2-M1-D2-C12-A0.4 technical review = COMPLETE AS HISTORICAL TECHNICAL RESEARCH;
+                                              SUPERSEDED FOR RELEASE QUALIFICATION
+Candidate10–12 formal receipt track = DISCONTINUED AS OVER-COMPLEX NON-PRODUCT VERIFICATION INFRASTRUCTURE
+P4-E0-B.8 qualification simplification amendment
+= COMPLETE UPON THIS COMMIT'S UNIQUE EXACT-SHA ATTEMPT-1 REMOTE GATE PASS
+P4-E2 product implementation     = LOCALLY IMPLEMENTED IN VERIFIED REPAIRED BACKUP;
+                                    PRODUCT CODE COMPLETION NOT INVALIDATED BY HARNESS FAILURE
+P4-E2 simplified release qualification = READY; NOT STARTED
+simplified cold qualification    = 0/3
+P4-C2 and later release Gates    = BLOCKED UNTIL SIMPLIFIED COLD 3/3 PASS
+P4-E3                             = BLOCKED UNTIL P4-E2 IMPLEMENTATION AND RELEASE CLOSURE
+P4-E                              = INCOMPLETE
 ```
 
 The required remote `P4-C memory gates` job passed. P4-D0 authority is indexed by
@@ -3993,12 +4257,12 @@ review A0.1 stopped at the missing nonpublic exact-instance receiver route, and 
 direct-coordinate authority gap. Those Stops are historical; B.6 authority and closure are
 complete. The P4-E2-M1-D2-A0.3 FML／public-nominal exact-instance receiver read-only technical
 review and closure are complete with Candidate B as the unique route, and its source／test
-implementation is locally focused-validated. E2 production implementation remains suspended in
-its verified repaired backup. B.7 authority and its separate two-ledger closure are complete. The
-P4-E2-M1-D2-C12-A0.4 exact final-receipt technical review is PASS; its separate closure becomes
-complete only upon this new commit's unique exact-SHA attempt-1 remote PASS. Candidate12
-implementation remains not started. Cold v1／v2 remain failed at 0／3, cold v3 is absent and not
-started, P4-E3 remains blocked, and P4-E remains incomplete.
+implementation is locally focused-validated. E2 product implementation is locally implemented in
+its verified repaired backup with focused validation and is not yet committed to main. B.7 authority
+and A0.4 technical research are complete historical records, now superseded only for release
+qualification by B.8. Candidate10–12 formal receipt infrastructure is discontinued. Simplified
+release qualification is ready but not started at 0／3; the remaining release product Gates and
+P4-E3 remain blocked, and P4-E remains incomplete.
 The
 E0-B／B.1／B.2／B.3
 remote jobs did not rerun the R2Q formal
