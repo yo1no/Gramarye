@@ -317,7 +317,9 @@ DefinitionEnvelope
   `removeServer`可移除。Complete permit每次consume先標used；second use或wrong service／server／
   thread／tick／state identity／generation會消耗permit並清除其authority
   references，但不改index／generation。成功consume以相同generation／backing進active lease；lease
-  open／close不增加generation，active lease阻止audit與E2，close回Complete但不重發permit。
+  open／close不增加generation，active lease阻止audit與E2。B.9後close預設同generation demote至
+  Incomplete；只有exact `Completed(0)`及完整source-unchanged零publication證明才回Complete，
+  且兩者都不重發permit。
   `removeServer`可強制失效lease並清除backing／permit／slot而不增加generation；新的exact server
   object另從baseline 0開始，同一stopped object不得藉重插reset，移除後原handoff操作固定拒絕；
   不使用Cleaner／finalizer／background lease timeout。Permit與handoff除service／server／
@@ -1654,3 +1656,278 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - 日後數值、公式、Trigger／Action 內容、Profile 內容與 UI 調整不解除骨架凍結。
 - 日後任何會改變資料真相、持久化 schema、身分規則、管線邊界、失敗政策或網路信任邊界的修改，必須另立修正案。
 - 接受骨架級修正後，必須重跑本檔「開工前最終 Gate」全部項目與相關 migration／專用伺服器測試。
+
+
+## P4-E0-B.9 post-reclaim index terminal authority
+<!-- P4_E0_B9_POST_RECLAIM_INDEX_TERMINAL_COMMON_BEGIN -->
+
+This synchronized block is the scoped P4-E0-B.9 authority in the codex-spec documents and its
+decision／phase index in the architecture ledgers. Within active-lease post-reclaim terminal
+finalization only, B.9 supersedes B.4's unconditional close-to-`CompleteIndex` transition. All
+other B.4 owner, generation, permit, lease-blocking, exhaustion, and `removeServer` rules remain
+unchanged. Source precedence, P4-E2 reconciliation, reclaim atomicity, and the existing dirty／save
+contract also remain unchanged. Earlier B.8 and P4-E2 closure blocks remain immutable historical
+evidence; their phase narration is superseded by the current phase block below.
+
+### Unique terminal state machine
+
+```text
+CompleteIndex(g)
+-> consume valid Complete
+-> CompleteIndexWithActiveLease(g)
+   = ActiveLease(g, default = DEMOTE)
+   [default terminal = FAIL_CLOSED_TO_INCOMPLETE]
+-> close with exact source-unchanged proof
+-> CompleteIndex(g)
+
+CompleteIndex(g)
+-> consume valid Complete
+-> CompleteIndexWithActiveLease(g)
+   = ActiveLease(g, default = DEMOTE)
+   [default terminal = FAIL_CLOSED_TO_INCOMPLETE]
+-> every other terminal
+-> Incomplete(g)
+```
+
+Same-generation demotion is authority revocation. It is not a new audit reservation, is not a
+P4-E2 invalidation, and consumes no generation. Post-reclaim demotion must not use
+`invalidateForReconciliation`, `removeServer`, a second audit, a second snapshot, or a second
+reclaim.
+
+### Terminal mapping
+
+| E3 terminal | Store source determination | Index terminal | Generation |
+|---|---|---|---:|
+| Snapshot non-Complete | reclaim did not run, but the Complete authority chain failed | `Incomplete(g)` | unchanged |
+| Snapshot RuntimeException | no source result capable of retaining authority formed | `Incomplete(g)` | unchanged |
+| Snapshot Error/OOME | no successful source-state claim is permitted | `Incomplete(g)` | unchanged |
+| Reclaim `Rejected` | startup reclaim authority is not retained | `Incomplete(g)` | unchanged |
+| Reclaim filter／operation `Unavailable` | complete proof that the source remained unchanged is absent | `Incomplete(g)` | unchanged |
+| Reclaim `Completed(0)` | exact proof that the Store source remained unchanged | `CompleteIndex(g)` | unchanged |
+| Reclaim `Completed(>0)` | Store source changed | `Incomplete(g)` | unchanged |
+| Reclaim RuntimeException | Store may be unchanged or partially changed; authority is not retained | `Incomplete(g)` | unchanged |
+| Reclaim Error/OOME | Store may be unchanged or partially changed; authority is not retained | `Incomplete(g)` | unchanged |
+
+Only exact reclaim `Completed(0)` may retain `CompleteIndex(g)`. `Rejected`, `Unavailable`,
+and exception paths must not infer retained completeness merely because the Store might be
+unchanged.
+
+### Exact `Completed(0)` source-unchanged contract
+
+```text
+removed revisions                  = 0
+replacement histories publication = 0
+new Store Ready state              = 0
+new carrier publication            = 0
+Store source identity change       = 0
+dirty delta                        = 0
+save request                       = 0
+```
+
+Only when every coordinate is zero may the active lease be marked `SOURCE_UNCHANGED`. Removed
+count alone is insufficient. If zero removal still publishes an equivalent replacement, a new
+carrier, a new Ready identity, or dirty state, `Completed(0)` must demote to `Incomplete(g)` and
+the later P4-E3 review must stop or require a product correction.
+
+### Outcome-aware finalization
+
+Before publishing the active lease, its owner prepares the same-generation Complete return state,
+the same-generation Incomplete fail-closed state, and all terminal bookkeeping. The active handoff
+opens with `Incomplete(g)` selected by default. Only after snapshot and reclaim both succeed, and
+only on the reviewed exact `Completed(0)` branch, may it execute one allocation-free internal
+mark-source-unchanged operation.
+
+The mark seam is package-private or private, exact owner／server／thread／state-bound, single-use,
+nonforgeable, and allocation-free. Wrong owner, thread, or state and a second mark fail fast. It
+accepts no generic boolean, caller-selected policy, raw reclaim result, public terminal token,
+callback, visitor, `Supplier`, `Object`, or reflection route. B.9 fixes the semantics, not the
+future Java method name or exact internal type shape; that shape remains for a later authorized
+P4-E3 review. The mark is the final non-cleanup action after the exact `Completed(0)` proof; no
+snapshot, reclaim, or other fallible source work may occur between it and close. Any Throwable
+pending before terminal publication takes precedence and allocation-free revokes／ignores the mark.
+
+Close is allocation-free and performs one terminal publication. A valid source-unchanged mark
+installs `CompleteIndex(g)`; every other terminal installs `Incomplete(g)`. In both cases close
+clears the active lease, leaves the consumed public Complete permit consumed, issues no new public
+`Complete`, and grants no same-session second reclaim. This allocation-free requirement applies
+to terminal bookkeeping and cleanup, not to the already bounded snapshot or reclaim body.
+
+### Complete and Incomplete terminals
+
+Exact `Completed(0)` may install `CompleteIndex(g)` with generation `g`. The same audited root
+backing and indexed source metadata may remain only because the full zero-publication contract
+proves source identity unchanged. The lease is cleared, the public permit remains consumed, new
+public Complete issuance is zero, and same-session second reclaim authority is zero.
+
+Every other active-lease terminal installs `Incomplete(g)` with generation delta zero. It clears
+root backing, indexed source metadata, active lease, and Complete-permit authority. New Complete
+publication and reclaim authority are zero. Same-session audit, snapshot, and reclaim retry are all
+zero. This is same-generation authority demotion, not accepted invalidation or a new audit.
+
+### Generation and exhaustion
+
+Generation remains a memory-only `long` over `0..Long.MAX_VALUE` with baseline `0`. Below MAX,
+only a successfully accepted global-audit reservation or P4-E2 explicit invalidation advances it.
+E3 same-generation demotion does not advance it, so `Incomplete(Long.MAX_VALUE)` is a legal
+terminal and demotion itself must not return generation exhaustion. Only a later audit or P4-E2
+advance request made while current generation is `Long.MAX_VALUE`—not an accepted operation—
+installs `GenerationExhausted(MAX)` with generation delta, source work, root capture, snapshot,
+and reclaim all zero. Generation never wraps, saturates, or resets.
+
+### RuntimeException, Error, and OOME cleanup
+
+RuntimeException follows the matrix and closes fail-closed at `Incomplete(g)`. Error／OOME is not
+caught as success and is not converted to a bounded success result. If control reaches `finally`
+with any Throwable pending before terminal publication, that Throwable takes precedence over any
+source-unchanged mark: the allocation-free close installs the prebuilt `Incomplete(g)` state,
+clears backing／metadata／lease／permit authority, and rethrows the original Throwable identity
+without replacement or suppression. On the normal exact `Completed(0)` path no Throwable is
+pending; the final valid mark is immediately followed by the allocation-free, nonthrowing
+`CompleteIndex(g)` close. No Throwable, message, or stack is stored in the index, Store, or
+persistent state.
+
+This terminal rule claims neither Store rollback nor absence of partial mutation. If the JVM or
+process terminates before cleanup, the memory-only index is not durable truth; restart begins from
+a new server object's baseline and performs a fresh audit.
+
+### Reclaim mutation and dirty boundary
+
+The index terminal does not redefine existing reclaim atomicity:
+
+```text
+Completed(0):
+  Store source mutation = 0
+  dirty delta = 0
+  save request = 0
+
+Completed(>0):
+  Store source mutation = yes
+  index = Incomplete(g)
+  dirty/save = existing reclaim contract
+
+Rejected / Unavailable / RuntimeException / Error / OOME:
+  index = Incomplete(g)
+  Store dirty/partial mutation = existing actual result and product contract
+```
+
+No index terminal proves rollback, absence of a primary write, or absence of partial mutation.
+Later P4-E3 review must still independently confirm that the existing reclaim API meets the
+product's fail-closed and once-only requirements.
+
+### ServerStopped precedence
+
+Exact-server `removeServer` retains B.4 precedence. If server stop occurs while a lease is active,
+it force-clears the lease, backing, metadata, and permit authority and removes the exact server
+slot. It increments no generation and performs no snapshot, reclaim, or Store mutation. Slot
+removal wins over either `CompleteIndex(g)` or `Incomplete(g)` publication; close must not recreate
+the removed slot. The stopped server object cannot be reused. A new server object begins at
+baseline `0`.
+
+### Future P4-E3 first／restart Gate
+
+The future first run must form a Complete audit and Complete snapshot, perform
+`Completed(>0)`, remove the expected unreachable revisions, prove the Store source changed, close
+to same-generation `Incomplete(g)`, complete the existing dirty／save contract, and shut down
+normally with OOME and timeout both zero.
+
+The same-world restart must use a new `MinecraftServer` object, begin from memory-index baseline
+`0`, and perform a fresh audit without reusing first-run index state. Reclaimed revisions must not
+reappear; retained revisions and their identities／checksums must remain. Its expected
+`Completed(0)` must prove zero Store publication, dirty, and save request, close to
+`CompleteIndex(g)`, and not reissue the consumed permit. A zero-removal first fixture must not
+avoid the positive-reclaim branch.
+
+### Future implementation test authority
+
+Later P4-E3 implementation tests must cover all of the following; this documentation-only block
+creates no production or test seam:
+
+1. Snapshot non-Complete -> `Incomplete(g)`.
+2. Snapshot RuntimeException -> `Incomplete(g)`.
+3. Snapshot Error/OOME -> allocation-free `Incomplete(g)` cleanup.
+4. Reclaim `Rejected` -> `Incomplete(g)`.
+5. Reclaim `Unavailable` -> `Incomplete(g)`.
+6. Reclaim `Completed(0)` -> `CompleteIndex(g)`.
+7. `Completed(0)` dirty／carrier／Ready publication = 0.
+8. Reclaim `Completed(>0)` -> `Incomplete(g)`.
+9. Reclaim RuntimeException -> `Incomplete(g)`.
+10. Reclaim Error/OOME -> `Incomplete(g)`.
+11. `g = Long.MAX_VALUE` demotion is legal and does not return exhaustion.
+12. Only the next advance at MAX returns `GenerationExhausted`.
+13. Incomplete clears backing／metadata／permit／lease.
+14. CompleteIndex does not reissue the permit.
+15. Wrong owner／thread／state mark is rejected.
+16. A second mark is rejected.
+17. Close and its terminal bookkeeping are allocation-free.
+18. Server stop with an active lease removes the slot.
+19. First run performs positive reclaim.
+20. Restart performs zero reclaim.
+21. There is no second audit, snapshot, or reclaim.
+22. There is no new public API.
+
+### Visibility and unchanged coordinates
+
+The future terminal seam remains internal, exact-owner-bound, single-use, nonforgeable, and
+allocation-free:
+
+```text
+new public top-level types             = 0
+public Complete API delta              = 0
+public handoff API delta               = 0
+public reclaim-result authority        = 0
+public root Iterable/Collection/List   = 0
+public Tag/Path/Store/history/carrier  = 0
+
+counter count                          = 25
+new counters                           = 0
+relevant_records maximum               = 2,048
+raw_root_claims maximum                = 65,536
+effective MaxHeapSize floor            = 1,610,612,736 bytes
+P4-E3 fixed heap                       = 1,536 MiB product-shaped Gate
+DataVersion                            = exact IntTag(3955)
+P4-E DFU calls                         = 0
+E1 source precedence                   = online > integrated > disk
+single startup audit / retry           = unchanged / no retry
+P4-E2 reconciliation semantics         = unchanged
+R2Q                                    = exploratory / non-normative;
+                                         not a substitute for the P4-E3 Gate
+```
+
+### Conditional authority phase state
+
+```text
+P4-E0-B.9 post-reclaim index terminal authority
+= COMPLETE UPON THIS AUTHORITY COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  FIVE-JOB REMOTE GATE PASS
+
+P4-E0-B.9 separate two-ledger closure
+= READY AFTER AUTHORITY REMOTE PASS;
+  NOT STARTED
+
+P4-E1
+= COMPLETE
+
+P4-E2
+= COMPLETE
+
+P4-E3 prior read-only design review
+= STOPPED AT POST-RECLAIM INDEX STATE AUTHORITY GAP
+  [HISTORICAL]
+
+P4-E3 read-only design review
+= BLOCKED UNTIL P4-E0-B.9
+  AUTHORITY AND SEPARATE CLOSURE
+
+P4-E3 implementation
+= NOT STARTED
+
+P4-E
+= INCOMPLETE
+```
+
+This authority commit does not complete the separate two-ledger closure, reopen P4-E3 review, make
+P4-E3 implementation ready, or complete P4-E. After its unique exact-SHA attempt-1 five-job remote
+Gate passes, the exact next work item is the separate two-ledger B.9 closure. No closure work or
+P4-E3 work occurs in this block.
+<!-- P4_E0_B9_POST_RECLAIM_INDEX_TERMINAL_COMMON_END -->
