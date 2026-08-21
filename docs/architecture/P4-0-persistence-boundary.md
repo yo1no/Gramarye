@@ -4270,3 +4270,293 @@ study, and P4-E3 still
 requires the production-shaped fixed-1,536-MiB first／restart Gate including the B.3 online
 actual-path／domination-proof obligation.
 Branch-protection required-check configuration remains external governance unknown.
+
+## P4-E2 final implementation and release closure
+<!-- P4_E2_FINAL_CLOSURE_COMMON_BEGIN -->
+
+This is the later active P4-E2 closure block. It records the completed product implementation,
+the test-only CI repair, the completed release qualification, and the conditional transition to
+P4-E3 read-only design review. Earlier B.8 implementation／qualification status remains an
+immutable historical snapshot and is superseded only as current phase narration. This block does
+not change any product authority, reopen Candidate／receipt work, or begin the P4-E3 review body.
+
+### P4-E2 final implementation lineage
+
+```text
+Product implementation commit
+= 1805be7641cdee8e132d65de345ccce9b8133b2a
+
+parent
+= 2912fc57ab6fbe13abfac66af4952290b9a63c11
+
+subject
+= feat(persistence): complete P4-E2 online reconciliation
+
+scope / stat
+= 60 files; 9,999 insertions; 120 deletions
+
+Test-only CI repair commit
+= 55e1ee027b6f48e5de438538d5a7fe99bd1fdc71
+
+parent
+= 1805be7641cdee8e132d65de345ccce9b8133b2a
+
+subject
+= test(persistence): make P4-D source scan text-block aware
+
+scope
+= exactly one test file:
+  src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java
+```
+
+The repair changes only the test helper. It replaces recursive-regex lexical masking and
+invocation matching with an equal-length, CR／LF-preserving, text-block-aware Java lexical masker
+and literal linear invocation scan. Production source and Minecraft runtime behavior are
+unchanged. It does not increase heap, stack, or forks; catch or ignore `StackOverflowError`; or
+skip, split, disable, or weaken a test. The repair-head full unit suite is separately recorded as
+1,460 tests with 0 failures／errors／skips, and the D3-A verifier passed in all three required modes.
+This 1,460-test repair regression is not the 1,458-test-per-run cold qualification inventory.
+
+### P4-E2 remote lineage
+
+```text
+Historical implementation-head run
+= 32469057692
+
+head SHA / event / branch / attempt
+= 1805be7641cdee8e132d65de345ccce9b8133b2a / push / main / 1
+
+result
+= failure
+
+failure coordinate
+= P4D3AApiGateTest
+  .mutationOwnersRemainClosedAndD3BTestSurfacesStayIsolated()
+  test-helper regex StackOverflowError at java.util.regex.Pattern
+
+classification
+= TEST-HELPER FAILURE;
+  NOT A P4-E2 PRODUCTION FAILURE
+
+Final successful implementation-lineage run
+= 32492516385
+
+head SHA / event / branch / attempt
+= 55e1ee027b6f48e5de438538d5a7fe99bd1fdc71 / push / main / 1
+
+exact-SHA run count / conclusion
+= 1 / success
+
+exact jobs
+= build
+  P4-A3 memory gates
+  P4-B memory gates
+  P4-C memory gates
+  P4-D memory gates
+
+job result
+= 5/5 completed/success
+
+branch-protection required-check configuration
+= external governance unknown
+```
+
+The successful run belongs to repair head `55e1ee027b6f48e5de438538d5a7fe99bd1fdc71`
+and closes the combined implementation／test-repair lineage. It is not misattributed as a
+successful run whose head SHA was the failed implementation head.
+
+### P4-E2 completed release qualification
+
+```text
+SIMPLIFIED_COLD_FULL_SUITE_GATE
+= 3/3 PASS
+
+each cold run
+= 199 suites / 1,458 tests
+  0 failures / 0 errors / 0 skipped
+  0 duplicate tests / 0 OOME
+
+canonical inventories
+= three byte-identical inventories
+
+P4-C2 READY first/restart fixed-heap
+= PASS
+  P4-D outcome = NoPending
+  P4-E2 result = NoChanges
+  accepted invalidations first/restart = 0/0
+  E2 setData attempts first/restart = 0/0
+  E2 setData successes first/restart = 0/0
+  Attachment / Store first/restart semantics preserved
+
+normal GameTest
+= 12/12 PASS
+
+dedicated-server smoke
+= PASS
+
+P4-A3 fixed-heap regression
+= PASS
+
+P4-B fixed-heap/restart regression
+= PASS
+
+P4-C fixed-heap Attachment regression
+= PASS
+
+P4-D crash/recovery/restart regression
+= PASS
+
+final static / packaging Gate
+= PASS
+  portable verifiers = 30/30 PASS
+  warning compilation = PASS
+  targeted API tests = PASS
+  JAR isolation = PASS
+  javap / API / call-site / forbidden-capability checks = PASS
+
+Candidate10-12 formal receipt track
+= DISCONTINUED AS OVER-COMPLEX
+  NON-PRODUCT VERIFICATION INFRASTRUCTURE
+```
+
+Candidate10-12 remains immutable historical non-product qualification research. It is not a
+release requirement, is not resealed or rebuilt here, and no Candidate／receipt／qualification
+closure is created.
+
+### P4-E2 preserved product contracts
+
+`SkillDefinitionStoreService` remains the lifecycle owner of exactly one final
+`SkillRetentionRootAuditService`. `SkillSubmissionRecoveryService` remains the sole
+`PlayerLoggedInEvent` owner, with the synchronous production order fixed as:
+
+```text
+validate exact current ServerPlayer
+-> complete P4-D recovery
+-> retain typed recovery outcome
+-> invoke the P4-E2 continuation in the same call chain
+-> complete the continuation
+-> return
+```
+
+P4-E2 reconciliation applies only to an authenticated current online player with a Ready
+Attachment. Grouped Store validation performs exactly one history lookup per distinct claimed
+`SkillId` and evaluates owner match before revision membership; this is validation／failure
+precedence, not a two-step mutation. Exact valid nonlatest revisions are retained.
+
+A stale latest route becomes explicit empty and advances through the sole P4-C generation
+successor only after all required successors and the complete replacement are prepared. If any
+required successor is exhausted at `Integer.MAX_VALUE`, the entire batch has publication zero.
+A stale equipped entry is removed without changing latest generation. Publication is one complete
+immutable replacement; there is no sequence of partial per-entry mutations.
+
+Each changed batch accepts at most one P4-E1 index invalidation and performs at most one E2-owned
+`setData`. Invalidation precedes publication; failed invalidation or final identity drift produces
+publication zero. The following zero-delta boundaries remain exact:
+
+```text
+offline / integrated playerdata mutation = 0
+Store mutation / dirty                    = 0
+journal mutation                          = 0
+P4-E2 production snapshot-factory calls   = 0
+P4-E2 production Store reclaim calls      = 0
+P4-E3 composition / production caller     = 0
+P4-E3 audit-service constructor delta      = 0
+```
+
+The qualification facade remains test-armed, instance-owned, bounded, and single-session;
+issued capabilities remain single-use and same-call-chain. Its unarmed production path is a no-op
+with zero semantic delta and it exposes no raw Store, Attachment, `Tag`, history, playerdata, or
+root authority.
+
+Future P4-E3 may only reuse the exact same Store-owned audit-service object already used by P4-E2.
+It may not construct, replace, or lazy-create another service, add another login listener, or
+retrofit missing E2 wiring.
+
+### P4-E2 retained limitations
+
+- Offline／integrated stale state is only eligible for repair after that owner later becomes the
+  exact authenticated online player and follows the normal login path. Quarantined Attachment is
+  not modified by E2.
+- E2 provides no same-session reclaim. Reconciliation leaves the index non-Complete; only a later
+  restart and future P4-E3 fresh audit may authorize controlled reclaim.
+- A crash after accepted invalidation but before `setData`, or after `setData` but before save,
+  retains the documented non-Complete／actual-disk-truth recovery model. E2 does not retry,
+  force-save, or roll back.
+- No cross-Store／playerdata filesystem transaction, database transaction, fsync durability,
+  rollback, or atomic Store／playerdata commit is claimed.
+- Hostile same-object integrated `CompoundTag` mutation and a disk rewrite that preserves
+  fileKey／size／mtime remain outside the V0 witness model.
+- R2Q is not a universal memory-safety theorem and does not replace the mandatory P4-E3
+  production-shaped fixed-1,536-MiB first／restart Gate.
+- Branch-protection configuration remains external governance unknown; push acceptance and
+  workflow success do not establish required-check policy.
+
+### P4-E2 closure-time local evidence
+
+This documentation closure changes only these two architecture ledgers. It does not modify Java,
+tests, GameTests, probes, scripts, Gradle, workflow, resources, codex-spec, or README, and it does
+not read actual user world／playerdata. The minimum sufficient local Gate is:
+
+```text
+Markdown fences / tables / local links / conflict markers
+= PASS
+
+two-ledger common block / phase statements
+= IDENTICAL / CONSISTENT
+
+./gradlew verifyPlatformBaseline compileJava test --console=plain
+= BUILD SUCCESSFUL
+  failures / errors / skipped = 0 / 0 / 0
+
+existing official R2Q root
+= exact six regular files
+  symlinks = 0
+  extras = 0
+  payload checksums = 5/5 PASS
+  SHA256SUMS.txt SHA-256 =
+  cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9
+```
+
+The R2Q study and Candidate／receipt work were not rerun or rebuilt. No cold suite, GameTest,
+dedicated server, P4-A3／B／C／D local Gate, Candidate, or receipt was executed for this docs-only
+closure.
+
+### P4-E2 conditional phase transition
+
+```text
+P4-E0-B.8
+= COMPLETE
+
+P4-E1
+= COMPLETE
+
+P4-E2 read-only design review
+= COMPLETE
+  PASS; NO SPLIT
+
+P4-E2 implementation
+= COMPLETE UPON THIS CLOSURE COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  FIVE-JOB REMOTE GATE PASS
+
+P4-E2
+= COMPLETE UPON THE SAME CONDITION
+
+P4-E3 read-only design review
+= OPEN UPON THE SAME CONDITION
+
+P4-E3 implementation
+= NOT STARTED
+
+P4-E
+= INCOMPLETE
+```
+
+This commit is the final P4-E2 closure. Its conditional wording resolves automatically only when
+this closure commit has exactly one `push`／`main`／attempt-1 exact-SHA `Build` run and the exact
+`build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, and
+`P4-D memory gates` jobs all complete with `success`. No second commit may be created to record the
+run ID. Until that condition passes, P4-E2 remains incomplete and P4-E3 remains blocked. After it
+passes, the exact next work item is P4-E3 read-only design review; this block does not perform that
+review, declare it PASS／READY, start P4-E3 implementation, or complete P4-E.
+<!-- P4_E2_FINAL_CLOSURE_COMMON_END -->
