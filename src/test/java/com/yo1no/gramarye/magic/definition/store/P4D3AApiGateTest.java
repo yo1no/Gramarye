@@ -18,7 +18,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.server.MinecraftServer;
@@ -42,16 +41,11 @@ final class P4D3AApiGateTest {
     private static final Path STORE_PORT = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/magic/definition/store/"
                     + "SkillDefinitionStoreSubmissionPort.java");
-    private static final Pattern STORE_COMMIT_CALL = Pattern.compile(
-            "\\.\\s*commit\\s*\\(");
-    private static final Pattern STORE_RECLAIM_CALL = Pattern.compile(
-            "\\.\\s*reclaim\\s*\\(");
-    private static final Pattern SET_DATA_CALL = Pattern.compile(
-            "\\.\\s*setData\\s*\\(");
-    private static final Pattern PREPARE_CLEAR_CALL = Pattern.compile(
-            "\\.\\s*prepareJournalPrefixClear\\s*\\(");
-    private static final Pattern COMMIT_CLEAR_CALL = Pattern.compile(
-            "\\.\\s*commitPreparedJournalClear\\s*\\(");
+    private static final String STORE_COMMIT_METHOD = "commit";
+    private static final String STORE_RECLAIM_METHOD = "reclaim";
+    private static final String SET_DATA_METHOD = "setData";
+    private static final String PREPARE_CLEAR_METHOD = "prepareJournalPrefixClear";
+    private static final String COMMIT_CLEAR_METHOD = "commitPreparedJournalClear";
 
     @Test
     void phaseOwnsExactlyTwoNewProductionSourcesAndSixReviewedIntegrations() {
@@ -355,17 +349,17 @@ final class P4D3AApiGateTest {
     void mutationOwnersRemainClosedAndD3BTestSurfacesStayIsolated() throws Exception {
         assertAll(
                 () -> assertEquals(Set.of("SkillDefinitionStoreSubmissionPort.java"),
-                        relativeSourcesMatching(STORE_COMMIT_CALL)),
+                        relativeSourcesInvoking(STORE_COMMIT_METHOD)),
                 () -> assertEquals(Set.of(
                                 "GramaryeSkillSavedData.java",
                                 "SkillDefinitionStoreService.java"),
-                        relativeSourcesMatching(STORE_RECLAIM_CALL)),
+                        relativeSourcesInvoking(STORE_RECLAIM_METHOD)),
                 () -> assertEquals(Set.of("PlayerSkillAttachmentService.java"),
-                        relativeSourcesMatching(SET_DATA_CALL)),
+                        relativeSourcesInvoking(SET_DATA_METHOD)),
                 () -> assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
-                        relativeSourcesMatching(PREPARE_CLEAR_CALL)),
+                        relativeSourcesInvoking(PREPARE_CLEAR_METHOD)),
                 () -> assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
-                        relativeSourcesMatching(COMMIT_CLEAR_CALL)),
+                        relativeSourcesInvoking(COMMIT_CLEAR_METHOD)),
                 () -> assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
                         relativeSourcesContaining("PlayerLoggedInEvent")));
 
@@ -420,6 +414,62 @@ final class P4D3AApiGateTest {
                         .contains("    name: P4-D memory gates")));
     }
 
+    @Test
+    void lexicalSourceScanningIsLengthStableAndInvocationEquivalent() {
+        var escapedTextBlockQuotes = "\\" + "\"\"\"";
+        var textBlockContinuation = "\\" + "\r\n";
+        var source = String.join("",
+                "owner . commit (\r\n",
+                "// .reclaim(\r\n",
+                "/* .prepareJournalPrefixClear(\n */\r",
+                "var ordinary = \".prepareJournalPrefixClear(\";\n",
+                "var quote = '\\'';\r\n",
+                "var slash = '\\\\';\n",
+                "var text = \"\"\" \t\f\r\n",
+                "var embedded = \".commitPreparedJournalClear(\";\r\n",
+                ".commitPreparedJournalClear(\r\n",
+                escapedTextBlockQuotes,
+                "\r\n",
+                textBlockContinuation,
+                ".reclaim(\n",
+                "\"\"\";\r\n",
+                "owner . setData (\r\n");
+        var masked = withoutCommentsAndLiterals(source);
+        var asciiWhitespace = " \t\n" + (char) 0x0B + "\f\r";
+
+        assertAll(
+                () -> assertEquals(source.length(), masked.length()),
+                () -> {
+                    for (var index = 0; index < source.length(); index++) {
+                        var original = source.charAt(index);
+                        var sanitized = masked.charAt(index);
+                        if (original == '\r' || original == '\n'
+                                || sanitized == '\r' || sanitized == '\n') {
+                            assertEquals(original, sanitized,
+                                    "line terminator changed at " + index);
+                        }
+                    }
+                },
+                () -> assertTrue(containsInvocation(masked, "commit")),
+                () -> assertTrue(containsInvocation(masked, "setData")),
+                () -> assertFalse(containsInvocation(masked, "reclaim")),
+                () -> assertFalse(containsInvocation(
+                        masked, "prepareJournalPrefixClear")),
+                () -> assertFalse(containsInvocation(
+                        masked, "commitPreparedJournalClear")),
+                () -> assertTrue(containsInvocation(
+                        "." + asciiWhitespace + "commit" + asciiWhitespace + "(",
+                        "commit")),
+                () -> assertTrue(containsInvocation("..commit(", "commit")),
+                () -> assertFalse(containsInvocation("commit(", "commit")),
+                () -> assertFalse(containsInvocation(".Commit(", "commit")),
+                () -> assertFalse(containsInvocation(".commitment(", "commit")),
+                () -> assertFalse(containsInvocation(
+                        "." + (char) 0x00A0 + "commit(", "commit")),
+                () -> assertFalse(containsInvocation(
+                        ".commit" + (char) 0x2028 + "(", "commit")));
+    }
+
     private static boolean exposesRawPersistenceTruth(String typeName) {
         return typeName.contains("PendingAttachmentJournal")
                 || typeName.contains("GramaryeSkillSavedData")
@@ -464,11 +514,47 @@ final class P4D3AApiGateTest {
                 .collect(Collectors.toSet());
     }
 
-    private static Set<String> relativeSourcesMatching(Pattern pattern) throws Exception {
+    private static Set<String> relativeSourcesInvoking(String methodName) throws Exception {
         return javaSources(MAIN_JAVA).stream()
-                .filter(path -> pattern.matcher(withoutCommentsAndLiterals(read(path))).find())
+                .filter(path -> containsInvocation(
+                        withoutCommentsAndLiterals(read(path)), methodName))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
+    }
+
+    private static boolean containsInvocation(String source, String methodName) {
+        for (var index = 0; index < source.length(); index++) {
+            if (source.charAt(index) != '.') {
+                continue;
+            }
+            var cursor = skipAsciiRegexWhitespace(source, index + 1);
+            if (!source.startsWith(methodName, cursor)) {
+                continue;
+            }
+            cursor = skipAsciiRegexWhitespace(source, cursor + methodName.length());
+            if (cursor < source.length() && source.charAt(cursor) == '(') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int skipAsciiRegexWhitespace(String source, int start) {
+        var cursor = start;
+        while (cursor < source.length()
+                && isAsciiRegexWhitespace(source.charAt(cursor))) {
+            cursor++;
+        }
+        return cursor;
+    }
+
+    private static boolean isAsciiRegexWhitespace(char character) {
+        return character == ' '
+                || character == '\t'
+                || character == '\n'
+                || character == '\u000B'
+                || character == '\f'
+                || character == '\r';
     }
 
     private static List<Path> javaSources(Path root) throws IOException {
@@ -530,11 +616,114 @@ final class P4D3AApiGateTest {
     }
 
     private static String withoutCommentsAndLiterals(String source) {
-        return source
-                .replaceAll("(?s)/\\*.*?\\*/", " ")
-                .replaceAll("(?m)//.*$", " ")
-                .replaceAll("(?s)\"(?:\\\\.|[^\"\\\\])*\"", " ")
-                .replaceAll("(?s)'(?:\\\\.|[^'\\\\])*'", " ");
+        var masked = new StringBuilder(source.length());
+        var state = LexicalState.CODE;
+        for (var index = 0; index < source.length(); index++) {
+            var current = source.charAt(index);
+            var hasNext = index + 1 < source.length();
+            var next = hasNext ? source.charAt(index + 1) : '\0';
+            switch (state) {
+                case CODE -> {
+                    if (current == '/' && next == '/') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.LINE_COMMENT;
+                    } else if (current == '/' && next == '*') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.BLOCK_COMMENT;
+                    } else if (isTextBlockOpeningDelimiterAt(source, index)) {
+                        masked.append("   ");
+                        index += 2;
+                        state = LexicalState.TEXT_BLOCK;
+                    } else if (current == '"') {
+                        masked.append(' ');
+                        state = LexicalState.STRING;
+                    } else if (current == '\'') {
+                        masked.append(' ');
+                        state = LexicalState.CHARACTER;
+                    } else {
+                        masked.append(current);
+                    }
+                }
+                case LINE_COMMENT -> {
+                    appendMasked(masked, current);
+                    if (current == '\r' || current == '\n') {
+                        state = LexicalState.CODE;
+                    }
+                }
+                case BLOCK_COMMENT -> {
+                    if (current == '*' && next == '/') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.CODE;
+                    } else {
+                        appendMasked(masked, current);
+                    }
+                }
+                case STRING, CHARACTER -> {
+                    appendMasked(masked, current);
+                    if (current == '\\' && hasNext) {
+                        appendMasked(masked, next);
+                        index++;
+                    } else if ((state == LexicalState.STRING && current == '"')
+                            || (state == LexicalState.CHARACTER && current == '\'')) {
+                        state = LexicalState.CODE;
+                    }
+                }
+                case TEXT_BLOCK -> {
+                    if (isTripleQuoteAt(source, index)) {
+                        masked.append("   ");
+                        index += 2;
+                        state = LexicalState.CODE;
+                    } else if (current == '\\' && hasNext) {
+                        appendMasked(masked, current);
+                        appendMasked(masked, next);
+                        index++;
+                        if (next == '\r'
+                                && index + 1 < source.length()
+                                && source.charAt(index + 1) == '\n') {
+                            appendMasked(masked, '\n');
+                            index++;
+                        }
+                    } else {
+                        appendMasked(masked, current);
+                    }
+                }
+            }
+        }
+        if (masked.length() != source.length()) {
+            throw new AssertionError("lexical masker changed source length");
+        }
+        return masked.toString();
+    }
+
+    private static boolean isTextBlockOpeningDelimiterAt(String source, int index) {
+        if (!isTripleQuoteAt(source, index)) {
+            return false;
+        }
+        var cursor = index + 3;
+        while (cursor < source.length()
+                && isTextBlockOpeningWhitespace(source.charAt(cursor))) {
+            cursor++;
+        }
+        return cursor < source.length()
+                && (source.charAt(cursor) == '\r' || source.charAt(cursor) == '\n');
+    }
+
+    private static boolean isTextBlockOpeningWhitespace(char character) {
+        return character == ' ' || character == '\t' || character == '\f';
+    }
+
+    private static boolean isTripleQuoteAt(String source, int index) {
+        return index + 2 < source.length()
+                && source.charAt(index) == '"'
+                && source.charAt(index + 1) == '"'
+                && source.charAt(index + 2) == '"';
+    }
+
+    private static void appendMasked(StringBuilder masked, char character) {
+        masked.append(character == '\r' || character == '\n' ? character : ' ');
     }
 
     private static Path projectRoot() {
@@ -546,5 +735,14 @@ final class P4D3AApiGateTest {
             }
         }
         throw new AssertionError("project root not found");
+    }
+
+    private enum LexicalState {
+        CODE,
+        LINE_COMMENT,
+        BLOCK_COMMENT,
+        STRING,
+        CHARACTER,
+        TEXT_BLOCK
     }
 }
