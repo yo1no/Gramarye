@@ -240,6 +240,10 @@ class P4C1ApiGateTest {
                                         + "PlayerSkillAttachmentPersistenceBridge.java",
                                 "com/yo1no/gramarye/magic/definition/player/"
                                         + "PlayerSkillAttachmentService.java",
+                                "com/yo1no/gramarye/magic/definition/store/"
+                                        + "P4E2GroupedStoreValidation.java",
+                                "com/yo1no/gramarye/magic/definition/store/"
+                                        + "P4E2ReconciliationResult.java",
                                 "com/yo1no/gramarye/magic/definition/submission/"
                                         + "SkillSubmissionRecoveryService.java"),
                         relativeFilesContaining(production, "MAX_PLAYER_LATEST_STATES")),
@@ -249,7 +253,11 @@ class P4C1ApiGateTest {
                                 "com/yo1no/gramarye/magic/definition/player/"
                                         + "PlayerSkillAttachmentPersistenceBridge.java",
                                 "com/yo1no/gramarye/magic/definition/player/"
-                                        + "PlayerSkillAttachmentService.java"),
+                                        + "PlayerSkillAttachmentService.java",
+                                "com/yo1no/gramarye/magic/definition/store/"
+                                        + "P4E2GroupedStoreValidation.java",
+                                "com/yo1no/gramarye/magic/definition/store/"
+                                        + "P4E2ReconciliationResult.java"),
                         relativeFilesContaining(production,
                                 "MAX_PLAYER_EQUIPPED_REFERENCES")),
                 () -> assertEquals(

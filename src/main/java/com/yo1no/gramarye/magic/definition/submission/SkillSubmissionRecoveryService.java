@@ -1,9 +1,11 @@
 package com.yo1no.gramarye.magic.definition.submission;
 
+import com.yo1no.gramarye.P4E2QualificationFacade;
 import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
+import com.yo1no.gramarye.magic.definition.store.P4E2OnlineReconciliationDependency;
 import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreSubmissionPort;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.util.HashMap;
@@ -19,25 +21,66 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
 /** Performs bounded, readback-confirmed recovery for one authenticated player's journal chains. */
 public final class SkillSubmissionRecoveryService {
+    private static final Optional<String> NO_RECOVERY_EXCEPTION = Optional.empty();
+
     private final Dependencies dependencies;
+    private final P4E2OnlineReconciliationDependency onlineReconciliationDependency;
+    private final P4E2QualificationFacade.SubmissionView qualificationView;
     private boolean registered;
 
     private SkillSubmissionRecoveryService(
             PlayerSkillAttachmentService attachmentService,
-            SkillDefinitionStoreSubmissionPort storePort) {
-        this(new ProductionDependencies(attachmentService, storePort));
+            SkillDefinitionStoreSubmissionPort storePort,
+            P4E2OnlineReconciliationDependency onlineReconciliationDependency,
+            P4E2QualificationFacade.SubmissionView qualificationView) {
+        this(
+                new ProductionDependencies(attachmentService, storePort),
+                onlineReconciliationDependency,
+                qualificationView);
     }
 
     SkillSubmissionRecoveryService(Dependencies dependencies) {
+        this(dependencies, null, null);
+    }
+
+    SkillSubmissionRecoveryService(
+            Dependencies dependencies,
+            P4E2OnlineReconciliationDependency onlineReconciliationDependency) {
+        this(dependencies, onlineReconciliationDependency, null);
+    }
+
+    SkillSubmissionRecoveryService(
+            Dependencies dependencies,
+            P4E2OnlineReconciliationDependency onlineReconciliationDependency,
+            P4E2QualificationFacade.SubmissionView qualificationView) {
         this.dependencies = Objects.requireNonNull(dependencies, "dependencies");
+        this.onlineReconciliationDependency = onlineReconciliationDependency;
+        this.qualificationView = qualificationView;
     }
 
     public static SkillSubmissionRecoveryService create(
             PlayerSkillAttachmentService attachmentService,
-            SkillDefinitionStoreSubmissionPort storePort) {
+            SkillDefinitionStoreSubmissionPort storePort,
+            P4E2OnlineReconciliationDependency onlineReconciliationDependency) {
         return new SkillSubmissionRecoveryService(
                 Objects.requireNonNull(attachmentService, "attachmentService"),
-                Objects.requireNonNull(storePort, "storePort"));
+                Objects.requireNonNull(storePort, "storePort"),
+                Objects.requireNonNull(
+                        onlineReconciliationDependency, "onlineReconciliationDependency"),
+                null);
+    }
+
+    public static SkillSubmissionRecoveryService create(
+            PlayerSkillAttachmentService attachmentService,
+            SkillDefinitionStoreSubmissionPort storePort,
+            P4E2OnlineReconciliationDependency onlineReconciliationDependency,
+            P4E2QualificationFacade.SubmissionView qualificationView) {
+        return new SkillSubmissionRecoveryService(
+                Objects.requireNonNull(attachmentService, "attachmentService"),
+                Objects.requireNonNull(storePort, "storePort"),
+                Objects.requireNonNull(
+                        onlineReconciliationDependency, "onlineReconciliationDependency"),
+                Objects.requireNonNull(qualificationView, "qualificationView"));
     }
 
     /** Registers exactly the persisted-player login recovery listener. */
@@ -286,8 +329,171 @@ public final class SkillSubmissionRecoveryService {
     private void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         Objects.requireNonNull(event, "event");
         if (event.getEntity() instanceof ServerPlayer player) {
-            recoverPersistedPlayer(player);
+            requireE2RecoveryVocabularyInitialized();
+            var server = Objects.requireNonNull(player.getServer(), "player server");
+            var playerId = player.getUUID();
+            var playerMost = playerId.getMostSignificantBits();
+            var playerLeast = playerId.getLeastSignificantBits();
+            var exactView = qualificationView;
+            var observationEnabled = exactView != null
+                    && exactView.enabledFor(server, playerMost, playerLeast);
+            try {
+                var continuation = new RecoveryContinuation(
+                        this,
+                        Objects.requireNonNull(
+                                onlineReconciliationDependency,
+                                "online reconciliation dependency"),
+                        player);
+                var outcome = recoverPersistedPlayer(player);
+                if (observationEnabled) {
+                    switch (outcome) {
+                        case NoPending ignored -> exactView.recordRecovery(
+                                server,
+                                playerMost,
+                                playerLeast,
+                                P4E2QualificationFacade.RecoveryVariant.NO_PENDING,
+                                P4E2QualificationFacade.RecoveryDetail.NONE,
+                                0,
+                                0);
+                        case Cleared cleared -> exactView.recordRecovery(
+                                server,
+                                playerMost,
+                                playerLeast,
+                                P4E2QualificationFacade.RecoveryVariant.CLEARED,
+                                P4E2QualificationFacade.RecoveryDetail.NONE,
+                                cleared.entriesCleared(),
+                                0);
+                        case Replayed replayed -> exactView.recordRecovery(
+                                server,
+                                playerMost,
+                                playerLeast,
+                                P4E2QualificationFacade.RecoveryVariant.REPLAYED,
+                                P4E2QualificationFacade.RecoveryDetail.NONE,
+                                0,
+                                replayed.stepsReplayed());
+                        case ClearedAndReplayed changed -> exactView.recordRecovery(
+                                server,
+                                playerMost,
+                                playerLeast,
+                                P4E2QualificationFacade.RecoveryVariant.CLEARED_AND_REPLAYED,
+                                P4E2QualificationFacade.RecoveryDetail.NONE,
+                                changed.entriesCleared(),
+                                changed.stepsReplayed());
+                        case Conflict conflict -> exactView.recordRecovery(
+                                server,
+                                playerMost,
+                                playerLeast,
+                                P4E2QualificationFacade.RecoveryVariant.CONFLICT,
+                                switch (conflict.code()) {
+                                    case THIRD_STATE ->
+                                            P4E2QualificationFacade.RecoveryDetail.THIRD_STATE;
+                                    case CLEAR_PREPARATION_REJECTED ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .CLEAR_PREPARATION_REJECTED;
+                                    case CLEAR_COMMIT_REJECTED ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .CLEAR_COMMIT_REJECTED;
+                                    case REPLAY_PREPARATION_REJECTED ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .REPLAY_PREPARATION_REJECTED;
+                                    case REPLAY_CURRENTNESS_CHANGED ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .REPLAY_CURRENTNESS_CHANGED;
+                                    case REPLAY_PUBLICATION_REJECTED ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .REPLAY_PUBLICATION_REJECTED;
+                                    case REPLAY_UNEXPECTED_NO_OP ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .REPLAY_UNEXPECTED_NO_OP;
+                                },
+                                conflict.entriesClearedBeforeFailure(),
+                                conflict.stepsReplayedBeforeFailure());
+                        case TargetInvalid invalid -> exactView.recordRecovery(
+                                server,
+                                playerMost,
+                                playerLeast,
+                                P4E2QualificationFacade.RecoveryVariant.TARGET_INVALID,
+                                switch (invalid.reason()) {
+                                    case MISSING ->
+                                            P4E2QualificationFacade.RecoveryDetail.TARGET_MISSING;
+                                    case OWNER_MISMATCH ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .TARGET_OWNER_MISMATCH;
+                                },
+                                invalid.entriesClearedBeforeFailure(),
+                                invalid.stepsReplayedBeforeFailure());
+                        case Unavailable unavailable -> exactView.recordRecovery(
+                                server,
+                                playerMost,
+                                playerLeast,
+                                P4E2QualificationFacade.RecoveryVariant.UNAVAILABLE,
+                                switch (unavailable.reason()) {
+                                    case JOURNAL_NOT_BOOTSTRAPPED ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .JOURNAL_NOT_BOOTSTRAPPED;
+                                    case JOURNAL_UNAVAILABLE ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .JOURNAL_UNAVAILABLE;
+                                    case STORE_UNAVAILABLE ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .STORE_UNAVAILABLE;
+                                    case AUTHORITY_UNAVAILABLE ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .AUTHORITY_UNAVAILABLE;
+                                    case ATTACHMENT_PRESERVED_RAW_QUARANTINE ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .ATTACHMENT_PRESERVED_RAW_QUARANTINE;
+                                    case ATTACHMENT_OVERSIZE_QUARANTINE ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .ATTACHMENT_OVERSIZE_QUARANTINE;
+                                    case RUNTIME_EXCEPTION ->
+                                            P4E2QualificationFacade.RecoveryDetail
+                                                    .RUNTIME_EXCEPTION;
+                                },
+                                unavailable.entriesClearedBeforeFailure(),
+                                unavailable.stepsReplayedBeforeFailure());
+                    }
+                }
+                continuation.consume(this, outcome);
+            } finally {
+                if (observationEnabled) {
+                    // A normal continuation return guarantees that its wrapper recorded every
+                    // mandatory result; an incomplete cell at this finally is therefore abnormal.
+                    exactView.completeAfterContinuation(server, playerMost, playerLeast);
+                }
+            }
         }
+    }
+
+    private static void requireE2RecoveryVocabularyInitialized() {
+        if (P4E2OnlineReconciliationDependency.RecoveryKind.NO_PENDING.ordinal() != 0
+                || recoveryKind(RecoveryUnavailableReason.JOURNAL_NOT_BOOTSTRAPPED)
+                        != P4E2OnlineReconciliationDependency.RecoveryKind
+                                .JOURNAL_NOT_BOOTSTRAPPED) {
+            throw new IllegalStateException("P4E2_RECOVERY_KIND_ORDER_MISMATCH");
+        }
+    }
+
+    private static P4E2OnlineReconciliationDependency.RecoveryKind recoveryKind(
+            RecoveryUnavailableReason reason) {
+        return switch (reason) {
+            case JOURNAL_NOT_BOOTSTRAPPED ->
+                    P4E2OnlineReconciliationDependency.RecoveryKind.JOURNAL_NOT_BOOTSTRAPPED;
+            case JOURNAL_UNAVAILABLE ->
+                    P4E2OnlineReconciliationDependency.RecoveryKind.JOURNAL_UNAVAILABLE;
+            case STORE_UNAVAILABLE ->
+                    P4E2OnlineReconciliationDependency.RecoveryKind.STORE_UNAVAILABLE;
+            case AUTHORITY_UNAVAILABLE ->
+                    P4E2OnlineReconciliationDependency.RecoveryKind.AUTHORITY_UNAVAILABLE;
+            case ATTACHMENT_PRESERVED_RAW_QUARANTINE ->
+                    P4E2OnlineReconciliationDependency.RecoveryKind
+                            .ATTACHMENT_PRESERVED_RAW_QUARANTINE;
+            case ATTACHMENT_OVERSIZE_QUARANTINE ->
+                    P4E2OnlineReconciliationDependency.RecoveryKind
+                            .ATTACHMENT_OVERSIZE_QUARANTINE;
+            case RUNTIME_EXCEPTION ->
+                    P4E2OnlineReconciliationDependency.RecoveryKind.RUNTIME_EXCEPTION;
+        };
     }
 
     private static Map<SkillId, LatestTuple> indexLatestStates(
@@ -397,6 +603,60 @@ public final class SkillSubmissionRecoveryService {
             throw new IllegalStateException("recovery progress exceeded the journal entry ceiling");
         }
         return result;
+    }
+
+    /** Same-call-chain, consume-first bridge from one completed typed recovery to P4-E2. */
+    public static final class RecoveryContinuation {
+        private SkillSubmissionRecoveryService owner;
+        private P4E2OnlineReconciliationDependency dependency;
+        private ServerPlayer player;
+        private final ContinuationLifecycle lifecycle = new ContinuationLifecycle();
+
+        private RecoveryContinuation(
+                SkillSubmissionRecoveryService owner,
+                P4E2OnlineReconciliationDependency dependency,
+                ServerPlayer player) {
+            this.owner = Objects.requireNonNull(owner, "owner");
+            this.dependency = Objects.requireNonNull(dependency, "dependency");
+            this.player = Objects.requireNonNull(player, "player");
+        }
+
+        private void consume(SkillSubmissionRecoveryService candidate, RecoveryOutcome outcome) {
+            lifecycle.claim();
+            var exactOwner = owner;
+            var exactDependency = dependency;
+            var exactPlayer = player;
+            owner = null;
+            dependency = null;
+            player = null;
+            if (exactOwner != Objects.requireNonNull(candidate, "candidate")) {
+                throw new IllegalStateException("P4E2_RECOVERY_CONTINUATION_OWNER_MISMATCH");
+            }
+            var exactOutcome = Objects.requireNonNull(outcome, "outcome");
+            var kind = exactOutcome.e2Kind();
+            var entriesCleared = exactOutcome.e2EntriesCleared();
+            var stepsReplayed = exactOutcome.e2StepsReplayed();
+            var existingExceptionClass = exactOutcome.e2ExceptionClass();
+            exactDependency.reconcileAfterRecovery(
+                    exactPlayer,
+                    this,
+                    kind,
+                    entriesCleared,
+                    stepsReplayed,
+                    existingExceptionClass);
+        }
+    }
+
+    static final class ContinuationLifecycle {
+        private boolean claimed;
+
+        void claim() {
+            if (claimed) {
+                throw new IllegalStateException(
+                        "P4E2_RECOVERY_CONTINUATION_ALREADY_CONSUMED");
+            }
+            claimed = true;
+        }
     }
 
     interface Dependencies {
@@ -550,21 +810,88 @@ public final class SkillSubmissionRecoveryService {
 
     sealed interface RecoveryOutcome permits NoPending, Cleared, Replayed,
             ClearedAndReplayed, Conflict, TargetInvalid, Unavailable {
+        P4E2OnlineReconciliationDependency.RecoveryKind e2Kind();
+
+        int e2EntriesCleared();
+
+        int e2StepsReplayed();
+
+        Optional<String> e2ExceptionClass();
     }
 
     enum NoPending implements RecoveryOutcome {
-        INSTANCE
+        INSTANCE;
+
+        @Override
+        public P4E2OnlineReconciliationDependency.RecoveryKind e2Kind() {
+            return P4E2OnlineReconciliationDependency.RecoveryKind.NO_PENDING;
+        }
+
+        @Override
+        public int e2EntriesCleared() {
+            return 0;
+        }
+
+        @Override
+        public int e2StepsReplayed() {
+            return 0;
+        }
+
+        @Override
+        public Optional<String> e2ExceptionClass() {
+            return NO_RECOVERY_EXCEPTION;
+        }
     }
 
     record Cleared(int entriesCleared) implements RecoveryOutcome {
         Cleared {
             requireProgress(entriesCleared, "entriesCleared");
         }
+
+        @Override
+        public P4E2OnlineReconciliationDependency.RecoveryKind e2Kind() {
+            return P4E2OnlineReconciliationDependency.RecoveryKind.CLEARED;
+        }
+
+        @Override
+        public int e2EntriesCleared() {
+            return entriesCleared;
+        }
+
+        @Override
+        public int e2StepsReplayed() {
+            return 0;
+        }
+
+        @Override
+        public Optional<String> e2ExceptionClass() {
+            return NO_RECOVERY_EXCEPTION;
+        }
     }
 
     record Replayed(int stepsReplayed) implements RecoveryOutcome {
         Replayed {
             requireProgress(stepsReplayed, "stepsReplayed");
+        }
+
+        @Override
+        public P4E2OnlineReconciliationDependency.RecoveryKind e2Kind() {
+            return P4E2OnlineReconciliationDependency.RecoveryKind.REPLAYED;
+        }
+
+        @Override
+        public int e2EntriesCleared() {
+            return 0;
+        }
+
+        @Override
+        public int e2StepsReplayed() {
+            return stepsReplayed;
+        }
+
+        @Override
+        public Optional<String> e2ExceptionClass() {
+            return NO_RECOVERY_EXCEPTION;
         }
     }
 
@@ -574,6 +901,26 @@ public final class SkillSubmissionRecoveryService {
             requireProgress(entriesCleared, "entriesCleared");
             requireProgress(stepsReplayed, "stepsReplayed");
             requireCombinedProgress(entriesCleared, stepsReplayed);
+        }
+
+        @Override
+        public P4E2OnlineReconciliationDependency.RecoveryKind e2Kind() {
+            return P4E2OnlineReconciliationDependency.RecoveryKind.CLEARED_AND_REPLAYED;
+        }
+
+        @Override
+        public int e2EntriesCleared() {
+            return entriesCleared;
+        }
+
+        @Override
+        public int e2StepsReplayed() {
+            return stepsReplayed;
+        }
+
+        @Override
+        public Optional<String> e2ExceptionClass() {
+            return NO_RECOVERY_EXCEPTION;
         }
     }
 
@@ -588,6 +935,26 @@ public final class SkillSubmissionRecoveryService {
             requireBoundedProgress(entriesClearedBeforeFailure, "entriesClearedBeforeFailure");
             requireBoundedProgress(stepsReplayedBeforeFailure, "stepsReplayedBeforeFailure");
             requireCombinedProgress(entriesClearedBeforeFailure, stepsReplayedBeforeFailure);
+        }
+
+        @Override
+        public P4E2OnlineReconciliationDependency.RecoveryKind e2Kind() {
+            return P4E2OnlineReconciliationDependency.RecoveryKind.CONFLICT;
+        }
+
+        @Override
+        public int e2EntriesCleared() {
+            return entriesClearedBeforeFailure;
+        }
+
+        @Override
+        public int e2StepsReplayed() {
+            return stepsReplayedBeforeFailure;
+        }
+
+        @Override
+        public Optional<String> e2ExceptionClass() {
+            return NO_RECOVERY_EXCEPTION;
         }
     }
 
@@ -612,6 +979,26 @@ public final class SkillSubmissionRecoveryService {
             requireBoundedProgress(stepsReplayedBeforeFailure, "stepsReplayedBeforeFailure");
             requireCombinedProgress(entriesClearedBeforeFailure, stepsReplayedBeforeFailure);
         }
+
+        @Override
+        public P4E2OnlineReconciliationDependency.RecoveryKind e2Kind() {
+            return P4E2OnlineReconciliationDependency.RecoveryKind.TARGET_INVALID;
+        }
+
+        @Override
+        public int e2EntriesCleared() {
+            return entriesClearedBeforeFailure;
+        }
+
+        @Override
+        public int e2StepsReplayed() {
+            return stepsReplayedBeforeFailure;
+        }
+
+        @Override
+        public Optional<String> e2ExceptionClass() {
+            return NO_RECOVERY_EXCEPTION;
+        }
     }
 
     record Unavailable(
@@ -634,6 +1021,26 @@ public final class SkillSubmissionRecoveryService {
                 throw new IllegalArgumentException(
                         "only runtime failures carry an exception class");
             }
+        }
+
+        @Override
+        public P4E2OnlineReconciliationDependency.RecoveryKind e2Kind() {
+            return recoveryKind(reason);
+        }
+
+        @Override
+        public int e2EntriesCleared() {
+            return entriesClearedBeforeFailure;
+        }
+
+        @Override
+        public int e2StepsReplayed() {
+            return stepsReplayedBeforeFailure;
+        }
+
+        @Override
+        public Optional<String> e2ExceptionClass() {
+            return exceptionClass;
         }
     }
 

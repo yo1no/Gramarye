@@ -268,12 +268,18 @@ class P4C2AApiGateTest {
                 .map(P4C2AApiGateTest::read)
                 .map(P4C2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
+        var c2SourceWithoutReviewedE2PlayerService =
+                P4C2PhaseTypes.PLAYER_SOURCE_FILE_NAMES.stream()
+                        .filter(name -> !name.equals("PlayerSkillAttachmentService.java"))
+                        .map(PLAYER_ROOT::resolve)
+                        .map(P4C2AApiGateTest::read)
+                        .map(P4C2AApiGateTest::withoutCommentsAndLiterals)
+                        .collect(Collectors.joining("\n"));
         var allProduction = javaSources(MAIN_JAVA).stream()
                 .map(P4C2AApiGateTest::read)
                 .map(P4C2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
-        var productionWithoutReviewedReconciliationOwners = javaSources(MAIN_JAVA).stream()
-                .filter(path -> !Set.of(
+        var reviewedReconciliationOwners = new java.util.HashSet<>(Set.of(
                                 MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
                                                 + "P4E1GroupedStoreAudit.java")
                                         .toAbsolutePath().normalize(),
@@ -282,8 +288,14 @@ class P4C2AApiGateTest {
                                         .toAbsolutePath().normalize(),
                                 MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
                                                 + "SkillRetentionRootAuditService.java")
-                                        .toAbsolutePath().normalize())
-                        .contains(path.toAbsolutePath().normalize()))
+                                        .toAbsolutePath().normalize()));
+        P4DPhaseTypes.E2_RECONCILIATION_PRODUCTION_SOURCE_PATHS.stream()
+                .map(MAIN_JAVA::resolve)
+                .map(path -> path.toAbsolutePath().normalize())
+                .forEach(reviewedReconciliationOwners::add);
+        var productionWithoutReviewedReconciliationOwners = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !reviewedReconciliationOwners.contains(
+                        path.toAbsolutePath().normalize()))
                 .map(P4C2AApiGateTest::read)
                 .map(P4C2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
@@ -307,7 +319,6 @@ class P4C2AApiGateTest {
                 "OfflineRoot",
                 "RootCollector",
                 "RootIndex",
-                "Reconciliation",
                 "CustomPacketPayload",
                 "StreamCodec",
                 "PayloadRegistrar",
@@ -316,6 +327,8 @@ class P4C2AApiGateTest {
                 "PlayerEvent.Clone")) {
             assertFalse(c2Source.contains(forbidden), () -> "C2-A source contains " + forbidden);
         }
+        assertFalse(c2SourceWithoutReviewedE2PlayerService.contains("Reconciliation"),
+                "reconciliation escaped the exact P4-E2 player-service owner");
         for (var forbidden : List.of(
                 "OfflineRoot",
                 "RootCollector",

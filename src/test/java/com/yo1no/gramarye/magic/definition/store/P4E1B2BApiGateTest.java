@@ -284,7 +284,11 @@ final class P4E1B2BApiGateTest {
     @Test
     void serviceAndHandoffArePackageOwnedAndIndexStatesStayPrivate() {
         var requiredOperations = Set.of(
-                "audit", "consumeComplete", "invalidateForReconciliation", "removeServer");
+                "audit",
+                "consumeComplete",
+                "invalidateForReconciliation",
+                "isReconciliationInvalidationCurrent",
+                "removeServer");
         var operations = Arrays.stream(SkillRetentionRootAuditService.class.getDeclaredMethods())
                 .filter(method -> requiredOperations.contains(method.getName()))
                 .toList();
@@ -307,6 +311,26 @@ final class P4E1B2BApiGateTest {
             assertTrue(nestedByName.containsKey(name), name);
             assertTrue(Modifier.isPrivate(nestedByName.get(name).getModifiers()), name);
         }
+        var invalidation = nestedByName.get("InvalidationResult");
+        assertTrue(invalidation != null, "InvalidationResult");
+        assertTrue(invalidation.isSealed());
+        assertPackagePrivate(invalidation.getModifiers(), invalidation.toString());
+        assertEquals(
+                Set.of("Accepted", "GenerationExhausted"),
+                Arrays.stream(invalidation.getPermittedSubclasses())
+                        .map(Class::getSimpleName)
+                        .collect(Collectors.toSet()));
+        var invalidationNested = Arrays.stream(invalidation.getDeclaredClasses())
+                .collect(Collectors.toMap(Class::getSimpleName, type -> type));
+        var accepted = invalidationNested.get("Accepted");
+        var exhausted = invalidationNested.get("GenerationExhausted");
+        assertTrue(accepted.isRecord());
+        assertEquals(List.of("generation"), Arrays.stream(accepted.getRecordComponents())
+                .map(component -> component.getName()).toList());
+        assertEquals(long.class, accepted.getRecordComponents()[0].getType());
+        assertTrue(exhausted.isEnum());
+        assertEquals(Set.of("INSTANCE"), Arrays.stream(exhausted.getEnumConstants())
+                .map(Object::toString).collect(Collectors.toSet()));
         assertEquals(
                 Set.of("iterator", "close"),
                 Arrays.stream(P4E1CompleteRootHandoff.class.getDeclaredMethods())
@@ -397,8 +421,11 @@ final class P4E1B2BApiGateTest {
         }
         assertEquals(0, occurrences(
                 allProduction, "SkillRetentionRootSnapshot.fromCompleteRoots"));
-        assertEquals(0, occurrences(
+        assertEquals(1, occurrences(
                 allProduction, "new SkillRetentionRootAuditService("));
+        assertEquals(1, occurrences(
+                Files.readString(STORE_ROOT.resolve("SkillDefinitionStoreService.java")),
+                "new SkillRetentionRootAuditService("));
         assertEquals(12, occurrences(allProduction, "@GameTest("));
     }
 

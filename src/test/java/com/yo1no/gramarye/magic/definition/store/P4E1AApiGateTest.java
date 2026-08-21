@@ -26,16 +26,16 @@ final class P4E1AApiGateTest {
 
     @Test
     void reviewedE1TypesAreExactWithOnlyTheReviewedPublicCapabilities() throws Exception {
-        assertEquals(P4EPhaseTypes.STORE_TYPE_NAMES, p4EStoreTypeNames());
-        for (var simpleName : P4EPhaseTypes.STORE_TYPE_NAMES) {
+        assertEquals(P4EPhaseTypes.E1_STORE_TYPE_NAMES, p4EStoreTypeNames());
+        for (var simpleName : P4EPhaseTypes.E1_STORE_TYPE_NAMES) {
             assertEquals(
-                    P4EPhaseTypes.PUBLIC_STORE_TYPE_NAMES.contains(simpleName),
+                    P4EPhaseTypes.E1_PUBLIC_STORE_TYPE_NAMES.contains(simpleName),
                     Modifier.isPublic(Class.forName(
                             "com.yo1no.gramarye.magic.definition.store." + simpleName)
                             .getModifiers()),
                     simpleName);
         }
-        for (var simpleName : P4EPhaseTypes.PLAYER_TYPE_NAMES) {
+        for (var simpleName : P4EPhaseTypes.E1_PLAYER_TYPE_NAMES) {
             assertFalse(Modifier.isPublic(Class.forName(
                     "com.yo1no.gramarye.magic.definition.player." + simpleName)
                     .getModifiers()), simpleName);
@@ -205,10 +205,10 @@ final class P4E1AApiGateTest {
             assertFalse(e1Sources.contains(forbidden), forbidden);
         }
 
-        for (var simpleName : P4EPhaseTypes.STORE_TYPE_NAMES) {
+        for (var simpleName : P4EPhaseTypes.E1_STORE_TYPE_NAMES) {
             var type = Class.forName("com.yo1no.gramarye.magic.definition.store." + simpleName);
             assertEquals(
-                    P4EPhaseTypes.PUBLIC_STORE_TYPE_NAMES.contains(simpleName),
+                    P4EPhaseTypes.E1_PUBLIC_STORE_TYPE_NAMES.contains(simpleName),
                     Modifier.isPublic(type.getModifiers()));
         }
         assertFalse(e1Sources.contains("public interface"));
@@ -284,7 +284,7 @@ final class P4E1AApiGateTest {
                                     excluded.toAbsolutePath().normalize()))
                     .forEach(paths::add);
         }
-        for (var name : P4EPhaseTypes.PLAYER_TYPE_NAMES) {
+        for (var name : P4EPhaseTypes.E1_PLAYER_TYPE_NAMES) {
             paths.add(PLAYER_ROOT.resolve(name + ".java"));
         }
         var text = new StringBuilder();

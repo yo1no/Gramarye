@@ -1,6 +1,8 @@
 package com.yo1no.gramarye.magic.definition.player;
 
 import com.mojang.authlib.GameProfile;
+import com.yo1no.gramarye.P4E2QualificationFacadeTestAccess;
+import com.yo1no.gramarye.P4E2QualificationObservation;
 import com.yo1no.gramarye.magic.definition.store.P4C2StoreProbe;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.ReferenceCountUtil;
@@ -50,7 +52,7 @@ public final class P4C2MemoryGameTests {
         var mode = P4C2RunMode.fromToken(
                 System.getProperty(P4C2RunMode.SYSTEM_PROPERTY, ""));
         var worldRoot = server.getWorldPath(
-                net.minecraft.world.level.storage.LevelResource.ROOT);
+                net.minecraft.world.level.storage.LevelResource.ROOT).toAbsolutePath().normalize();
         var manifest = P4C2FixtureManifest.read(worldRoot);
         if (manifest.runMode() != mode || manifest.probeCase() != mode.probeCase()) {
             throw new AssertionError("P4-C2 run property and manifest differ");
@@ -60,11 +62,15 @@ public final class P4C2MemoryGameTests {
         P4C2StoreProbe.HeldFirstSave heldStore = null;
         P4C2StoreProbe.StoreFacts storeFacts = null;
         ConnectedPlayer connected = null;
+        P4E2QualificationFacadeTestAccess.Handle observationHandle = null;
         var keepInventory = server.overworld().getGameRules()
                 .getRule(GameRules.RULE_KEEPINVENTORY);
         var originalKeepInventory = keepInventory.get();
+        Throwable primaryFailure = null;
         try {
-            if (mode.probeCase() == P4C2ProbeCase.PRESERVED_RAW) {
+            if (mode.probeCase() == P4C2ProbeCase.READY) {
+                storeFacts = P4C2FixtureBuilder.requireReadyLive(server);
+            } else if (mode.probeCase() == P4C2ProbeCase.PRESERVED_RAW) {
                 var expectedStore = manifest.expectedStore(worldRoot);
                 if (mode.restart()) {
                     storeFacts = P4C2StoreProbe.requireCleanRestart(
@@ -77,7 +83,20 @@ public final class P4C2MemoryGameTests {
             }
             P4C2ProbeServerLifecycle.sample(server);
 
+            if (mode.probeCase() == P4C2ProbeCase.READY) {
+                observationHandle = P4E2QualificationFacadeTestAccess.armReady(
+                        server, manifest.probeCase().playerId(), mode.restart());
+            }
             connected = placePlayer(server, manifest.probeCase());
+            if (observationHandle != null) {
+                var observation = P4E2QualificationFacadeTestAccess.consumeReady(
+                        observationHandle);
+                var phase = mode.restart()
+                        ? P4E2QualificationObservation.Phase.RESTART
+                        : P4E2QualificationObservation.Phase.FIRST;
+                observation.requireReady(phase, manifest.probeCase().playerId());
+                observation.writeNewIn(worldRoot.getParent());
+            }
             var current = connected.player();
             var expectedInitialChecksum = mode.restart()
                     ? manifest.expectedAttachmentChecksum()
@@ -133,11 +152,20 @@ public final class P4C2MemoryGameTests {
                 heldStore = null;
                 closingStore.close();
             }
+            if (mode.probeCase() == P4C2ProbeCase.READY
+                    && !P4C2FixtureBuilder.requireReadyLive(server).equals(storeFacts)) {
+                throw new AssertionError("READY Store truth changed during the player lifecycle");
+            }
             var metrics = P4C2ProbeServerLifecycle.finish(server);
             System.out.println(summary(
                     manifest, disk, storeFacts, metrics).line());
             helper.succeed();
+        } catch (RuntimeException | Error failure) {
+            primaryFailure = failure;
+            throw failure;
         } finally {
+            P4E2QualificationFacadeTestAccess.discardPreservingPrimary(
+                    observationHandle, primaryFailure);
             keepInventory.set(originalKeepInventory, server);
             if (heldStore != null) {
                 heldStore.close();

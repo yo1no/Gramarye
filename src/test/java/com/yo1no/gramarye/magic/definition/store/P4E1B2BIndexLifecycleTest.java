@@ -233,7 +233,9 @@ final class P4E1B2BIndexLifecycleTest {
         assertFalse(lifecycle.execute(owner, server, scope -> sourceWork.incrementAndGet()));
         assertSame(exhaustedIdentity, lifecycle.stateIdentity(owner, server));
         assertEquals(1, sourceWork.get());
-        lifecycle.invalidate(owner, server);
+        assertSame(
+                SkillRetentionRootAuditService.InvalidationResult.GenerationExhausted.INSTANCE,
+                lifecycle.invalidate(owner, server));
         assertSame(exhaustedIdentity, lifecycle.stateIdentity(owner, server));
         assertEquals(Long.MAX_VALUE, lifecycle.generation(owner, server));
 
@@ -247,6 +249,36 @@ final class P4E1B2BIndexLifecycleTest {
     }
 
     @Test
+    void directInvalidationAtMaxMinusOneAcceptsMaxThenExhaustsStablyWithoutWrap() {
+        var owner = new Object();
+        var server = new Object();
+        var lifecycle = new SkillRetentionRootAuditService.IndexLifecycle(
+                owner, server, Long.MAX_VALUE - 1L);
+
+        var accepted = assertInstanceOf(
+                SkillRetentionRootAuditService.InvalidationResult.Accepted.class,
+                lifecycle.invalidate(owner, server));
+        assertEquals(Long.MAX_VALUE, accepted.generation());
+        assertEquals(Long.MAX_VALUE, lifecycle.generation(owner, server));
+        assertTrue(lifecycle.isIncomplete(owner, server));
+        var maximumIdentity = lifecycle.stateIdentity(owner, server);
+
+        assertSame(
+                SkillRetentionRootAuditService.InvalidationResult.GenerationExhausted.INSTANCE,
+                lifecycle.invalidate(owner, server));
+        assertTrue(lifecycle.isExhausted(owner, server));
+        assertEquals(Long.MAX_VALUE, lifecycle.generation(owner, server));
+        assertNotSame(maximumIdentity, lifecycle.stateIdentity(owner, server));
+        var exhaustedIdentity = lifecycle.stateIdentity(owner, server);
+
+        assertSame(
+                SkillRetentionRootAuditService.InvalidationResult.GenerationExhausted.INSTANCE,
+                lifecycle.invalidate(owner, server));
+        assertSame(exhaustedIdentity, lifecycle.stateIdentity(owner, server));
+        assertEquals(Long.MAX_VALUE, lifecycle.generation(owner, server));
+    }
+
+    @Test
     void invalidationReentrancyRemovalAndTwoCoordinatesUseTheSameStateEngine() {
         var firstOwner = new Object();
         var firstServer = new Object();
@@ -257,7 +289,10 @@ final class P4E1B2BIndexLifecycleTest {
         var second = new SkillRetentionRootAuditService.IndexLifecycle(
                 secondOwner, secondServer);
 
-        first.invalidate(firstOwner, firstServer);
+        var firstInvalidation = assertInstanceOf(
+                SkillRetentionRootAuditService.InvalidationResult.Accepted.class,
+                first.invalidate(firstOwner, firstServer));
+        assertEquals(1L, firstInvalidation.generation());
         assertEquals(1L, first.generation(firstOwner, firstServer));
         assertEquals(0L, second.generation(secondOwner, secondServer));
         assertNotSame(
@@ -274,7 +309,10 @@ final class P4E1B2BIndexLifecycleTest {
         }));
         assertEquals(2L, first.generation(firstOwner, firstServer));
 
-        first.invalidate(firstOwner, firstServer);
+        var secondInvalidation = assertInstanceOf(
+                SkillRetentionRootAuditService.InvalidationResult.Accepted.class,
+                first.invalidate(firstOwner, firstServer));
+        assertEquals(3L, secondInvalidation.generation());
         assertEquals(3L, first.generation(firstOwner, firstServer));
         first.remove(firstOwner, firstServer);
         assertTrue(first.isRemoved(firstOwner, firstServer));

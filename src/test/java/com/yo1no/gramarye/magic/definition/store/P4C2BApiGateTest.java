@@ -21,10 +21,15 @@ class P4C2BApiGateTest {
     private static final Path PROJECT_ROOT = projectRoot();
     private static final Path PROBE_ROOT = PROJECT_ROOT.resolve("src/p4C2Probe/java")
             .resolve(P4C2BPhaseTypes.PLAYER_PACKAGE_PATH);
+    private static final Path ROOT_PROBE_ROOT = PROJECT_ROOT.resolve("src/p4C2Probe/java")
+            .resolve(P4C2BPhaseTypes.ROOT_PACKAGE_PATH);
     private static final Path STORE_PROBE_ROOT = PROJECT_ROOT.resolve("src/p4C2Probe/java")
             .resolve(P4C2BPhaseTypes.STORE_PACKAGE_PATH);
     private static final Path GAME_TEST_ROOT = PROJECT_ROOT.resolve("src/p4C2GameTest/java")
             .resolve(P4C2BPhaseTypes.PLAYER_PACKAGE_PATH);
+    private static final Path ROOT_GAME_TEST_ROOT =
+            PROJECT_ROOT.resolve("src/p4C2GameTest/java")
+                    .resolve(P4C2BPhaseTypes.ROOT_PACKAGE_PATH);
     private static final Path P4_B2_PROBE_ROOT = PROJECT_ROOT.resolve("src/p4B2Probe/java")
             .resolve(P4C2BPhaseTypes.STORE_PACKAGE_PATH);
 
@@ -32,6 +37,8 @@ class P4C2BApiGateTest {
     void exactReviewedSourcesStayInTestOnlyRoots() throws Exception {
         var probeMain = Class.forName(
                 "com.yo1no.gramarye.magic.definition.player.P4C2ProbeMain");
+        var observation = Class.forName(
+                "com.yo1no.gramarye.P4E2QualificationObservation");
 
         assertAll(
                 () -> assertEquals(P4C2BPhaseTypes.PROBE_SOURCE_FILE_NAMES,
@@ -40,13 +47,20 @@ class P4C2BApiGateTest {
                         javaFiles(STORE_PROBE_ROOT)),
                 () -> assertEquals(P4C2BPhaseTypes.GAME_TEST_SOURCE_FILE_NAMES,
                         javaFiles(GAME_TEST_ROOT)),
+                () -> assertEquals(P4C2BPhaseTypes.ROOT_PROBE_SOURCE_FILE_NAMES,
+                        javaFiles(ROOT_PROBE_ROOT)),
+                () -> assertEquals(P4C2BPhaseTypes.ROOT_GAME_TEST_SOURCE_FILE_NAMES,
+                        javaFiles(ROOT_GAME_TEST_ROOT)),
                 () -> assertTrue(Modifier.isPublic(probeMain.getModifiers())),
+                () -> assertTrue(Modifier.isPublic(observation.getModifiers())),
                 () -> assertEquals(Set.of("main"), Arrays.stream(probeMain.getDeclaredMethods())
                         .filter(method -> Modifier.isPublic(method.getModifiers()))
                         .map(method -> method.getName())
                         .collect(Collectors.toSet())),
                 () -> assertThrows(ClassNotFoundException.class, () -> Class.forName(
-                        "com.yo1no.gramarye.magic.definition.player.P4C2MemoryGameTests")));
+                        "com.yo1no.gramarye.magic.definition.player.P4C2MemoryGameTests")),
+                () -> assertThrows(ClassNotFoundException.class, () -> Class.forName(
+                        "com.yo1no.gramarye.P4E2QualificationFacadeTestAccess")));
     }
 
     @Test
@@ -170,6 +184,61 @@ class P4C2BApiGateTest {
     }
 
     @Test
+    void readyWorldInstallsOneDerivedProductionBackedStoreTruthBeforeLogin()
+            throws Exception {
+        var fixture = read(PROBE_ROOT.resolve("P4C2FixtureBuilder.java"));
+        var storeAdapter = read(STORE_PROBE_ROOT.resolve("P4C2StoreProbe.java"));
+        var gameTest = read(GAME_TEST_ROOT.resolve("P4C2MemoryGameTests.java"));
+        var fileVerifier = read(PROBE_ROOT.resolve("P4C2FileVerifier.java"));
+        var fixtureTest = read(PROJECT_ROOT.resolve("src/test/java")
+                .resolve(P4C2BPhaseTypes.PLAYER_PACKAGE_PATH)
+                .resolve("P4C2FixtureTest.java"));
+
+        var playerdataWrite = fixture.indexOf("var playerdata = writePlayerdata(");
+        var readyStoreWrite = fixture.indexOf(
+                "P4C2StoreProbe.prepareReady(worldRoot, storeTruth)", playerdataWrite);
+        var manifestWrite = fixture.indexOf("P4C2FixtureManifest.first(", readyStoreWrite);
+        var livePreflight = gameTest.indexOf("P4C2FixtureBuilder.requireReadyLive(server);");
+        var playerLogin = gameTest.indexOf("connected = placePlayer(server, manifest.probeCase());");
+
+        assertAll(
+                () -> assertTrue(fixture.contains(
+                        "readyStoreTruth(initialState, finalState)")),
+                () -> assertTrue(fixture.contains(
+                        "new SkillOwnerId(P4C2ProbeCase.READY.playerId())")),
+                () -> assertTrue(playerdataWrite >= 0
+                        && playerdataWrite < readyStoreWrite
+                        && readyStoreWrite < manifestWrite,
+                        "READY Store must be materialized after playerdata and before manifest"),
+                () -> assertTrue(storeAdapter.contains("SkillDefinitionStore.restore(")),
+                () -> assertTrue(storeAdapter.contains("SkillStoreCarrierBuilder.rebuild(")),
+                () -> assertTrue(storeAdapter.contains(
+                        "SkillSavedDataInnerCarrier.fromPrevalidatedFraming(")),
+                () -> assertTrue(storeAdapter.contains(
+                        "OpaquePendingAttachmentUpdatesBlob.empty()")),
+                () -> assertTrue(storeAdapter.contains("IOUtilities.writeNbtCompressed(")),
+                () -> assertTrue(storeAdapter.contains("verifyReadyCanonical(")),
+                () -> assertTrue(storeAdapter.contains("requireReadyLive(")),
+                () -> assertTrue(storeAdapter.contains(
+                        "candidate.carrier().pending().byteCount() != 0")),
+                () -> assertTrue(storeAdapter.contains(
+                        "ready.innerCarrier().pending().byteCount() != 0")),
+                () -> assertTrue(storeAdapter.contains(
+                        "store.committedSkillCount(expected.owner())")),
+                () -> assertFalse(storeAdapter.contains(
+                        "c2b00000-0000-4000-8000-000000000001")),
+                () -> assertTrue(livePreflight >= 0 && livePreflight < playerLogin,
+                        "READY live Store preflight must precede player login"),
+                () -> assertTrue(fileVerifier.indexOf(
+                                "P4C2FixtureBuilder.requireReadyPrimary(worldRoot)")
+                        < fileVerifier.indexOf("manifest.afterFirstRun")),
+                () -> assertTrue(fixtureTest.contains(
+                        "readyStorePrimaryIsCanonicalAndCoversEveryDerivedReference")),
+                () -> assertTrue(fixtureTest.contains(
+                        "readyStoreCoverageRejectsAbsentHistoryRevisionAndOwnerMismatch")));
+    }
+
+    @Test
     void fixturesAndLifecycleUseExactCountsAndActualPlatformPaths() throws Exception {
         var probe = sources(PROBE_ROOT);
         var gameTest = sources(GAME_TEST_ROOT);
@@ -208,7 +277,63 @@ class P4C2BApiGateTest {
                 () -> assertTrue(gameTest.contains("templateNamespace = \"gramarye_p4_c2\"")),
                 () -> assertTrue(fileVerifier.indexOf("P4C2StoreProbe.verifyCanonical")
                         < fileVerifier.indexOf("manifest.afterFirstRun")),
+                () -> assertTrue(fileVerifier.indexOf(
+                                "P4C2FixtureBuilder.requireReadyPrimary(worldRoot)")
+                        < fileVerifier.indexOf("manifest.afterFirstRun")),
                 () -> assertFalse(gameTest.contains("PlayerSkillAttachmentSerializer.INSTANCE")));
+    }
+
+    @Test
+    void readyLoginUsesTheExactFacadeRouteAndStrictAtomicEvidenceTransport()
+            throws Exception {
+        var adapter = read(ROOT_GAME_TEST_ROOT.resolve(
+                "P4E2QualificationFacadeTestAccess.java"));
+        var observation = read(ROOT_PROBE_ROOT.resolve(
+                "P4E2QualificationObservation.java"));
+        var gameTest = read(GAME_TEST_ROOT.resolve("P4C2MemoryGameTests.java"));
+        var verifier = read(PROBE_ROOT.resolve("P4C2FileVerifier.java"));
+
+        var arm = gameTest.indexOf("P4E2QualificationFacadeTestAccess.armReady(");
+        var login = gameTest.indexOf(
+                "connected = placePlayer(server, manifest.probeCase());", arm);
+        var consume = gameTest.indexOf(
+                "P4E2QualificationFacadeTestAccess.consumeReady(", login);
+        var stateAssertion = gameTest.indexOf("assertState(current, manifest", consume);
+
+        assertAll(
+                () -> assertTrue(adapter.contains("ModList.get()")),
+                () -> assertTrue(adapter.contains(
+                        ".getModContainerById(Gramarye.MOD_ID)")),
+                () -> assertTrue(adapter.contains(
+                        ".getCustomExtension(P4E2QualificationFacade.class)")),
+                () -> assertTrue(adapter.contains("first != second")),
+                () -> assertFalse(adapter.contains("java.lang.reflect")),
+                () -> assertFalse(adapter.contains("static P4E2QualificationFacade facade")),
+                () -> assertTrue(arm >= 0 && arm < login && login < consume
+                        && consume < stateAssertion,
+                        "direct arm/login/consume must remain synchronous and ordered"),
+                () -> assertTrue(gameTest.contains(
+                        "catch (RuntimeException | Error failure)")),
+                () -> assertTrue(gameTest.contains(
+                        "P4E2QualificationFacadeTestAccess.discardPreservingPrimary(")),
+                () -> assertTrue(adapter.contains(
+                        "if (primaryFailure == null)")),
+                () -> assertTrue(adapter.contains(
+                        "catch (RuntimeException | Error ignoredCleanupFailure)")),
+                () -> assertFalse(adapter.contains("addSuppressed")),
+                () -> assertTrue(observation.contains("MAX_FILE_BYTES = 65_536")),
+                () -> assertTrue(observation.contains("CodingErrorAction.REPORT")),
+                () -> assertTrue(observation.contains("StandardCopyOption.ATOMIC_MOVE")),
+                () -> assertFalse(observation.contains("StandardCopyOption.REPLACE_EXISTING")),
+                () -> assertTrue(observation.contains("readNBytes(MAX_FILE_BYTES + 1)")),
+                () -> assertFalse(observation.contains("readAllBytes")),
+                () -> assertTrue(verifier.contains(
+                        "P4E2QualificationObservation.readDirectFrom(gameDirectory)")),
+                () -> assertTrue(verifier.contains("P4C2_READY_FIRST.json")),
+                () -> assertTrue(verifier.contains("P4C2_READY_RESTART.json")),
+                () -> assertTrue(verifier.contains(
+                        "Files.move(source, target, StandardCopyOption.ATOMIC_MOVE)")),
+                () -> assertFalse(verifier.contains("StandardCopyOption.REPLACE_EXISTING")));
     }
 
     @Test
@@ -235,8 +360,10 @@ class P4C2BApiGateTest {
 
     @Test
     void probeSourcesDoNotOpenLaterCompositionOrProductionSurfaces() throws Exception {
-        var code = sources(PROBE_ROOT) + "\n" + sources(STORE_PROBE_ROOT)
+        var legacyCode = sources(PROBE_ROOT) + "\n" + sources(STORE_PROBE_ROOT)
                 + "\n" + sources(GAME_TEST_ROOT);
+        var code = legacyCode + "\n" + sources(ROOT_PROBE_ROOT)
+                + "\n" + sources(ROOT_GAME_TEST_ROOT);
         var production = sources(PROJECT_ROOT.resolve("src/main/java"));
 
         for (var forbidden : List.of(
@@ -245,7 +372,6 @@ class P4C2BApiGateTest {
                 "RootCollector",
                 "RootIndex",
                 "OfflineRoot",
-                "Reconciliation",
                 "CustomPacketPayload",
                 "PayloadRegistrar",
                 "PacketDistributor",
@@ -258,6 +384,7 @@ class P4C2BApiGateTest {
             assertFalse(code.contains(forbidden), () -> "later/test-bypass surface: " + forbidden);
         }
         assertAll(
+                () -> assertFalse(legacyCode.contains("Reconciliation")),
                 () -> assertFalse(production.contains("P4C2ProbeMain")),
                 () -> assertFalse(production.contains("P4C2MemoryGameTests")),
                 () -> assertFalse(production.contains("@GameTestHolder(\"gramarye_p4_c2\")")),

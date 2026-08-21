@@ -477,7 +477,18 @@ verify_static_ownership_and_phase_bounds() {
         'reconciliation escaped the exact B2-A/B2-B owners' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java' \
-        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java'
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java' \
+        'src/main/java/com/yo1no/gramarye/Gramarye.java' \
+        'src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidation.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationCoordinator.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2ReconciliationResult.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentReconciliationCapability.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java'
     for literal in \
         'P4D2BApiGateTest' \
         'SkillDefinitionSubmissionServiceTest'; do

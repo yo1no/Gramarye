@@ -236,11 +236,18 @@ verify_search_helpers() {
 is_reviewed_d3a_production_path() {
     case "$1" in
         src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationCoordinator.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2ReconciliationResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentReconciliationCapability.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditedCapture.java | \
@@ -330,10 +337,10 @@ verify_sources() {
     collect_java_files src/main/java "${PRODUCTION_SOURCE_LIST}"
     collect_java_files src/p4C2Probe/java "${PROBE_SOURCE_LIST}"
     collect_java_files src/p4C2GameTest/java "${GAME_TEST_SOURCE_LIST}"
-    require_nul_entry_count "${PROBE_SOURCE_LIST}" 9 \
-        'P4-C2-B probe source set must contain exactly nine reviewed files'
-    require_nul_entry_count "${GAME_TEST_SOURCE_LIST}" 2 \
-        'P4-C2-B GameTest source set must contain exactly two reviewed files'
+    require_nul_entry_count "${PROBE_SOURCE_LIST}" 10 \
+        'P4-C2-B probe source set must contain exactly ten reviewed files'
+    require_nul_entry_count "${GAME_TEST_SOURCE_LIST}" 3 \
+        'P4-C2-B GameTest source set must contain exactly three reviewed files'
 
     for source in \
         P4C2FileVerifier \
@@ -356,6 +363,12 @@ verify_sources() {
     require_regular_file \
         "src/p4C2Probe/java/${store_path}/P4C2StoreProbe.java" \
         'P4-C2-B self-contained bounded Store probe is missing from its isolated source set'
+    require_regular_file \
+        'src/p4C2Probe/java/com/yo1no/gramarye/P4E2QualificationObservation.java' \
+        'P4-C2-B direct-observation DTO/writer/parser is missing from its isolated source set'
+    require_regular_file \
+        'src/p4C2GameTest/java/com/yo1no/gramarye/P4E2QualificationFacadeTestAccess.java' \
+        'P4-C2-B same-package qualification adapter is missing from its isolated source set'
 
     for literal in \
         'PendingAttachmentJournal' \
@@ -363,7 +376,6 @@ verify_sources() {
         'RootCollector' \
         'RootIndex' \
         'OfflineRoot' \
-        'Reconciliation' \
         'CustomPacketPayload' \
         'PayloadRegistrar' \
         'PacketDistributor' \
@@ -379,6 +391,20 @@ verify_sources() {
         forbid_fixed_in_file_list "${GAME_TEST_SOURCE_LIST}" "${literal}" \
             "P4-C2-B GameTest contains later/test-bypass surface ${literal}"
     done
+    while IFS= read -r -d '' source; do
+        if [[ "${source}" != \
+                'src/p4C2Probe/java/com/yo1no/gramarye/P4E2QualificationObservation.java' ]]; then
+            forbid_fixed "${source}" 'Reconciliation' \
+                'P4-C2-B probe contains unreviewed reconciliation surface'
+        fi
+    done < "${PROBE_SOURCE_LIST}"
+    while IFS= read -r -d '' source; do
+        if [[ "${source}" != \
+                'src/p4C2GameTest/java/com/yo1no/gramarye/P4E2QualificationFacadeTestAccess.java' ]]; then
+            forbid_fixed "${source}" 'Reconciliation' \
+                'P4-C2-B GameTest contains unreviewed reconciliation surface'
+        fi
+    done < "${GAME_TEST_SOURCE_LIST}"
     for literal in \
         'P4C2ProbeMain' \
         'P4C2MemoryGameTests' \
@@ -510,10 +536,12 @@ verify_build_contract() {
 
 verify_fixture_and_lifecycle_contracts() {
     local probe_file='src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/player/P4C2FixtureBuilder.java'
+    local file_verifier='src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/player/P4C2FileVerifier.java'
     local manifest='src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/player/P4C2FixtureManifest.java'
     local summary='src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/player/P4C2ProbeSummary.java'
     local game_test='src/p4C2GameTest/java/com/yo1no/gramarye/magic/definition/player/P4C2MemoryGameTests.java'
     local store_probe='src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/store/P4C2StoreProbe.java'
+    local fixture_test='src/test/java/com/yo1no/gramarye/magic/definition/player/P4C2FixtureTest.java'
     local literal=''
 
     for literal in 16_777_211 16_777_212 16_777_216 16_777_217; do
@@ -539,6 +567,42 @@ verify_fixture_and_lifecycle_contracts() {
         require_fixed "${store_probe}" "${literal}" \
             "P4-C2-B self-contained Store probe lost manifest/assertion marker ${literal}"
     done
+    for literal in \
+        'SkillDefinitionStore.restore(' \
+        'SkillStoreCarrierBuilder.rebuild(' \
+        'SkillSavedDataInnerCarrier.fromPrevalidatedFraming(' \
+        'OpaquePendingAttachmentUpdatesBlob.empty()' \
+        'IOUtilities.writeNbtCompressed(' \
+        'verifyReadyCanonical(' \
+        'requireReadyLive(' \
+        'candidate.carrier().pending().byteCount() != 0' \
+        'ready.innerCarrier().pending().byteCount() != 0' \
+        'store.committedSkillCount(expected.owner())'; do
+        require_fixed "${store_probe}" "${literal}" \
+            "P4-C2-B READY Store seam lost production-backed contract ${literal}"
+    done
+    for literal in \
+        'readyStoreTruth(initialState, finalState)' \
+        'new SkillOwnerId(P4C2ProbeCase.READY.playerId())' \
+        'P4C2StoreProbe.prepareReady(worldRoot, storeTruth)'; do
+        require_fixed "${probe_file}" "${literal}" \
+            "P4-C2-B READY fixture lost derived Store truth marker ${literal}"
+    done
+    require_fixed "${game_test}" \
+        'P4C2FixtureBuilder.requireReadyLive(server);' \
+        'P4-C2-B READY lifecycle lost its pre-login live Store proof'
+    require_fixed "${file_verifier}" \
+        'P4C2FixtureBuilder.requireReadyPrimary(worldRoot)' \
+        'P4-C2-B external verifier lost its canonical READY Store proof'
+    for literal in \
+        'readyStorePrimaryIsCanonicalAndCoversEveryDerivedReference' \
+        'readyStoreCoverageRejectsAbsentHistoryRevisionAndOwnerMismatch'; do
+        require_fixed "${fixture_test}" "${literal}" \
+            "P4-C2-B READY fixture unit controls lost ${literal}"
+    done
+    forbid_fixed "${store_probe}" \
+        'c2b00000-0000-4000-8000-000000000001' \
+        'P4-C2-B Store seam must derive the authenticated READY owner'
     for literal in P4B2FixtureManifest P4B2FixtureBuilder P4B2Hashing; do
         forbid_fixed "${store_probe}" "${literal}" \
             "P4-C2-B isolated Store probe retained runtime dependency ${literal}"
@@ -632,10 +696,16 @@ verify_compiled_outputs_and_jar() {
     require_regular_file \
         "build/classes/java/p4C2Probe/${store_path}/P4C2StoreProbe.class" \
         'P4-C2-B compiled self-contained Store probe output is missing'
+    require_regular_file \
+        'build/classes/java/p4C2Probe/com/yo1no/gramarye/P4E2QualificationObservation.class' \
+        'P4-C2-B compiled direct-observation DTO output is missing'
     for source in P4C2MemoryGameTests P4C2ProbeServerLifecycle; do
         require_regular_file "build/classes/java/p4C2GameTest/${package_path}/${source}.class" \
             "P4-C2-B compiled GameTest output missing ${source}.class"
     done
+    require_regular_file \
+        'build/classes/java/p4C2GameTest/com/yo1no/gramarye/P4E2QualificationFacadeTestAccess.class' \
+        'P4-C2-B compiled same-package qualification adapter is missing'
     require_regular_file \
         'build/resources/p4C2GameTest/data/gramarye_p4_c2/structure/p4_c2_probe.nbt' \
         'P4-C2-B generated structure is missing from its isolated output'
@@ -658,6 +728,7 @@ verify_compiled_outputs_and_jar() {
         fi
         for source in \
             P4C2 p4C2Probe p4C2GameTest gramarye_p4_c2 \
+            P4E2QualificationFacadeTestAccess P4E2QualificationObservation \
             P4D3 p4D3Probe p4D3GameTest gramarye_p4_d3; do
             forbid_fixed "${JAR_LISTING}" "${source}" \
                 "P4-C2-B fixture leaked into production JAR ${jar_path} (${source})"

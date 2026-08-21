@@ -4,12 +4,15 @@ import com.google.gson.JsonObject;
 import com.mojang.serialization.Dynamic;
 import com.mojang.serialization.JsonOps;
 import com.yo1no.gramarye.magic.api.id.SkillId;
+import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.api.id.SkillRevision;
 import com.yo1no.gramarye.magic.definition.document.AppearanceDocument;
 import com.yo1no.gramarye.magic.definition.document.AppearanceOverrideDocument;
 import com.yo1no.gramarye.magic.definition.document.DraftActionSlot;
 import com.yo1no.gramarye.magic.definition.document.DraftNode;
 import com.yo1no.gramarye.magic.definition.document.DraftTriggerSlot;
+import com.yo1no.gramarye.magic.definition.document.NodeDocument;
+import com.yo1no.gramarye.magic.definition.document.SkillDocument;
 import com.yo1no.gramarye.magic.definition.document.SkillDraft;
 import com.yo1no.gramarye.magic.definition.document.SkillDraftPersistenceFacade;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
@@ -18,6 +21,9 @@ import com.yo1no.gramarye.magic.definition.store.P4C2StoreProbe;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -34,6 +40,7 @@ import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.neoforged.neoforge.attachment.AttachmentHolder;
 
 /** Deterministic three-world playerdata fixture construction. */
@@ -100,6 +107,19 @@ final class P4C2FixtureBuilder {
         return built.ready();
     }
 
+    /** Derives the sole READY Store truth from the actual initial and final Attachment states. */
+    static P4C2StoreProbe.ReadyStoreTruth readyStoreTruth() {
+        return readyStoreTruth(readyState(false), readyState(true));
+    }
+
+    static P4C2StoreProbe.StoreFacts requireReadyPrimary(Path worldRoot) {
+        return P4C2StoreProbe.verifyReadyCanonical(worldRoot, readyStoreTruth());
+    }
+
+    static P4C2StoreProbe.StoreFacts requireReadyLive(MinecraftServer server) {
+        return P4C2StoreProbe.requireReadyLive(server, readyStoreTruth());
+    }
+
     static SkillDraft readyDraft(int value) {
         var json = new JsonObject();
         json.addProperty("family", "registry-json-trigger");
@@ -153,13 +173,17 @@ final class P4C2FixtureBuilder {
 
     private static void prepareReady(Path gameDirectory) throws IOException {
         var worldRoot = preparePlayerDirectory(gameDirectory, P4C2ProbeCase.READY);
-        var source = readyState(false).carrier().copyTag();
-        var expected = readyState(true).carrier().copyTag();
+        var initialState = readyState(false);
+        var finalState = readyState(true);
+        var storeTruth = readyStoreTruth(initialState, finalState);
+        var source = initialState.carrier().copyTag();
+        var expected = finalState.carrier().copyTag();
         var sourceBytes = exactCount(source);
         var expectedBytes = exactCount(expected);
         var playerdata = writePlayerdata(
                 worldRoot, P4C2ProbeCase.READY, source,
                 P4C2FixtureManifest.PREPARED_WITNESS);
+        P4C2StoreProbe.prepareReady(worldRoot, storeTruth);
         P4C2FixtureManifest.first(
                 P4C2ProbeCase.READY,
                 sourceBytes,
@@ -167,10 +191,77 @@ final class P4C2FixtureBuilder {
                 P4C2Hashing.sha256(source),
                 P4C2Hashing.sha256(expected),
                 P4C2Hashing.sha256(expected),
-                1, 2, 2,
+                finalState.drafts().size(),
+                finalState.latestStates().size(),
+                finalState.equipped().size(),
                 P4C2Hashing.sha256(playerdata),
                 Files.size(playerdata),
                 null).write(worldRoot);
+    }
+
+    private static P4C2StoreProbe.ReadyStoreTruth readyStoreTruth(
+            PlayerSkillAttachmentReady initialState,
+            PlayerSkillAttachmentReady finalState) {
+        var references = new ArrayList<SkillReference>();
+        var latestRouteCount = 0;
+        var latestReferenceCount = 0;
+        var equippedReferenceCount = 0;
+        for (var state : List.of(initialState, finalState)) {
+            latestRouteCount = Math.addExact(latestRouteCount, state.latestStates().size());
+            for (var latest : state.latestStates()) {
+                if (latest.pointer().isPresent()) {
+                    references.add(latest.pointer().orElseThrow());
+                    latestReferenceCount = Math.addExact(latestReferenceCount, 1);
+                }
+            }
+            for (var equipped : state.equipped()) {
+                references.add(equipped.reference());
+                equippedReferenceCount = Math.addExact(equippedReferenceCount, 1);
+            }
+        }
+
+        var distinctReferences = new ArrayList<>(new LinkedHashSet<>(references));
+        distinctReferences.sort(Comparator
+                .comparing((SkillReference reference) -> reference.skillId().value())
+                .thenComparingInt(reference -> reference.revision().value()));
+        var documents = distinctReferences.stream()
+                .map(P4C2FixtureBuilder::readyStoreDocument)
+                .toList();
+        return new P4C2StoreProbe.ReadyStoreTruth(
+                new SkillOwnerId(P4C2ProbeCase.READY.playerId()),
+                documents,
+                references,
+                latestRouteCount,
+                latestReferenceCount,
+                equippedReferenceCount);
+    }
+
+    private static SkillDocument readyStoreDocument(SkillReference reference) {
+        var revision = reference.revision().value();
+        var triggerPayload = new JsonObject();
+        triggerPayload.addProperty("family", "ready-store-json-trigger");
+        triggerPayload.addProperty("revision", revision);
+        var actionPayload = new CompoundTag();
+        actionPayload.putString("family", "ready-store-nbt-action");
+        actionPayload.putInt("revision", revision);
+        var node = new NodeDocument(
+                new DefinitionEnvelope(
+                        ResourceLocation.fromNamespaceAndPath(
+                                "gramarye", "p4_c2_ready_store_trigger"),
+                        0,
+                        new Dynamic<>(JsonOps.INSTANCE, triggerPayload)),
+                new DefinitionEnvelope(
+                        ResourceLocation.fromNamespaceAndPath(
+                                "gramarye", "p4_c2_ready_store_action"),
+                        0,
+                        new Dynamic<>(NbtOps.INSTANCE, actionPayload)),
+                AppearanceOverrideDocument.None.INSTANCE);
+        return new SkillDocument(
+                SkillDocument.CURRENT_SCHEMA_VERSION,
+                reference.skillId(),
+                reference.revision(),
+                List.of(node),
+                AppearanceDocument.Default.INSTANCE);
     }
 
     private static void preparePreserved(Path gameDirectory) throws IOException {

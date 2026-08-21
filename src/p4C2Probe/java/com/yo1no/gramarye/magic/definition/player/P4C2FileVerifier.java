@@ -1,9 +1,12 @@
 package com.yo1no.gramarye.magic.definition.player;
 
+import com.yo1no.gramarye.P4E2QualificationObservation;
 import com.yo1no.gramarye.magic.definition.store.P4C2StoreProbe;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Optional;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.ByteArrayTag;
@@ -16,6 +19,12 @@ import net.neoforged.neoforge.attachment.AttachmentHolder;
 /** Fixed-heap external verifier for the synchronous save and clean shutdown result. */
 final class P4C2FileVerifier {
     private static final long PLAYERDATA_QUOTA_BYTES = 64L * 1_024L * 1_024L;
+    private static final long READY_ATTACHMENT_BYTES = 1_199L;
+    private static final String READY_ATTACHMENT_CHECKSUM =
+            "10a2b5a1171a62773a40edb6ae47d642abf3934a523564ad83edee1eb42c43a1";
+    private static final int READY_STORE_BYTES = 2_090;
+    private static final String READY_STORE_CHECKSUM =
+            "b479472b555ea58f1a761043827be928953f112ef0a7df76e949da4da289a0fe";
 
     private P4C2FileVerifier() {
     }
@@ -27,6 +36,18 @@ final class P4C2FileVerifier {
         if (manifest.runMode() != expectedMode
                 || manifest.probeCase() != expectedMode.probeCase()) {
             throw new AssertionError("P4-C2 verifier mode and manifest differ");
+        }
+        P4E2QualificationObservation directObservation = null;
+        if (manifest.probeCase() == P4C2ProbeCase.READY) {
+            requireDirectFileCount(gameDirectory, 1);
+            directObservation = P4E2QualificationObservation.readDirectFrom(gameDirectory);
+            directObservation.requireReady(
+                    expectedMode.restart()
+                            ? P4E2QualificationObservation.Phase.RESTART
+                            : P4E2QualificationObservation.Phase.FIRST,
+                    manifest.probeCase().playerId());
+        } else {
+            requireDirectFileCount(gameDirectory, 0);
         }
         var playerdata = P4C2FixtureManifest.playerdata(
                 worldRoot, manifest.probeCase());
@@ -42,12 +63,31 @@ final class P4C2FileVerifier {
         var actualChecksum = P4C2Hashing.sha256(playerdata);
         var actualBytes = Files.size(playerdata);
         P4C2StoreProbe.StoreFacts storeFacts = null;
-        if (manifest.probeCase() == P4C2ProbeCase.PRESERVED_RAW) {
-            storeFacts = P4C2StoreProbe.verifyCanonical(
-                    worldRoot, manifest.expectedStore(worldRoot));
+        switch (manifest.probeCase()) {
+            case READY -> {
+                storeFacts = P4C2FixtureBuilder.requireReadyPrimary(worldRoot);
+                if (manifest.expectedAttachmentBytes() != READY_ATTACHMENT_BYTES
+                        || !manifest.expectedAttachmentChecksum()
+                                .equals(READY_ATTACHMENT_CHECKSUM)
+                        || storeFacts.storeBytes() != READY_STORE_BYTES
+                        || storeFacts.histories() != 2
+                        || storeFacts.revisions() != 3
+                        || !storeFacts.checksum().equals(READY_STORE_CHECKSUM)) {
+                    throw new AssertionError(
+                            "P4-C2 READY Attachment/Store fixture truth drifted");
+                }
+            }
+            case PRESERVED_RAW -> storeFacts = P4C2StoreProbe.verifyCanonical(
+                        worldRoot, manifest.expectedStore(worldRoot));
+            case OVERSIZE -> {
+            }
         }
         if (!expectedMode.restart()) {
             manifest.afterFirstRun(actualChecksum, actualBytes).write(worldRoot);
+        }
+        if (directObservation != null) {
+            archiveDirectObservation(gameDirectory, expectedMode, directObservation);
+            System.out.println(directSummary(directObservation));
         }
         return new Verification(
                 manifest.probeCase().token(),
@@ -60,6 +100,100 @@ final class P4C2FileVerifier {
                 storeFacts == null ? 0 : storeFacts.histories(),
                 storeFacts == null ? 0 : storeFacts.revisions(),
                 storeFacts == null ? "none" : P4C2Hashing.witness(storeFacts.checksum()));
+    }
+
+    private static void requireDirectFileCount(Path gameDirectory, long expected)
+            throws IOException {
+        try (var paths = Files.list(gameDirectory)) {
+            var count = paths.filter(path -> {
+                var name = path.getFileName().toString();
+                return name.equals(P4E2QualificationObservation.FILE_NAME)
+                        || name.startsWith(".p4-e2-direct-observation-");
+            }).count();
+            if (count != expected) {
+                throw new AssertionError("P4-C2 direct-observation file count differs");
+            }
+        }
+    }
+
+    private static void archiveDirectObservation(
+            Path gameDirectory,
+            P4C2RunMode mode,
+            P4E2QualificationObservation observation) throws IOException {
+        var p4C2Root = gameDirectory.toAbsolutePath().normalize().getParent();
+        var buildRoot = p4C2Root == null ? null : p4C2Root.getParent();
+        if (p4C2Root == null
+                || buildRoot == null
+                || !"p4-c2".equals(p4C2Root.getFileName().toString())
+                || !"build".equals(buildRoot.getFileName().toString())) {
+            throw new IOException("P4-C2 game directory escaped its fixed build root");
+        }
+        if (!Files.isDirectory(buildRoot, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(buildRoot)) {
+            throw new IOException("P4-E2 build root is not a regular directory");
+        }
+        var reports = buildRoot.resolve("reports");
+        if (Files.exists(reports, LinkOption.NOFOLLOW_LINKS)
+                && (!Files.isDirectory(reports, LinkOption.NOFOLLOW_LINKS)
+                        || Files.isSymbolicLink(reports))) {
+            throw new IOException("P4-E2 reports root is not a regular directory");
+        }
+        var reportRoot = reports.resolve("p4-e2-direct-observation");
+        Files.createDirectories(reportRoot);
+        if (!Files.isDirectory(reportRoot, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(reportRoot)) {
+            throw new IOException("P4-E2 generated report root is not a regular directory");
+        }
+        var source = P4E2QualificationObservation.directPath(gameDirectory);
+        var firstEvidence = reportRoot.resolve("P4C2_READY_FIRST.json");
+        var target = mode.restart()
+                ? reportRoot.resolve("P4C2_READY_RESTART.json")
+                : firstEvidence;
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("P4-E2 generated evidence target already exists");
+        }
+        if (mode.restart()) {
+            var first = P4E2QualificationObservation.readEvidence(firstEvidence);
+            first.requireReady(
+                    P4E2QualificationObservation.Phase.FIRST,
+                    mode.probeCase().playerId());
+            observation.requireSameSemanticsExceptPhase(first);
+        }
+        if (!Files.getFileStore(source).equals(Files.getFileStore(reportRoot))) {
+            throw new IOException("P4-E2 evidence archive is not on the direct filesystem");
+        }
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+        if (Files.exists(source, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("P4-E2 direct target remained after atomic archive");
+        }
+        var archived = P4E2QualificationObservation.readEvidence(target);
+        if (!archived.equals(observation)) {
+            throw new AssertionError("P4-E2 archived evidence differs from direct bytes");
+        }
+    }
+
+    private static String directSummary(P4E2QualificationObservation observation) {
+        var line = "P4E2_DIRECT_OBSERVATION_OK"
+                + " case=" + observation.caseId()
+                + " phase=" + observation.phase().token()
+                + " player_uuid=" + observation.playerUuid()
+                + " recovery_handler_calls=" + observation.recoveryHandlerCalls()
+                + " recovery_outcome=" + observation.typedRecoveryOutcome().token()
+                + " entries_cleared=" + observation.entriesCleared()
+                + " steps_replayed=" + observation.stepsReplayed()
+                + " recovery_changed=" + observation.recoveryChanged()
+                + " e2_continuation_calls=" + observation.e2ContinuationCalls()
+                + " e2_result=" + observation.e2ResultVariant().token()
+                + " invalidation=" + observation.invalidationAttempts()
+                + "/" + observation.invalidationAccepted()
+                + " generation_present=" + observation.invalidationGenerationPresent()
+                + " e2_set_data=" + observation.e2SetDataAttempts()
+                + "/" + observation.e2SetDataSuccesses()
+                + " marker=" + observation.completionMarker();
+        if (line.length() > 480) {
+            throw new IllegalStateException("P4-E2 direct summary is unbounded");
+        }
+        return line;
     }
 
     static Tag attachment(CompoundTag root) {

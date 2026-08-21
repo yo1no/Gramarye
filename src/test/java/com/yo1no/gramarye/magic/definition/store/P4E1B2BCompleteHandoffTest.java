@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -24,6 +26,17 @@ final class P4E1B2BCompleteHandoffTest {
             StoreTestFixtures.skillId(1), StoreTestFixtures.revision(1));
     private static final SkillReference SECOND = new SkillReference(
             StoreTestFixtures.skillId(2), StoreTestFixtures.revision(2));
+
+    private static Path projectRoot() {
+        var current = Path.of("").toAbsolutePath().normalize();
+        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle"))) {
+            current = current.getParent();
+        }
+        if (current == null) {
+            throw new IllegalStateException("project root unavailable");
+        }
+        return current;
+    }
 
     @Test
     void oneIteratorPreservesExactOrderDuplicatesAndExhaustion() {
@@ -203,6 +216,40 @@ final class P4E1B2BCompleteHandoffTest {
                         coordinate,
                         coordinate));
         assertTrue(lifecycle.isIncomplete(coordinate.owner, coordinate.server));
+    }
+
+    @Test
+    void completeInvalidationUsesItsPrebuiltNextStateAndReturnsAcceptedGeneration()
+            throws Exception {
+        var coordinate = new Coordinate(822);
+        var lifecycle = new SkillRetentionRootAuditService.IndexLifecycle(
+                coordinate.owner, coordinate.server);
+        var published = publishComplete(coordinate, lifecycle, FIRST);
+
+        var accepted = assertInstanceOf(
+                SkillRetentionRootAuditService.InvalidationResult.Accepted.class,
+                lifecycle.invalidate(coordinate.owner, coordinate.server));
+
+        assertEquals(2L, accepted.generation());
+        assertEquals(2L, lifecycle.generation(coordinate.owner, coordinate.server));
+        assertTrue(lifecycle.isIncomplete(coordinate.owner, coordinate.server));
+        assertEquals(P4E1RawClaimBuffer.Ownership.DISCARDED,
+                published.rawBacking.ownership());
+        assertThrows(IllegalStateException.class,
+                () -> SkillRetentionRootAuditService.consumeCompleteAtCoordinate(
+                        coordinate.owner,
+                        coordinate.server,
+                        published.complete,
+                        coordinate,
+                        coordinate));
+
+        var root = projectRoot();
+        var source = Files.readString(root.resolve(
+                "src/main/java/com/yo1no/gramarye/magic/definition/store/"
+                        + "SkillRetentionRootAuditService.java"));
+        assertTrue(source.contains(
+                "IndexState nextInvalidationState = reservation.generation == Long.MAX_VALUE"));
+        assertTrue(source.contains("? complete.nextInvalidationState"));
     }
 
     @Test

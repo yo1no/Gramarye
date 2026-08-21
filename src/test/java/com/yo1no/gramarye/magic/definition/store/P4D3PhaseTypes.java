@@ -162,6 +162,9 @@ final class P4D3PhaseTypes {
             "create",
             "registerOn");
 
+    static final Set<String> E2_RECOVERY_SERVICE_PUBLIC_NESTED_TYPE_NAMES = Set.of(
+            "RecoveryContinuation");
+
     static final Set<String> RECOVERY_GAME_TEST_METHOD_NAMES = Set.of(
             "persistedBaseReplaysPendingChainOnLogin",
             "persistedIntermediateClearsPrefixBeforeReplayOnLogin",

@@ -20,12 +20,12 @@ final class P4E1BApiGateTest {
 
     @Test
     void exactE1TypeInventoryHasOnlyTwoReviewedPublicTopLevels() throws Exception {
-        assertEquals(P4EPhaseTypes.STORE_TYPE_NAMES, currentStoreTypeNames());
-        for (var name : P4EPhaseTypes.STORE_TYPE_NAMES) {
+        assertEquals(P4EPhaseTypes.E1_STORE_TYPE_NAMES, currentStoreTypeNames());
+        for (var name : P4EPhaseTypes.E1_STORE_TYPE_NAMES) {
             var type = Class.forName(
                     "com.yo1no.gramarye.magic.definition.store." + name);
             assertEquals(
-                    P4EPhaseTypes.PUBLIC_STORE_TYPE_NAMES.contains(name),
+                    P4EPhaseTypes.E1_PUBLIC_STORE_TYPE_NAMES.contains(name),
                     Modifier.isPublic(type.getModifiers()),
                     name);
         }
@@ -33,7 +33,7 @@ final class P4E1BApiGateTest {
                 Set.of(
                         "PlayerSkillAttachmentAdmissionSource",
                         "SkillRetentionRootAuditResult"),
-                P4EPhaseTypes.PUBLIC_STORE_TYPE_NAMES);
+                P4EPhaseTypes.E1_PUBLIC_STORE_TYPE_NAMES);
     }
 
     @Test

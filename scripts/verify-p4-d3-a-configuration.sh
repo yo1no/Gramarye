@@ -10,7 +10,7 @@ fail() {
     exit 1
 }
 
-for required_tool in bash grep find git jar mktemp rm dirname pwd; do
+for required_tool in awk bash grep find git jar javap mktemp rm dirname pwd; do
     command -v "${required_tool}" >/dev/null 2>&1 \
         || fail "P4-D3-A configuration verifier cannot find required tool: ${required_tool}"
 done
@@ -30,6 +30,9 @@ D3_GAME_SOURCE_LIST=''
 JAR_FILE_LIST=''
 JAR_LISTING=''
 HELPER_FIXTURE=''
+RECOVERY_SOURCE_SIGNATURES=''
+RECOVERY_JAVAP_OUTPUT=''
+RECOVERY_JAVAP_SIGNATURES=''
 
 cleanup() {
     local temporary=''
@@ -40,7 +43,10 @@ cleanup() {
         "${D3_GAME_SOURCE_LIST}" \
         "${JAR_FILE_LIST}" \
         "${JAR_LISTING}" \
-        "${HELPER_FIXTURE}"; do
+        "${HELPER_FIXTURE}" \
+        "${RECOVERY_SOURCE_SIGNATURES}" \
+        "${RECOVERY_JAVAP_OUTPUT}" \
+        "${RECOVERY_JAVAP_SIGNATURES}"; do
         if [[ -n "${temporary}" ]]; then
             rm -f -- "${temporary}"
         fi
@@ -129,6 +135,126 @@ require_regular_file() {
     if [[ ! -f "${file}" || -L "${file}" ]]; then
         fail "${message}"
     fi
+}
+
+require_line_count() {
+    local file="$1"
+    local expected="$2"
+    local message="$3"
+    local actual=''
+    local status=0
+    actual="$(LC_ALL=C awk 'END { print NR }' "${file}")" || status=$?
+    [[ "${status}" -eq 0 ]] || fail "awk failed while checking ${file} (exit ${status})"
+    [[ "${actual}" -eq "${expected}" ]] \
+        || fail "${message} (expected ${expected}, found ${actual})"
+}
+
+require_exact_line_count() {
+    local file="$1"
+    local line="$2"
+    local expected="$3"
+    local message="$4"
+    local actual=''
+    local status=0
+    actual="$(LC_ALL=C grep -Fxc -- "${line}" "${file}")" || status=$?
+    case "${status}" in
+        0) ;;
+        1) actual=0 ;;
+        *) grep_failed "${file}" "${status}" ;;
+    esac
+    [[ "${actual}" -eq "${expected}" ]] \
+        || fail "${message} (expected ${expected}, found ${actual})"
+}
+
+verify_recovery_factory_surface() {
+    local recovery="$1"
+    local class_root='build/classes/java/main'
+    local class_name='com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService'
+    local class_file="${class_root}/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.class"
+    local status=0
+
+    require_fixed_count "${recovery}" \
+        'public static SkillSubmissionRecoveryService create(' 2 \
+        'D3-A/E2 recovery service must expose exactly two reviewed factory overloads'
+
+    RECOVERY_SOURCE_SIGNATURES="$(
+        mktemp "${TMPDIR:-/tmp}/gramarye-p4-d3-a-recovery-source.XXXXXX"
+    )" || fail 'P4-D3-A verifier could not create recovery source signature output'
+    LC_ALL=C awk '
+        function compact(value) {
+            gsub(/[[:space:]]/, "", value)
+            return value
+        }
+        /^[[:space:]]+public static .* create\($/ {
+            collecting = 1
+            signature = $0
+            next
+        }
+        collecting {
+            signature = signature $0
+            if (index($0, ") {") > 0) {
+                print compact(signature)
+                collecting = 0
+                signature = ""
+            }
+        }
+        END {
+            if (collecting) {
+                exit 2
+            }
+        }
+    ' "${recovery}" > "${RECOVERY_SOURCE_SIGNATURES}" || status=$?
+    [[ "${status}" -eq 0 ]] \
+        || fail "P4-D3-A verifier could not parse recovery factory sources (exit ${status})"
+    require_line_count "${RECOVERY_SOURCE_SIGNATURES}" 2 \
+        'D3-A/E2 recovery source must contain exactly two public static create overloads'
+    require_exact_line_count "${RECOVERY_SOURCE_SIGNATURES}" \
+        'publicstaticSkillSubmissionRecoveryServicecreate(PlayerSkillAttachmentServiceattachmentService,SkillDefinitionStoreSubmissionPortstorePort,P4E2OnlineReconciliationDependencyonlineReconciliationDependency){' \
+        1 'D3-A/E2 three-parameter recovery factory source signature drifted'
+    require_exact_line_count "${RECOVERY_SOURCE_SIGNATURES}" \
+        'publicstaticSkillSubmissionRecoveryServicecreate(PlayerSkillAttachmentServiceattachmentService,SkillDefinitionStoreSubmissionPortstorePort,P4E2OnlineReconciliationDependencyonlineReconciliationDependency,P4E2QualificationFacade.SubmissionViewqualificationView){' \
+        1 'D3-A/E2 four-parameter recovery factory source signature drifted'
+
+    require_regular_file "${class_file}" \
+        'P4-D3-A fresh recovery service class is missing for javap verification'
+    [[ ! "${recovery}" -nt "${class_file}" ]] \
+        || fail 'P4-D3-A recovery service class is older than its frozen source'
+    RECOVERY_JAVAP_OUTPUT="$(
+        mktemp "${TMPDIR:-/tmp}/gramarye-p4-d3-a-recovery-javap.XXXXXX"
+    )" || fail 'P4-D3-A verifier could not create javap output'
+    status=0
+    javap -p -s -classpath "${class_root}" "${class_name}" \
+        > "${RECOVERY_JAVAP_OUTPUT}" || status=$?
+    [[ "${status}" -eq 0 ]] \
+        || fail "javap failed while checking the fresh recovery service class (exit ${status})"
+
+    RECOVERY_JAVAP_SIGNATURES="$(
+        mktemp "${TMPDIR:-/tmp}/gramarye-p4-d3-a-recovery-descriptors.XXXXXX"
+    )" || fail 'P4-D3-A verifier could not create recovery descriptor output'
+    status=0
+    LC_ALL=C awk '
+        function compact(value) {
+            gsub(/[[:space:]]/, "", value)
+            return value
+        }
+        index($0, "  public static ") == 1 && index($0, " create(") > 0 {
+            method = $0
+            if ((getline descriptor) <= 0 || index(descriptor, "    descriptor: ") != 1) {
+                exit 2
+            }
+            print compact(method) "|" compact(descriptor)
+        }
+    ' "${RECOVERY_JAVAP_OUTPUT}" > "${RECOVERY_JAVAP_SIGNATURES}" || status=$?
+    [[ "${status}" -eq 0 ]] \
+        || fail "P4-D3-A verifier could not parse recovery javap output (exit ${status})"
+    require_line_count "${RECOVERY_JAVAP_SIGNATURES}" 2 \
+        'D3-A/E2 recovery bytecode must contain exactly two public static create overloads'
+    require_exact_line_count "${RECOVERY_JAVAP_SIGNATURES}" \
+        'publicstaticcom.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryServicecreate(com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService,com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreSubmissionPort,com.yo1no.gramarye.magic.definition.store.P4E2OnlineReconciliationDependency);|descriptor:(Lcom/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService;Lcom/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort;Lcom/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency;)Lcom/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService;' \
+        1 'D3-A/E2 three-parameter recovery factory bytecode signature drifted'
+    require_exact_line_count "${RECOVERY_JAVAP_SIGNATURES}" \
+        'publicstaticcom.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryServicecreate(com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService,com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreSubmissionPort,com.yo1no.gramarye.magic.definition.store.P4E2OnlineReconciliationDependency,com.yo1no.gramarye.P4E2QualificationFacade$SubmissionView);|descriptor:(Lcom/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService;Lcom/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort;Lcom/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency;Lcom/yo1no/gramarye/P4E2QualificationFacade$SubmissionView;)Lcom/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService;' \
+        1 'D3-A/E2 four-parameter recovery factory bytecode signature drifted'
 }
 
 collect_java_files() {
@@ -309,11 +435,18 @@ verify_search_helpers() {
 is_reviewed_d3a_production_path() {
     case "$1" in
         src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationCoordinator.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2ReconciliationResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentReconciliationCapability.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditedCapture.java | \
@@ -412,9 +545,7 @@ verify_exact_surfaces() {
     require_fixed_count "${player}" \
         'public Result<List<LatestStateView>> observeLatestStates(' 1 \
         'P4-C service must expose exactly one batch latest-state observation'
-    require_fixed_count "${recovery}" \
-        'public static SkillSubmissionRecoveryService create(' 1 \
-        'D3-A recovery service must expose one production factory'
+    verify_recovery_factory_surface "${recovery}"
     require_fixed_count "${recovery}" 'public void registerOn(IEventBus neoForgeEventBus)' 1 \
         'D3-A recovery service must expose one event registration entry'
     require_fixed_count "${recovery}" 'PlayerEvent.PlayerLoggedInEvent' 1 \
@@ -429,6 +560,8 @@ verify_exact_surfaces() {
         'P4-B startup callback lost immediate journal bootstrap'
     require_fixed_count "${root}" 'SkillSubmissionRecoveryService.create(' 1 \
         'composition root must create exactly one recovery service'
+    require_only_fixed_owner 'SkillSubmissionRecoveryService.create(' "${root}" \
+        'recovery service production construction escaped the exact composition root'
     require_fixed_count "${root}" \
         'skillSubmissionRecoveryService.registerOn(NeoForge.EVENT_BUS)' 1 \
         'composition root must register exactly one recovery service'
@@ -494,7 +627,18 @@ verify_ownership_and_phase_boundary() {
         'reconciliation escaped the exact B2-A/B2-B owners' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java' \
-        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java'
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java' \
+        'src/main/java/com/yo1no/gramarye/Gramarye.java' \
+        'src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidation.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationCoordinator.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2ReconciliationResult.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentReconciliationCapability.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java'
     forbid_fixed "${recovery}" 'SkillDefinitionSubmissionService' \
         'D3-A recovery must not call the D2 submission facade'
     forbid_fixed "${recovery}" '.reclaim(' \

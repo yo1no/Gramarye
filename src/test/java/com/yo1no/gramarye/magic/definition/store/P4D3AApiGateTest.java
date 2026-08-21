@@ -73,7 +73,8 @@ final class P4D3AApiGateTest {
         var create = SkillSubmissionRecoveryService.class.getDeclaredMethod(
                 "create",
                 PlayerSkillAttachmentService.class,
-                SkillDefinitionStoreSubmissionPort.class);
+                SkillDefinitionStoreSubmissionPort.class,
+                P4E2OnlineReconciliationDependency.class);
         var register = SkillSubmissionRecoveryService.class.getDeclaredMethod(
                 "registerOn", IEventBus.class);
         var source = withoutCommentsAndLiterals(read(RECOVERY_SERVICE));
@@ -92,10 +93,32 @@ final class P4D3AApiGateTest {
                                 SkillSubmissionRecoveryService.class.getDeclaredConstructors())
                         .noneMatch(constructor -> Modifier.isPublic(constructor.getModifiers())
                                 || Modifier.isProtected(constructor.getModifiers()))),
+                () -> assertEquals(
+                        P4D3PhaseTypes.E2_RECOVERY_SERVICE_PUBLIC_NESTED_TYPE_NAMES,
+                        Arrays.stream(SkillSubmissionRecoveryService.class.getDeclaredClasses())
+                                .filter(type -> Modifier.isPublic(type.getModifiers())
+                                        || Modifier.isProtected(type.getModifiers()))
+                                .map(Class::getSimpleName)
+                                .collect(Collectors.toSet())),
                 () -> assertTrue(Arrays.stream(
-                                SkillSubmissionRecoveryService.class.getDeclaredClasses())
-                        .noneMatch(type -> Modifier.isPublic(type.getModifiers())
-                                || Modifier.isProtected(type.getModifiers()))),
+                                SkillSubmissionRecoveryService.RecoveryContinuation.class
+                                        .getDeclaredConstructors())
+                        .allMatch(constructor -> Modifier.isPrivate(
+                                constructor.getModifiers()))),
+                () -> assertTrue(Modifier.isPublic(
+                        SkillSubmissionRecoveryService.RecoveryContinuation.class
+                                .getModifiers())),
+                () -> assertTrue(Modifier.isStatic(
+                        SkillSubmissionRecoveryService.RecoveryContinuation.class
+                                .getModifiers())),
+                () -> assertTrue(Modifier.isFinal(
+                        SkillSubmissionRecoveryService.RecoveryContinuation.class
+                                .getModifiers())),
+                () -> assertTrue(Arrays.stream(
+                                SkillSubmissionRecoveryService.RecoveryContinuation.class
+                                        .getDeclaredMethods())
+                        .noneMatch(method -> Modifier.isPublic(method.getModifiers())
+                                || Modifier.isProtected(method.getModifiers()))),
                 () -> assertEquals(1, occurrences(source, "PlayerEvent.PlayerLoggedInEvent")),
                 () -> assertEquals(1, occurrences(source, "addListener(this::onPlayerLoggedIn)")),
                 () -> assertEquals(1, occurrences(source, "recoverPersistedPlayer(player)")),
@@ -360,7 +383,9 @@ final class P4D3AApiGateTest {
                                 MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
                                                 + "SkillRetentionRootAuditService.java")
                                         .toAbsolutePath().normalize())
-                        .contains(path.toAbsolutePath().normalize()))
+                        .contains(path.toAbsolutePath().normalize())
+                        && !P4DPhaseTypes.E2_RECONCILIATION_PRODUCTION_SOURCE_PATHS.contains(
+                                MAIN_JAVA.relativize(path).toString()))
                 .map(P4D3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         var allUnitTests = javaSources(PROJECT_ROOT.resolve("src/test/java")).stream()
@@ -378,7 +403,7 @@ final class P4D3AApiGateTest {
             assertFalse(allProduction.contains(forbidden), forbidden);
         }
         assertFalse(productionWithoutReviewedReconciliationOwners.contains("Reconciliation"),
-                "reconciliation escaped the exact B2-A/B2-B owners");
+                "reconciliation escaped the exact E1/E2 owners");
         assertAll(
                 () -> assertFalse(allProduction.contains("Runtime.getRuntime()" + ".halt")),
                 () -> assertFalse(allUnitTests.contains("Runtime.getRuntime()" + ".halt")),

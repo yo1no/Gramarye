@@ -55,6 +55,8 @@ public final class SkillSubmissionRecoveryGameTests {
             UUID.fromString("d3a00000-0000-4000-8000-000000000002"));
     private static final SkillId FINAL_SKILL_ID = new SkillId(
             UUID.fromString("d3a00000-0000-4000-8000-000000000003"));
+    private static final SkillId BASE_STALE_SKILL_ID = new SkillId(
+            UUID.fromString("d3a00000-0000-4000-8000-000000000004"));
     private static final SavedData.Factory<SavedData> CACHE_HIT_ONLY_FACTORY =
             new SavedData.Factory<>(
                     () -> {
@@ -120,6 +122,14 @@ public final class SkillSubmissionRecoveryGameTests {
             initial = placePlayer(server, playerId, "p4-d3-a-initial");
             assertApplied(attachments.putDraft(initial.player(), draft),
                     "initial Draft publication");
+            if (position == PersistedPosition.BASE) {
+                var stale = new SkillReference(BASE_STALE_SKILL_ID, new SkillRevision(0));
+                publishToCurrent(
+                        attachments, initial.player(), BASE_STALE_SKILL_ID, stale);
+                assertApplied(
+                        attachments.setEquipped(initial.player(), 0, Optional.of(stale)),
+                        "BASE stale equipped fixture publication");
+            }
             if (position != PersistedPosition.BASE) {
                 publishToCurrent(attachments, initial.player(), skillId, firstTarget);
             }
@@ -138,9 +148,21 @@ public final class SkillSubmissionRecoveryGameTests {
 
             fixture = installRecoveryFixture(
                     server, new SkillOwnerId(playerId), skillId, firstTarget, finalTarget);
+            var loginTick = server.getTickCount();
             reloaded = placePlayer(server, playerId, "p4-d3-a-reloaded");
 
+            if (position == PersistedPosition.BASE) {
+                helper.assertTrue(server.getTickCount() == loginTick,
+                        "P4-D recovery and P4-E2 continuation must finish in one login tick");
+                helper.assertTrue(
+                        server.getPlayerList().getPlayer(playerId) == reloaded.player(),
+                        "P4-E2 must reconcile the exact authenticated online player identity");
+            }
+
             assertFinalAttachment(helper, attachments, reloaded.player(), draft, finalTarget);
+            if (position == PersistedPosition.BASE) {
+                assertBaseE2PrunedUnretainedRoots(helper, attachments, reloaded.player());
+            }
             assertStoreUnchanged(helper, fixture);
             switch (position) {
                 case BASE -> assertBaseJournal(helper, fixture, firstTarget, finalTarget);
@@ -354,6 +376,23 @@ public final class SkillSubmissionRecoveryGameTests {
                 observedDraft instanceof PlayerSkillAttachmentService.Available<?> available
                         && available.value().equals(Optional.of(draft)),
                 "login recovery must not replace or remove the persisted Draft");
+    }
+
+    private static void assertBaseE2PrunedUnretainedRoots(
+            GameTestHelper helper,
+            PlayerSkillAttachmentService attachments,
+            ServerPlayer player) {
+        var staleLatest = latestState(attachments, player, BASE_STALE_SKILL_ID);
+        helper.assertTrue(
+                staleLatest.filter(value -> value.pointer().isEmpty()
+                                && value.mutationGeneration() == 2)
+                        .isPresent(),
+                "same-chain E2 must clear the stale latest pointer with one int successor");
+        var equipped = attachments.equippedAt(player, 0);
+        helper.assertTrue(
+                equipped instanceof PlayerSkillAttachmentService.Available<?> available
+                        && available.value().equals(Optional.empty()),
+                "same-chain E2 must prune the stale equipped root in the same replacement");
     }
 
     private static void assertStoreUnchanged(

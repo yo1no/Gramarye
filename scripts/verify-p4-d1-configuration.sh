@@ -111,8 +111,11 @@ verify_shared_history_observation() {
             "${GROUPED_STORE_AUDIT}")" -eq 1 ]] \
         || fail 'B2-A must have one owner-bound history-observation callsite'
     [[ "$(grep -R -l -F --include='*.java' -- \
-            '.observeExactHistoryForRootAudit(' src/main/java | wc -l | tr -d ' ')" -eq 1 ]] \
-        || fail 'Store-history primitive escaped the unique owner-bound B1 callsite'
+            '.observeExactHistoryForRootAudit(' src/main/java | wc -l | tr -d ' ')" -eq 2 ]] \
+        || fail 'Store-history primitive escaped the exact B1/E2 owner-bound callsites'
+    grep -Fq -- '.observeExactHistoryForRootAudit(' \
+        "${STORE_ROOT}/P4E2GroupedStoreValidation.java" \
+        || fail 'E2 grouped Store validation lost its exact history callsite'
     if grep -Eq -- 'catch[[:space:]]*\((Error|OutOfMemoryError|Throwable)' \
             "${HISTORY_OBSERVATION}" "${GROUPED_STORE_AUDIT}"; then
         fail 'B2-A catches Error, OutOfMemoryError, or Throwable'
@@ -128,6 +131,8 @@ verify_unique_owners() {
         if grep -Fq -- 'MAX_PENDING_ATTACHMENT_UPDATES' "${source}"; then
             case "${source}" in
                 "${STORE_ROOT}/PendingAttachmentJournalSchema.java" | \
+                "${STORE_ROOT}/P4E2OnlineReconciliationCoordinator.java" | \
+                "${STORE_ROOT}/P4E2ReconciliationResult.java" | \
                 "${SUBMISSION_ROOT}/SkillSubmissionRecoveryService.java" | \
                 "${CEILINGS}") ;;
                 *) fail "journal entry ceiling escaped its unique schema owner: ${source}" ;;
@@ -148,8 +153,8 @@ verify_unique_owners() {
             reclaim_count=$((reclaim_count + 1))
         fi
     done < <(find src/main/java -type f -name '*.java' -print0)
-    [[ "${ceiling_count}" -eq 3 ]] \
-        || fail 'journal entry ceiling must have its schema and reviewed recovery consumers'
+    [[ "${ceiling_count}" -eq 5 ]] \
+        || fail 'journal entry ceiling must have its schema and exact recovery consumers'
     [[ "${commit_count}" -eq 1 ]] || fail 'production must have exactly one Store commit caller'
     [[ "${reclaim_count}" -eq 2 ]] || fail 'reviewed P4-B reclaim caller set changed'
 }
@@ -250,12 +255,23 @@ verify_phase_boundary() {
         case "${source}" in
             "${GROUPED_STORE_AUDIT}" | \
             "${STORE_ROOT}/SkillRetentionRootAuditResult.java" | \
-            "${STORE_ROOT}/SkillRetentionRootAuditService.java") continue ;;
+            "${STORE_ROOT}/SkillRetentionRootAuditService.java" | \
+            'src/main/java/com/yo1no/gramarye/Gramarye.java' | \
+            'src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java' | \
+            'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java' | \
+            "${STORE_ROOT}/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java" | \
+            "${STORE_ROOT}/P4E2GroupedStoreValidation.java" | \
+            "${STORE_ROOT}/P4E2OnlineReconciliationCoordinator.java" | \
+            "${STORE_ROOT}/P4E2OnlineReconciliationDependency.java" | \
+            "${STORE_ROOT}/P4E2ReconciliationResult.java" | \
+            "${STORE_ROOT}/PlayerSkillAttachmentReconciliationCapability.java" | \
+            "${STORE_ROOT}/SkillDefinitionStoreService.java" | \
+            "${SUBMISSION_ROOT}/SkillSubmissionRecoveryService.java") continue ;;
         esac
         status=0
         grep -Fq -- 'Reconciliation' "${source}" || status=$?
         case "${status}" in
-            0) fail "reconciliation escaped the exact B2-A/B2-B owners: ${source}" ;;
+            0) fail "reconciliation escaped the exact E1/E2 owners: ${source}" ;;
             1) ;;
             *) fail "grep failed while checking reconciliation owner: ${source}" ;;
         esac

@@ -7,13 +7,18 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.yo1no.gramarye.P4E2QualificationFacade;
 import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.api.id.SkillRevision;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
+import com.yo1no.gramarye.magic.definition.store.P4E2OnlineReconciliationDependency;
 import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreSubmissionPort;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
+import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -27,12 +32,81 @@ import net.neoforged.bus.api.BusBuilder;
 import org.junit.jupiter.api.Test;
 
 final class SkillSubmissionRecoveryServiceTest {
+    private static final Path RECOVERY_SOURCE = projectRoot().resolve(
+            "src/main/java/com/yo1no/gramarye/magic/definition/submission/"
+                    + "SkillSubmissionRecoveryService.java");
     private static final Object PLAYER = new Object();
     private static final Object SERVER = new Object();
     private static final SkillOwnerId OWNER = new SkillOwnerId(new UUID(7, 11));
     private static final SkillId SKILL_A = new SkillId(new UUID(0, 1));
     private static final SkillId SKILL_B = new SkillId(new UUID(0, 2));
     private static final SkillId SKILL_C = new SkillId(new UUID(0, 3));
+
+    @Test
+    void exactTypedFactoryAndHandlerLocalOutcomeClassificationRemainDirect()
+            throws Exception {
+        var legacy = SkillSubmissionRecoveryService.class.getDeclaredMethod(
+                "create",
+                PlayerSkillAttachmentService.class,
+                SkillDefinitionStoreSubmissionPort.class,
+                P4E2OnlineReconciliationDependency.class);
+        var observed = SkillSubmissionRecoveryService.class.getDeclaredMethod(
+                "create",
+                PlayerSkillAttachmentService.class,
+                SkillDefinitionStoreSubmissionPort.class,
+                P4E2OnlineReconciliationDependency.class,
+                P4E2QualificationFacade.SubmissionView.class);
+        assertTrue(Modifier.isPublic(legacy.getModifiers())
+                && Modifier.isStatic(legacy.getModifiers()));
+        assertTrue(Modifier.isPublic(observed.getModifiers())
+                && Modifier.isStatic(observed.getModifiers()));
+
+        var source = Files.readString(RECOVERY_SOURCE);
+        var handlerStart = source.indexOf(
+                "private void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event)");
+        var handlerEnd = source.indexOf(
+                "private static void requireE2RecoveryVocabularyInitialized()", handlerStart);
+        var handler = source.substring(handlerStart, handlerEnd);
+        var outcomeLocal = source.indexOf("var outcome = recoverPersistedPlayer(player);");
+        var continuation = source.indexOf("continuation.consume(this, outcome);", outcomeLocal);
+        var outerFinally = source.indexOf("} finally {", continuation);
+        var completion = source.indexOf(
+                "exactView.completeAfterContinuation(server, playerMost, playerLeast);",
+                continuation);
+        assertTrue(handlerStart >= 0 && handlerEnd > handlerStart);
+        assertTrue(outcomeLocal >= 0
+                && continuation > outcomeLocal
+                && outerFinally > continuation
+                && completion > outerFinally);
+        assertTrue(handler.contains("try {"));
+        assertTrue(handler.contains("A normal continuation return guarantees"));
+        assertTrue(handler.contains("an incomplete cell at this finally is therefore abnormal"));
+        assertFalse(handler.contains(" catch ("));
+        var directClassification = source.substring(outcomeLocal, continuation);
+        assertTrue(directClassification.contains("switch (outcome)"));
+        assertFalse(directClassification.contains("default"));
+        for (var exactVariant : List.of(
+                "case NoPending",
+                "case Cleared ",
+                "case Replayed ",
+                "case ClearedAndReplayed ",
+                "case Conflict ",
+                "case TargetInvalid ",
+                "case Unavailable ")) {
+            assertTrue(directClassification.contains(exactVariant), exactVariant);
+        }
+    }
+
+    @Test
+    void recoveryContinuationLifecycleRejectsReuse() {
+        var lifecycle = new SkillSubmissionRecoveryService.ContinuationLifecycle();
+
+        lifecycle.claim();
+        var failure = assertThrows(IllegalStateException.class, lifecycle::claim);
+
+        assertEquals("P4E2_RECOVERY_CONTINUATION_ALREADY_CONSUMED",
+                failure.getMessage());
+    }
 
     @Test
     void emptyProjectionIsNoPendingAndSkipsAttachmentObservation() {
@@ -53,6 +127,73 @@ final class SkillSubmissionRecoveryServiceTest {
         service.registerOn(eventBus);
 
         assertThrows(IllegalStateException.class, () -> service.registerOn(eventBus));
+    }
+
+    @Test
+    void everyTypedRecoveryOutcomeMapsExhaustivelyToBoundedE2Accounting() {
+        assertRecoveryStatus(
+                SkillSubmissionRecoveryService.NoPending.INSTANCE,
+                P4E2OnlineReconciliationDependency.RecoveryKind.NO_PENDING,
+                0,
+                0,
+                Optional.empty());
+        assertRecoveryStatus(
+                new SkillSubmissionRecoveryService.Cleared(1),
+                P4E2OnlineReconciliationDependency.RecoveryKind.CLEARED,
+                1,
+                0,
+                Optional.empty());
+        assertRecoveryStatus(
+                new SkillSubmissionRecoveryService.Replayed(1),
+                P4E2OnlineReconciliationDependency.RecoveryKind.REPLAYED,
+                0,
+                1,
+                Optional.empty());
+        assertRecoveryStatus(
+                new SkillSubmissionRecoveryService.ClearedAndReplayed(2, 3),
+                P4E2OnlineReconciliationDependency.RecoveryKind.CLEARED_AND_REPLAYED,
+                2,
+                3,
+                Optional.empty());
+        assertRecoveryStatus(
+                new SkillSubmissionRecoveryService.Conflict(
+                        SKILL_A,
+                        SkillSubmissionRecoveryService.RecoveryConflictCode.THIRD_STATE,
+                        0,
+                        0),
+                P4E2OnlineReconciliationDependency.RecoveryKind.CONFLICT,
+                0,
+                0,
+                Optional.empty());
+        assertRecoveryStatus(
+                new SkillSubmissionRecoveryService.TargetInvalid(
+                        SKILL_A,
+                        reference(SKILL_A, 4),
+                        SkillDefinitionStoreSubmissionPort.PendingRecoveryTargetFailure
+                                .MISSING,
+                        1,
+                        1),
+                P4E2OnlineReconciliationDependency.RecoveryKind.TARGET_INVALID,
+                1,
+                1,
+                Optional.empty());
+
+        for (var reason : SkillSubmissionRecoveryService.RecoveryUnavailableReason.values()) {
+            var expectedKind = P4E2OnlineReconciliationDependency.RecoveryKind.valueOf(
+                    reason.name());
+            var exceptionClass = reason
+                            == SkillSubmissionRecoveryService.RecoveryUnavailableReason
+                                    .RUNTIME_EXCEPTION
+                    ? Optional.of(IllegalStateException.class.getName())
+                    : Optional.<String>empty();
+            assertRecoveryStatus(
+                    new SkillSubmissionRecoveryService.Unavailable(
+                            reason, 2, 2, exceptionClass),
+                    expectedKind,
+                    2,
+                    2,
+                    exceptionClass);
+        }
     }
 
     @Test
@@ -462,7 +603,9 @@ final class SkillSubmissionRecoveryServiceTest {
 
         var errorDependencies = baseDependencies(step);
         errorDependencies.errorStage = "prepare";
-        assertThrows(TestError.class, () -> recover(errorDependencies));
+        assertSame(
+                errorDependencies.exactError,
+                assertThrows(TestError.class, () -> recover(errorDependencies)));
     }
 
     @Test
@@ -611,6 +754,18 @@ final class SkillSubmissionRecoveryServiceTest {
                         .toList());
     }
 
+    private static void assertRecoveryStatus(
+            SkillSubmissionRecoveryService.RecoveryOutcome outcome,
+            P4E2OnlineReconciliationDependency.RecoveryKind expectedKind,
+            int expectedCleared,
+            int expectedReplayed,
+            Optional<String> expectedExceptionClass) {
+        assertEquals(expectedKind, outcome.e2Kind());
+        assertEquals(expectedCleared, outcome.e2EntriesCleared());
+        assertEquals(expectedReplayed, outcome.e2StepsReplayed());
+        assertEquals(expectedExceptionClass, outcome.e2ExceptionClass());
+    }
+
     private static SkillSubmissionRecoveryService.RecoveryOutcome recover(
             FakeDependencies dependencies) {
         return new SkillSubmissionRecoveryService(dependencies)
@@ -687,6 +842,7 @@ final class SkillSubmissionRecoveryServiceTest {
         private int expectedGenerationOffset;
         private String runtimeStage;
         private String errorStage;
+        private final TestError exactError = new TestError();
 
         private FakeDependencies(
                 SkillDefinitionStoreSubmissionPort.PendingRecoveryProjection projection) {
@@ -805,7 +961,7 @@ final class SkillSubmissionRecoveryServiceTest {
 
         private void throwIfConfigured(String stage) {
             if (stage.equals(errorStage)) {
-                throw new TestError();
+                throw exactError;
             }
             if (stage.equals(runtimeStage)) {
                 throw new TestRuntimeFailure("fixture message must not escape");
@@ -853,5 +1009,17 @@ final class SkillSubmissionRecoveryServiceTest {
     }
 
     private static final class TestError extends Error {
+        private static final long serialVersionUID = 1L;
+    }
+
+    private static Path projectRoot() {
+        var candidate = Path.of("").toAbsolutePath().normalize();
+        while (candidate != null) {
+            if (Files.isRegularFile(candidate.resolve("settings.gradle"))) {
+                return candidate;
+            }
+            candidate = candidate.getParent();
+        }
+        throw new IllegalStateException("project root not found");
     }
 }

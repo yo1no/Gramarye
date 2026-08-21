@@ -94,6 +94,16 @@ is_allowed_changed_path() {
         scripts/verify-p4-e0-r-configuration.sh | \
         scripts/verify-p4-e0-r2q-configuration.sh | \
         scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        src/p4C2GameTest/java/com/yo1no/gramarye/P4E2QualificationFacadeTestAccess.java | \
+        src/p4C2GameTest/java/com/yo1no/gramarye/magic/definition/player/P4C2MemoryGameTests.java | \
+        src/p4C2Probe/java/com/yo1no/gramarye/P4E2QualificationObservation.java | \
+        src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/player/P4C2FileVerifier.java | \
+        src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/player/P4C2FixtureBuilder.java | \
+        src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/store/P4C2StoreProbe.java | \
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java | \
@@ -112,6 +122,12 @@ is_allowed_changed_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceFailure.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1StoreHistoryObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationCoordinator.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2ReconciliationResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentReconciliationCapability.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java | \
@@ -119,7 +135,17 @@ is_allowed_changed_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/player/P4E2AtomicReconciliationTest.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationObservationTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentServiceTestSupport.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/player/P4C2FixtureTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2BPhaseTypes.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4C1ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4A2ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4A3AApiGateTest.java | \
@@ -130,6 +156,8 @@ is_allowed_changed_path() {
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4DPhaseTypes.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1A1VisibilityCompileTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1AApiGateTest.java | \
@@ -146,7 +174,13 @@ is_allowed_changed_path() {
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1IntegratedSnapshotTraversalTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1PlayerDataSourceSelectorTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1RootAuditBridgeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2VisibilityCompileTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionAuthorityTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryServiceTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4EPhaseTypes.java)
             return 0
             ;;
@@ -747,7 +781,9 @@ require_exact_count "$AUDIT_SERVICE" \
     'SkillRetentionRootAuditResult audit(MinecraftServer server)' 1
 require_exact_count "$AUDIT_SERVICE" 'P4E1CompleteRootHandoff consumeComplete(' 1
 require_exact_count "$AUDIT_SERVICE" \
-    'void invalidateForReconciliation(MinecraftServer server)' 1
+    'InvalidationResult invalidateForReconciliation(MinecraftServer server)' 1
+require_exact_count "$AUDIT_SERVICE" \
+    'boolean isReconciliationInvalidationCurrent(' 1
 require_exact_count "$AUDIT_SERVICE" 'void removeServer(MinecraftServer server)' 1
 require_exact_count "$AUDIT_SERVICE" 'index.remove(server)' 1
 require_exact_count "$AUDIT_SERVICE" 'handoff.forceInvalidate(this)' 1
@@ -785,7 +821,11 @@ for source in "$AUDIT_SERVICE" "$AUDIT_RESULT" "$FINAL_FRESHNESS" "$COMPLETE_HAN
     done
 done
 for production_source in $(find "$MAIN_JAVA" -type f -name '*.java' -print); do
-    reject_fixed "$production_source" 'new SkillRetentionRootAuditService('
+    if [ "$production_source" = "$STORE_ROOT/SkillDefinitionStoreService.java" ]; then
+        require_exact_count "$production_source" 'new SkillRetentionRootAuditService(' 1
+    else
+        reject_fixed "$production_source" 'new SkillRetentionRootAuditService('
+    fi
 done
 
 for source in "$AUDITED_CAPTURE" "$GROUPED_STORE_AUDIT" "$HISTORY_OBSERVATION"; do

@@ -306,9 +306,19 @@ verify_phase_bounds_and_normal_tests() {
         '.commit(' \
         '.reclaim(' \
         '.sync('; do
-        forbid_fixed_in_file_list \
-            "${C2_SOURCE_LIST}" "${literal}" \
-            'P4-C2-A reviewed source contains later/forbidden surface'
+        if [[ "${literal}" == 'Reconciliation' ]]; then
+            while IFS= read -r -d '' reviewed_source; do
+                if [[ "${reviewed_source}" != \
+                        'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java' ]]; then
+                    forbid_fixed "${reviewed_source}" "${literal}" \
+                        'reconciliation escaped the exact P4-E2 player-service owner'
+                fi
+            done < "${C2_SOURCE_LIST}"
+        else
+            forbid_fixed_in_file_list \
+                "${C2_SOURCE_LIST}" "${literal}" \
+                'P4-C2-A reviewed source contains later/forbidden surface'
+        fi
     done
     forbid_ere_in_file_list \
         "${C2_SOURCE_LIST}" \

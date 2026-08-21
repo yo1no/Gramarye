@@ -193,7 +193,9 @@ final class P4D2ApiGateTest {
         assertFalse(currentness.contains("rebuildReady("));
 
         assertEquals(Set.of(
+                        "checkPreparedReconciliationCurrent",
                         "checkPreparedTransitionCurrent",
+                        "isOnlineReconciliationCurrent",
                         "isOnlineRootWitnessCurrent",
                         "prepareLatestTransitionToCurrent"),
                 publicDeclaredMethodNames(PlayerSkillAttachmentService.class).stream()
@@ -290,7 +292,9 @@ final class P4D2ApiGateTest {
                                 MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
                                                 + "SkillRetentionRootAuditService.java")
                                         .toAbsolutePath().normalize())
-                        .contains(path.toAbsolutePath().normalize()))
+                        .contains(path.toAbsolutePath().normalize())
+                        && !P4DPhaseTypes.E2_RECONCILIATION_PRODUCTION_SOURCE_PATHS.contains(
+                                MAIN_JAVA.relativize(path).toString()))
                 .map(P4D2ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
@@ -303,7 +307,7 @@ final class P4D2ApiGateTest {
             assertFalse(allMain.contains(forbidden), forbidden);
         }
         assertFalse(mainWithoutReviewedReconciliationOwners.contains("Reconciliation"),
-                "reconciliation escaped the exact B2-A/B2-B owners");
+                "reconciliation escaped the exact E1/E2 owners");
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
         assertEquals(2, occurrences(build, "sourceSets.create('p4D3"));

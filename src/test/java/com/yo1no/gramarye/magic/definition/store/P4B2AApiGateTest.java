@@ -83,6 +83,7 @@ class P4B2AApiGateTest {
                         "committedSkillCount",
                         "find",
                         "latestReference",
+                        "onlineReconciliationDependency",
                         "ownerOf",
                         "pin",
                         "reclaim",
@@ -233,6 +234,8 @@ class P4B2AApiGateTest {
         assertEquals(2, occurrences(lifecycleHolder, "PlayerSkillAttachmentGameTests"));
         assertEquals(1, occurrences(lifecycleHolder, "PlayerSkillAttachmentService"));
         var playerAttachmentFreeCode = sources.stream()
+                .filter(path -> !path.equals(
+                        STORE_ROOT.resolve("SkillDefinitionStoreService.java")))
                 .map(path -> {
                     var source = withoutCommentsAndLiterals(read(path));
                     if (path.equals(STORE_ROOT.resolve(
@@ -243,6 +246,12 @@ class P4B2AApiGateTest {
                     }
                     return source;
                 })
+                .collect(Collectors.joining("\n"));
+        var reconciliationFreeCode = sources.stream()
+                .filter(path -> !path.equals(
+                        STORE_ROOT.resolve("SkillDefinitionStoreService.java")))
+                .map(P4B2AApiGateTest::read)
+                .map(P4B2AApiGateTest::withoutCommentsAndLiterals)
                 .collect(Collectors.joining("\n"));
         var raw = sources.stream().map(P4B2AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
@@ -294,6 +303,8 @@ class P4B2AApiGateTest {
         for (var forbidden : forbiddenFragments) {
             var inspected = forbidden.equals("PlayerSkillAttachment")
                     ? playerAttachmentFreeCode
+                    : forbidden.equals("Reconciliation")
+                            ? reconciliationFreeCode
                     : Set.of("PendingAttachmentJournal", "Attachment", "Journal")
                             .contains(forbidden) ? journalFreeCode : code;
             assertFalse(inspected.contains(forbidden),
@@ -414,7 +425,10 @@ class P4B2AApiGateTest {
                 filesContaining(productionSources(MAIN_JAVA), "registerOn("));
         assertTrue(root.contains("private final SkillDefinitionStoreService"));
         assertTrue(root.contains("SkillDefinitionStoreService.registerOn(\n"
-                + "                NeoForge.EVENT_BUS)"));
+                + "                NeoForge.EVENT_BUS,\n"
+                + "                playerSkillAttachmentService,\n"
+                + "                exactFacade.storeView(),\n"
+                + "                exactFacade.playerView())"));
 
         assertOrdered(adapter, "var replacement =", "state = replacement;", "setDirty();");
         assertOrdered(adapter,

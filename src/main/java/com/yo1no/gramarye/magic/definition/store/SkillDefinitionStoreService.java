@@ -1,9 +1,11 @@
 package com.yo1no.gramarye.magic.definition.store;
 
+import com.yo1no.gramarye.P4E2QualificationFacade;
 import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.definition.document.SkillDocument;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
+import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import java.util.IdentityHashMap;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,17 +35,66 @@ public final class SkillDefinitionStoreService {
             new IdentityHashMap<>();
     private final SkillDefinitionStoreSubmissionPort submissionPort =
             new SkillDefinitionStoreSubmissionPort(this);
+    private final SkillRetentionRootAuditService rootAuditService;
+    private final P4E2OnlineReconciliationCoordinator onlineReconciliationDependency;
+    private final P4E2QualificationFacade.StoreView qualificationStoreView;
 
     SkillDefinitionStoreService() {
+        rootAuditService = null;
+        onlineReconciliationDependency = null;
+        qualificationStoreView = null;
     }
 
-    /** Creates the unique service instance and attaches its two server lifecycle listeners. */
-    public static SkillDefinitionStoreService registerOn(IEventBus gameBus) {
+    private SkillDefinitionStoreService(PlayerSkillAttachmentService attachmentService) {
+        this(attachmentService, null, null);
+    }
+
+    private SkillDefinitionStoreService(
+            PlayerSkillAttachmentService attachmentService,
+            P4E2QualificationFacade.StoreView qualificationStoreView,
+            P4E2QualificationFacade.PlayerView qualificationPlayerView) {
+        Objects.requireNonNull(attachmentService, "attachmentService");
+        rootAuditService = new SkillRetentionRootAuditService(this, attachmentService);
+        onlineReconciliationDependency = new P4E2OnlineReconciliationCoordinator(
+                this,
+                attachmentService,
+                rootAuditService,
+                qualificationStoreView,
+                qualificationPlayerView);
+        this.qualificationStoreView = qualificationStoreView;
+    }
+
+    /** Creates the unique fully composed service and attaches its server lifecycle listeners. */
+    public static SkillDefinitionStoreService registerOn(
+            IEventBus gameBus, PlayerSkillAttachmentService attachmentService) {
         Objects.requireNonNull(gameBus, "gameBus");
-        var service = new SkillDefinitionStoreService();
-        gameBus.addListener(service::onServerStarting);
-        gameBus.addListener(service::onServerStopped);
+        var service = new SkillDefinitionStoreService(
+                Objects.requireNonNull(attachmentService, "attachmentService"));
+        service.registerLifecycleListeners(gameBus);
         return service;
+    }
+
+    /**
+     * Creates the unique composed service with the closed, owner-bound qualification views.
+     * The views observe only an explicitly armed direct-qualification session.
+     */
+    public static SkillDefinitionStoreService registerOn(
+            IEventBus gameBus,
+            PlayerSkillAttachmentService attachmentService,
+            P4E2QualificationFacade.StoreView qualificationStoreView,
+            P4E2QualificationFacade.PlayerView qualificationPlayerView) {
+        Objects.requireNonNull(gameBus, "gameBus");
+        var service = new SkillDefinitionStoreService(
+                Objects.requireNonNull(attachmentService, "attachmentService"),
+                Objects.requireNonNull(qualificationStoreView, "qualificationStoreView"),
+                Objects.requireNonNull(qualificationPlayerView, "qualificationPlayerView"));
+        service.registerLifecycleListeners(gameBus);
+        return service;
+    }
+
+    private void registerLifecycleListeners(IEventBus gameBus) {
+        gameBus.addListener(this::onServerStarting);
+        gameBus.addListener(this::onServerStopped);
     }
 
     /** Looks up one exact retained skill document without exposing the live Store. */
@@ -100,6 +151,14 @@ public final class SkillDefinitionStoreService {
         return submissionPort;
     }
 
+    /** Returns the closed E2 continuation dependency of the fully composed service. */
+    public P4E2OnlineReconciliationDependency onlineReconciliationDependency() {
+        if (onlineReconciliationDependency == null) {
+            throw new IllegalStateException("P4E2_STORE_SERVICE_NOT_COMPOSED");
+        }
+        return onlineReconciliationDependency;
+    }
+
     /** Captures the exact package-private Ready identity tuple before any P4-E1 source work. */
     P4E1GlobalSourceCapture.StoreObservation observeP4E1StoreReady(
             MinecraftServer server) {
@@ -133,6 +192,63 @@ public final class SkillDefinitionStoreService {
         witness.requireBinding(this, server);
         var adapter = installedAdapter(server);
         return witness.matches(adapter);
+    }
+
+    P4E2GroupedStoreValidation.StoreObservation observeP4E2StoreReady(
+            MinecraftServer server,
+            P4E2OnlineReconciliationCoordinator coordinator) {
+        requireP4E2Composition(coordinator);
+        requireServerThread(server);
+        var adapter = installedAdapter(server);
+        if (!(adapter.state() instanceof SkillSavedDataState.Ready ready)) {
+            return P4E2GroupedStoreValidation.StoreObservation.Unavailable.INSTANCE;
+        }
+        return new P4E2GroupedStoreValidation.StoreObservation.Ready(
+                new P4E2GroupedStoreValidation.StoreReadyWitness(
+                        this,
+                        server,
+                        adapter,
+                        ready,
+                        ready.store(),
+                        rootAuditService,
+                        onlineReconciliationDependency));
+    }
+
+    boolean isP4E2StoreReadyCurrent(
+            MinecraftServer server,
+            P4E2GroupedStoreValidation.StoreReadyWitness witness) {
+        requireServerThread(server);
+        Objects.requireNonNull(witness, "witness");
+        if (rootAuditService == null || onlineReconciliationDependency == null) {
+            return false;
+        }
+        final GramaryeSkillSavedData adapter;
+        try {
+            adapter = installedAdapter(server);
+        } catch (SkillSubsystemLifecycleException exception) {
+            return switch (exception.code()) {
+                case BOOTSTRAP_NOT_INSTALLED, OVERWORLD_UNAVAILABLE,
+                        CACHE_IDENTITY_MISMATCH -> false;
+                case WRONG_THREAD, BOOTSTRAP_ALREADY_INSTALLED,
+                        JOURNAL_BOOTSTRAP_ALREADY_INSTALLED -> throw exception;
+            };
+        }
+        return witness.matches(
+                this,
+                server,
+                adapter,
+                rootAuditService,
+                onlineReconciliationDependency);
+    }
+
+    private void requireP4E2Composition(
+            P4E2OnlineReconciliationCoordinator coordinator) {
+        if (rootAuditService == null
+                || onlineReconciliationDependency == null
+                || onlineReconciliationDependency
+                        != Objects.requireNonNull(coordinator, "coordinator")) {
+            throw new IllegalStateException("P4E2_STORE_SERVICE_NOT_COMPOSED");
+        }
     }
 
     /**
@@ -186,6 +302,9 @@ public final class SkillDefinitionStoreService {
     }
 
     private void onServerStopped(ServerStoppedEvent event) {
+        if (qualificationStoreView != null) {
+            qualificationStoreView.clearOnServerStopped();
+        }
         uninstall(event.getServer());
     }
 

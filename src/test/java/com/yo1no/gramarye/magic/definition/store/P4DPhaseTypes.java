@@ -105,6 +105,26 @@ final class P4DPhaseTypes {
             "com/yo1no/gramarye/Gramarye.java",
             "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java");
 
+    /** Exact P4-E2 production owners allowed to add the reconciliation vocabulary. */
+    static final Set<String> E2_RECONCILIATION_PRODUCTION_SOURCE_PATHS = Set.of(
+            "com/yo1no/gramarye/Gramarye.java",
+            "com/yo1no/gramarye/P4E2QualificationFacade.java",
+            "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java",
+            "com/yo1no/gramarye/magic/definition/store/"
+                    + "P4E2BoundPlayerSkillAttachmentReconciliationCapability.java",
+            "com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidation.java",
+            "com/yo1no/gramarye/magic/definition/store/"
+                    + "P4E2OnlineReconciliationCoordinator.java",
+            "com/yo1no/gramarye/magic/definition/store/"
+                    + "P4E2OnlineReconciliationDependency.java",
+            "com/yo1no/gramarye/magic/definition/store/P4E2ReconciliationResult.java",
+            "com/yo1no/gramarye/magic/definition/store/"
+                    + "PlayerSkillAttachmentReconciliationCapability.java",
+            "com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java",
+            "com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java",
+            "com/yo1no/gramarye/magic/definition/submission/"
+                    + "SkillSubmissionRecoveryService.java");
+
     private P4DPhaseTypes() {
     }
 

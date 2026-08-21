@@ -100,8 +100,9 @@ final class P4D1ApiGateTest {
                         .map(Class::getSimpleName)
                         .collect(Collectors.toSet()));
         assertEquals(Set.of(
-                        "committedSkillCount", "find", "latestReference", "ownerOf", "pin",
-                        "reclaim", "registerOn", "submissionPort"),
+                        "committedSkillCount", "find", "latestReference",
+                        "onlineReconciliationDependency", "ownerOf", "pin", "reclaim",
+                        "registerOn", "submissionPort"),
                 publicMethodNames(SkillDefinitionStoreService.class));
         assertEquals(Set.of(
                         SkillDefinitionStoreSubmissionPort.PreparationFailure
@@ -166,6 +167,8 @@ final class P4D1ApiGateTest {
         assertEquals(
                 Set.of(
                         "PendingAttachmentJournalSchema.java",
+                        "P4E2OnlineReconciliationCoordinator.java",
+                        "P4E2ReconciliationResult.java",
                         "SkillSubmissionRecoveryService.java",
                         "MagicSafetyCeilings.java"),
                 relativeFilesContaining("MAX_PENDING_ATTACHMENT_UPDATES"));
@@ -191,7 +194,9 @@ final class P4D1ApiGateTest {
                                         .toAbsolutePath().normalize(),
                                 STORE_ROOT.resolve("SkillRetentionRootAuditService.java")
                                         .toAbsolutePath().normalize())
-                        .contains(path.toAbsolutePath().normalize()))
+                        .contains(path.toAbsolutePath().normalize())
+                        && !P4DPhaseTypes.E2_RECONCILIATION_PRODUCTION_SOURCE_PATHS.contains(
+                                MAIN_JAVA.relativize(path).toString()))
                 .map(P4D1ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
@@ -204,7 +209,7 @@ final class P4D1ApiGateTest {
             assertFalse(allMain.contains(forbidden), forbidden);
         }
         assertFalse(mainWithoutReviewedReconciliationOwners.contains("Reconciliation"),
-                "reconciliation escaped the exact B2-A/B2-B owners");
+                "reconciliation escaped the exact E1/E2 owners");
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
         var workflow = read(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
         assertTrue(build.contains("sourceSets.create('p4D3Probe')"));

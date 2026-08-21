@@ -1,5 +1,9 @@
 package com.yo1no.gramarye.magic.definition.store;
 
+import com.yo1no.gramarye.magic.api.id.SkillId;
+import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
+import com.yo1no.gramarye.magic.definition.document.SkillDocument;
+import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
@@ -8,12 +12,21 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -182,6 +195,86 @@ public final class P4C2StoreProbe {
                 worldRoot.resolve("data").resolve(PRIMARY_FILE_NAME), expected);
     }
 
+    /** Writes and strictly reloads the canonical Store required by the READY Attachment fixture. */
+    public static StoreFacts prepareReady(
+            Path worldRoot, ReadyStoreTruth expected) throws IOException {
+        Objects.requireNonNull(expected, "expected");
+        writeReadyPrimary(worldRoot, expected.owner(), expected.documents());
+        return verifyReadyCanonical(worldRoot, expected);
+    }
+
+    /** Narrow materializer used by the canonical fixture and its omitted-truth controls. */
+    public static StoreFacts writeReadyPrimary(
+            Path worldRoot,
+            SkillOwnerId owner,
+            List<SkillDocument> documents) throws IOException {
+        Objects.requireNonNull(worldRoot, "worldRoot");
+        var store = readyStore(owner, documents);
+        var carrier = requireCarrier(store);
+        var pending = OpaquePendingAttachmentUpdatesBlob.empty();
+        var innerCarrier = SkillSavedDataInnerCarrier.fromPrevalidatedFraming(
+                carrier,
+                pending,
+                Math.addExact(
+                        SkillSavedDataPersistenceSchema.INNER_CARRIER_V0_FRAMING_BYTES,
+                        carrier.storeByteCount()));
+        var root = new CompoundTag();
+        root.put(SkillSavedDataPersistenceSchema.DATA_FIELD, innerCarrier.createDataTag());
+        NbtUtils.addCurrentDataVersion(root);
+        var primary = readyPrimary(worldRoot);
+        Files.createDirectories(primary.getParent());
+        IOUtilities.writeNbtCompressed(root, primary);
+        return facts(carrier);
+    }
+
+    /** External-process proof for the small canonical READY Store primary. */
+    public static StoreFacts verifyReadyCanonical(
+            Path worldRoot, ReadyStoreTruth expected) {
+        Objects.requireNonNull(worldRoot, "worldRoot");
+        Objects.requireNonNull(expected, "expected");
+        var loaded = SkillSavedDataPrimaryIngress.load(
+                readyPrimary(worldRoot), Optional.of(RegistryAccess.EMPTY));
+        if (!(loaded instanceof SkillSavedDataPrimaryLoadResult.Ready ready)
+                || ready.candidate().rewriteRequired()
+                || ready.candidate().facts().truncated()
+                || !ready.candidate().facts().facts().isEmpty()) {
+            throw new AssertionError("P4-C2 READY Store primary is not canonical Ready");
+        }
+        var candidate = ready.candidate();
+        if (candidate.carrier().pending().byteCount() != 0) {
+            throw new AssertionError("P4-C2 READY Store primary contains pending bytes");
+        }
+        requireReadyDomain(
+                candidate.carrier().storeCarrier(), candidate.store(), expected);
+        return facts(candidate.carrier().storeCarrier());
+    }
+
+    /** Pre-login proof that the installed READY Store is canonical, clean, and exact. */
+    public static StoreFacts requireReadyLive(
+            MinecraftServer server, ReadyStoreTruth expected) {
+        requireServerThread(server);
+        Objects.requireNonNull(expected, "expected");
+        var storage = server.overworld().getDataStorage();
+        var first = storage.get(
+                CACHE_HIT_ONLY_FACTORY, SkillDefinitionStoreService.SAVED_DATA_NAME);
+        var second = storage.get(
+                CACHE_HIT_ONLY_FACTORY, SkillDefinitionStoreService.SAVED_DATA_NAME);
+        if (!(first instanceof GramaryeSkillSavedData adapter)
+                || second != adapter
+                || !(adapter.state() instanceof SkillSavedDataState.Ready ready)) {
+            throw new AssertionError("P4-C2 READY Store lost its exact live adapter");
+        }
+        if (ready.rewriteRequired() || adapter.isDirty()) {
+            throw new AssertionError("P4-C2 READY Store is not clean canonical Ready");
+        }
+        if (ready.innerCarrier().pending().byteCount() != 0) {
+            throw new AssertionError("P4-C2 READY Store unexpectedly contains pending bytes");
+        }
+        requireReadyDomain(ready.storeCarrier(), ready.store(), expected);
+        requireControlledReads(adapter, ready.storeCarrier());
+        return facts(ready.storeCarrier());
+    }
+
     private static LiveStore requireLive(MinecraftServer server, ExpectedStore expected) {
         var storage = server.overworld().getDataStorage();
         var first = storage.get(
@@ -234,6 +327,100 @@ public final class P4C2StoreProbe {
         requireCarrierDomain(
                 carrier, candidate.store(), expected.histories(), expected.revisions());
         return facts;
+    }
+
+    private static SkillDefinitionStore readyStore(
+            SkillOwnerId owner, List<SkillDocument> documents) {
+        Objects.requireNonNull(owner, "owner");
+        var source = List.copyOf(Objects.requireNonNull(documents, "documents"));
+        if (source.isEmpty()) {
+            throw new IllegalArgumentException("READY Store material must contain a revision");
+        }
+        var grouped = new TreeMap<SkillId, List<SkillDocument>>(
+                Comparator.comparing(SkillId::value));
+        var references = new LinkedHashSet<SkillReference>();
+        for (var document : source) {
+            var reference = new SkillReference(document.skillId(), document.revision());
+            if (!references.add(reference)) {
+                throw new IllegalArgumentException("READY Store material has a duplicate revision");
+            }
+            grouped.computeIfAbsent(document.skillId(), ignored -> new ArrayList<>())
+                    .add(document);
+        }
+
+        var histories = new ArrayList<SkillHistorySnapshot>(grouped.size());
+        for (var entry : grouped.entrySet()) {
+            entry.getValue().sort(Comparator.comparingInt(
+                    document -> document.revision().value()));
+            var revisions = entry.getValue().stream()
+                    .map(document -> new SkillRevisionSnapshot(
+                            document.revision(), document))
+                    .toList();
+            histories.add(new SkillHistorySnapshot(entry.getKey(), owner, revisions));
+        }
+        return switch (SkillDefinitionStore.restore(
+                new SkillDefinitionStoreSnapshot(histories))) {
+            case SkillDefinitionStoreRestoreResult.Restored restored -> restored.store();
+            case SkillDefinitionStoreRestoreResult.Rejected rejected ->
+                    throw new AssertionError(
+                            "P4-C2 READY Store material was rejected: " + rejected.failure());
+        };
+    }
+
+    private static EncodedSkillStoreCarrier requireCarrier(SkillDefinitionStore store) {
+        return switch (SkillStoreCarrierBuilder.rebuild(store)) {
+            case CarrierBuildResult.Success success -> success.carrier();
+            case CarrierBuildResult.Failure failure ->
+                    throw new AssertionError(
+                            "P4-C2 READY Store carrier rebuild failed: " + failure.failure());
+        };
+    }
+
+    private static void requireReadyDomain(
+            EncodedSkillStoreCarrier carrier,
+            SkillDefinitionStore store,
+            ReadyStoreTruth expected) {
+        requireCarrierDomain(
+                carrier, store, expected.historyCount(), expected.revisionCount());
+        if (store.committedSkillCount(expected.owner()) != expected.historyCount()) {
+            throw new AssertionError("P4-C2 READY Store owner history count differs");
+        }
+
+        var expectedReferences = new LinkedHashSet<SkillReference>();
+        var expectedLatest = new TreeMap<SkillId, Integer>(
+                Comparator.comparing(SkillId::value));
+        for (var document : expected.documents()) {
+            var reference = new SkillReference(document.skillId(), document.revision());
+            expectedReferences.add(reference);
+            expectedLatest.merge(
+                    document.skillId(), document.revision().value(), Math::max);
+            var history = carrier.findHistory(document.skillId()).orElseThrow(
+                    () -> new AssertionError("P4-C2 READY Store is missing a required history"));
+            if (!history.owner().equals(expected.owner())
+                    || history.findRevision(document.revision()).isEmpty()
+                    || !store.ownerOf(document.skillId()).orElseThrow()
+                            .equals(expected.owner())
+                    || store.find(reference).isEmpty()) {
+                throw new AssertionError(
+                        "P4-C2 READY Store is missing required owner/revision truth");
+            }
+        }
+
+        var actualReferences = new LinkedHashSet<SkillReference>();
+        for (var history : carrier.histories()) {
+            if (!history.owner().equals(expected.owner())
+                    || !expectedLatest.containsKey(history.skillId())
+                    || history.latestReference().revision().value()
+                            != expectedLatest.get(history.skillId())) {
+                throw new AssertionError("P4-C2 READY Store has extra or mismatched history truth");
+            }
+            for (var revision : history.revisions()) {
+                actualReferences.add(revision.reference());
+            }
+        }
+        if (!actualReferences.equals(expectedReferences)) {
+            throw new AssertionError("P4-C2 READY Store exact revision set differs");
+        }
     }
 
     private static void requireCarrierDomain(
@@ -298,6 +485,18 @@ public final class P4C2StoreProbe {
                 || !facts.checksum().equals(expected.canonicalStoreChecksum())) {
             throw new AssertionError("P4-C2 full Store facts differ from manifest");
         }
+    }
+
+    private static StoreFacts facts(EncodedSkillStoreCarrier carrier) {
+        return new StoreFacts(
+                carrier.storeByteCount(),
+                carrier.historyCount(),
+                carrier.revisionCount(),
+                sha256(carrier));
+    }
+
+    private static Path readyPrimary(Path worldRoot) {
+        return worldRoot.resolve("data").resolve(PRIMARY_FILE_NAME);
     }
 
     private static String sha256(Path path) throws IOException {
@@ -419,10 +618,87 @@ public final class P4C2StoreProbe {
         }
     }
 
+    /** Canonical READY references derived from both actual Attachment lifecycle states. */
+    public record ReadyStoreTruth(
+            SkillOwnerId owner,
+            List<SkillDocument> documents,
+            List<SkillReference> referenceOccurrences,
+            int latestRouteCount,
+            int latestReferenceCount,
+            int equippedReferenceCount) {
+        public ReadyStoreTruth {
+            Objects.requireNonNull(owner, "owner");
+            documents = List.copyOf(Objects.requireNonNull(documents, "documents"));
+            referenceOccurrences = List.copyOf(Objects.requireNonNull(
+                    referenceOccurrences, "referenceOccurrences"));
+            if (documents.isEmpty()
+                    || latestRouteCount <= 0
+                    || latestReferenceCount <= 0
+                    || latestReferenceCount > latestRouteCount
+                    || equippedReferenceCount <= 0
+                    || referenceOccurrences.size()
+                            != Math.addExact(latestReferenceCount, equippedReferenceCount)) {
+                throw new IllegalArgumentException("READY Store truth has an invalid shape");
+            }
+
+            var documentReferences = new LinkedHashSet<SkillReference>();
+            var maxima = new LinkedHashMap<SkillId, Integer>();
+            for (var document : documents) {
+                var reference = new SkillReference(document.skillId(), document.revision());
+                if (!documentReferences.add(reference)) {
+                    throw new IllegalArgumentException(
+                            "READY Store truth has a duplicate document revision");
+                }
+                maxima.merge(document.skillId(), document.revision().value(), Math::max);
+            }
+            var occurrenceReferences = new LinkedHashSet<>(referenceOccurrences);
+            if (!documentReferences.equals(occurrenceReferences)) {
+                throw new IllegalArgumentException(
+                        "READY Store documents do not cover the exact Attachment references");
+            }
+            var nonlatest = 0;
+            for (var document : documents) {
+                if (document.revision().value() < maxima.get(document.skillId())) {
+                    nonlatest++;
+                }
+            }
+            if (nonlatest == 0) {
+                throw new IllegalArgumentException(
+                        "READY Store truth must retain its referenced nonlatest revision");
+            }
+        }
+
+        public int explicitEmptyLatestCount() {
+            return latestRouteCount - latestReferenceCount;
+        }
+
+        public int historyCount() {
+            return (int) documents.stream().map(SkillDocument::skillId).distinct().count();
+        }
+
+        public int revisionCount() {
+            return documents.size();
+        }
+
+        public int nonlatestRevisionCount() {
+            var maxima = new LinkedHashMap<SkillId, Integer>();
+            for (var document : documents) {
+                maxima.merge(document.skillId(), document.revision().value(), Math::max);
+            }
+            var count = 0;
+            for (var document : documents) {
+                if (document.revision().value() < maxima.get(document.skillId())) {
+                    count++;
+                }
+            }
+            return count;
+        }
+    }
+
     public record StoreFacts(
             int storeBytes, int histories, int revisions, String checksum) {
         public StoreFacts {
-            if (storeBytes < FULL_STORE_MINIMUM_BYTES || histories <= 0 || revisions <= 0) {
+            if (storeBytes <= 0 || histories <= 0 || revisions <= 0) {
                 throw new IllegalArgumentException("Store facts are outside their bound");
             }
             requireSha256(checksum);

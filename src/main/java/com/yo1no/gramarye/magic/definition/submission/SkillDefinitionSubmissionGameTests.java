@@ -113,9 +113,8 @@ public final class SkillDefinitionSubmissionGameTests {
             GameTestHelper helper) {
         var server = helper.getLevel().getServer();
         helper.assertTrue(server.isSameThread(), "submission GameTest requires server thread");
-        try (var store = installIsolatedStore(server, helper)) {
-            var attachments =
-                    PlayerSkillAttachmentGameTests.newServiceForSubmissionGameTests();
+        var attachments = PlayerSkillAttachmentGameTests.newServiceForSubmissionGameTests();
+        try (var store = installIsolatedStore(server, helper, attachments)) {
             var player = player(server, SUCCESS_PLAYER_ID, "p4-d2-b-success");
             var draft = installCompleteDraft(
                     helper, attachments, player, SUCCESS_SKILL_ID);
@@ -167,9 +166,8 @@ public final class SkillDefinitionSubmissionGameTests {
             GameTestHelper helper) {
         var server = helper.getLevel().getServer();
         helper.assertTrue(server.isSameThread(), "submission GameTest requires server thread");
-        try (var store = installIsolatedStore(server, helper)) {
-            var attachments =
-                    PlayerSkillAttachmentGameTests.newServiceForSubmissionGameTests();
+        var attachments = PlayerSkillAttachmentGameTests.newServiceForSubmissionGameTests();
+        try (var store = installIsolatedStore(server, helper, attachments)) {
             var player = player(server, DRIFT_PLAYER_ID, "p4-d2-b-drift");
             var draft = installCompleteDraft(helper, attachments, player, DRIFT_SKILL_ID);
             var dependencies = dependencies(attachments, store.port(), player, true);
@@ -318,13 +316,15 @@ public final class SkillDefinitionSubmissionGameTests {
     }
 
     private static StoreFixture installIsolatedStore(
-            MinecraftServer server, GameTestHelper helper) {
+            MinecraftServer server,
+            GameTestHelper helper,
+            PlayerSkillAttachmentService attachments) {
         var storage = server.overworld().getDataStorage();
         var original = Objects.requireNonNull(
                 storage.get(CACHE_HIT_ONLY_FACTORY, SAVED_DATA_NAME),
                 "startup SavedData adapter");
         IEventBus bus = BusBuilder.builder().build();
-        var service = SkillDefinitionStoreService.registerOn(bus);
+        var service = SkillDefinitionStoreService.registerOn(bus, attachments);
         StoreFixture fixture = null;
         try {
             bus.start();

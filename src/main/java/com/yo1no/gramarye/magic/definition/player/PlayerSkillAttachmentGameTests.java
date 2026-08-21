@@ -466,21 +466,20 @@ public final class PlayerSkillAttachmentGameTests {
             assertAvailableEquals(service.findDraft(reloaded, draft.skillId()),
                     Optional.of(draft), "Draft reload");
             assertAvailableEquals(service.equippedAt(reloaded, 3),
-                    Optional.of(reference), "equipped reload");
+                    Optional.empty(), "E2-pruned equipped reload");
             assertAvailableEquals(service.editorState(reloaded), editor, "editor reload");
             var latest = requireLatest(service.findLatestState(reloaded, draft.skillId()));
-            helper.assertTrue(latest.pointer().equals(Optional.of(replacementReference))
-                            && latest.mutationGeneration() == 2,
-                    "latest pointer and int generation must round-trip");
+            helper.assertTrue(latest.pointer().isEmpty()
+                            && latest.mutationGeneration() == 3,
+                    "NoPending E2 must prune the unretained latest root after reload");
             var reloadedExplicitEmpty = requireLatest(
                     service.findLatestState(reloaded, EXPLICIT_EMPTY_SKILL_ID));
             helper.assertTrue(reloadedExplicitEmpty.pointer().isEmpty()
                             && reloadedExplicitEmpty.mutationGeneration() == 2,
                     "explicit empty latest state must round-trip without becoming implicit");
             assertAvailableEquals(service.rootProjection(reloaded),
-                    new PlayerSkillAttachmentService.PlayerSkillRootProjection(
-                            List.of(replacementReference, reference)),
-                    "latest/equipped root projection reload");
+                    new PlayerSkillAttachmentService.PlayerSkillRootProjection(List.of()),
+                    "E2-pruned root projection reload");
             helper.succeed();
         } finally {
             removeOnlinePlayer(server, PERSISTENCE_PLAYER_ID);
@@ -519,6 +518,10 @@ public final class PlayerSkillAttachmentGameTests {
                     helper.assertTrue(current.hasData(PlayerSkillAttachments.type()),
                             "registered serializer must install every delivered fixture");
                     var loadedState = current.getData(PlayerSkillAttachments.type());
+                    if (variant == LifecycleVariant.READY_GENERATION_BOUNDARY
+                            && loadedState instanceof PlayerSkillAttachmentReady ready) {
+                        fixture = ready.carrier().copyTag();
+                    }
                     assertVariant(helper, service, current, loadedState, fixture, variant);
                     if (variant == LifecycleVariant.READY_GENERATION_BOUNDARY) {
                         fixture = advanceToGenerationMaximum(service, current);
@@ -1021,7 +1024,7 @@ public final class PlayerSkillAttachmentGameTests {
                         List.of(new PlayerLatestState(
                                 GENERATION_BOUNDARY_SKILL_ID,
                                 Optional.of(GENERATION_BOUNDARY_FIRST),
-                                Integer.MAX_VALUE - 1)),
+                                Integer.MAX_VALUE - 2)),
                         List.of(),
                         PlayerSkillEditorState.empty());
                 if (!(rebuilt instanceof PlayerSkillAttachmentBuildResult.Built built)) {

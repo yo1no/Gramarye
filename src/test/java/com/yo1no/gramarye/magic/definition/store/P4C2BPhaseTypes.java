@@ -4,6 +4,7 @@ import java.util.Set;
 
 /** Exact test-only P4-C2-B source allowlist. No name in this class is production-authorized. */
 final class P4C2BPhaseTypes {
+    static final String ROOT_PACKAGE_PATH = "com/yo1no/gramarye";
     static final String PLAYER_PACKAGE_PATH =
             "com/yo1no/gramarye/magic/definition/player";
     static final String STORE_PACKAGE_PATH =
@@ -26,13 +27,21 @@ final class P4C2BPhaseTypes {
     static final Set<String> STORE_PROBE_SOURCE_FILE_NAMES = Set.of(
             "P4C2StoreProbe.java");
 
+    static final Set<String> ROOT_PROBE_SOURCE_FILE_NAMES = Set.of(
+            "P4E2QualificationObservation.java");
+
+    static final Set<String> ROOT_GAME_TEST_SOURCE_FILE_NAMES = Set.of(
+            "P4E2QualificationFacadeTestAccess.java");
+
     private P4C2BPhaseTypes() {
     }
 
     static boolean containsSourceFileName(String name) {
         return PROBE_SOURCE_FILE_NAMES.contains(name)
                 || GAME_TEST_SOURCE_FILE_NAMES.contains(name)
-                || STORE_PROBE_SOURCE_FILE_NAMES.contains(name);
+                || STORE_PROBE_SOURCE_FILE_NAMES.contains(name)
+                || ROOT_PROBE_SOURCE_FILE_NAMES.contains(name)
+                || ROOT_GAME_TEST_SOURCE_FILE_NAMES.contains(name);
     }
 
     static boolean containsTopLevelName(String name) {

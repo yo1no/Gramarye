@@ -220,7 +220,7 @@ final class SkillRetentionRootAuditService {
         return slot.lifecycle;
     }
 
-    void invalidateForReconciliation(MinecraftServer server) {
+    InvalidationResult invalidateForReconciliation(MinecraftServer server) {
         Objects.requireNonNull(server, "server");
         storeService.requireP4E1AuditLifecycle(server);
         expungeStoppedServers();
@@ -230,7 +230,20 @@ final class SkillRetentionRootAuditService {
             slot = new IndexSlot(this, server);
             index.put(server, slot);
         }
-        slot.lifecycle.invalidate(this, server);
+        return slot.lifecycle.invalidate(this, server);
+    }
+
+    boolean isReconciliationInvalidationCurrent(
+            MinecraftServer server, InvalidationResult.Accepted accepted) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(accepted, "accepted");
+        storeService.requireP4E1AuditLifecycle(server);
+        expungeStoppedServers();
+        requireNotStopped(server);
+        var slot = index.get(server);
+        return slot != null
+                && slot.lifecycle.invalidationCurrent(
+                        this, server, accepted.generation());
     }
 
     void removeServer(MinecraftServer server) {
@@ -904,23 +917,27 @@ final class SkillRetentionRootAuditService {
                     exception);
         }
 
-        void invalidate(Object candidateOwner, Object candidateServer) {
+        InvalidationResult invalidate(Object candidateOwner, Object candidateServer) {
             requireBinding(candidateOwner, candidateServer);
             requireReservable(candidateOwner, candidateServer);
             if (state instanceof GenerationExhausted) {
-                return;
+                return InvalidationResult.GenerationExhausted.INSTANCE;
             }
             var currentGeneration = SkillRetentionRootAuditService.generation(state);
             if (currentGeneration == Long.MAX_VALUE) {
                 var oldState = state;
                 state = exhausted;
                 discardAuthority(oldState);
-                return;
+                return InvalidationResult.GenerationExhausted.INSTANCE;
             }
-            var replacement = new IncompleteState(currentGeneration + 1L);
+            var replacement = state instanceof CompleteIndex complete
+                    ? complete.nextInvalidationState
+                    : new IncompleteState(currentGeneration + 1L);
             var oldState = state;
             state = replacement;
             discardAuthority(oldState);
+            return new InvalidationResult.Accepted(
+                    SkillRetentionRootAuditService.generation(replacement));
         }
 
         void remove(Object candidateOwner, Object candidateServer) {
@@ -1081,7 +1098,10 @@ final class SkillRetentionRootAuditService {
                 throw new IllegalStateException("P4E1_COMPLETE_INDEX_AUTHORITY_LOST");
             }
             var returnState = new CompleteIndex(
-                    completeState.generation, completeState.backing, null);
+                    completeState.generation,
+                    completeState.backing,
+                    null,
+                    completeState.nextInvalidationState);
             var lease = new LeaseCell(
                     candidateOwner,
                     candidateServer,
@@ -1109,6 +1129,15 @@ final class SkillRetentionRootAuditService {
             requireBinding(candidateOwner, candidateServer);
             return state == Objects.requireNonNull(expected, "expected")
                     && SkillRetentionRootAuditService.generation(state) == expectedGeneration;
+        }
+
+        private boolean invalidationCurrent(
+                Object candidateOwner,
+                Object candidateServer,
+                long expectedGeneration) {
+            requireBinding(candidateOwner, candidateServer);
+            return state instanceof IncompleteState incomplete
+                    && incomplete.generation == expectedGeneration;
         }
 
         private void releaseLease(
@@ -1242,8 +1271,14 @@ final class SkillRetentionRootAuditService {
                     reservation.generation,
                     seal);
             var permitRegistration = new WeakReference<>(permit);
+            IndexState nextInvalidationState = reservation.generation == Long.MAX_VALUE
+                    ? lifecycle.exhausted
+                    : new IncompleteState(reservation.generation + 1L);
             var state = new CompleteIndex(
-                    reservation.generation, backing, permitRegistration);
+                    reservation.generation,
+                    backing,
+                    permitRegistration,
+                    nextInvalidationState);
             permit.bind(state);
             var result = SkillRetentionRootAuditResult.complete(summary, permit);
             return new PreparedComplete(state, result);
@@ -1325,14 +1360,22 @@ final class SkillRetentionRootAuditService {
         private final long generation;
         private final IndexedBacking backing;
         private final WeakReference<PermitCell> permitRegistration;
+        private final IndexState nextInvalidationState;
 
         private CompleteIndex(
                 long generation,
                 IndexedBacking backing,
-                WeakReference<PermitCell> permitRegistration) {
+                WeakReference<PermitCell> permitRegistration,
+                IndexState nextInvalidationState) {
             this.generation = generation;
             this.backing = Objects.requireNonNull(backing, "backing");
             this.permitRegistration = permitRegistration;
+            this.nextInvalidationState = Objects.requireNonNull(
+                    nextInvalidationState, "nextInvalidationState");
+            if (SkillRetentionRootAuditService.generation(nextInvalidationState)
+                    != (generation == Long.MAX_VALUE ? Long.MAX_VALUE : generation + 1L)) {
+                throw new IllegalArgumentException("next invalidation generation mismatch");
+            }
         }
     }
 
@@ -1755,6 +1798,22 @@ final class SkillRetentionRootAuditService {
         PreparedComplete {
             Objects.requireNonNull(state, "state");
             Objects.requireNonNull(result, "result");
+        }
+    }
+
+    sealed interface InvalidationResult
+            permits InvalidationResult.Accepted,
+                    InvalidationResult.GenerationExhausted {
+        record Accepted(long generation) implements InvalidationResult {
+            public Accepted {
+                if (generation <= 0L) {
+                    throw new IllegalArgumentException("generation must be positive");
+                }
+            }
+        }
+
+        enum GenerationExhausted implements InvalidationResult {
+            INSTANCE
         }
     }
 }

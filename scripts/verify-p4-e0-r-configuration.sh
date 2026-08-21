@@ -443,7 +443,47 @@ is_reviewed_changed_path() {
     is_reviewed_research_path "$1" \
         || is_reviewed_game_path "$1" \
         || is_reviewed_test_path "$1" \
-        || is_reviewed_e1a_changed_path "$1"
+        || is_reviewed_e1a_changed_path "$1" \
+        || is_reviewed_e2_direct_observation_path "$1"
+}
+
+is_reviewed_e2_direct_observation_path() {
+    case "$1" in
+        scripts/verify-p4-e2-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationCoordinator.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2ReconciliationResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentReconciliationCapability.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java | \
+        src/p4C2GameTest/java/com/yo1no/gramarye/P4E2QualificationFacadeTestAccess.java | \
+        src/p4C2GameTest/java/com/yo1no/gramarye/magic/definition/player/P4C2MemoryGameTests.java | \
+        src/p4C2Probe/java/com/yo1no/gramarye/P4E2QualificationObservation.java | \
+        src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/player/P4C2FileVerifier.java | \
+        src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/player/P4C2FixtureBuilder.java | \
+        src/p4C2Probe/java/com/yo1no/gramarye/magic/definition/store/P4C2StoreProbe.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationObservationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/player/P4C2FixtureTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/player/P4E2AtomicReconciliationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2BPhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4DPhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2VisibilityCompileTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryServiceTest.java) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 verify_changed_path_allowlist() {

@@ -10,7 +10,9 @@ import com.yo1no.gramarye.magic.definition.submission.SkillDraftCreationService;
 import com.yo1no.gramarye.magic.definition.submission.SkillIdSource;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
+import java.util.Objects;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
@@ -29,12 +31,21 @@ public final class Gramarye {
     private final SkillDefinitionSubmissionService skillDefinitionSubmissionService;
     private final SkillSubmissionRecoveryService skillSubmissionRecoveryService;
 
-    public Gramarye(IEventBus modBus) {
+    public Gramarye(IEventBus modBus, ModContainer exactContainer) {
+        Objects.requireNonNull(modBus, "modBus");
+        Objects.requireNonNull(exactContainer, "exactContainer");
+        if (!MOD_ID.equals(exactContainer.getModId())) {
+            throw new IllegalArgumentException("unexpected mod container");
+        }
+        var exactFacade = new P4E2QualificationFacade();
         MagicRegistries.register(modBus);
         new DescriptorMigrationAudit().register(modBus);
         playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus);
         skillDefinitionStoreService = SkillDefinitionStoreService.registerOn(
-                NeoForge.EVENT_BUS);
+                NeoForge.EVENT_BUS,
+                playerSkillAttachmentService,
+                exactFacade.storeView(),
+                exactFacade.playerView());
         skillIdSource = SkillDraftCreationService.randomUuidSkillIdSource();
         skillDraftCreationService = new SkillDraftCreationService(
                 playerSkillAttachmentService, skillIdSource);
@@ -45,8 +56,11 @@ public final class Gramarye {
                 skillSubmissionPolicyProvider);
         skillSubmissionRecoveryService = SkillSubmissionRecoveryService.create(
                 playerSkillAttachmentService,
-                skillDefinitionStoreService.submissionPort());
+                skillDefinitionStoreService.submissionPort(),
+                skillDefinitionStoreService.onlineReconciliationDependency(),
+                exactFacade.submissionView());
         skillSubmissionRecoveryService.registerOn(NeoForge.EVENT_BUS);
+        exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);
     }
 
     /** Returns the controlled server skill subsystem port held by this composition root. */

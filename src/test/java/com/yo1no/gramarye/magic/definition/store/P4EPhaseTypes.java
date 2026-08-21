@@ -2,9 +2,9 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import java.util.Set;
 
-/** Exact P4-E1-B production allowlist; P4-E2/E3 surfaces remain absent. */
+/** Historical P4-E1 inventory plus exact post-P3 production exemptions. */
 final class P4EPhaseTypes {
-    static final Set<String> STORE_TYPE_NAMES = Set.of(
+    static final Set<String> E1_STORE_TYPE_NAMES = Set.of(
             "P4E1AuditBudget",
             "P4E1AuditCounter",
             "P4E1AuditStage",
@@ -35,13 +35,26 @@ final class P4EPhaseTypes {
             "SkillRetentionRootAuditResult",
             "SkillRetentionRootAuditService");
 
-    static final Set<String> PUBLIC_STORE_TYPE_NAMES = Set.of(
+    static final Set<String> E1_PUBLIC_STORE_TYPE_NAMES = Set.of(
             "PlayerSkillAttachmentAdmissionSource",
             "SkillRetentionRootAuditResult");
 
-    static final Set<String> PLAYER_TYPE_NAMES = Set.of(
+    static final Set<String> E1_PLAYER_TYPE_NAMES = Set.of(
             "PlayerSkillAttachmentAdmission",
             "PlayerSkillAttachmentSourceObservation");
+
+    /* Legacy post-P3 gates consume this aggregate exact-name exemption. */
+    static final Set<String> STORE_TYPE_NAMES = java.util.stream.Stream.concat(
+                    E1_STORE_TYPE_NAMES.stream(),
+                    P4E2PhaseTypes.NEW_STORE_TOP_LEVEL_TYPE_NAMES.stream())
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+    static final Set<String> PUBLIC_STORE_TYPE_NAMES = java.util.stream.Stream.concat(
+                    E1_PUBLIC_STORE_TYPE_NAMES.stream(),
+                    P4E2PhaseTypes.PUBLIC_STORE_TOP_LEVEL_TYPE_NAMES.stream())
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
+    static final Set<String> PLAYER_TYPE_NAMES = E1_PLAYER_TYPE_NAMES;
 
     static final Set<String> FORBIDDEN_LATER_PHASE_TOKENS = Set.of(
             "P4E1RootIndex",
