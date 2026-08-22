@@ -918,10 +918,12 @@ production-shaped fixed-1,536-MiB combined
 Gate；R2Q research evidence不能取代它。Quarantine byte ceilings在P4-B沒有核准
 consumer，不得為消耗常數建立raw-copy機制。
 
-R2Q沒有自然執行online `ServerPlayer` path。E3必須在同一1,536-MiB envelope actual執行
-online Missing＋Ready、source exclusion與initial／final witness，或提供reviewed machine-checked
-domination proof並另執行actual freshness runtime test；兩種方案都維持relevant 2,048與raw roots
-65,536 exact maximum。Online不得因大多數counter為+0而完全省略。
+P4-E0-B.10把E3 1,536-MiB Gate固定在sole synchronous `ServerStartingEvent` production audit
+coordinate。該座標尚未發生`placeNewPlayer`／`PlayerLoggedInEvent`，所以online player與selected
+online owner都精確為0；Gate仍執行production empty online inventory path，不得偽造startup前player。
+Online逐object domination義務在此座標取消，relevant 2,048與raw roots 65,536仍由
+lifecycle-reachable來源達成。E1 online correctness／precedence／freshness不變；新增任何post-login／
+post-tick／command／background production audit caller會自動重新開啟online memory qualification。
 
 ### P4-E0-B.6 direct qualification observation authority
 
@@ -2127,10 +2129,13 @@ composition outcome、report identity、journal與recovery以
 - P4-E offline defer-to-login disk preservation、P4-D recovery-before-E2、atomic multiprune／generation
   MAX、memory-only index invalidation，Audit N reconciliation後reclaim 0／restart N+1，no chunk
   load／same-call-chain fresh Complete／dirty matrix。P4-E3另須exact fixed-1,536-MiB
-  production-shaped combined Gate與production-JAR fixture isolation；Gate必須覆蓋integrated-owner
-  path或reviewed machine-checked domination proof；online另須actual Missing＋Ready＋source exclusion＋
-  freshness，或machine-checked domination加actual freshness runtime test，並維持relevant 2,048／
-  roots 65,536 exact。R2Q不能取代integrated alias或online runtime evidence。
+  production-shaped combined Gate與production-JAR fixture isolation；fixture選用integrated startup
+  owner時actual child必須覆蓋，未選用時須有reviewed machine-checked structural proof鎖定same-owner
+  exclusion／no dual hydration／no second tree，且該proof不比較object size也不取代actual child；Gate在
+  sole synchronous `ServerStartingEvent`
+  production audit coordinate驗證online與selected online owner皆精確為0，由lifecycle-reachable來源
+  維持relevant 2,048／roots 65,536 exact。未來新增非startup audit caller即重新開啟online memory
+  qualification。R2Q不能取代integrated alias或startup Gate。
 - P4-E memory-only index generation：NoEntry／baseline 0／first reservation 1；audit的success、
   Incomplete、OverLimit、ReconciliationRequired、freshness failure、RuntimeException及Error／OOME
   都恰消耗一次reservation，E2每batch恰一次。驗MAX−1→MAX、MAX後terminal exhaustion、zero source
@@ -2244,9 +2249,9 @@ composition outcome、report identity、journal與recovery以
 - Online source需要raw Tag、serializer／admission、tree／size／DataVersion／DFU，無法排除同UUID
   integrated／disk，無法採單一UUID natural order，或final freshness需要reproject／retry並覆蓋
   較早terminal failure。
-- P4-E3 exact production profile、integrated-owner path或online qualification obligation在
-  product-selected `-Xmx1536m` Gate發生
-  OOME或timeout。
+- P4-E3 exact production profile或B.10 lifecycle-reachable startup envelope在product-selected
+  `-Xmx1536m` Gate發生OOME／timeout；fixture選用的integrated path未執行；fixture未選用integrated
+  且structural proof不成立；或sole startup caller／online exact-zero無法鎖定。
   不得縮fixture／numeric ceiling、拆分simultaneous envelope或自行提heap；唯一出口是
   先修訂P4-0／第18號heap-floor authority。
 - SavedData／Attachment組合被要求承諾fsync或資料庫式durable atomic。
@@ -2549,3 +2554,302 @@ P4-E3 implementation ready, or complete P4-E. After its unique exact-SHA attempt
 Gate passes, the exact next work item is the separate two-ledger B.9 closure. No closure work or
 P4-E3 work occurs in this block.
 <!-- P4_E0_B9_POST_RECLAIM_INDEX_TERMINAL_COMMON_END -->
+
+## P4-E0-B.10 lifecycle-reachable P4-E3 memory envelope authority
+<!-- P4_E0_B10_LIFECYCLE_REACHABLE_P4_E3_MEMORY_ENVELOPE_COMMON_BEGIN -->
+
+This synchronized block is the scoped P4-E0-B.10 authority in the codex-spec documents and its
+decision／phase index in the architecture ledgers. It supersedes only the earlier P4-E3 startup
+fixed-heap wording that required either an actual online player in the simultaneous envelope or an
+online-to-disk／integrated componentwise object-size domination proof. Associated test, Definition
+of Done, release-blocker, and Stop wording is superseded within that exact scope. Historical B.3
+evidence remains immutable. P4-E0-B.9, E1 online behavior and source precedence, E2 reconciliation,
+reclaim semantics, generation, dirty／save, and all other product authority remain unchanged.
+
+The integrated-path safety obligation remains, but not as a second memory-accounting unit. If the
+reviewed fixture selects integrated startup owners, the actual qualifying child must exercise that
+path. Otherwise, a reviewed machine-checked structural proof must lock same-owner disk exclusion,
+snapshot replacement rather than dual hydration, no retained compressed／gzip state, and no second
+whole-tree copy. This proof establishes only source arbitration and retention shape; it is not
+componentwise object-size domination, establishes no source-size ordering, and does not substitute
+for the actual selected-envelope child JVM. Integrated functional／alias evidence may be a separate
+ordinary product assertion, not a second formal memory campaign.
+
+### Fixed product lifecycle coordinate
+
+```text
+P4-E3_FIXED_HEAP_AUTHORITY_COORDINATE
+= SYNCHRONOUS_SERVER_STARTING_EVENT
+
+MinecraftServer.loadLevel completed
+-> PlayerList already constructed
+-> ServerStartingEvent posted synchronously
+-> first tick not begun
+-> placeNewPlayer not invoked
+-> PlayerLoggedInEvent not occurred
+
+online player count              = exactly 0
+selected online owner count      = exactly 0
+online player entries            = 0
+per-player online handles        = 0
+per-player online witnesses      = 0
+per-player online observations   = 0
+```
+
+This exact zero is a locked lifecycle fact, not a reduced workload or a skipped source. The Gate
+must invoke the actual production online inventory path and retain its fixed empty-container and
+control overhead. A test hook must not bypass that code, and no fixture may fabricate a
+`ServerPlayer` as online before `placeNewPlayer`／login.
+
+### Lifecycle-reachable simultaneous envelope
+
+The P4-E3 first child JVM and same-world restart child JVM must each execute the actual synchronous
+`ServerStartingEvent` product chain. Within the fixed-heap product coordinate, the Gate must
+compose the lifecycle-reachable combination of:
+
+- Store Ready state and full Store／carrier;
+- journal Ready state and exact proof-bound journal roots;
+- playerdata directory inventory and selected disk owners;
+- selected integrated startup owners when the future reviewed fixture uses them;
+- source arbitration, relevant-record accounting, and raw-root reservation;
+- grouped Store audit and final source freshness;
+- memory-only Complete permit, active lease／handoff, and the sole materialized snapshot;
+- controlled reclaim and the P4-E0-B.9 outcome-aware terminal;
+- actual dirty／save／normal shutdown; and
+- a fresh in-memory index on same-world restart.
+
+```text
+counter dimensions                    = 25
+new counters                          = 0
+directory entries maximum case        = 4,096
+relevant_records maximum              = 2,048
+attachment admissions maximum case    = 1,024
+raw_root_claims maximum               = 65,536
+journal targets maximum case          = 4,096
+DataVersion                           = exact IntTag(3955)
+P4-E DFU calls                        = 0
+online contribution at ServerStarting = 0
+```
+
+The online contribution of zero does not lower either maximum. The remaining exact maxima must be
+supplied by sources reachable at this lifecycle coordinate, including disk, any reviewed
+integrated startup source used by the fixture, and journal roots. B.10 intentionally does not
+preselect the exact owner／root distribution, Store geometry, or positive removed count; the
+resumed P4-E3 read-only design review must decide those coordinates from the actual APIs.
+
+### Memory qualification unit and shared objects
+
+```text
+P4-E3 memory qualification unit
+= one actual product-shaped child JVM
+  at the fixed effective MaxHeapSize coordinate
+
+PASS
+= child completed
+  and OOME = 0
+  and timeout = 0
+  and all product assertions passed
+  and all required maxima were observed
+  and required first／same-world restart both executed
+```
+
+The fixed process coordinate remains exact
+`-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError`, with effective
+`MaxHeapSize = 1_610_612_736` bytes. The heap, fixture maxima, simultaneous envelope, positive
+reclaim, and restart may not be raised, reduced, split, or omitted.
+
+One live object in the actual JVM naturally occupies heap once. The documentation must neither add
+the same Store, carrier, directory, state, or other shared backing repeatedly across source
+families nor treat a shared object as reusable memory credit. B.10 makes no claim that one source
+shape is intrinsically smaller than another; release authority is the actual reachable envelope
+completing under the fixed heap.
+
+### Superseded online domination and forbidden tooling
+
+The P4-E3 startup Gate no longer requires an `OnlineIdentity`／handle／observation／Ready object to be
+mapped field-by-field or byte-by-byte to a disk or integrated witness, file metadata, list backing,
+map node, or other object. The following are not P4-E3 release authority and must not be added for
+this Gate:
+
+```text
+componentwise shallow-size addition
+retained-graph byte estimation
+object-header estimation
+compressed-oops assumption or detector
+reference-width or alignment assumption
+Map-node size model
+JOL dependency
+java.lang.instrument agent
+Instrumentation.getObjectSize
+Unsafe
+JVMTI agent
+heap-dump retained-size parser
+custom object-layout estimator
+object-graph receipt
+memory-domination report
+new research source set
+```
+
+These prohibitions do not ban ordinary profiling or debugging; they prevent those mechanisms from
+becoming P4-E3 release authority. Existing directly product-owned heap probes may remain part of
+the product Gate.
+
+### E1 online contract and production caller lock
+
+B.10 does not remove the online source and does not declare online source memory generally
+qualified by the startup Gate. The following E1 contract remains unchanged:
+
+```text
+source precedence                   = online > integrated > disk
+bounded online identity snapshot    = unchanged
+duplicate UUID／wrong server／player = fail fast
+Missing／Ready／Quarantined          = unchanged
+online handle                       = single-use
+initial／final player-state witness  = unchanged
+nonempty online relevant accounting = unchanged
+```
+
+Existing E1／E2 unit, API, GameTest, and runtime evidence remains valid. If the resumed E3 review
+finds a functional online correctness gap, it may design one ordinary, non-1,536-MiB targeted
+runtime case; it must not create a second formal memory campaign.
+
+At future P4-E3 production implementation and closure, the global-audit caller contract is:
+
+```text
+SkillRetentionRootAuditService.audit production callers = exactly 1
+sole production coordinate = SkillDefinitionStoreService ServerStarting lifecycle
+post-login audit callers    = 0
+post-first-tick callers     = 0
+command／reload callers     = 0
+background／scheduled callers = 0
+E2 login reconciliation     != global audit caller
+```
+
+A future static Gate must lock that cardinality and coordinate. Any later production change adding
+a post-login, post-first-tick, command／reload, or background／scheduled global-audit caller
+automatically sets:
+
+```text
+ONLINE_MEMORY_QUALIFICATION = REOPENED
+```
+
+That change requires a new review of its reachable simultaneous envelope and the corresponding
+fixed-heap qualification. It must not reuse this B.10 online-zero evidence.
+
+### First run, restart, and unchanged product authority
+
+```text
+first run
+= actual ServerStarting
+-> online count 0
+-> lifecycle-reachable maximum audit
+-> Complete
+-> handoff
+-> snapshot Complete
+-> positive reclaim with a fixed positive removed count
+-> Store source change
+-> B.9 same-generation Incomplete(g)
+-> dirty／normal save／normal shutdown
+
+same-world restart
+= new MinecraftServer object
+-> memory index baseline 0
+-> online count 0
+-> fresh lifecycle-reachable maximum audit
+-> Complete
+-> handoff
+-> snapshot Complete
+-> expected Completed(0)
+-> exact seven-coordinate zero-publication proof
+-> B.9 CompleteIndex(g)
+-> dirty delta 0
+-> normal shutdown
+```
+
+The first and restart runs are both mandatory. A regenerated world is not a restart. R2Q remains
+exploratory／non-normative and cannot substitute for this product Gate. The following coordinates
+remain unchanged:
+
+```text
+P4-E0-B.9 terminal mapping       = unchanged
+Completed(0) zero-publication    = unchanged
+same-generation demotion         = unchanged
+generation and MAX semantics     = unchanged
+single audit per startup         = unchanged
+startup and same-session retries = 0
+E1 arbitration                   = unchanged
+E2 reconciliation                = unchanged
+Store reclaim／dirty／save        = unchanged
+new public API                   = 0
+offline／integrated writes       = 0
+network／DFU／chunk force        = 0
+background work                  = 0
+second full root vector          = 0
+```
+
+### B.10 Stop rules and review resume point
+
+The affected work stops if the lifecycle coordinate or either online exact-zero value cannot be
+proven; if a fake pre-start player or inventory bypass is required; if the 2,048／65,536 maxima,
+25-vector, heap, first／restart, positive reclaim, or B.9 terminals are weakened; if the maxima
+cannot be supplied by lifecycle-reachable sources in the same child; if selected integrated owners
+are not exercised in the actual child; if no integrated owner is selected and the required
+structural proof is absent; if the sole production audit caller cannot be statically locked; if a
+non-startup caller exists without reopening online memory
+qualification; if E1 online semantics／precedence／freshness changes; or if object-layout／
+domination tooling becomes required.
+
+After this authority and its separate closure complete, the P4-E3 review resumes only at:
+
+1. exact first／restart fixture geometry;
+2. lifecycle-reachable 2,048-owner distribution;
+3. lifecycle-reachable 65,536-root distribution;
+4. exact Store／journal／snapshot／reclaim counts;
+5. future production path plan;
+6. tests and static Gates;
+7. Gradle and workflow plan; and
+8. split decision.
+
+It does not reopen B.9, E1 source arbitration, E2 reconciliation, or Candidate／receipt work unless
+a later actual-API review finds a direct product conflict.
+
+### Conditional B.10 authority phase state
+
+```text
+P4-E0-B.10 lifecycle-reachable P4-E3 memory envelope
+= COMPLETE UPON THIS AUTHORITY COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  FIVE-JOB REMOTE GATE PASS
+
+P4-E0-B.10 separate two-ledger closure
+= READY AFTER AUTHORITY REMOTE PASS;
+  NOT STARTED
+
+P4-E0-B.9
+= COMPLETE
+
+P4-E1
+= COMPLETE
+
+P4-E2
+= COMPLETE
+
+P4-E3 prior review stop
+= STOPPED AT ONLINE SOURCE MEMORY OBLIGATION
+  [HISTORICAL]
+
+P4-E3 read-only design review
+= BLOCKED UNTIL P4-E0-B.10
+  AUTHORITY AND SEPARATE CLOSURE
+
+P4-E3 implementation
+= NOT STARTED
+
+P4-E
+= INCOMPLETE
+```
+
+This authority commit does not perform the separate two-ledger closure, reopen the P4-E3 review,
+start implementation, or complete P4-E. After its unique exact-SHA attempt-1 five-job remote Gate
+passes, the exact next work item is the separate B.10 two-ledger closure.
+<!-- P4_E0_B10_LIFECYCLE_REACHABLE_P4_E3_MEMORY_ENVELOPE_COMMON_END -->
