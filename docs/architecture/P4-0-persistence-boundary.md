@@ -5232,3 +5232,110 @@ This authority commit does not perform the separate two-ledger closure, reopen t
 start implementation, or complete P4-E. After its unique exact-SHA attempt-1 five-job remote Gate
 passes, the exact next work item is the separate B.10 two-ledger closure.
 <!-- P4_E0_B10_LIFECYCLE_REACHABLE_P4_E3_MEMORY_ENVELOPE_COMMON_END -->
+
+<!-- P4_E0_B10_SEPARATE_CLOSURE_COMMON_BEGIN -->
+## P4-E0-B.10 separate two-ledger closure
+
+This synchronized documentation-only closure records the already committed, pushed, and remotely
+qualified P4-E0-B.10 lifecycle-reachable P4-E3 memory-envelope authority. It changes no codex-spec
+authority, Java, test, script, Gradle, workflow, resource, fixture, README, R2Q evidence, or product
+behavior. It does not perform or restart the P4-E3 read-only design review. The phase transition
+below becomes effective only after this closure commit has one unique exact-SHA attempt-1 `Build`
+run whose exact five required jobs all complete with `success`.
+
+### B.10 closure authority commit and remote Gate
+
+| Coordinate | Value |
+| --- | --- |
+| Authority commit | `b6ee214820d59a218222d8f11ce4f3fa1176e3d2` |
+| Tree | `700bd60019a6237f23c6cb0bbfc5fa40b5107bba` |
+| Direct parent | `0be97c49f93dce3b3a1e3bfa04ec97ec175f6739` |
+| Subject | `docs(persistence): align E3 memory Gate with startup lifecycle` |
+| Scope / stat | 6 files; 1,891 insertions; 68 deletions |
+| Remote Build run | `32561824809` |
+| Event / branch / attempt | `push` / `main` / `1` |
+| Exact-SHA run count | `1` |
+| Run result | `completed` / `success` |
+| Exact jobs | `build`; `P4-A3 memory gates`; `P4-B memory gates`; `P4-C memory gates`; `P4-D memory gates` |
+| Job result | `5/5 completed/success` |
+
+Missing, extra, duplicate, rerun, skipped, and cancelled jobs are zero. Branch-protection
+required-check configuration remains external governance unknown.
+
+### B.10 closure resolved authority gap
+
+```text
+P4-E3 fixed-heap authority coordinate
+= synchronous ServerStartingEvent
+
+online player count / selected online owner count
+= exactly 0 / exactly 0
+
+relevant_records / raw_root_claims maxima
+= 2,048 / 65,536
+
+maximum-source requirement
+= lifecycle-reachable disk / reviewed integrated startup / journal sources
+
+online-to-disk/integrated componentwise object-size domination
+= not required
+
+production global-audit callers
+= exactly 1; sole ServerStarting lifecycle
+
+future non-startup production audit caller
+= ONLINE_MEMORY_QUALIFICATION REOPENED
+```
+
+This closes the prior online-source memory obligation at the actual startup lifecycle coordinate.
+E1 online correctness, source precedence `online > integrated > disk`, and nonempty-online
+accounting remain unchanged; the exact-zero result is lifecycle-specific and does not remove the
+online source. The fixed `-Xms512m -Xmx1536m -XX:+ExitOnOutOfMemoryError`
+first／same-world-restart Gate, effective `MaxHeapSize = 1_610_612_736`, all 25 counters, positive
+first-run reclaim, restart `Completed(0)`, and every P4-E0-B.9 terminal／cleanup rule remain
+unchanged. Selected integrated startup owners must be exercised in the actual child; otherwise the
+committed structural-proof obligation remains.
+
+### B.10 conditional closure phase transition
+
+```text
+P4-E0-B.10 lifecycle-reachable P4-E3 memory envelope
+= COMPLETE
+
+P4-E0-B.10 separate two-ledger closure
+= COMPLETE UPON THIS CLOSURE COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  FIVE-JOB REMOTE GATE PASS
+
+P4-E0-B.10
+= COMPLETE UPON THE SAME CONDITION
+
+P4-E0-B.9
+= COMPLETE
+
+P4-E1
+= COMPLETE
+
+P4-E2
+= COMPLETE
+
+P4-E3 online-memory review stop
+= HISTORICAL;
+  BLOCKER CLOSED BY P4-E0-B.10
+
+P4-E3 read-only design review
+= OPEN UPON THE SAME CONDITION
+
+P4-E3 implementation
+= NOT STARTED
+
+P4-E
+= INCOMPLETE
+```
+
+Until this closure commit's unique exact-SHA attempt-1 five-job remote Gate passes, the separate
+closure remains incomplete and the P4-E3 review remains blocked; its review body must not restart.
+After that condition passes, P4-E0-B.10 is complete and the exact next work item is a fresh P4-E3
+read-only design review from clean `main`, resumed only at the eight coordinates fixed by B.10. This
+block does not perform that review, declare it PASS／READY, start implementation, or complete P4-E.
+<!-- P4_E0_B10_SEPARATE_CLOSURE_COMMON_END -->
