@@ -4447,3 +4447,598 @@ After that condition passes, P4-E0-B.10 is complete and the exact next work item
 read-only design review from clean `main`, resumed only at the eight coordinates fixed by B.10. This
 block does not perform that review, declare it PASS／READY, start implementation, or complete P4-E.
 <!-- P4_E0_B10_SEPARATE_CLOSURE_COMMON_END -->
+
+<!-- P4_E3_READ_ONLY_DESIGN_REVIEW_CLOSURE_COMMON_BEGIN -->
+## P4-E3 read-only design review closure
+
+This synchronized documentation-only common block closes the authorized P4-E3 read-only design
+review. It records a frozen future implementation contract; it changes no codex-spec authority,
+Java, test, GameTest, probe, script, Gradle, workflow, resource, fixture, README, R2Q evidence, or
+product behavior. It creates no implementation type, source set, task, or CI job, and it does not
+start P4-E3 implementation.
+
+### P4-E3 closure review basis, scope, and verdict
+
+| Coordinate | Value |
+| --- | --- |
+| Review base commit | e40bc39584176e691e9289c8bf1272d7f8964424 |
+| Review base tree | 4df4eb557e223d1323601d7e67fcd919a80237f2 |
+| P4-E2 final closure | 5dda563f7243587e63e477c5299a6e861b64ecb3 |
+| P4-E0-B.9 authority / closure | f742fad498a8a39e3518216e71781d4fa8ecc1be / 0be97c49f93dce3b3a1e3bfa04ec97ec175f6739 |
+| P4-E0-B.10 authority / closure | b6ee214820d59a218222d8f11ce4f3fa1176e3d2 / e40bc39584176e691e9289c8bf1272d7f8964424 |
+| Review verdict | PASS |
+| Split | NO SPLIT |
+| Repository changes during review | 0 |
+| Actual user world / playerdata reads | 0 |
+
+The two earlier review stops are historical. The post-reclaim index-state authority gap was closed
+by P4-E0-B.9, and the online-source memory obligation was closed by P4-E0-B.10. The review resumed
+only at the eight B.10 coordinates and found no later authority or actual-API blocker.
+
+### P4-E3 closure existing owner and exact startup lifecycle
+
+| Existing coordinate | Frozen value |
+| --- | --- |
+| Sole production audit-service owner | SkillDefinitionStoreService.rootAuditService |
+| Field shape | private final |
+| Production SkillRetentionRootAuditService constructions | exactly 1 |
+| Existing ServerStartingEvent listeners | exactly 1 |
+| Existing ServerStoppedEvent listeners | exactly 1 |
+| New public top-level types | 0 |
+| New lifecycle owners | 0 |
+| New coordinator classes | 0 |
+| Integration owner | private method in SkillDefinitionStoreService |
+
+The future exact production start chain is:
+
+    SkillDefinitionStoreService.onServerStarting(event)
+    -> exact server = event.getServer()
+    -> install(server)
+    -> submissionPort.bootstrapJournal(server)
+    -> private runP4E3StartupReclaim(server)
+    -> exact same rootAuditService.audit(server), once
+    -> bounded result mapping
+    -> Complete only:
+         consumeComplete(server, complete), once
+    -> SkillRetentionRootSnapshot.fromCompleteRoots(handoff), once
+    -> Snapshot Complete only:
+         this.reclaim(server, completeSnapshot), once
+    -> P4-E0-B.9 outcome-aware terminal selection
+    -> handoff.close()
+    -> return from the same synchronous ServerStartingEvent
+
+The entire chain uses the same exact server, logic thread, synchronous call chain, and tick/call-chain
+coordinate, before the first tick and before player login.
+
+    startup retry   = 0
+    executor/future = 0
+    parallel stream = 0
+    nested event    = 0
+    second audit    = 0
+    second snapshot = 0
+    second reclaim  = 0
+
+### P4-E3 closure complete terminal matrix
+
+| Stage / result | Downstream / index terminal |
+| --- | --- |
+| Audit Complete | consume exactly once |
+| Audit Incomplete | consume / snapshot / reclaim = 0 |
+| Audit OverLimit | consume / snapshot / reclaim = 0 |
+| Audit ReconciliationRequired | consume / snapshot / reclaim = 0 |
+| Generation exhausted | bounded GENERATION_EXHAUSTED; source work / downstream = 0 |
+| Audit-work RuntimeException | same-generation Incomplete(g) |
+| Pre-reservation programming RuntimeException | original identity escapes; no lease |
+| Audit Error / OOME | reservation fallback; original Throwable identity escapes |
+| Snapshot Complete | reclaim exactly once |
+| Snapshot bounded non-Complete | reclaim = 0; Incomplete(g) |
+| Snapshot RuntimeException | reclaim = 0; Incomplete(g); original identity escapes |
+| Snapshot Error / OOME | reclaim = 0; Incomplete(g); original identity escapes |
+| Reclaim Available(Completed(0)) plus seven-zero proof | mark; CompleteIndex(g) |
+| Reclaim Available(Completed(>0)) | Incomplete(g) |
+| Reclaim Available(Rejected) | Incomplete(g) |
+| Outer Unavailable | Incomplete(g) |
+| Reclaim RuntimeException | Incomplete(g); original identity escapes |
+| Reclaim Error / OOME | Incomplete(g); original identity escapes |
+
+All failure and non-Complete paths retain:
+
+    startup retry                         = 0
+    background retry                      = 0
+    same-session second audit             = 0
+    same-session second snapshot          = 0
+    same-session second reclaim           = 0
+    generation increment on lease terminal = 0
+
+Same-generation Incomplete(Long.MAX_VALUE) is legal. Only a later audit or P4-E2 advance request
+while current generation is MAX returns bounded generation exhaustion with source work zero.
+
+### P4-E3 closure exact P4-E0-B.9 handoff seam
+
+The only new handoff method is fixed on the existing package-private
+P4E1CompleteRootHandoff:
+
+    package-private void markStoreSourceUnchanged()
+
+It has no argument and transports no public boolean, enum, caller-selected policy, raw reclaim
+result, callback, visitor, Supplier, Object, or new public token. It is exact
+owner/server/thread/tick/state/generation-bound, single-use, allocation-free, and nonforgeable.
+
+    second mark:
+      P4E1_COMPLETE_HANDOFF_SOURCE_UNCHANGED_ALREADY_MARKED
+
+    wrong currentness:
+      P4E1_COMPLETE_HANDOFF_NOT_CURRENT
+
+    internal lease mismatch:
+      P4E1_COMPLETE_LEASE_NOT_CURRENT
+
+Before active-lease publication the owner prebuilds:
+
+    CompleteIndex completeTerminalState(g, same backing, permit = null)
+    IncompleteState incompleteTerminalState(g)
+    selectedTerminalState = incompleteTerminalState
+
+Mark validates every coordinate before its final action changes the selection to the prebuilt
+Complete terminal. Close is public only for the AutoCloseable contract. A valid current close is
+allocation-free and nonthrowing; a successful normal close is idempotent. A force-invalidated close
+retains the fixed P4E1_COMPLETE_HANDOFF_FORCE_INVALIDATED rejection. A removed slot is never
+recreated.
+
+### P4-E3 closure manual terminalization and Throwable precedence
+
+The production shape is manual nested try/finally, not try-with-resources:
+
+    normalTerminal = false
+    sourceUnchanged = false
+
+    try:
+        perform snapshot
+        map snapshot result
+
+        if snapshot is Complete:
+            perform reclaim exactly once
+            map reclaim result
+
+            sourceUnchanged =
+                exact Completed(0)
+                + seven-part zero-publication proof
+
+        normalTerminal = true
+    finally:
+        try:
+            if normalTerminal && sourceUnchanged:
+                handoff.markStoreSourceUnchanged()
+        finally:
+            handoff.close()
+
+normalTerminal becomes true only as the final non-fallible body action. A pending Throwable prevents
+marking. Mark failure leaves the preselected terminal Incomplete and the inner finally still closes.
+A legal close never wraps, replaces, or suppresses the primary Throwable. RuntimeException, Error,
+and OOME retain original identity. This contract makes no Store rollback claim.
+
+### P4-E3 closure exact Completed(0) seven-zero proof
+
+| Proof coordinate | Completed(0) |
+| --- | ---: |
+| Removed revisions | 0 |
+| Replacement-history publications | 0 |
+| New Ready publications | 0 |
+| New carrier publications | 0 |
+| Store / state identity delta | 0 |
+| Dirty delta | 0 |
+| Save request | 0 |
+
+The actual proof is:
+
+    revisionsReclaimed == 0
+    -> replacements.isEmpty()
+    -> replacement publication loop iterations == 0
+
+GramaryeSkillSavedData takes its exact zero-removal early return before filtering, carrier build,
+Ready publication, and setDirty. Removed count zero by itself is insufficient; only the complete
+seven-zero proof authorizes markStoreSourceUnchanged and CompleteIndex(g).
+
+### P4-E3 closure reclaim once-only and exception boundary
+
+    future production reclaim callsites = exactly 1
+    first positive startup invocation   = exactly 1
+    restart zero-removal invocation     = exactly 1
+
+Reclaim requires audit Complete, successful consume, the exact active lease, snapshot Complete, the
+same audited Store identity, the same logic thread, and no yield or callback.
+
+The actual mutation ordering is:
+
+    complete replacement plan / report / result
+    -> first histories.put publication
+    -> carrier build
+    -> Ready publication
+    -> setDirty
+
+RuntimeException may occur before, during, or after publication. Error or OOME may leave partial
+Store, carrier, Ready, or dirty state. P4-E0-B.9 guarantees only index demotion, lease cleanup, and
+Throwable identity. It claims no rollback, transaction, fsync, or absence of partial mutation, and
+reclaim is never retried.
+
+### P4-E3 closure exact ServerStopped order
+
+    existing qualification cleanup, if present
+    -> rootAuditService.removeServer(exact server)
+    -> force-clear lease / backing / metadata / permit
+    -> uninstall(exact server)
+    -> return from the existing sole ServerStopped listener
+
+    generation increment = 0
+    snapshot calls       = 0
+    reclaim calls        = 0
+    Store mutation       = 0
+    background cleanup   = 0
+    new listener         = 0
+
+Exact slot removal wins over Complete or Incomplete terminal publication. The stopped server object
+cannot be reused; a new server object starts from memory-index baseline 0.
+
+### P4-E3 closure first and restart exact fixture
+
+| Coordinate | First | Restart |
+| --- | ---: | ---: |
+| Directory physical entries | 4,096 | 4,096 |
+| Canonical .dat | 2,048 | 2,048 |
+| Canonical .dat_old | 2,048 | 2,048 |
+| Online owners | 0 | 0 |
+| Integrated selected owners | 0 | 0 |
+| Disk selected owners | 2,048 | 2,048 |
+| Ready selected records | 1,024 | 1,024 |
+| Missing selected records | 1,024 | 1,024 |
+| Relevant records | 2,048 | 2,048 |
+| Latest roots | 2,049 | 2,049 |
+| Equipped roots | 59,391 | 59,391 |
+| Player roots | 61,440 | 61,440 |
+| Journal roots | 4,096 | 4,096 |
+| Raw/snapshot roots | 65,536 | 65,536 |
+| Distinct SkillId | 2,049 | 2,049 |
+| Store histories before | 2,049 | 2,049 |
+| Store revisions before | 4,096 | 4,095 |
+| Unreachable revisions | 1 | 0 |
+| Reclaim histories scanned | 2,049 | 2,049 |
+| Reclaim revisions scanned | 4,096 | 4,095 |
+| Histories changed | 1 | 0 |
+| Revisions removed | 1 | 0 |
+| Store histories after | 2,049 | 2,049 |
+| Store revisions after | 4,095 | 4,095 |
+| Dirty | false → true | false → false |
+| Audit generation | 0 → 1 | fresh server 0 → 1 |
+| B.9 terminal | Incomplete(1) | CompleteIndex(1) |
+
+The stable first-positive shape is:
+
+    H0 Store   = [r0, r1, r2]
+    H0 journal = [r0, r2]
+    only H0.r1 is unreachable
+
+    H1 Store   = [r0]
+    H1 journal = [r0]
+
+    H2 Store   = [r0, r1]
+    H2 journal = [r0, r1, r0]
+
+Local Store revisions and journal entries are both 6. Globally:
+
+    Store histories          = 2,049
+    Store revisions, first   = 4,096
+    Store revisions, restart = 4,095
+    journal entries          = 4,096
+    journal framing          = 1,048,538 bytes
+
+The first verifier fixes the normally saved Store primary SHA-256, byte count, and modification
+time. Restart uses the same world and requires that exact identity to remain unchanged.
+
+### P4-E3 closure exact 25-counter envelope
+
+First and restart use the same vector:
+
+    directory_entries=4096
+    relevant_records=2048
+    compressed_bytes_per_file=33559514
+    decompressed_bytes_per_file=268435456
+    container_depth_per_file=512
+    compound_containers_per_file=1024
+    compound_field_entries_per_file=65537
+    list_elements_per_file=65536
+    byte_array_elements_per_file=268435384
+    int_array_elements_per_file=65536
+    long_array_elements_per_file=65536
+    modified_utf8_bytes_per_file=67107692
+    scalar_tags_per_file=65537
+    compressed_bytes_total=268440533
+    decompressed_bytes_total=536870912
+    compound_containers_total=131072
+    compound_field_entries_total=524288
+    list_elements_total=131072
+    byte_array_elements_total=456524705
+    int_array_elements_total=131072
+    long_array_elements_total=131072
+    modified_utf8_bytes_total=75497472
+    scalar_tags_total=458752
+    attachment_admissions=1024
+    raw_root_claims=65536
+
+    counter count = 25
+    new counters  = 0
+    disk DataVersion = exact IntTag(3955)
+    P4-E DFU calls   = 0
+
+The future fixture builder first creates actual Ready tags, subtracts their actual contribution from
+the deterministic filler, rejects any negative remainder, and requires the final vector exactly. It
+uses no JVM object-layout estimate.
+
+### P4-E3 closure future fixed 1,536 MiB Gate
+
+This is a frozen future implementation plan. No P4-E3 source set, task, runtime Gate, report, or CI
+job exists or ran in this closure.
+
+    canonical task = p4E3FixedHeapGate
+    isolated source sets = p4E3Probe, p4E3GameTest
+    child JVM count = 5
+
+| Future child | Type | Timeout |
+| --- | --- | ---: |
+| prepareP4E3Fixture | JavaExec | 600 s |
+| runP4E3FirstServer | GameTestServer | 600 s |
+| verifyP4E3First | JavaExec | 300 s |
+| runP4E3RestartServer | same-world GameTestServer | 600 s |
+| verifyP4E3Restart | JavaExec | 300 s |
+
+Every child uses:
+
+    -Xms512m
+    -Xmx1536m
+    -XX:+ExitOnOutOfMemoryError
+    effective MaxHeapSize >= 1,610,612,736 bytes
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+
+Paths:
+
+    game directory = build/p4-e3/fixed-heap-world
+    world          = build/p4-e3/fixed-heap-world/world
+    report root    = build/reports/p4-e3-fixed-heap
+
+Strict report files:
+
+    fixture.json
+    first-runtime.json
+    first.json
+    restart-runtime.json
+    restart.json
+
+Required markers:
+
+    P4_E3_FIXTURE_PREPARED
+    P4_E3_FIRST_COMPLETE
+    P4_E3_FIRST_VERIFIED
+    P4_E3_RESTART_COMPLETE
+    P4_E3_RESTART_VERIFIED
+    P4_E3_FIXED_HEAP_GATE_COMPLETE
+
+Canonical command:
+
+    ./gradlew --no-daemon --no-build-cache --rerun-tasks \
+      --console=plain p4E3FixedHeapGate
+
+Exact task graph:
+
+    verifyP4D3Configuration
+    + jar
+    + p4E3ProbeClasses
+    + p4E3GameTestClasses
+    -> verifyP4E3Configuration
+    -> prepareP4E3Fixture
+    -> runP4E3FirstServer
+    -> verifyP4E3First
+    -> runP4E3RestartServer
+    -> verifyP4E3Restart
+    -> p4E3FixedHeapGate
+
+First and restart require OOME = 0, timeout = 0, first positive reclaim, restart zero reclaim, and
+the same world. A zero-removal first fixture is forbidden.
+
+### P4-E3 closure online and integrated contracts
+
+    future production global-audit callers = exactly 1
+    sole coordinate = ServerStartingEvent
+    online count at that coordinate = 0
+    post-login / tick / command / background audit callers = 0 / 0 / 0 / 0
+
+Any future non-startup production audit caller automatically reopens ONLINE MEMORY QUALIFICATION.
+E1 online behavior and source precedence online > integrated > disk remain unchanged; no online
+memory-domination proof is added.
+
+The selected fixture has integrated selected owners = 0. The portable static Gate proves only that
+same-owner arbitration retains one winner, integrated replaces disk rather than dual hydration, no
+compressed/gzip/tree backing remains retained, and no second whole-tree copy exists. It does not
+claim that integrated objects are smaller.
+
+### P4-E3 closure exact implementation paths
+
+Future production modifications are exactly:
+
+    src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+    src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java
+    src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java
+
+Production NO DELTA:
+
+    SkillDefinitionStore.java
+    GramaryeSkillSavedData.java
+    SkillRetentionRootSnapshot.java
+    SkillRetentionRootAuditResult.java
+    SkillDefinitionStoreSubmissionPort.java
+    P4E2OnlineReconciliationCoordinator.java
+    Gramarye.java
+
+    optional coordinator = none
+    integration owner = SkillDefinitionStoreService private method
+    new public top-level types = 0
+
+Future unit/API tests:
+
+    src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java
+    src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java
+    src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java
+
+Future probe sources:
+
+    src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureBuilder.java
+    src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java
+    src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java
+    src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FileVerifier.java
+    src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java
+
+Future custom runtime:
+
+    src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java
+
+Other exact future paths:
+
+    scripts/verify-p4-e3-configuration.sh
+    build.gradle
+    .github/workflows/build.yml
+
+GameTest resources are generated only under build/generated; no tracked fixture or resource is
+added.
+
+### P4-E3 closure tests and portable static Gate
+
+| Future test | Fixed responsibility |
+| --- | --- |
+| P4E3StartupLifecycleTest | startup/stop order; complete terminal matrix; once-only; Throwable identity |
+| P4E3LeaseTerminalTest | mark/close; seven-zero proof; cleanup; Long.MAX_VALUE; no permit reissue; server-stop leaked lease |
+| P4E3ApiGateTest | exact owners/calls/listeners/paths/public API; no E1/E2/offline/journal mutation; no background caller |
+
+Normal GameTest count remains 12. P4-E3 runtime uses only its custom fixed-heap Gate.
+
+The future portable verifier is scripts/verify-p4-e3-configuration.sh. It must pass bash syntax,
+normal PATH, and PATH=/usr/bin:/bin modes. It locks exact source sets, tasks, edges, heap, timeouts,
+world, reports, markers, fixture table, 25-vector, production callers, two lifecycle registrations,
+public API, production-JAR isolation, and the exact workflow job multiset. Its source scan uses an
+equal-length, CR/LF-preserving, text-block-aware lexical masker and literal linear invocation scan;
+it must not restore recursive whole-input regex.
+
+### P4-E3 closure future workflow topology
+
+The future implementation adds exactly one job:
+
+    id = p4-e-memory-gates
+    name = P4-E memory gates
+    needs =
+      build
+      p4-a3-memory-gates
+      p4-b-memory-gates
+      p4-c-memory-gates
+      p4-d-memory-gates
+    timeout-minutes = 45
+
+It runs only the canonical P4-E3 Gate command. Matrix, retry, continue-on-error, a second P4-E job,
+a nested qualification job, Candidate, and receipt work are forbidden. The future workflow total is
+6 jobs.
+
+This closure commit itself is intentionally earlier than implementation. Its unique exact-SHA
+remote Gate therefore remains the current exact five jobs:
+
+    build
+    P4-A3 memory gates
+    P4-B memory gates
+    P4-C memory gates
+    P4-D memory gates
+
+A P4-E memory job must not appear in this closure's remote run.
+
+### P4-E3 closure split decision and retained limitations
+
+    P4-E3 split = NO SPLIT
+
+Only three existing production files change under one owner and one closed private call graph.
+Lifecycle, P4-E0-B.9 terminal authority, and the fixed-heap Gate form one product-authority chain.
+Document size and Gate duration are not split reasons. A split may be reconsidered only if future
+implementation exposes an unforeseen substantive Stop Condition.
+
+Retained limitations:
+
+- This review did not execute the future custom GameTest or P4-E3 fixed-heap Gate.
+- R2Q is neither release proof nor a universal safety theorem.
+- 1,536 MiB qualifies only this product-shaped envelope.
+- Online = 0 applies only to the sole ServerStarting audit caller.
+- Integrated owners are 0 in this fixture and have structural proof only.
+- RuntimeException, Error, or OOME may leave partial Store mutation.
+- No rollback, cross-file transaction, fsync, or Store/playerdata atomicity is claimed.
+- Branch-protection required-check configuration remains external governance unknown.
+- Actual user world/playerdata reads are 0.
+
+### P4-E3 closure local evidence
+
+    modified repository paths = exactly the two architecture ledgers
+    index before exact staging = empty
+    untracked = 0
+    git diff --check = PASS
+
+    ./gradlew verifyPlatformBaseline compileJava test --console=plain
+      BUILD SUCCESSFUL = exactly 1
+      suites / tests = 199 / 1,460
+      failures / errors / skipped = 0 / 0 / 0
+      StackOverflowError / OOME = 0 / 0
+
+    existing R2Q top-level regular files = 6
+    R2Q symlinks / extras = 0 / 0
+    R2Q payload checksums = 5 / 5 PASS
+    SHA256SUMS.txt SHA-256 =
+      cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9
+
+No GameTest, dedicated server, fixed-heap task, P4-E3 task, R1/R2/R2Q study, or actual user data ran.
+
+### P4-E3 closure conditional phase transition
+
+    P4-E0-B.9
+    = COMPLETE
+
+    P4-E0-B.10
+    = COMPLETE
+
+    P4-E1
+    = COMPLETE
+
+    P4-E2
+    = COMPLETE
+
+    POST-RECLAIM INDEX STATE AUTHORITY GAP
+    = HISTORICAL;
+      CLOSED BY P4-E0-B.9
+
+    ONLINE SOURCE MEMORY OBLIGATION
+    = HISTORICAL;
+      CLOSED BY P4-E0-B.10
+
+    P4-E3 READ-ONLY DESIGN REVIEW
+    = PASS
+
+    P4-E3 SPLIT
+    = NO SPLIT
+
+    P4-E3 REVIEW CLOSURE
+    = COMPLETE UPON THIS CLOSURE COMMIT'S
+      UNIQUE EXACT-SHA ATTEMPT-1
+      FIVE-JOB REMOTE GATE PASS
+
+    P4-E3 IMPLEMENTATION
+    = READY UPON THE SAME CONDITION;
+      NOT STARTED
+
+    P4-E
+    = INCOMPLETE
+
+The condition resolves automatically; no second commit records the closure run ID. Until it passes,
+P4-E3 implementation remains blocked. After it passes, the exact next work item is a separately
+authorized P4-E3 implementation from clean main. This closure neither starts implementation nor
+treats the future fixed-heap Gate, the implementation, or P4-E as completed.
+<!-- P4_E3_READ_ONLY_DESIGN_REVIEW_CLOSURE_COMMON_END -->
