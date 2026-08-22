@@ -3948,3 +3948,92 @@ P4-E3 implementation ready, or complete P4-E. After its unique exact-SHA attempt
 Gate passes, the exact next work item is the separate two-ledger B.9 closure. No closure work or
 P4-E3 work occurs in this block.
 <!-- P4_E0_B9_POST_RECLAIM_INDEX_TERMINAL_COMMON_END -->
+
+
+<!-- P4_E0_B9_SEPARATE_CLOSURE_COMMON_BEGIN -->
+## P4-E0-B.9 separate two-ledger closure
+
+This synchronized documentation-only closure records the already committed, pushed, and remotely
+qualified P4-E0-B.9 post-reclaim index terminal authority. It changes no codex-spec authority,
+Java, test, script, Gradle, workflow, resource, fixture, README, R2Q evidence, or product behavior.
+It does not perform or restart the P4-E3 read-only design review. The phase transition below becomes
+effective only after this closure commit has one unique exact-SHA attempt-1 `Build` run whose exact
+five required jobs all complete with `success`.
+
+### Authority commit and remote Gate
+
+| Coordinate | Value |
+| --- | --- |
+| Authority commit | `f742fad498a8a39e3518216e71781d4fa8ecc1be` |
+| Tree | `f0d5e5fc016907a75898e8678b5b483bd9e987c0` |
+| Direct parent | `5dda563f7243587e63e477c5299a6e861b64ecb3` |
+| Subject | `docs(persistence): define post-reclaim index terminal semantics` |
+| Scope / stat | 6 files; 1,697 insertions; 19 deletions |
+| Remote Build run | `32513880071` |
+| Event / branch / attempt | `push` / `main` / `1` |
+| Exact-SHA run count | `1` |
+| Run result | `completed` / `success` |
+| Exact jobs | `build`; `P4-A3 memory gates`; `P4-B memory gates`; `P4-C memory gates`; `P4-D memory gates` |
+| Job result | `5/5 completed/success` |
+
+Missing, extra, duplicate, rerun, skipped, and cancelled jobs are zero. Branch-protection
+required-check configuration remains external governance unknown.
+
+### Resolved authority gap
+
+```text
+Reclaim Completed(0)
++ exact complete source-unchanged zero-publication proof
+-> CompleteIndex(g)
+
+Every other active-lease terminal
+-> same-generation Incomplete(g)
+
+generation increment
+= 0
+```
+
+This closes the prior post-reclaim index-state authority gap. It does not alter the committed B.9
+terminal matrix, backing／metadata／permit／lease cleanup, Error／OOME precedence, generation／MAX,
+server-stop, public-visibility, first／restart Gate, or future-test authority.
+
+### Conditional closure phase transition
+
+```text
+P4-E0-B.9 post-reclaim index terminal authority
+= COMPLETE
+
+P4-E0-B.9 separate two-ledger closure
+= COMPLETE UPON THIS CLOSURE COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  FIVE-JOB REMOTE GATE PASS
+
+P4-E0-B.9
+= COMPLETE UPON THE SAME CONDITION
+
+P4-E1
+= COMPLETE
+
+P4-E2
+= COMPLETE
+
+P4-E3 prior read-only design review
+= STOPPED AT POST-RECLAIM INDEX STATE AUTHORITY GAP
+  [HISTORICAL; BLOCKER CLOSED BY P4-E0-B.9]
+
+P4-E3 read-only design review
+= OPEN UPON THE SAME CONDITION
+
+P4-E3 implementation
+= NOT STARTED
+
+P4-E
+= INCOMPLETE
+```
+
+Until this closure commit's unique exact-SHA attempt-1 five-job remote Gate passes, the separate
+closure remains incomplete and the P4-E3 review remains blocked; its review body must not restart.
+After that condition passes, P4-E0-B.9 is complete and the exact next work item is a fresh P4-E3
+read-only design review from clean `main`. This block does not perform that review, declare it
+PASS／READY, start implementation, or complete P4-E.
+<!-- P4_E0_B9_SEPARATE_CLOSURE_COMMON_END -->
