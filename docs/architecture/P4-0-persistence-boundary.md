@@ -7159,3 +7159,347 @@ implementation from the preserved thirteen-path worktree under the exact twenty-
 The condition resolves automatically; no second commit records the closure run ID. This closure
 does not resume or complete implementation, pass the future fixed-heap Gate, or complete P4-E.
 <!-- P4_E3_Q02_REVIEW_AUTHORITY_CLOSURE_COMMON_END -->
+
+## P4-E3-Q0.3 exact-29 implementation-scope authority
+<!-- P4_E3_Q03_EXACT29_IMPLEMENTATION_SCOPE_AUTHORITY_COMMON_BEGIN -->
+
+This synchronized documentation-only scoped amendment corrects only the reviewed P4-E3
+implementation path allowlist and the two stale existing-test contracts discovered during local
+qualification. It does not resume implementation, change any Java surface or product behavior,
+perform the separate Q0.3 two-ledger closure, or complete P4-E. All other Q0.1／Q0.2, B.9, B.10,
+E1, E2, and P4-E3 NO SPLIT authority outside this exact allowlist and test-contract correction
+remains unchanged.
+
+Within this exact scope only, the earlier twenty-seven-path wording is superseded by the
+twenty-nine-path inventory below. All twenty-seven previously approved paths remain approved
+without semantic change. Exactly two existing tests are added; no other implementation path is
+authorized.
+
+### Historical local-qualification blocker and exhaustive result
+
+The preserved implementation reached local full-unit qualification and stopped after exactly two
+substantive stale out-of-scope test contracts were emitted:
+
+~~~text
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java
+= historical global production catch-Error count zero
+
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java
+= historical direct uninstall(event.getServer()) source shape
+~~~
+
+A repository-wide read-only test and portable-verifier inventory found no third stale consumer for
+these two changed seams at the reviewed HEAD and preserved implementation bytes.
+
+~~~text
+known stale consumers outside exact-27 scope = exactly 2
+third known stale consumer                   = none found
+~~~
+
+If resumed implementation later exposes a third same-class out-of-scope stale consumer, the result
+is STOP VERIFICATION RECURSION. The implementation scope must not be expanded one file at a time
+without a new exhaustive review and authority decision.
+
+### Exact reviewed startup Error-cleanup exception
+
+The later implementation may contain exactly one reviewed production catch whose alternatives
+include Error:
+
+~~~text
+owner       = SkillDefinitionStoreService
+method      = private void runP4E3StartupReclaim(MinecraftServer server)
+catch shape = catch (RuntimeException | Error failure)
+rethrow     = throw failure;
+count       = exactly 1
+~~~
+
+Its sole purpose is the Q0.2-approved allocation-free E3 startup-observation abort, clearing active
+observation references and rethrowing the identical pending RuntimeException／Error／OOME object.
+P4B2BApiGateTest must prove that the caught variable and exact rethrown variable are both failure
+inside that exact private method and owner. It must not disable or delete the existing dependency
+Error-safety checks.
+
+~~~text
+wrapper / translation                         = 0
+swallow                                       = 0
+logging-only completion                       = 0
+retry                                         = 0
+bounded-success conversion                    = 0
+second production Error catch                 = 0
+all other production catch Error              = 0
+catch Throwable in SkillDefinitionStoreService = 0
+catch Throwable in runP4E3StartupReclaim      = 0
+Error catch in Store reclaim core             = 0
+Error catch in E1 audit path                  = 0
+Error catch in E2 login reconciliation        = 0
+~~~
+
+The reviewed wrapper may not be widened to catch Throwable. A filename-only exemption, an
+owner-wide exemption, a catch with no exact rethrow, or an exception outside
+runP4E3StartupReclaim is not authorized. This scoped rule does not rewrite unrelated historical
+GameTest helper code.
+
+### Exact ServerStopped local identity and order
+
+The Q0.2 zero-argument E2 cleanup surface remains unchanged. The sole existing
+SkillDefinitionStoreService ServerStoppedEvent listener must retain this exact source shape:
+
+~~~java
+var server = event.getServer();
+if (qualificationStoreView != null) {
+    qualificationStoreView.clearOnServerStopped();
+    qualificationStoreView.e3StartupView().clearOnServerStopped(server);
+}
+rootAuditService.removeServer(server);
+uninstall(server);
+~~~
+
+The inferred type of the exact local server is MinecraftServer. event.getServer(), or its equivalent
+bytecode acquisition, occurs exactly once. The existing E2 call
+qualificationStoreView.clearOnServerStopped() has zero arguments, executes first, and must not be
+changed to accept MinecraftServer. Only the following three operations take a server argument, and
+each must read the same local server identity:
+
+~~~text
+qualificationStoreView.e3StartupView().clearOnServerStopped(server)
+rootAuditService.removeServer(server)
+uninstall(server)
+~~~
+
+The exact order is:
+
+~~~text
+zero-argument E2 qualification cleanup
+-> E3 observation cleanup(server)
+-> root-audit removeServer(server)
+-> Store-service uninstall(server)
+~~~
+
+P4E2LifecycleOrderingTest must prove the single effective acquisition, zero-argument E2 call, three
+same-local server reads, and lexical or bytecode call order. Merely finding four substrings is not
+proof. The production lifecycle listener count remains exactly two: one ServerStarting listener
+and one ServerStopped listener. A second stop listener, nested stop event, executor, future,
+callback, background cleanup, retry, or second stop dispatch is prohibited.
+
+### Exact twenty-nine-path implementation scope
+
+Production modifications — 4:
+
+~~~text
+src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java
+~~~
+
+Modified existing tests — 8:
+
+~~~text
+src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java
+src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java
+~~~
+
+New P4-E3 tests — 3:
+
+~~~text
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java
+~~~
+
+Probe files — 5:
+
+~~~text
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureBuilder.java
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FileVerifier.java
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java
+~~~
+
+Custom GameTest files — 2:
+
+~~~text
+src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java
+src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java
+~~~
+
+Modified existing verifiers — 4:
+
+~~~text
+scripts/verify-p4-e2-configuration.sh
+scripts/verify-p4-e1-configuration.sh
+scripts/verify-p4-e0-r-configuration.sh
+scripts/verify-p4-e0-r2q-configuration.sh
+~~~
+
+New verifier — 1:
+
+~~~text
+scripts/verify-p4-e3-configuration.sh
+~~~
+
+Build and workflow — 2:
+
+~~~text
+build.gradle
+.github/workflows/build.yml
+~~~
+
+~~~text
+production modifications              = 4
+modified existing tests               = 8
+new P4-E3 tests                       = 3
+probe files                           = 5
+custom GameTest files                 = 2
+modified existing verifiers           = 4
+new verifier                          = 1
+build.gradle                          = 1
+.github/workflows/build.yml           = 1
+total                                 = 29
+unknown paths                         = 0
+tracked fixture / resource additions  = 0
+codex-spec / ledger / README delta
+  in the implementation commit        = 0
+Gramarye.java                         = NO DELTA
+~~~
+
+A thirtieth implementation path is not authorized. If one is required, implementation stops with
+STOPPED — EXACT-29 IMPLEMENTATION SCOPE INSUFFICIENT.
+
+### Exact verifier synchronization authority
+
+No verifier path is added by Q0.3. When implementation is separately authorized to resume, the
+following five already approved verifier paths may replace their exact twenty-seven-path inventory
+with the exact twenty-nine-path inventory above:
+
+~~~text
+scripts/verify-p4-e2-configuration.sh
+scripts/verify-p4-e1-configuration.sh
+scripts/verify-p4-e0-r-configuration.sh
+scripts/verify-p4-e0-r2q-configuration.sh
+scripts/verify-p4-e3-configuration.sh
+~~~
+
+Each of the five verifiers must independently lock the same complete exact twenty-nine-path set.
+They must require both newly approved test paths, modified-existing-test count eight, total count
+twenty-nine, unknown tracked paths zero, unknown untracked paths zero, and missing required paths
+zero. A src/test blanket, P4*Test wildcard, directory-prefix allowlist, warning-only unknown path,
+or disabled prohibited-path Gate remains forbidden.
+
+The verifiers must continue to lock the Q0.2 exact public surface, production lifecycle listener
+count two, isolated test-only listener, and the future exact six-job workflow only after
+implementation. This Q0.3 authority commit itself does not modify or run those verifiers and still
+qualifies remotely against the current five-job workflow.
+
+### Unchanged authority and product envelope
+
+Q0.3 changes only the implementation allowlist and the two existing-test contracts above.
+
+~~~text
+Candidate A route                     = unchanged
+E3StartupView sealed hierarchy        = unchanged
+four exact enums                      = unchanged
+thirteen exact operations             = unchanged
+four package-private session controls = unchanged
+completed-server witness              = unchanged
+clearOnServerStopped(exactServer)     = unchanged
+B.9 terminal observer                 = unchanged
+B.9 terminal semantics                = unchanged
+B.9 close generation increment        = 0
+B.10 startup online count             = 0
+E1 source precedence                  = online > integrated > disk
+E2 reconciliation                     = unchanged
+P4-E3 split                           = NO SPLIT
+
+relevant_records                      = 2,048
+raw_root_claims                       = 65,536
+counter dimensions                    = 25
+DataVersion                           = exact IntTag(3955)
+P4-E DFU calls                        = 0
+fixed heap                            = 1,536 MiB
+first revisions reclaimed             = 1
+restart revisions reclaimed           = 0
+future workflow jobs added            = 1
+~~~
+
+No product result, mutation, dirty／save decision, retry, generation, memory envelope, fixture,
+workflow topology, network operation, filesystem operation, service ownership, public API, or
+listener is changed by this documentation amendment.
+
+### Preserved implementation worktree
+
+The partial implementation remains suspended and read-only during this authority work:
+
+~~~text
+worktree
+= /private/tmp/gramarye-p4-e3-implementation-resumed-20260823T144730Z
+
+detached HEAD
+= 642f004788427a97133fee7f8eca08453548c5fe
+
+base tree
+= 4a6aa4ddf0de0ed1ae7cfb87ec8f86387272fdc2
+
+reviewed paths
+= exactly 27
+
+unknown paths / index
+= 0 / empty
+
+source-freeze SHA-256
+= 63903da0141f295ef842d064197095eb543b58060d60b7a222938dc97167067e
+
+porcelain-v2 SHA-256
+= 4c77bab0ec57a4475f8f13c3b3e8925a8ec21e822da3a88388fd377b17908a61
+
+full-index diff SHA-256
+= 83eac76fbaf60b2f028db49e1c1dc7b2be5ede95d31132b215e3a65822e56fea
+~~~
+
+No byte, index entry, scope plan, build output, or test result in that worktree is changed by Q0.3.
+The scope becomes twenty-nine only after the authority's remote condition and separate closure,
+followed by a separately authorized implementation-resume turn.
+
+### Q0.3 conditional authority phase transition
+
+~~~text
+P4-E3-Q0.1 technical feasibility
+= COMPLETE — PASS; CANDIDATE A
+
+P4-E3-Q0.1 public-surface completion
+= COMPLETE — PASS
+
+P4-E3-Q0.2
+= COMPLETE
+
+P4-E3-Q0.3 exact-29 implementation-scope authority
+= COMPLETE UPON THIS AUTHORITY COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  FIVE-JOB REMOTE GATE PASS
+
+P4-E3-Q0.3 separate two-ledger closure
+= READY AFTER AUTHORITY REMOTE PASS;
+  NOT STARTED
+
+P4-E3 implementation
+= SUSPENDED IN EXISTING WORKTREE;
+  BLOCKED UNTIL Q0.3 AUTHORITY
+  AND SEPARATE CLOSURE
+
+P4-E
+= INCOMPLETE
+~~~
+
+Until this authority commit has one unique exact-SHA attempt-1 Build run whose exact five existing
+jobs all complete with success, Q0.3 authority is incomplete and its separate two-ledger closure is
+not ready. After that remote condition passes, the exact next work item is the separately
+authorized Q0.3 two-ledger closure. This block does not perform that closure, resume or complete
+implementation, pass the future fixed-heap Gate, or complete P4-E.
+<!-- P4_E3_Q03_EXACT29_IMPLEMENTATION_SCOPE_AUTHORITY_COMMON_END -->
