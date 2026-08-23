@@ -3031,3 +3031,742 @@ This authority commit does not perform the separate two-ledger closure, reopen t
 start implementation, or complete P4-E. After its unique exact-SHA attempt-1 five-job remote Gate
 passes, the exact next work item is the separate B.10 two-ledger closure.
 <!-- P4_E0_B10_LIFECYCLE_REACHABLE_P4_E3_MEMORY_ENVELOPE_COMMON_END -->
+
+## P4-E3-Q0.2 closed startup observation seam authority
+<!-- P4_E3_Q02_CLOSED_STARTUP_OBSERVATION_AUTHORITY_COMMON_BEGIN -->
+
+This synchronized documentation-only scoped amendment adopts the completed P4-E3-Q0.1 Candidate A
+technical review and exact public-surface evidence. It creates no implementation, does not resume
+the preserved 13-path implementation worktree, and does not perform the separate Q0.2 two-ledger
+closure.
+
+Within the closed startup-observation seam only, this later authority supersedes the earlier active
+wording that assumed no deterministic pre-start arm route, fixed the implementation to three
+production files and the older path inventory, required an absolute public-API delta of zero, left
+test-listener and JAR isolation unspecified, or described implementation as READY／NOT STARTED.
+It also narrowly supersedes the B.9 sentence “There is no new public API” and the B.10 coordinate
+“new public API = 0” only for the exact nested facade surface below. Historical B.9, B.10, and
+P4-E3 review／closure evidence remains immutable.
+
+The resulting visibility boundary is exact:
+
+~~~text
+new public top-level types                    = 0
+new public service / Store / root / index API = 0
+new public raw-result or authority getter     = 0
+new public Complete / handoff API              = 0
+new public facade nested recording view        = 1
+new public facade nested bounded enums         = 4
+new StoreView accessor                         = 1
+new public-final recording operations          = 13
+public arm / claim / consume                    = 0 / 0 / 0
+Gramarye.java                                   = NO DELTA
+~~~
+
+P4-E0-B.9, P4-E0-B.10, E1 source precedence, E2 reconciliation, the product
+ServerStarting audit／snapshot／reclaim／B.9 chain, P4-E3 NO SPLIT, and all fixed memory-Gate
+coordinates remain unchanged.
+
+### Q0.2 evidence basis
+
+The normative surface source for this amendment is the repository-external Q0.1 evidence root:
+
+~~~text
+/private/tmp/gramarye-p4-e3-q01-surface-review-evidence-20260823T081707Z
+~~~
+
+It contains exactly 14 regular files, no symlinks or extras. The exact
+PUBLIC_SURFACE_SKELETON.java.txt SHA-256 is:
+
+~~~text
+00bc4b332bc8edce520d7606b8435aff7178f1b09ce596e744e6af5f8668710d
+~~~
+
+The Q0.1 Java 21 positive compile, executable state harness, fourteen negative compile probes,
+javap, jdeps, exhaustive actual-result mappings, client-only scan, and callback／raw／ThreadLocal／
+Unsafe／suppression／side-channel scans all passed. This block records that reviewed surface; it
+does not treat the external probe as repository implementation.
+
+### Q0.2 Candidate A deterministic pre-start route
+
+The only authorized route is:
+
+~~~text
+Gramarye constructor
+-> create the unique existing P4E2QualificationFacade
+-> inject that exact facade's StoreView into SkillDefinitionStoreService
+-> register that exact facade identity as the existing custom extension
+-> constructor returns
+-> p4E3GameTest-only AutomaticEventSubscriber class is initialized and registered
+-> GameTestServer.initServer
+-> PlayerList installed
+-> synchronous ServerAboutToStartEvent
+-> test-only HIGHEST listener resolves the exact same facade extension
+-> armE3Startup(exactServer)
+-> loadLevel
+-> synchronous production ServerStartingEvent
+-> existing NORMAL SkillDefinitionStoreService listener
+-> install
+-> journal bootstrap
+-> audit
+-> consume
+-> snapshot
+-> reclaim
+-> B.9 close
+-> ServerStarted
+-> first GameTest tick resolves the exact same facade again
+-> claimE3Startup(exactServer)
+-> immediate consumeE3Startup(exactServer, exactSession)
+~~~
+
+FMLModContainer.constructMod completes the Gramarye constructor before
+AutomaticEventSubscriber.inject loads and registers the isolated test class on the NeoForge game
+bus. GameTestServer.initServer posts ServerAboutToStartEvent before loadLevel and posts
+ServerStartingEvent after loadLevel. The arm and product listener therefore use different event
+types and do not depend on same-event listener registration order.
+
+The isolated listener shape is fixed:
+
+~~~java
+@EventBusSubscriber(
+        modid = Gramarye.MOD_ID,
+        value = Dist.DEDICATED_SERVER)
+@SubscribeEvent(priority = EventPriority.HIGHEST)
+static void onServerAboutToStart(
+        ServerAboutToStartEvent event)
+~~~
+
+Facade resolution is fixed:
+
+~~~text
+ModList.get()
+-> exact Gramarye ModContainer
+-> getCustomExtension(P4E2QualificationFacade.class)
+-> exact same preconstructed facade identity
+~~~
+
+The test-access class has no mutable static field. The later GameTest re-resolves the facade,
+claims one local opaque Session, immediately consumes it, and copies the bounded package-private
+snapshot into its test-only observation. No session crosses an event callback. First and restart
+are separate child JVMs with fresh ModList, container, facade, server, E3 cell, and token sequence;
+both first legal sessions use token 1. Only the same-world disk crosses those processes.
+
+The route prohibits a Gramarye.java delta, a second facade, extension point, Store service, or
+production listener; a static locator; ThreadLocal; reflection／Unsafe; a system property; and
+filesystem／log session transport.
+
+### Q0.2 exact sealed hierarchy and accessor
+
+The nested hierarchy is exact:
+
+~~~java
+public static sealed abstract class E3StartupView
+        permits E3StartupViewImpl {
+    private E3StartupView(
+            P4E2QualificationFacade owner);
+}
+
+private static final class E3StartupViewImpl
+        extends E3StartupView {
+    private E3StartupViewImpl(
+            P4E2QualificationFacade owner);
+}
+~~~
+
+The existing closed StoreView receives exactly one accessor:
+
+~~~java
+public final E3StartupView e3StartupView();
+~~~
+
+Its argument count is zero; its return type is exactly E3StartupView; every call returns the same
+nonnull owner-bound view identity; and allocation per accessor call is zero. E3StartupView may not
+become an interface, gain another permits target, expose its implementation, or change either
+constructor's visibility or parameter list.
+
+### Q0.2 four exact bounded enums
+
+~~~java
+public enum E3AuditVariant {
+    COMPLETE,
+    INCOMPLETE,
+    OVER_LIMIT,
+    RECONCILIATION_REQUIRED,
+    GENERATION_EXHAUSTED
+}
+
+public enum E3SnapshotVariant {
+    COMPLETE,
+    INCOMPLETE,
+    TRUNCATED,
+    OVER_LIMIT
+}
+
+public enum E3ReclaimVariant {
+    COMPLETED_ZERO,
+    COMPLETED_POSITIVE,
+    REJECTED,
+    UNAVAILABLE
+}
+
+public enum E3IndexTerminal {
+    COMPLETE_INDEX,
+    INCOMPLETE
+}
+~~~
+
+The public nested enum count is exactly four and the value count is exactly fifteen. Names and
+values may not be renamed, merged, added, or removed. Actual sealed production variants require
+exhaustive no-default mapping; UNKNOWN or fallback mapping is prohibited.
+
+### Q0.2 exactly thirteen public-final recording operations
+
+E3StartupView declares exactly these thirteen public final instance operations:
+
+~~~java
+public final boolean beginRecording(
+        MinecraftServer exactServer);
+
+public final void recordAuditInvocation(
+        MinecraftServer exactServer);
+
+public final void recordAuditResult(
+        MinecraftServer exactServer,
+        E3AuditVariant variant,
+        long generation);
+
+public final void recordCompleteConsumeInvocation(
+        MinecraftServer exactServer);
+
+public final void recordSnapshotInvocation(
+        MinecraftServer exactServer);
+
+public final void recordSnapshotResult(
+        MinecraftServer exactServer,
+        E3SnapshotVariant variant,
+        int completeRootCount);
+
+public final void recordReclaimInvocation(
+        MinecraftServer exactServer,
+        boolean dirtyBefore);
+
+public final void recordReclaimResult(
+        MinecraftServer exactServer,
+        E3ReclaimVariant variant,
+        int historiesScanned,
+        int revisionsScanned,
+        int historiesChanged,
+        int revisionsReclaimed);
+
+public final void recordDirtyAfter(
+        MinecraftServer exactServer,
+        boolean dirtyAfter);
+
+public final void recordIndexTerminal(
+        MinecraftServer exactServer,
+        E3IndexTerminal terminal,
+        long generation);
+
+public final void completeRecording(
+        MinecraftServer exactServer);
+
+public final void abortRecording(
+        MinecraftServer exactServer);
+
+public final void clearOnServerStopped(
+        MinecraftServer exactServer);
+~~~
+
+Public checked exceptions, generic Object／callback／collection parameters, and public
+service／Store／root／index／result returns are all zero. These operations may not be regrouped,
+split, merged, or renamed. In IDLE, beginRecording returns false and the remaining twelve
+operations are no-ops before argument validation; the unarmed production path allocates and retains
+nothing and does not read dirty state or invoke classification or terminal observation.
+
+### Q0.2 package-private controls and bounded records
+
+The exact package-private control surface is:
+
+~~~java
+void armE3Startup(
+        MinecraftServer exactServer);
+
+E3StartupSession claimE3Startup(
+        MinecraftServer exactServer);
+
+E3StartupSnapshot consumeE3Startup(
+        MinecraftServer exactServer,
+        E3StartupSession exactSession);
+
+void abortE3Startup(
+        MinecraftServer exactServer,
+        E3StartupSession exactSession);
+~~~
+
+The Session is exact:
+
+~~~java
+static final class E3StartupSession {
+    private final P4E2QualificationFacade owner;
+    private final long token;
+
+    private E3StartupSession(
+            P4E2QualificationFacade owner,
+            long token);
+}
+~~~
+
+The type is package-private and final, its fields and constructor are private, and it contains only
+the exact facade identity and a long token. It contains no server, root, result, or index.
+
+The completed DTO is the following package-private nested record with a package-private canonical
+constructor and exactly nineteen primitive／enum fields:
+
+~~~java
+record E3StartupSnapshot(
+        long sessionToken,
+        int auditInvocations,
+        E3AuditVariant auditVariant,
+        long auditGeneration,
+        int completeConsumeInvocations,
+        int snapshotInvocations,
+        E3SnapshotVariant snapshotVariant,
+        int completeRootCount,
+        int reclaimInvocations,
+        E3ReclaimVariant reclaimVariant,
+        int historiesScanned,
+        int revisionsScanned,
+        int historiesChanged,
+        int revisionsReclaimed,
+        boolean dirtyBefore,
+        boolean dirtyAfter,
+        int indexTerminalObservations,
+        E3IndexTerminal indexTerminal,
+        long indexGeneration) {
+}
+~~~
+
+Public Session and completed DTO types are zero. Public arm, claim, and consume operations are zero.
+
+### Q0.2 cell separation, identity, and state
+
+The existing E2 qualification cell and the new E3 startup-observation cell are distinct. They share
+no active state, completed record, session token, server reference, counter, or consume／abort
+lifecycle.
+
+~~~text
+IDLE
+-> armE3Startup
+-> ARMED_BEFORE_SERVER_STARTING
+-> beginRecording
+-> RECORDING
+-> completeRecording
+-> COMPLETED
+-> claimE3Startup
+-> consumeE3Startup
+-> CONSUMED
+-> IDLE
+~~~
+
+~~~text
+ARMED_BEFORE_SERVER_STARTING / RECORDING / COMPLETED
+-> abortRecording / abortE3Startup / exact ServerStopped clear
+-> ABORTED / CLEARED
+-> IDLE
+~~~
+
+CONSUMED, ABORTED, and CLEARED are assignment-only transient states followed immediately by the
+common allocation-free clear to IDLE. Each facade permits at most one active E3 session or one
+completed-unconsumed session, never both.
+
+Facade identity is the enclosing owner reference. Server identity is exact Java identity and the
+exact server thread; no Thread is retained. Session identity is the nonforgeable pair
+(owner, token). The private token counter starts at zero; the first successful arm obtains one;
+each successor uses Math.incrementExact; wrap, saturation, reuse, and reset are prohibited.
+Exhaustion fails before cell mutation. First and restart have fresh facade-lifetime counters.
+
+The fixed failure codes are:
+
+~~~text
+P4E3_STARTUP_OBSERVATION_ALREADY_ACTIVE
+P4E3_STARTUP_OBSERVATION_ALREADY_CLAIMED
+P4E3_STARTUP_OBSERVATION_WRONG_STATE
+P4E3_STARTUP_OBSERVATION_WRONG_CONTEXT
+P4E3_STARTUP_OBSERVATION_WRONG_SESSION
+P4E3_STARTUP_OBSERVATION_INVALID_COORDINATE
+~~~
+
+A second arm, claim, consume, or invalid state transition fails with its fixed code. A wrong facade
+or token fails WRONG_SESSION. A wrong server or thread fails WRONG_CONTEXT. Failure never clears a
+legitimate foreign session.
+
+### Q0.2 completed-server identity witness
+
+The bounded E3StartupSnapshot is runtime-reference-free. As the sole narrow exception, the existing
+facade's private E3 cell may retain exactly one strong MinecraftServer reference while state is
+COMPLETED and the record remains unconsumed. It is the same exact-server cell written at arm,
+retained as the completed-server identity witness; it is not a second field and is not copied into
+the completed DTO.
+
+The witness has no public or protected accessor; is never placed in a static, ThreadLocal, Map, or
+Collection; is not serialized; enters no network, filesystem, log, or system property; is null when
+unarmed; and is cleared by consume, public abort, package-private discard, or exact server stop.
+A foreign-server stop fails closed and leaves the lawful session unchanged.
+
+COMPLETED retains no Thread, Store, handoff, product snapshot, root, index, permit, Throwable,
+player, Tag, or Path. Completion ordering is exact:
+
+1. validate the full direct-coordinate branch;
+2. allocate and fully construct the bounded E3StartupSnapshot;
+3. complete every potentially allocating or fallible operation;
+4. assign the completed DTO and completed token;
+5. clear mutable coordinate fields by assignment only;
+6. assign exactServer to the sole existing exact-server field as the completed-server identity witness;
+7. assign state = COMPLETED as the last commit write; and
+8. return as the next bytecode action.
+
+Nothing may allocate or invoke a fallible external operation after the commit write.
+
+### Q0.2 direct-coordinate mapping
+
+The completed record is direct runtime evidence, not an inference from disk hashes, size, mtime, or
+logs.
+
+| Coordinate | Actual production source | Recording rule |
+| --- | --- | --- |
+| Recording begin | facade ARMED cell | beginRecording is the first runP4E3StartupReclaim action; false skips all classification, observer, and dirty reads |
+| Audit invocation | immediately before rootAuditService.audit | record exactly one actual call |
+| Audit result | returned sealed SkillRetentionRootAuditResult | exhaustive mapping to the five E3AuditVariant values |
+| Audit generation | actual AuditSummary indexGeneration | record the nonnegative generation, including generationOnly(MAX) |
+| Complete consume invocation | actual Complete branch before consumeComplete | zero for every non-Complete audit; otherwise exactly one |
+| Snapshot invocation | immediately before fromCompleteRoots | exactly one only after Complete consume |
+| Snapshot result | returned sealed SkillRetentionRootSnapshot | exhaustive Complete／Incomplete／Truncated／OverLimit mapping |
+| Snapshot root count | actual Complete roots size | nonnegative only for Complete; exact -1 for every non-Complete |
+| Reclaim invocation | immediately before the sole service reclaim | exactly one only after snapshot Complete; record same-adapter dirtyBefore |
+| Dirty before | same installed adapter immediately before the sole reclaim | record the actual boolean captured with the reclaim invocation |
+| Outer reclaim result | actual SkillSubsystemResult | Unavailable maps UNAVAILABLE; Available proceeds to the inner result |
+| Inner reclaim result | actual SkillReclaimResult | Rejected maps REJECTED; Completed removed 0／greater than 0 maps COMPLETED_ZERO／COMPLETED_POSITIVE |
+| Reclaim report | actual Completed report | four nonnegative counts for Completed; exact four -1 sentinels when there is no report |
+| Dirty after | same installed adapter after normal reclaim return | record the actual boolean after the typed result |
+| B.9 terminal | actual private index state after normal handoff.close return | bounded observer maps only CompleteIndex or IncompleteState |
+| B.9 generation | actual terminal state's generation | must equal the recorded audit generation |
+| Normal completion | full validated branch | allocate and publish one bounded DTO only after all required coordinates |
+| Server-stop cleanup | exact event server | clear after existing E2 cleanup and before root-audit removal and uninstall |
+
+The audit mapping is exhaustive: Complete maps COMPLETE; ordinary Incomplete maps INCOMPLETE;
+OverLimit maps OVER_LIMIT; ReconciliationRequired maps RECONCILIATION_REQUIRED; and the bounded
+generation-exhausted Incomplete reason maps GENERATION_EXHAUSTED. Non-Complete audit is a valid
+audit-terminal record with consume, snapshot, reclaim, dirty reads, and B.9 terminal observations
+all zero.
+
+The snapshot mapping is exhaustive. Reclaim classification is exhaustive over the outer and inner
+sealed families. COMPLETED_ZERO requires revisionsReclaimed equal to zero; COMPLETED_POSITIVE
+requires it greater than zero. Completed report counts are actual and nonnegative. Rejected and
+Unavailable use exactly four -1 sentinels.
+
+recordIndexTerminal is accepted only after either a fully recorded non-Complete snapshot terminal
+or a fully recorded reclaim terminal, including dirty-before and dirty-after. Premature terminal
+observation and COMPLETED_ZERO plus INCOMPLETE are rejected. completeRecording independently
+rechecks the branch, result-to-terminal mapping, and generation.
+
+### Q0.2 bounded B.9 terminal observer
+
+The existing SkillRetentionRootAuditService path may add exactly this package-private nested record
+and package-private method:
+
+~~~java
+static record P4E3IndexTerminalObservation(
+        P4E2QualificationFacade.E3IndexTerminal terminal,
+        long generation) {
+}
+
+P4E3IndexTerminalObservation observeP4E3IndexTerminal(
+        MinecraftServer exactServer);
+~~~
+
+The compact constructor requires a nonnull terminal and nonnegative generation. The method applies
+the existing installed-server, server-thread, not-stopped, owner, and exact identity-slot checks,
+then uses an exhaustive no-default switch over every private IndexState.
+
+~~~text
+CompleteIndex                -> COMPLETE_INDEX
+IncompleteState              -> INCOMPLETE
+NoEntry                      -> P4E3_INDEX_TERMINAL_NOT_AVAILABLE
+AuditInProgress              -> P4E3_INDEX_TERMINAL_NOT_AVAILABLE
+CompleteIndexWithActiveLease -> P4E3_INDEX_TERMINAL_NOT_AVAILABLE
+GenerationExhausted          -> P4E3_INDEX_TERMINAL_NOT_AVAILABLE
+Removed                      -> P4E3_INDEX_TERMINAL_NOT_AVAILABLE
+~~~
+
+A new IndexState variant must break exhaustive compilation. The observer is called exactly once,
+only for an armed normal Complete-audit path and only after handoff.close returns normally. Its one
+bounded enum／long record is immediately copied into the facade cell. It exposes or retains no
+private IndexState, backing, metadata, lease, permit, root, Store, or handoff. Unarmed and
+non-Complete-audit paths do not invoke it.
+
+### Q0.2 cleanup, stop, and unarmed semantics
+
+The armed production wrapper uses an outer RuntimeException／Error catch, calls correct-context
+abortRecording, and rethrows the identical Throwable object. Active-lease B.9 close remains in its
+inner allocation-free finally before facade abort. RuntimeException, Error, or OOME never becomes
+ordinary success and no Throwable, message, or stack is retained.
+
+Correct-context public abort, package-private abort／discard, consume cleanup, and server-stop
+cleanup use field assignments only. OOME while allocating the completed DTO occurs before
+COMPLETED; abort clears active server, active token, and partial coordinates and rethrows the same
+OOME. OOME while claim allocates the bounded Session leaves the completed cell unclaimed so exact
+server stop can still clear it.
+
+ServerStopped order is exact:
+
+~~~text
+existing E2 StoreView.clearOnServerStopped()
+-> E3StartupView.clearOnServerStopped(exactServer)
+-> SkillRetentionRootAuditService.removeServer(exactServer)
+-> SkillDefinitionStoreService.uninstall(exactServer)
+~~~
+
+The stop cleanup clears active or completed session-token cells, partial coordinates, completed
+record, completed-server witness, and claimed flag. It does not reset the facade-lifetime
+e3NextToken counter. A foreign server or wrong thread throws WRONG_CONTEXT without clearing the
+lawful session.
+
+When unarmed, recording allocation, retained reference, dirty read, classification, B.9 observer,
+control-flow／result delta, persistence mutation, network mutation, and filesystem mutation are all
+zero.
+
+### Q0.2 listener and artifact isolation
+
+~~~text
+production ServerStarting listeners       = 1
+production ServerStopped listeners        = 1
+production lifecycle listeners total      = 2
+test-only ServerAboutToStart listeners     = 1
+test-only listener source set              = p4E3GameTest only
+test-only stop listeners                   = 0
+~~~
+
+The test-only source is:
+
+~~~text
+src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java
+~~~
+
+It is a public final test-access class with a private constructor, the one HIGHEST
+ServerAboutToStart handler, no mutable static fields, and one public nested bounded Observation
+record for the store-package GameTest. It exposes no production service, Store, root, handoff,
+snapshot, index, permit, or raw result.
+
+The production JAR must include the approved production E3StartupView, four enums, private
+implementation, E3 cell, and bounded internal classes. It must exclude
+P4E3StartupObservationTestAccess and every nested class, P4E3StartupMemoryGameTests and every
+nested class, every p4E3Probe class, src/test outputs, JUnit, Hamcrest, generated GameTest
+resources, research, Candidate, and receipt tooling. The default production mod and JAR use
+sourceSets.main only; only the isolated P4-E3 run adds p4E3GameTest. Static gates count production
+and custom-source listeners separately.
+
+### Q0.2 exact twenty-seven-path implementation scope
+
+The later implementation scope is exactly the following paths.
+
+Production modifications — 4:
+
+~~~text
+src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java
+~~~
+
+Modified existing tests — 6:
+
+~~~text
+src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java
+src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java
+~~~
+
+New P4-E3 tests — 3:
+
+~~~text
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java
+~~~
+
+Probe files — 5:
+
+~~~text
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureBuilder.java
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FileVerifier.java
+src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java
+~~~
+
+Custom GameTest files — 2:
+
+~~~text
+src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java
+src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java
+~~~
+
+Modified existing verifiers — 4:
+
+~~~text
+scripts/verify-p4-e2-configuration.sh
+scripts/verify-p4-e1-configuration.sh
+scripts/verify-p4-e0-r-configuration.sh
+scripts/verify-p4-e0-r2q-configuration.sh
+~~~
+
+New verifier — 1:
+
+~~~text
+scripts/verify-p4-e3-configuration.sh
+~~~
+
+Build and workflow — 2:
+
+~~~text
+build.gradle
+.github/workflows/build.yml
+~~~
+
+~~~text
+production modifications              = 4
+modified existing tests               = 6
+new P4-E3 tests                       = 3
+probe files                           = 5
+custom GameTest files                 = 2
+modified existing verifiers           = 4
+new verifier                          = 1
+build / workflow                      = 2
+total                                 = 27
+unknown paths                         = 0
+tracked fixture / resource additions  = 0
+codex-spec / ledger / README delta
+  in the implementation commit        = 0
+Gramarye.java                         = NO DELTA
+~~~
+
+A twenty-eighth implementation path, a tracked fixture or resource, a Gramarye.java delta, a second
+facade／extension／service／production listener, or a public service／Store／root／index surface is a
+Stop condition.
+
+### Q0.2 compile, API, and static-gate obligations
+
+Future implementation tests and portable configuration gates must lock:
+
+- the exact sealed class modifiers, one permits target, private constructors, and same accessor
+  identity;
+- four enums, fifteen values, exhaustive no-default actual-result mappings, and no fallback;
+- exactly thirteen public-final operation descriptors and no checked exceptions;
+- exact package-private arm／claim／consume／abort descriptors, private Session constructor, and
+  exact nineteen-field package-private E3StartupSnapshot;
+- new public top-level types zero and no public facade constructor or top-level arm／claim／consume;
+- exact server／thread／facade／session identity, one active or completed-unconsumed maximum,
+  monotonic token and exhaustion, wrong-context preservation, duplicate and order failures;
+- complete publication's single DTO allocation, final COMPLETED field write, immediate return, and
+  no prohibited completed retention;
+- direct actual result branches, counts, dirty transition, post-close B.9 terminal, generation,
+  premature-terminal rejection, and COMPLETED_ZERO／COMPLETE_INDEX agreement;
+- correct RuntimeException／Error／OOME identity and allocation-free cleanup;
+- exact production listener count two, exact test-only HIGHEST AboutToStart listener count one,
+  no test stop listener, and no non-startup production audit caller;
+- exact twenty-seven changed-path allowlists in all affected phase verifiers;
+- exact two P4-E3 source sets and five P4-E3 child JVM tasks, with no extra source set, task, retry,
+  or second memory job;
+- production-JAR inclusion of the authorized nested facade surface and exclusion of all test,
+  p4E3GameTest, p4E3Probe, JUnit／Hamcrest, generated resource, research, Candidate, and receipt
+  outputs; and
+- unchanged normal GameTest count twelve, future P4-E workflow job count one, and exact existing
+  build-job dependencies plus the one reviewed P4-E memory job.
+
+Positive and negative compile probes, javap -public -s, full javap -p -s -c -v, jdeps, bytecode
+allocation／publication checks, text-block-aware equal-length lexical masking, literal linear
+callsite scans, JAR entry and byte-identity checks, and portable verifier three-mode execution are
+required. These gates must not use reflection, raw Object／collection surfaces, a static locator,
+filesystem／log side channels, or production exposure.
+
+### Q0.2 unchanged product authority
+
+The observation seam is memory-only and qualification-only. It neither changes nor chooses a
+product result, mutation, terminal, retry, or caller. The product lifecycle remains:
+
+~~~text
+ServerStarting
+-> audit
+-> handoff
+-> snapshot
+-> reclaim
+-> B.9 close
+~~~
+
+The following coordinates remain exact:
+
+~~~text
+P4-E0-B.9 terminal semantics        = unchanged
+P4-E0-B.10 startup online count     = 0
+E1 source precedence                = online > integrated > disk
+E2 reconciliation                  = unchanged
+P4-E3 split                         = NO SPLIT
+
+relevant_records maximum            = 2,048
+raw_root_claims maximum             = 65,536
+counter dimensions                  = 25
+new counters                        = 0
+DataVersion                         = exact IntTag(3955)
+P4-E DFU calls                      = 0
+P4-E3 fixed heap                    = 1,536 MiB
+first revisions reclaimed           = 1
+restart revisions reclaimed         = 0
+future workflow jobs added          = 1
+~~~
+
+The seam adds no retry, second audit, second snapshot, second reclaim, Store mutation, dirty or save
+decision, network or filesystem write, DFU call, playerdata read, or background work. It records
+the actual local result branch after the product operation. R2Q remains exploratory and
+non-normative and does not substitute for the future P4-E3 product Gate.
+
+### Q0.2 conditional authority phase state
+
+~~~text
+P4-E3-Q0.1 technical feasibility
+= PASS — CANDIDATE A
+
+P4-E3-Q0.1 public-surface completion
+= PASS
+
+P4-E3-Q0.2 closed startup observation authority
+= COMPLETE UPON THIS AUTHORITY COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  FIVE-JOB REMOTE GATE PASS
+
+P4-E3-Q0.2 separate two-ledger closure
+= READY AFTER AUTHORITY REMOTE PASS;
+  NOT STARTED
+
+P4-E3 read-only design review
+= COMPLETE — PASS
+
+P4-E3 split
+= NO SPLIT
+
+P4-E3 implementation
+= SUSPENDED IN EXISTING WORKTREE;
+  BLOCKED UNTIL Q0.2 AUTHORITY
+  AND SEPARATE CLOSURE
+
+P4-E
+= INCOMPLETE
+~~~
+
+This authority commit does not perform the separate Q0.2 two-ledger closure, resume implementation,
+create a production or test seam, make implementation READY, or complete P4-E. After its unique
+exact-SHA attempt-1 five-job remote Gate passes, the exact next work item is the separate
+documentation-only Q0.2 two-ledger closure. No implementation work resumes in this block.
+<!-- P4_E3_Q02_CLOSED_STARTUP_OBSERVATION_AUTHORITY_COMMON_END -->
