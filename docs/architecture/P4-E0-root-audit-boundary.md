@@ -7492,3 +7492,356 @@ ready. After that condition passes, the exact next work item is the separately a
 two-ledger closure. This block does not perform that closure, resume or complete implementation,
 pass the P4-E3 fixed-heap Gate, or complete P4-E.
 <!-- P4_E3_Q04_EXACT30_VERIFIER_SCOPE_CORRECTION_AUTHORITY_COMMON_END -->
+
+<!-- P4_E3_Q04_EXACT30_VERIFIER_SCOPE_CORRECTION_AUTHORITY_CLOSURE_COMMON_BEGIN -->
+## P4-E3-Q0.4 exact-30 verifier-scope correction authority closure
+
+This synchronized documentation-only two-ledger closure records the already committed, pushed,
+and remotely qualified P4-E3-Q0.4 exact-30 verifier-scope correction authority. It changes no
+codex-spec authority, Java, test, GameTest, probe, script, Gradle, workflow, resource, fixture,
+README, R2Q payload, or product behavior. It does not modify, test, clean, stage, restore, or resume
+the frozen P4-E3 implementation worktree. The phase transition below becomes effective only after
+this closure commit has one unique exact-SHA attempt-1 Build run whose exact five required jobs all
+complete with success.
+
+### Q0.4 authority identity and remote qualification
+
+| Coordinate | Value |
+| --- | --- |
+| Authority commit | 7242befa9a713c4587c270617b3631590c703c19 |
+| Tree | c14b35ac582eb002e4bfdedf0b34b9fa75418838 |
+| Direct parent | 287fecefdb77dc0399658e90d0362516aee27872 |
+| Subject | docs(persistence): authorize P4-E3 exact-30 verifier scope |
+| Scope / stat | 6 files; 3,606 insertions; 0 deletions |
+| Authority common-block SHA-256 | c39e67bd3d9cf70f3838a387fd67959bf1d1851a2ca7ae43aad2830f883e43a3 |
+| Exact-30 sorted inventory SHA-256 | b0813298542a16ab120980fc7c840b6c9553224979eb9e29fce145416c29caa1 |
+| Remote Build run | 32705077606 |
+| Event / branch / attempt | push / main / 1 |
+| Exact-SHA run count | 1 |
+| Run result | completed / success |
+| Exact jobs | build; P4-A3 memory gates; P4-B memory gates; P4-C memory gates; P4-D memory gates |
+| Job result | 5/5 completed/success |
+
+Missing, extra, duplicate, rerun, skipped, cancelled, and failed jobs are zero. The authority
+qualified against the current exact five-job workflow; the future P4-E memory job is not present or
+expected for this documentation closure. Branch-protection required-check configuration remains
+external governance unknown. All six committed Q0.4 authority blocks remain byte-identical and
+unchanged.
+
+### Q0.4 exact twenty-nine-to-thirty scope delta
+
+Every Q0.3 exact-29 implementation path and disposition remains authorized without semantic
+change. Q0.4 adds exactly one existing portable verifier and no other path:
+
+~~~text
+scripts/verify-p4-b2-b-configuration.sh
+= MODIFIED_EXISTING_VERIFIER
+~~~
+
+~~~text
+production modifications              = 4
+modified existing tests               = 8
+new P4-E3 tests                       = 3
+probe files                           = 5
+custom GameTest files                 = 2
+modified existing verifiers           = 5
+new P4-E3 verifier                    = 1
+build.gradle                          = 1
+.github/workflows/build.yml           = 1
+total                                 = 30
+unknown paths                         = 0
+tracked fixture / resource additions  = 0
+codex-spec / ledger / README delta
+  in the implementation commit        = 0
+Gramarye.java                         = NO DELTA
+~~~
+
+The only category changes are modified existing verifiers from four to five and total paths from
+twenty-nine to thirty. Path 31 is not authorized.
+
+### Q0.4 exact predecessor-verifier stale assertions
+
+The exhaustive read-only inventory found exactly one scope-outside stale path and exactly three
+stale assertions in it:
+
+~~~text
+path
+= scripts/verify-p4-b2-b-configuration.sh
+
+stale assertion 1
+= repository-wide 600-second task count expected 9
+
+stale assertion 2
+= repository-wide 300-second task count expected 7
+
+stale assertion 3
+= repository-wide production Error-catch count expected 0
+
+scope-outside stale paths found = exactly 1
+stale assertions found          = exactly 3
+other scope-outside tests       = 0 paths / 0 assertions
+second scope-outside path       = none found
+~~~
+
+The fixed-heap qualification stopped at verifyP4B2Configuration before any of the five P4-E3 child
+JVMs started. P4-E3 runtime and Gate markers were zero of six, so runtime was not adjudicated and no
+P4-E3 product failure was established.
+
+### Q0.4 exact timeout topology closure
+
+The exact 600-second topology is:
+
+~~~text
+existing reviewed tasks = 9
+
+P4-E3 additions
+= prepareP4E3Fixture
+  runP4E3FirstServer
+  runP4E3RestartServer
+
+P4-E3 additions = exactly 3
+total            = exactly 12
+unexpected       = 0
+~~~
+
+The exact 300-second topology is:
+
+~~~text
+existing reviewed tasks = 7
+
+P4-E3 additions
+= verifyP4E3First
+  verifyP4E3Restart
+
+P4-E3 additions = exactly 2
+total            = exactly 9
+unexpected       = 0
+~~~
+
+The portable verifier must prove both each total and each exact added task identity. Bare counts,
+at-least counts, unrelated tasks with the same timeout, and timeout inflation are insufficient.
+Every existing P4-B timeout task identity and value remains unchanged.
+
+### Q0.4 sole RuntimeException-or-Error cleanup exception
+
+The only approved production catch whose alternatives include Error is:
+
+~~~text
+owner
+= SkillDefinitionStoreService
+
+method
+= private void runP4E3StartupReclaim(MinecraftServer server)
+
+catch shape
+= catch (RuntimeException | Error failure)
+
+required terminal
+= throw failure;
+
+caught variable / rethrow variable
+= failure / the same failure local
+
+count
+= exactly 1
+~~~
+
+Its sole purpose is the allocation-free E3 startup-observation abort followed by rethrow of the
+identical pending RuntimeException, Error, or OOME object. Wrapper, translation, suppression,
+swallow, continue-after-catch, logging-only completion, retry, bounded-success conversion, and a
+second production Error catch are zero. catch Throwable in SkillDefinitionStoreService is zero.
+SkillDefinitionStore reclaim core, E1 audit, and E2 login reconciliation retain zero Error catches.
+
+### Q0.4 exact portable qualification matrix closure
+
+The final P4-E3 portable qualification matrix contains exactly these twelve scripts:
+
+~~~text
+1  scripts/verify-p4-b2-b-configuration.sh
+2  scripts/verify-p4-c2-a-configuration.sh
+3  scripts/verify-p4-c2-b-configuration.sh
+4  scripts/verify-p4-d1-configuration.sh
+5  scripts/verify-p4-d2-configuration.sh
+6  scripts/verify-p4-d3-a-configuration.sh
+7  scripts/verify-p4-d3-configuration.sh
+8  scripts/verify-p4-e0-r-configuration.sh
+9  scripts/verify-p4-e0-r2q-configuration.sh
+10 scripts/verify-p4-e1-configuration.sh
+11 scripts/verify-p4-e2-configuration.sh
+12 scripts/verify-p4-e3-configuration.sh
+~~~
+
+Each script must pass exactly these three modes:
+
+~~~text
+bash -n
+normal PATH
+PATH=/usr/bin:/bin
+
+scripts             = exactly 12
+modes per script     = exactly 3
+total invocations   = exactly 36
+required result     = 36 / 36 PASS
+~~~
+
+This is the final P4-E3 portable qualification matrix, not a claim that no other phase-specific
+configuration verifier exists in the repository.
+
+### Q0.4 anti-recursion finality
+
+~~~text
+Q0.4 scope correction
+= FINAL ALLOWED SCOPE CORRECTION
+  FOR THIS IMPLEMENTATION CAMPAIGN
+
+path 31
+= NOT AUTHORIZED
+~~~
+
+If exact-30 qualification later requires path 31 or discovers another scope-outside stale
+consumer, the fixed result is:
+
+~~~text
+STOP VERIFICATION RECURSION
+
+P4-E3 implementation campaign
+= STOPPED FOR COMPLETE SCOPE-MODEL REASSESSMENT
+
+Q0.5 incremental path repair
+= PROHIBITED
+~~~
+
+No incremental follow-on scope patch may silently extend this campaign.
+
+### Q0.4 closure unchanged authority and product envelope
+
+~~~text
+P4-E3-Q0.1 technical feasibility      = COMPLETE — PASS; CANDIDATE A
+P4-E3-Q0.1 public-surface completion  = COMPLETE — PASS
+P4-E3-Q0.2                            = COMPLETE
+P4-E3-Q0.3                            = COMPLETE
+P4-E0-B.9 terminal semantics          = unchanged
+P4-E0-B.10 lifecycle memory authority = unchanged
+P4-E1 / P4-E2                         = unchanged / unchanged
+P4-E3 split                           = NO SPLIT
+
+Candidate A route                     = unchanged
+four exact enums / thirteen operations = unchanged / unchanged
+package-private session controls      = unchanged
+completed-server witness              = unchanged
+ServerStopped order                   = zero-argument E2 cleanup
+                                        -> E3 cleanup(server)
+                                        -> root-audit remove(server)
+                                        -> uninstall(server)
+B.9 close generation increment        = 0
+B.10 startup online count             = 0
+relevant_records / raw_root_claims     = 2,048 / 65,536
+counter dimensions                    = 25
+DataVersion                           = exact IntTag(3955)
+P4-E DFU calls                        = 0
+fixed heap                            = 1,536 MiB
+first / restart revisions reclaimed   = 1 / 0
+~~~
+
+Q0.4 changes only the exact implementation allowlist and the three predecessor-verifier assertions
+above. It changes no product result, mutation, dirty/save decision, retry, generation, source
+precedence, memory envelope, fixture, workflow topology, network or filesystem behavior, service
+ownership, public Java surface, lifecycle listener, B.9, B.10, Q0.1, Q0.2, Q0.3, or NO SPLIT
+decision. The P4-E3 fixed-heap Gate has not passed and is not declared PASS by this closure.
+
+### Q0.4 frozen exact-29 implementation preservation
+
+| Coordinate | Preserved value |
+| --- | --- |
+| Worktree | /private/tmp/gramarye-p4-e3-implementation-final-20260824T051927Z |
+| Detached HEAD | 287fecefdb77dc0399658e90d0362516aee27872 |
+| Base tree | e525ebacd4d84a695b19003bb3f9bee392a00bba |
+| SOURCE_FREEZE_29.tsv SHA-256 | 65341c369810124af40fb78c3f02b6fa246c31d9062d428af4a3ced7dbb5131d |
+| Exact-29 path-set SHA-256 | 28493fa89830cbe43dcb29b02418cc3f67e057970dd713b8a61c18946e7460d6 |
+| Porcelain-v2 SHA-256 | e1c4b3ef3d505275cc88cf1363f79b23fc4cd166ce7efe9183895ac3d7613d47 |
+| Full-index diff SHA-256 | c0a1d647eaa14ac26073454edab0ecf48c339351edb250d607f4e75b6dea39af |
+| Paths / unknown paths | 29 / 0 |
+| Index | empty |
+| Closure pre/post fingerprints | byte-identical |
+
+No byte, index entry, scope-plan file, build output, or test result in that worktree is modified,
+staged, restored, cleaned, or generated by this closure. It remains the exact frozen resumption
+input under the authorized exact-30 scope only after the conditional remote result below passes.
+
+### Q0.4 closure local and integrity evidence
+
+~~~text
+modified repository paths = exactly the two architecture ledgers
+index before exact staging = empty
+untracked                  = 0
+git diff --check           = PASS
+common closure blocks      = byte-identical
+Q0.4 authority blocks      = unchanged
+Markdown fences / tables / links / anchors = PASS
+conflict markers           = 0
+duplicate-anchor increment = 0
+~~~
+
+~~~text
+./gradlew verifyPlatformBaseline compileJava test --console=plain
+return code                  = 0
+BUILD SUCCESSFUL             = exactly 1
+suites / tests               = 199 / 1,460
+failures / errors / skipped  = 0 / 0 / 0
+StackOverflowError / OOME    = 0 / 0
+~~~
+
+The existing official R2Q directory is checked without rerunning or rebuilding the study:
+
+~~~text
+top-level regular files = 6
+symlinks / extras       = 0 / 0
+payload checksums       = 5 / 5 PASS
+SHA256SUMS.txt SHA-256  = cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9
+~~~
+
+No GameTest, dedicated server, fixed-heap task, P4-E3 Gate, portable 36-invocation matrix, R2Q
+study, implementation-worktree test, or actual user world/playerdata read runs in this closure.
+
+### Q0.4 conditional closure phase transition
+
+~~~text
+P4-E3-Q0.1
+= COMPLETE — PASS; CANDIDATE A
+
+P4-E3-Q0.2
+= COMPLETE
+
+P4-E3-Q0.3
+= COMPLETE
+
+P4-E3-Q0.4 exact-30 verifier-scope authority
+= COMPLETE
+
+P4-E3-Q0.4 separate two-ledger closure
+= COMPLETE UPON THIS CLOSURE COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  FIVE-JOB REMOTE GATE PASS
+
+P4-E3-Q0.4
+= COMPLETE UPON THE SAME CONDITION
+
+P4-E3 implementation
+= READY TO RESUME FROM FROZEN
+  EXACT-29 PROGRESS UNDER
+  AUTHORIZED EXACT-30 SCOPE
+  UPON THE SAME CONDITION;
+  NOT COMPLETE
+
+P4-E
+= INCOMPLETE
+~~~
+
+Until this closure commit's unique exact-SHA attempt-1 five-job remote Gate passes, this closure
+remains incomplete and P4-E3 implementation remains blocked. Commit and push alone do not resume
+implementation. After the condition passes, P4-E3-Q0.4 is complete and the exact next work item is
+a separately authorized resume from the frozen exact-29 implementation progress under the
+authorized exact-30 scope. The condition resolves automatically; no second commit records the
+closure run ID. This closure does not resume or complete implementation, pass the P4-E3 fixed-heap
+Gate, or complete P4-E.
+<!-- P4_E3_Q04_EXACT30_VERIFIER_SCOPE_CORRECTION_AUTHORITY_CLOSURE_COMMON_END -->
