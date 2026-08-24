@@ -7783,3 +7783,604 @@ the exact twenty-nine-path scope. The condition resolves automatically; no secon
 the closure run ID. This closure does not resume or complete implementation, pass the future
 fixed-heap Gate, or complete P4-E.
 <!-- P4_E3_Q03_EXACT29_IMPLEMENTATION_SCOPE_AUTHORITY_CLOSURE_COMMON_END -->
+## P4-E3-Q0.4 exact-30 verifier-scope correction authority
+<!-- P4_E3_Q04_EXACT30_VERIFIER_SCOPE_CORRECTION_AUTHORITY_COMMON_BEGIN -->
+
+This synchronized documentation-only scoped amendment authorizes the final narrow verifier-scope
+correction discovered during P4-E3 local qualification. It does not modify repository source,
+tests, scripts, Gradle, workflow, resources, README, product behavior, or the frozen implementation
+worktree. It does not resume implementation, run the fixed-heap Gate, perform the separate Q0.4
+two-ledger closure, or complete P4-E.
+
+Within this exact scope only, this block supersedes the Q0.3 statements that fixed the implementation
+allowlist at twenty-nine paths, prohibited a thirtieth path, counted modified existing verifiers as
+four, stated that no verifier path was added, and fixed the final P4-E3 portable qualification
+matrix at eleven scripts and thirty-three invocations. Those Q0.3 statements remain historical facts
+about the then-reviewed scope. Every other Q0.1／Q0.2／Q0.3, B.9, B.10, E1, E2, Candidate A,
+product, test-contract, and NO SPLIT authority remains unchanged.
+
+### Historical predecessor-verifier stop
+
+The sole P4-E3 fixed-heap qualification invocation stopped in an existing predecessor configuration
+verifier before any P4-E3 child JVM started:
+
+~~~text
+canonical command
+= ./gradlew --no-daemon --no-build-cache --rerun-tasks
+  --console=plain p4E3FixedHeapGate
+
+first failing task
+= verifyP4B2Configuration
+
+scope-outside stale path
+= scripts/verify-p4-b2-b-configuration.sh
+
+scope-outside stale paths found
+= exactly 1
+
+stale assertions in that path
+= exactly 3
+
+other scope-outside tests
+= 0 paths / 0 assertions
+
+second scope-outside path
+= none found
+
+P4-E3 child JVMs started
+= 0 / 5
+
+P4-E3 runtime / Gate markers
+= 0 / 6
+
+P4-E3 runtime verdict
+= NOT ADJUDICATED
+
+P4-E3 product failure
+= NOT ESTABLISHED
+~~~
+
+The three stale assertions are the former global 600-second count of nine, the former global
+300-second count of seven, and the former repository-wide prohibition on every production Error
+catch. This predecessor-verifier stop is a scope-model mismatch, not a P4-E3 fixture, heap,
+counter, lifecycle, or product result.
+
+### Exact thirty-path implementation allowlist
+
+The complete exact allowlist is the Q0.3 twenty-nine-path inventory plus one and only one new path.
+No prefix, wildcard, directory allowance, or warning-only unknown-path policy is authorized:
+
+~~~text
+1  src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java
+2  src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+3  src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java
+4  src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java
+
+5  src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java
+6  src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java
+7  src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java
+8  src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java
+9  src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java
+10 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java
+11 src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java
+12 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java
+
+13 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java
+14 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java
+15 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java
+
+16 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureBuilder.java
+17 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java
+18 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java
+19 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FileVerifier.java
+20 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java
+
+21 src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java
+22 src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java
+
+23 scripts/verify-p4-e2-configuration.sh
+24 scripts/verify-p4-e1-configuration.sh
+25 scripts/verify-p4-e0-r-configuration.sh
+26 scripts/verify-p4-e0-r2q-configuration.sh
+27 scripts/verify-p4-e3-configuration.sh
+28 build.gradle
+29 .github/workflows/build.yml
+
+30 scripts/verify-p4-b2-b-configuration.sh
+~~~
+
+~~~text
+production modifications       = 4
+modified existing tests        = 8
+new P4-E3 tests                 = 3
+probe files                     = 5
+custom GameTest files           = 2
+modified existing verifiers     = 5
+new P4-E3 verifier              = 1
+build.gradle                    = 1
+.github/workflows/build.yml     = 1
+total                           = 30
+
+unknown paths                   = 0
+tracked fixture / resources     = 0
+Gramarye.java                   = NO DELTA
+codex-spec / ledger / README
+  delta in implementation commit = 0
+
+exact-30 sorted path-set SHA-256
+= b0813298542a16ab120980fc7c840b6c9553224979eb9e29fce145416c29caa1
+~~~
+
+Path 30 is classified only as MODIFIED_EXISTING_VERIFIER. A thirty-first path is not authorized.
+
+### Exact 600-second timeout topology
+
+The former reviewed global count was nine. P4-E3 contributes exactly these three and no other
+600-second routes:
+
+~~~text
+prepareP4E3Fixture
+runP4E3FirstServer
+runP4E3RestartServer
+~~~
+
+The resulting authority is:
+
+~~~text
+existing reviewed 600-second tasks
+= 9
+
+new P4-E3 600-second task identities
+= exactly 3
+
+new exact identities
+= prepareP4E3Fixture
+  runP4E3FirstServer
+  runP4E3RestartServer
+
+total 600-second tasks
+= 12
+
+unexpected additional 600-second tasks
+= 0
+
+existing P4-B timeout identities / values
+= unchanged
+
+timeout inflation outside the reviewed P4-E3 tasks
+= 0
+~~~
+
+The future verifier must prove both total count twelve and the exact three-name addition. A bare
+count, an at-least-twelve test, or an unrelated task that happens to use 600 seconds is insufficient.
+
+### Exact 300-second timeout topology
+
+The former reviewed global count was seven. P4-E3 contributes exactly these two and no other
+300-second routes:
+
+~~~text
+verifyP4E3First
+verifyP4E3Restart
+~~~
+
+The resulting authority is:
+
+~~~text
+existing reviewed 300-second tasks
+= 7
+
+new P4-E3 300-second task identities
+= exactly 2
+
+new exact identities
+= verifyP4E3First
+  verifyP4E3Restart
+
+total 300-second tasks
+= 9
+
+unexpected additional 300-second tasks
+= 0
+
+existing P4-B timeout identities / values
+= unchanged
+
+timeout inflation outside the reviewed P4-E3 tasks
+= 0
+~~~
+
+The future verifier must prove both total count nine and the exact two-name addition. A bare count,
+an at-least-nine test, or an unrelated task that happens to use 300 seconds is insufficient.
+
+### Sole reviewed production Error-catch exception
+
+The production Error-catch contract is narrowed from global zero to exactly one already reviewed
+P4-E3 observation-cleanup exception:
+
+~~~text
+production catch Error
+= exactly 1 reviewed exception
+
+owner
+= SkillDefinitionStoreService
+
+method
+= private void runP4E3StartupReclaim(MinecraftServer server)
+
+catch shape
+= catch (RuntimeException | Error failure)
+
+required terminal
+= throw failure;
+
+caught variable / rethrow variable
+= failure / the same failure local
+
+sole purpose
+= allocation-free E3 startup observation abort
+  followed by exact same-object rethrow
+
+wrapper / translation
+= 0 / 0
+
+swallow / continue after catch
+= 0 / 0
+
+logging-only completion
+= 0
+
+retry
+= 0
+
+bounded-success conversion
+= 0
+
+second production Error catch
+= 0
+
+catch Throwable in SkillDefinitionStoreService
+= 0
+~~~
+
+The verifier must mechanically isolate the exact owner and method body, prove that the caught and
+rethrown variables are the same local, and retain zero Error catches in SkillDefinitionStore reclaim
+core, the E1 audit path, and E2 login reconciliation. This amendment only synchronizes the exact
+Q0.3-approved cleanup/rethrow; it does not redefine or broaden that product behavior.
+
+### Constrained future delta in the P4-B2-B verifier
+
+When implementation qualification is separately authorized to resume,
+scripts/verify-p4-b2-b-configuration.sh may change only these three contract families:
+
+~~~text
+600-second topology
+= 9 -> 12
+  plus exact three P4-E3 task identities
+
+300-second topology
+= 7 -> 9
+  plus exact two P4-E3 task identities
+
+production Error catch
+= global 0 -> exact one reviewed E3 cleanup/rethrow exception
+~~~
+
+The following P4-B contracts remain unchanged:
+
+~~~text
+compressed / decompressed limits
+full-size fixture
+first / restart semantics
+invalid gzip cases
+packaged runtime
+heap profiles
+JAR isolation
+quarantine / hash preservation
+all existing P4-B timeout task identities and values
+~~~
+
+Path 30 may not weaken, remove, bypass, or make warning-only any P4-B product Gate.
+
+### Exact-30 inventory synchronization authority
+
+After the Q0.4 authority and separate closure conditions have passed, these already reviewed paths
+may synchronize their exact allowlist from twenty-nine to thirty and their modified-existing-
+verifier count from four to five:
+
+~~~text
+scripts/verify-p4-e0-r-configuration.sh
+scripts/verify-p4-e0-r2q-configuration.sh
+scripts/verify-p4-e1-configuration.sh
+scripts/verify-p4-e2-configuration.sh
+scripts/verify-p4-e3-configuration.sh
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java
+~~~
+
+The sole new allowed literal is scripts/verify-p4-b2-b-configuration.sh. Each Gate must retain:
+
+~~~text
+unknown tracked paths
+= 0
+
+unknown untracked paths
+= 0
+
+missing required paths
+= 0
+
+scripts/** or directory-prefix allowlist
+= prohibited
+
+verify-p4-* prefix allowlist
+= prohibited
+
+unknown-path warning-only behavior
+= prohibited
+
+disabled prohibited-path Gate
+= prohibited
+~~~
+
+### Final P4-E3 portable qualification matrix
+
+The final P4-E3 portable qualification matrix contains exactly the following twelve scripts. This is
+the P4-E3 release matrix, not a claim that the repository contains no other phase-specific
+configuration verifier:
+
+~~~text
+1  scripts/verify-p4-b2-b-configuration.sh
+2  scripts/verify-p4-c2-a-configuration.sh
+3  scripts/verify-p4-c2-b-configuration.sh
+4  scripts/verify-p4-d1-configuration.sh
+5  scripts/verify-p4-d2-configuration.sh
+6  scripts/verify-p4-d3-a-configuration.sh
+7  scripts/verify-p4-d3-configuration.sh
+8  scripts/verify-p4-e0-r-configuration.sh
+9  scripts/verify-p4-e0-r2q-configuration.sh
+10 scripts/verify-p4-e1-configuration.sh
+11 scripts/verify-p4-e2-configuration.sh
+12 scripts/verify-p4-e3-configuration.sh
+~~~
+
+Each script must pass exactly these three modes:
+
+~~~text
+bash -n
+normal PATH
+PATH=/usr/bin:/bin
+~~~
+
+~~~text
+scripts
+= 12
+
+modes per script
+= 3
+
+total invocations
+= 36
+
+required result
+= 36 / 36 PASS
+~~~
+
+A missing listed script or an additional script formally declared mandatory for this exact P4-E3
+portable matrix is a PORTABLE VERIFIER INVENTORY CONFLICT and requires a stop, not an inferred
+inventory change.
+
+### Preserved local-qualification continuity
+
+The following results were already established before the predecessor-verifier stop and are recorded
+without rerunning them in this documentation-only amendment:
+
+~~~text
+exact-29 migration
+= PASS
+
+focused compile
+= PASS
+
+focused eleven classes
+= 96 / 96 PASS
+
+affected verifier matrix
+= 15 / 15 PASS
+
+full unit
+= 202 suites / 1,491 tests
+  0 failure / error / skip
+
+normal GameTest
+= 12 / 12 PASS
+
+dedicated smoke
+= PASS
+
+fixture diagnostic
+= 2,048 relevant records
+  65,536 raw roots
+  2,049 histories
+  4,096 revisions
+  journal 4,096 entries / 1,048,538 bytes
+~~~
+
+The P4-E3 fixed-heap Gate is not PASS. Its five child JVMs did not start, so first/restart runtime
+coordinates, the actual 25-vector, and the selected B.9 terminal were not adjudicated by that Gate.
+
+### Anti-recursion finality
+
+~~~text
+scope-outside stale verifier paths found
+= exactly 1
+
+sole path
+= scripts/verify-p4-b2-b-configuration.sh
+
+stale assertions in that path
+= exactly 3
+
+second scope-outside path
+= none found
+
+Q0.4 scope correction
+= FINAL ALLOWED SCOPE CORRECTION
+  FOR THIS IMPLEMENTATION CAMPAIGN
+~~~
+
+If exact-30 qualification requires path 31 or discovers another scope-outside stale consumer:
+
+~~~text
+STOP VERIFICATION RECURSION
+
+P4-E3 implementation campaign
+= STOPPED FOR COMPLETE SCOPE-MODEL REASSESSMENT
+
+Q0.5 incremental path repair
+= PROHIBITED
+~~~
+
+### Q0.4 unchanged authority and product envelope
+
+~~~text
+Candidate A route
+= unchanged
+
+E3StartupView sealed hierarchy
+= unchanged
+
+nested E3 enums / public-final operations
+= 4 / 13
+
+package-private session controls
+= 4
+
+completed-server witness
+= unchanged
+
+clearOnServerStopped(exactServer)
+= unchanged
+
+ServerStopped order
+= zero-argument E2 cleanup
+  -> E3 cleanup(server)
+  -> root-audit remove(server)
+  -> uninstall(server)
+
+B.9 bounded terminal observer / terminal semantics
+= unchanged / unchanged
+
+B.10 startup online count
+= 0
+
+E1 source precedence
+= online > integrated > disk
+
+E2 reconciliation
+= unchanged
+
+P4-E3 split
+= NO SPLIT
+~~~
+
+~~~text
+relevant_records maximum
+= 2,048
+
+raw_root_claims maximum
+= 65,536
+
+counter dimensions
+= 25
+
+DataVersion
+= exact IntTag(3955)
+
+P4-E DFU calls
+= 0
+
+fixed heap
+= 1,536 MiB
+
+first revisions reclaimed
+= 1
+
+restart revisions reclaimed
+= 0
+
+new workflow jobs
+= 1
+~~~
+
+The observation seam, fixture, reclaim, dirty/save, network, filesystem, lifecycle, generation,
+source precedence, memory, and workflow product contracts do not change in Q0.4.
+
+### Frozen implementation-worktree preservation
+
+~~~text
+worktree
+= /private/tmp/gramarye-p4-e3-implementation-final-20260824T051927Z
+
+detached HEAD
+= 287fecefdb77dc0399658e90d0362516aee27872
+
+base tree
+= e525ebacd4d84a695b19003bb3f9bee392a00bba
+
+SOURCE_FREEZE_29.tsv SHA-256
+= 65341c369810124af40fb78c3f02b6fa246c31d9062d428af4a3ced7dbb5131d
+
+exact path-set SHA-256
+= 28493fa89830cbe43dcb29b02418cc3f67e057970dd713b8a61c18946e7460d6
+
+full-index tracked diff SHA-256
+= c0a1d647eaa14ac26073454edab0ecf48c339351edb250d607f4e75b6dea39af
+
+paths / unknown paths
+= 29 / 0
+
+index
+= empty
+~~~
+
+This authority amendment does not modify, stage, restore, test, clean, or otherwise resume that
+worktree. Its current twenty-nine-path source freeze remains the resumption input only after the
+Q0.4 authority and separate closure conditions pass.
+
+### Conditional phase transition
+
+~~~text
+P4-E3-Q0.1
+= COMPLETE — PASS; CANDIDATE A
+
+P4-E3-Q0.2
+= COMPLETE
+
+P4-E3-Q0.3
+= COMPLETE
+
+P4-E3-Q0.4 exact-30 verifier-scope authority
+= COMPLETE UPON THIS AUTHORITY COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  FIVE-JOB REMOTE GATE PASS
+
+P4-E3-Q0.4 separate two-ledger closure
+= READY AFTER AUTHORITY REMOTE PASS;
+  NOT STARTED
+
+P4-E3 implementation
+= EXACT-29 SOURCE FROZEN;
+  SUSPENDED DURING LOCAL QUALIFICATION;
+  BLOCKED UNTIL Q0.4 AUTHORITY
+  AND SEPARATE CLOSURE
+
+P4-E
+= INCOMPLETE
+~~~
+
+Until this authority commit has one unique exact-SHA attempt-1 Build run whose exact five existing
+jobs all complete with success, the Q0.4 authority is incomplete and the separate closure is not
+ready. After that condition passes, the exact next work item is the separately authorized Q0.4
+two-ledger closure. This block does not perform that closure, resume or complete implementation,
+pass the P4-E3 fixed-heap Gate, or complete P4-E.
+<!-- P4_E3_Q04_EXACT30_VERIFIER_SCOPE_CORRECTION_AUTHORITY_COMMON_END -->
