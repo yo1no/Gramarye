@@ -469,8 +469,12 @@ final class P4E2ApiGateTest {
                 () -> assertEquals(1, occurrences(
                         Files.readString(PLAYER_SERVICE),
                         ".recordE2SetDataSuccess(")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(1, occurrences(
                         production, "SkillRetentionRootSnapshot.fromCompleteRoots")),
+                () -> assertEquals(
+                        Set.of(relative(storeService)),
+                        sourcePathsContaining(
+                                "SkillRetentionRootSnapshot.fromCompleteRoots")),
                 () -> assertEquals(
                         Set.of(
                                 "com/yo1no/gramarye/magic/definition/store/"

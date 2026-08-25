@@ -117,8 +117,12 @@ final class P4E1BApiGateTest {
             assertFalse(Files.exists(STORE_ROOT.resolve(forbiddenFile)), forbiddenFile);
         }
         var allProduction = javaSources(MAIN_JAVA);
-        assertEquals(0, occurrences(
+        var storeService = Files.readString(
+                STORE_ROOT.resolve("SkillDefinitionStoreService.java"));
+        assertEquals(1, occurrences(
                 allProduction, "SkillRetentionRootSnapshot.fromCompleteRoots"));
+        assertEquals(1, occurrences(
+                storeService, "SkillRetentionRootSnapshot.fromCompleteRoots"));
     }
 
     private static Set<String> currentStoreTypeNames() throws Exception {

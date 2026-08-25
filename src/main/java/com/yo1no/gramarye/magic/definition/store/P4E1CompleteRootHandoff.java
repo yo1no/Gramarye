@@ -5,7 +5,7 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 
-/** Same-tick, one-iterator root handoff reserved for the future E3 composition. */
+/** Same-tick, one-iterator root handoff for the E3 composition. */
 final class P4E1CompleteRootHandoff implements Iterable<SkillReference>, AutoCloseable {
     private LeaseAuthority authority;
     private Cursor cursor;
@@ -27,6 +27,15 @@ final class P4E1CompleteRootHandoff implements Iterable<SkillReference>, AutoClo
         iteratorIssued = true;
         cursor = new Cursor();
         return cursor;
+    }
+
+    void markStoreSourceUnchanged() {
+        requireCurrent();
+        var currentAuthority = authority;
+        if (!(currentAuthority instanceof SourceUnchangedLeaseAuthority markable)) {
+            throw new IllegalStateException("P4E1_COMPLETE_HANDOFF_NOT_CURRENT");
+        }
+        markable.markStoreSourceUnchanged(this);
     }
 
     @Override
@@ -103,6 +112,10 @@ final class P4E1CompleteRootHandoff implements Iterable<SkillReference>, AutoClo
         SkillReference referenceAt(int index);
 
         void release(P4E1CompleteRootHandoff handoff);
+    }
+
+    abstract static class SourceUnchangedLeaseAuthority implements LeaseAuthority {
+        abstract void markStoreSourceUnchanged(P4E1CompleteRootHandoff handoff);
     }
 
     private final class Cursor implements Iterator<SkillReference> {

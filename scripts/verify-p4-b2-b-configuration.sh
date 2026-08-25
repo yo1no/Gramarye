@@ -152,6 +152,100 @@ require_ere_count() {
     fi
 }
 
+require_fixed_count_in_range() {
+    local file="$1"
+    local start_marker="$2"
+    local end_marker="$3"
+    local needle="$4"
+    local expected="$5"
+    local message="$6"
+    local line=''
+    local in_range=0
+    local start_count=0
+    local end_count=0
+    local actual=0
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        if [[ "${line}" == "${start_marker}" ]]; then
+            start_count=$((start_count + 1))
+            in_range=1
+        elif [[ "${in_range}" -eq 1 && "${line}" == "${end_marker}" ]]; then
+            end_count=$((end_count + 1))
+            in_range=0
+        elif [[ "${in_range}" -eq 1 && "${line}" == *"${needle}"* ]]; then
+            actual=$((actual + 1))
+        fi
+    done < "${file}"
+
+    if [[ "${start_count}" -ne 1 || "${end_count}" -ne 1 || "${in_range}" -ne 0 ]]; then
+        fail "${message} (range ${start_count}/${end_count}, open ${in_range})"
+    fi
+    if [[ "${actual}" -ne "${expected}" ]]; then
+        fail "${message} (expected ${expected}, found ${actual})"
+    fi
+}
+
+verify_reviewed_p4_e3_error_catch() {
+    local source="$1"
+    local line=''
+    local state=0
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        case "${state}" in
+            0)
+                if [[ "${line}" == \
+                        '    private void runP4E3StartupReclaim(MinecraftServer server) {' ]]; then
+                    state=1
+                fi
+                ;;
+            1)
+                if [[ "${line}" == \
+                        '        } catch (RuntimeException | Error failure) {' ]]; then
+                    state=2
+                elif [[ "${line}" == '    }' ]]; then
+                    fail 'P4-B2-B reviewed P4-E3 method ended before its cleanup/rethrow catch'
+                fi
+                ;;
+            2)
+                [[ "${line}" == '            if (recording) {' ]] \
+                    || fail 'P4-B2-B reviewed P4-E3 Error catch changed its recording guard'
+                state=3
+                ;;
+            3)
+                [[ "${line}" == \
+                        '                observationView.abortRecording(server);' ]] \
+                    || fail 'P4-B2-B reviewed P4-E3 Error catch changed its abort operation'
+                state=4
+                ;;
+            4)
+                [[ "${line}" == '            }' ]] \
+                    || fail 'P4-B2-B reviewed P4-E3 Error catch changed its abort boundary'
+                state=5
+                ;;
+            5)
+                [[ "${line}" == '            throw failure;' ]] \
+                    || fail 'P4-B2-B reviewed P4-E3 Error catch must rethrow the same failure local'
+                state=6
+                ;;
+            6)
+                [[ "${line}" == '        }' ]] \
+                    || fail 'P4-B2-B reviewed P4-E3 Error catch added post-rethrow behavior'
+                state=7
+                ;;
+            7)
+                [[ "${line}" == '    }' ]] \
+                    || fail 'P4-B2-B reviewed P4-E3 Error catch must remain method-terminal'
+                state=8
+                ;;
+            8)
+                ;;
+        esac
+    done < "${source}"
+
+    [[ "${state}" -eq 8 ]] \
+        || fail 'P4-B2-B could not isolate the reviewed P4-E3 cleanup/rethrow method'
+}
+
 require_regular_file() {
     local file="$1"
     local message="$2"
@@ -262,11 +356,17 @@ verify_search_helpers() {
     local forbidden_output=''
     local tool_error_output=''
     local count_output=''
+    local range_output=''
     local status=0
 
     HELPER_FIXTURE="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-b2-helper-fixture.XXXXXX")" \
         || fail 'P4-B2-B configuration verifier could not create its helper fixture'
-    printf 'present contract\npresent contract\n' > "${HELPER_FIXTURE}"
+    printf '%s\n' \
+        'present contract' \
+        'present contract' \
+        'range start' \
+        'range contract' \
+        'range end' > "${HELPER_FIXTURE}"
 
     require_fixed \
         "${HELPER_FIXTURE}" \
@@ -289,6 +389,13 @@ verify_search_helpers() {
         "${HELPER_FIXTURE}" \
         '^absent contract$' \
         'P4-B2-B verifier self-check misclassified an absent ERE pattern'
+    require_fixed_count_in_range \
+        "${HELPER_FIXTURE}" \
+        'range start' \
+        'range end' \
+        'range contract' \
+        1 \
+        'P4-B2-B verifier self-check lost exact range matching'
 
     missing_output="$(
         {
@@ -329,6 +436,23 @@ verify_search_helpers() {
     if [[ "${status}" -ne 1 \
         || "${count_output}" != 'EXPECTED_COUNT_MISMATCH (expected 1, found 2)' ]]; then
         fail 'P4-B2-B verifier self-check could not detect a count mismatch'
+    fi
+
+    status=0
+    range_output="$(
+        {
+            require_fixed_count_in_range \
+                "${HELPER_FIXTURE}" \
+                'range start' \
+                'range end' \
+                'range contract' \
+                2 \
+                'EXPECTED_RANGE_MISMATCH'
+        } 2>&1
+    )" || status=$?
+    if [[ "${status}" -ne 1 \
+        || "${range_output}" != 'EXPECTED_RANGE_MISMATCH (expected 2, found 1)' ]]; then
+        fail 'P4-B2-B verifier self-check could not detect a range mismatch'
     fi
 
     status=0
@@ -523,13 +647,52 @@ verify_b2_build_contracts() {
     require_ere_count \
         build.gradle \
         'timeout\.set\(java\.time\.Duration\.ofSeconds\(600\)\)' \
-        9 \
-        'Reviewed A3/B/C/D3 chains plus the isolated E0 research command must retain nine 600-second timeout declarations'
+        12 \
+        'Reviewed A3/B/C/D3/E0 chains plus P4-E3 must retain exactly twelve 600-second timeout declarations'
     require_ere_count \
         build.gradle \
         'timeout\.set\(java\.time\.Duration\.ofSeconds\(300\)\)' \
-        7 \
-        'Reviewed A3/B/C declarations plus the D3 verifier family must retain seven 300-second timeout declarations'
+        9 \
+        'Reviewed A3/B/C/D3 declarations plus P4-E3 must retain exactly nine 300-second timeout declarations'
+
+    # The existing P4-B identities and values remain locked by the checks surrounding this block.
+    # Isolating all five P4-E3 additions, together with the exact global totals above, excludes an
+    # unrelated task from satisfying either topology count.
+    require_fixed_count_in_range \
+        build.gradle \
+        "def prepareP4E3Fixture = tasks.register('prepareP4E3Fixture', JavaExec) {" \
+        "def runP4E3FirstServer = tasks.named('runP4E3FirstServer', JavaExec)" \
+        'timeout.set(java.time.Duration.ofSeconds(600))' \
+        1 \
+        'prepareP4E3Fixture must be the exact first P4-E3 600-second addition'
+    require_fixed_count_in_range \
+        build.gradle \
+        'runP4E3FirstServer.configure {' \
+        "def verifyP4E3First = tasks.register('verifyP4E3First', JavaExec) {" \
+        'timeout.set(java.time.Duration.ofSeconds(600))' \
+        1 \
+        'runP4E3FirstServer must be the exact second P4-E3 600-second addition'
+    require_fixed_count_in_range \
+        build.gradle \
+        "def verifyP4E3First = tasks.register('verifyP4E3First', JavaExec) {" \
+        'runP4E3RestartServer.configure {' \
+        'timeout.set(java.time.Duration.ofSeconds(300))' \
+        1 \
+        'verifyP4E3First must be the exact first P4-E3 300-second addition'
+    require_fixed_count_in_range \
+        build.gradle \
+        'runP4E3RestartServer.configure {' \
+        "def verifyP4E3Restart = tasks.register('verifyP4E3Restart', JavaExec) {" \
+        'timeout.set(java.time.Duration.ofSeconds(600))' \
+        1 \
+        'runP4E3RestartServer must be the exact third P4-E3 600-second addition'
+    require_fixed_count_in_range \
+        build.gradle \
+        "def verifyP4E3Restart = tasks.register('verifyP4E3Restart', JavaExec) {" \
+        "tasks.register('p4E3FixedHeapGate') {" \
+        'timeout.set(java.time.Duration.ofSeconds(300))' \
+        1 \
+        'verifyP4E3Restart must be the exact second P4-E3 300-second addition'
     for literal in \
         'runP4B2MalformedServer,' \
         'runP4B2MalformedRestartServer,' \
@@ -786,6 +949,7 @@ verify_b2_sources_and_outputs() {
     local source=''
     local class_name=''
     local package_path='com/yo1no/gramarye/magic/definition/store'
+    local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
 
     PRODUCTION_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-b2-production.XXXXXX")" \
         || fail 'P4-B2-B verifier could not create its production source list'
@@ -951,12 +1115,34 @@ verify_b2_sources_and_outputs() {
     [[ -x scripts/verify-p4-c2-a-configuration.sh ]] \
         || fail 'P4-C2-A portable configuration verifier is not executable'
 
-    for literal in NoClassDefFoundError LinkageError Error; do
+    for literal in NoClassDefFoundError LinkageError; do
         forbid_ere_in_file_list \
             "${PRODUCTION_SOURCE_LIST}" \
             "catch[[:space:]]*\\([^)]*(java\\.lang\\.)?${literal}([^[:alnum:]_\$]|$)" \
             "P4-B2-R production code must not catch dependency linkage failure (${literal})"
     done
+    while IFS= read -r -d '' source; do
+        [[ "${source}" == "${store_service}" ]] && continue
+        forbid_ere \
+            "${source}" \
+            'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
+            "production Error catch escaped the sole reviewed P4-E3 owner: ${source}"
+    done < "${PRODUCTION_SOURCE_LIST}"
+    require_ere_count \
+        "${store_service}" \
+        '^    private void runP4E3StartupReclaim\(MinecraftServer server\) \{$' \
+        1 \
+        'P4-B2-B must retain exactly one reviewed P4-E3 startup-reclaim method'
+    require_ere_count \
+        "${store_service}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
+        1 \
+        'SkillDefinitionStoreService must contain exactly one reviewed Error catch'
+    forbid_ere \
+        "${store_service}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
+        'SkillDefinitionStoreService must not catch Throwable'
+    verify_reviewed_p4_e3_error_catch "${store_service}"
 
     for class_name in \
         P4B2ProbeSummary \

@@ -79,7 +79,48 @@ reject_fixed() {
     esac
 }
 
+is_approved_p4e3_changed_path() {
+    case "$1" in
+        .github/workflows/build.yml | \
+        build.gradle | \
+        scripts/verify-p4-b2-b-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java | \
+        src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java | \
+        src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FileVerifier.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureBuilder.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_allowed_changed_path() {
+    is_approved_p4e3_changed_path "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \
@@ -228,6 +269,10 @@ verify_changed_paths() {
                     [ -x "$candidate" ] \
                         || fail "allowed E1-A verifier is not executable: $path"
                     ;;
+                build.gradle | .github/workflows/build.yml)
+                    [ ! -x "$candidate" ] \
+                        || fail "allowed P4-E3 build/workflow path is executable: $path"
+                    ;;
                 *.java | *.md) ;;
                 *) fail "allowed E1-A path has an unexpected file type: $path" ;;
             esac
@@ -289,8 +334,23 @@ self_regression() {
     is_allowed_changed_path \
         'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java' \
         || fail "self-test rejected the exact B2-B API Gate path"
-    if is_allowed_changed_path 'build.gradle'; then
-        fail "self-test accepted a forbidden Gradle path"
+    for approved in \
+            'build.gradle' \
+            '.github/workflows/build.yml' \
+            'scripts/verify-p4-e3-configuration.sh' \
+            'src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java' \
+            'src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java' \
+            'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java' \
+            'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java'; do
+        is_allowed_changed_path "$approved" \
+            || fail "self-test rejected an exact approved P4-E3 path: $approved"
+    done
+    if is_allowed_changed_path 'build.gradle.extra'; then
+        fail "self-test accepted a prefix-near Gradle path"
+    fi
+    if is_allowed_changed_path \
+            'src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3Unexpected.java'; then
+        fail "self-test accepted a prefix-near P4-E3 probe path"
     fi
     if is_allowed_changed_path 'src/main/resources/gramarye/e1.json'; then
         fail "self-test accepted a forbidden production resource path"

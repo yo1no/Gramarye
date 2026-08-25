@@ -328,7 +328,17 @@ class P4B2BApiGateTest {
         var script = read(scriptPath);
         var configurationGate = read(PROJECT_ROOT.resolve(
                 "scripts/verify-p4-b2-b-configuration.sh"));
-        var production = sources(PROJECT_ROOT.resolve("src/main/java"));
+        var production = withoutCommentsAndLiterals(
+                sources(PROJECT_ROOT.resolve("src/main/java")));
+        var storeService = withoutCommentsAndLiterals(read(PROJECT_ROOT.resolve(
+                "src/main/java/com/yo1no/gramarye/magic/definition/store/"
+                        + "SkillDefinitionStoreService.java")));
+        var startup = methodBody(storeService, "runP4E3StartupReclaim");
+        var lexicalFixture = String.join("",
+                "// catch (Error hidden)\r",
+                "var text = \"\"\"\ncatch (LinkageError hidden)\n\"\"\";\n",
+                "catch (RuntimeException | Error failure) { throw failure; }");
+        var maskedLexicalFixture = withoutCommentsAndLiterals(lexicalFixture);
         var packagingVerifier = read(PROBE_ROOT.resolve(
                 "com/yo1no/gramarye/magic/definition/store/"
                         + "P4B2RuntimePackagingVerifier.java"));
@@ -377,7 +387,12 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertFalse(catchesDependencyError(production)),
+                () -> assertEquals(1, dependencyErrorCatchCount(production)),
+                () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
+                () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
+                () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
+                () -> assertLineEndingsPreserved(lexicalFixture, maskedLexicalFixture),
+                () -> assertEquals(1, dependencyErrorCatchCount(maskedLexicalFixture)),
                 () -> assertTrue(build.contains(
                         "dependsOn(verifyP4B2PackagedRuntimeOutput)")),
                 () -> assertTrue(build.contains("p4B2RuntimePackagingGate")),
@@ -425,19 +440,192 @@ class P4B2BApiGateTest {
         return result;
     }
 
-    private static boolean catchesDependencyError(String source) {
+    private static int dependencyErrorCatchCount(String source) {
         var catchClause = Pattern.compile("catch\\s*\\(([^)]*)\\)", Pattern.DOTALL)
                 .matcher(source);
         var forbiddenType = Pattern.compile(
                 "(?<![A-Za-z0-9_$.])(?:java\\.lang\\.)?"
                         + "(?:NoClassDefFoundError|LinkageError|Error)"
                         + "(?![A-Za-z0-9_$])");
+        var count = 0;
         while (catchClause.find()) {
             if (forbiddenType.matcher(catchClause.group(1)).find()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int catchTypeCount(String source, String typeName) {
+        var catchClause = Pattern.compile("catch\\s*\\(([^)]*)\\)", Pattern.DOTALL)
+                .matcher(source);
+        var exactType = Pattern.compile(
+                "(?<![A-Za-z0-9_$.])(?:java\\.lang\\.)?"
+                        + Pattern.quote(typeName)
+                        + "(?![A-Za-z0-9_$])");
+        var count = 0;
+        while (catchClause.find()) {
+            if (exactType.matcher(catchClause.group(1)).find()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int reviewedStartupErrorCatchCount(String methodBody) {
+        var reviewed = Pattern.compile(
+                "catch\\s*\\(\\s*RuntimeException\\s*\\|\\s*Error\\s+(failure)\\s*\\)"
+                        + "\\s*\\{\\s*if\\s*\\(\\s*recording\\s*\\)\\s*\\{\\s*"
+                        + "observationView\\s*\\.\\s*abortRecording\\s*"
+                        + "\\(\\s*server\\s*\\)\\s*;\\s*}\\s*"
+                        + "throw\\s+\\1\\s*;\\s*}",
+                Pattern.DOTALL)
+                .matcher(methodBody);
+        var count = 0;
+        while (reviewed.find()) {
+            if (methodBody.substring(reviewed.end()).isBlank()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static String methodBody(String source, String methodName) {
+        var signature = source.indexOf("private void " + methodName + "(");
+        if (signature < 0) {
+            throw new AssertionError("method not found: " + methodName);
+        }
+        var open = source.indexOf('{', signature);
+        var depth = 0;
+        for (var index = open; index < source.length(); index++) {
+            var character = source.charAt(index);
+            if (character == '{') {
+                depth++;
+            } else if (character == '}' && --depth == 0) {
+                return source.substring(open + 1, index);
+            }
+        }
+        throw new AssertionError("method body did not close: " + methodName);
+    }
+
+    private static String withoutCommentsAndLiterals(String source) {
+        var masked = new StringBuilder(source.length());
+        var state = LexicalState.CODE;
+        for (var index = 0; index < source.length(); index++) {
+            var current = source.charAt(index);
+            var hasNext = index + 1 < source.length();
+            var next = hasNext ? source.charAt(index + 1) : '\0';
+            switch (state) {
+                case CODE -> {
+                    if (current == '/' && next == '/') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.LINE_COMMENT;
+                    } else if (current == '/' && next == '*') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.BLOCK_COMMENT;
+                    } else if (isTextBlockOpeningDelimiterAt(source, index)) {
+                        masked.append("   ");
+                        index += 2;
+                        state = LexicalState.TEXT_BLOCK;
+                    } else if (current == '"') {
+                        masked.append(' ');
+                        state = LexicalState.STRING;
+                    } else if (current == '\'') {
+                        masked.append(' ');
+                        state = LexicalState.CHARACTER;
+                    } else {
+                        masked.append(current);
+                    }
+                }
+                case LINE_COMMENT -> {
+                    appendMasked(masked, current);
+                    if (current == '\r' || current == '\n') {
+                        state = LexicalState.CODE;
+                    }
+                }
+                case BLOCK_COMMENT -> {
+                    if (current == '*' && next == '/') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.CODE;
+                    } else {
+                        appendMasked(masked, current);
+                    }
+                }
+                case STRING, CHARACTER -> {
+                    appendMasked(masked, current);
+                    if (current == '\\' && hasNext) {
+                        appendMasked(masked, next);
+                        index++;
+                    } else if ((state == LexicalState.STRING && current == '"')
+                            || (state == LexicalState.CHARACTER && current == '\'')) {
+                        state = LexicalState.CODE;
+                    }
+                }
+                case TEXT_BLOCK -> {
+                    if (isTripleQuoteAt(source, index)) {
+                        masked.append("   ");
+                        index += 2;
+                        state = LexicalState.CODE;
+                    } else if (current == '\\' && hasNext) {
+                        appendMasked(masked, current);
+                        appendMasked(masked, next);
+                        index++;
+                        if (next == '\r'
+                                && index + 1 < source.length()
+                                && source.charAt(index + 1) == '\n') {
+                            appendMasked(masked, '\n');
+                            index++;
+                        }
+                    } else {
+                        appendMasked(masked, current);
+                    }
+                }
+            }
+        }
+        if (masked.length() != source.length()) {
+            throw new AssertionError("lexical masker changed source length");
+        }
+        return masked.toString();
+    }
+
+    private static boolean isTextBlockOpeningDelimiterAt(String source, int index) {
+        if (!isTripleQuoteAt(source, index)) {
+            return false;
+        }
+        for (var cursor = index + 3; cursor < source.length(); cursor++) {
+            var character = source.charAt(cursor);
+            if (character == '\r' || character == '\n') {
                 return true;
+            }
+            if (character != ' ' && character != '\t' && character != '\f') {
+                return false;
             }
         }
         return false;
+    }
+
+    private static boolean isTripleQuoteAt(String source, int index) {
+        return index + 2 < source.length()
+                && source.charAt(index) == '"'
+                && source.charAt(index + 1) == '"'
+                && source.charAt(index + 2) == '"';
+    }
+
+    private static void appendMasked(StringBuilder masked, char character) {
+        masked.append(character == '\r' || character == '\n' ? character : ' ');
+    }
+
+    private static void assertLineEndingsPreserved(String original, String masked) {
+        for (var index = 0; index < original.length(); index++) {
+            if (original.charAt(index) == '\r' || original.charAt(index) == '\n'
+                    || masked.charAt(index) == '\r' || masked.charAt(index) == '\n') {
+                assertEquals(original.charAt(index), masked.charAt(index),
+                        "line terminator changed at " + index);
+            }
+        }
     }
 
     private static String fixedHeapGateBlock(String build) {
@@ -458,5 +646,14 @@ class P4B2BApiGateTest {
             }
         }
         throw new AssertionError("project root not found");
+    }
+
+    private enum LexicalState {
+        CODE,
+        LINE_COMMENT,
+        BLOCK_COMMENT,
+        STRING,
+        CHARACTER,
+        TEXT_BLOCK
     }
 }

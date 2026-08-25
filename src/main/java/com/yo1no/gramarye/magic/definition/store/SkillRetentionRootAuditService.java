@@ -1,5 +1,6 @@
 package com.yo1no.gramarye.magic.definition.store;
 
+import com.yo1no.gramarye.P4E2QualificationFacade;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import java.lang.ref.ReferenceQueue;
@@ -15,6 +16,17 @@ import net.minecraft.server.MinecraftServer;
 
 /** Synchronous package-owned P4-E1 audit, generation, and memory-only index coordinator. */
 final class SkillRetentionRootAuditService {
+    static record P4E3IndexTerminalObservation(
+            P4E2QualificationFacade.E3IndexTerminal terminal,
+            long generation) {
+        P4E3IndexTerminalObservation {
+            Objects.requireNonNull(terminal, "terminal");
+            if (generation < 0L) {
+                throw new IllegalArgumentException("generation must be non-negative");
+            }
+        }
+    }
+
     private final CallChainCurrentness minecraftCallChain =
             new CallChainCurrentness() {
                 @Override
@@ -256,6 +268,19 @@ final class SkillRetentionRootAuditService {
         if (slot != null) {
             slot.lifecycle.remove(this, server);
         }
+    }
+
+    P4E3IndexTerminalObservation observeP4E3IndexTerminal(
+            MinecraftServer exactServer) {
+        Objects.requireNonNull(exactServer, "exactServer");
+        storeService.requireP4E1AuditLifecycle(exactServer);
+        expungeStoppedServers();
+        requireNotStopped(exactServer);
+        var slot = index.get(exactServer);
+        if (slot == null) {
+            throw new IllegalStateException("P4E3_INDEX_TERMINAL_NOT_AVAILABLE");
+        }
+        return slot.lifecycle.observeP4E3IndexTerminal(this, exactServer);
     }
 
     private PreparedComplete prepareComplete(
@@ -990,6 +1015,29 @@ final class SkillRetentionRootAuditService {
             return state instanceof Removed;
         }
 
+        P4E3IndexTerminalObservation observeP4E3IndexTerminal(
+                Object candidateOwner, Object candidateServer) {
+            requireBinding(candidateOwner, candidateServer);
+            return switch (state) {
+                case CompleteIndex complete -> new P4E3IndexTerminalObservation(
+                        P4E2QualificationFacade.E3IndexTerminal.COMPLETE_INDEX,
+                        complete.generation);
+                case IncompleteState incomplete -> new P4E3IndexTerminalObservation(
+                        P4E2QualificationFacade.E3IndexTerminal.INCOMPLETE,
+                        incomplete.generation);
+                case NoEntry ignored -> throw indexTerminalNotAvailable();
+                case AuditInProgress ignored -> throw indexTerminalNotAvailable();
+                case CompleteIndexWithActiveLease ignored ->
+                        throw indexTerminalNotAvailable();
+                case GenerationExhausted ignored -> throw indexTerminalNotAvailable();
+                case Removed ignored -> throw indexTerminalNotAvailable();
+            };
+        }
+
+        private static IllegalStateException indexTerminalNotAvailable() {
+            return new IllegalStateException("P4E3_INDEX_TERMINAL_NOT_AVAILABLE");
+        }
+
         private IndexState state(Object candidateOwner, Object candidateServer) {
             requireBinding(candidateOwner, candidateServer);
             return state;
@@ -1097,11 +1145,12 @@ final class SkillRetentionRootAuditService {
             if (!(currentState instanceof CompleteIndex completeState)) {
                 throw new IllegalStateException("P4E1_COMPLETE_INDEX_AUTHORITY_LOST");
             }
-            var returnState = new CompleteIndex(
+            var completeTerminalState = new CompleteIndex(
                     completeState.generation,
                     completeState.backing,
                     null,
                     completeState.nextInvalidationState);
+            var incompleteTerminalState = new IncompleteState(completeState.generation);
             var lease = new LeaseCell(
                     candidateOwner,
                     candidateServer,
@@ -1111,7 +1160,8 @@ final class SkillRetentionRootAuditService {
                     this,
                     completeState.generation,
                     completeState.backing,
-                    returnState);
+                    completeTerminalState,
+                    incompleteTerminalState);
             var active = new CompleteIndexWithActiveLease(
                     completeState.generation, completeState.backing, lease);
             var handoff = new P4E1CompleteRootHandoff(lease);
@@ -1144,11 +1194,13 @@ final class SkillRetentionRootAuditService {
                 Object candidateOwner,
                 Object candidateServer,
                 CompleteIndexWithActiveLease expected,
-                CompleteIndex replacement) {
+                IndexState replacement) {
             requireBinding(candidateOwner, candidateServer);
             Objects.requireNonNull(expected, "expected");
             Objects.requireNonNull(replacement, "replacement");
-            if (state != expected || expected.generation != replacement.generation) {
+            if (state != expected
+                    || expected.generation
+                            != SkillRetentionRootAuditService.generation(replacement)) {
                 throw new IllegalStateException("P4E1_COMPLETE_LEASE_NOT_CURRENT");
             }
             state = replacement;
@@ -1673,7 +1725,8 @@ final class SkillRetentionRootAuditService {
         }
     }
 
-    private static final class LeaseCell implements P4E1CompleteRootHandoff.LeaseAuthority {
+    private static final class LeaseCell
+            extends P4E1CompleteRootHandoff.SourceUnchangedLeaseAuthority {
         private Object owner;
         private Object server;
         private Thread thread;
@@ -1682,7 +1735,9 @@ final class SkillRetentionRootAuditService {
         private IndexLifecycle lifecycle;
         private final long generation;
         private IndexedBacking backing;
-        private CompleteIndex returnState;
+        private CompleteIndex completeTerminalState;
+        private IncompleteState incompleteTerminalState;
+        private IndexState selectedTerminalState;
         private CompleteIndexWithActiveLease activeState;
         private P4E1CompleteRootHandoff handoffIdentity;
         private boolean revoked;
@@ -1696,7 +1751,8 @@ final class SkillRetentionRootAuditService {
                 IndexLifecycle lifecycle,
                 long generation,
                 IndexedBacking backing,
-                CompleteIndex returnState) {
+                CompleteIndex completeTerminalState,
+                IncompleteState incompleteTerminalState) {
             this.owner = Objects.requireNonNull(owner, "owner");
             this.server = Objects.requireNonNull(server, "server");
             this.thread = Objects.requireNonNull(thread, "thread");
@@ -1705,7 +1761,15 @@ final class SkillRetentionRootAuditService {
             this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
             this.generation = generation;
             this.backing = Objects.requireNonNull(backing, "backing");
-            this.returnState = Objects.requireNonNull(returnState, "returnState");
+            this.completeTerminalState = Objects.requireNonNull(
+                    completeTerminalState, "completeTerminalState");
+            this.incompleteTerminalState = Objects.requireNonNull(
+                    incompleteTerminalState, "incompleteTerminalState");
+            if (completeTerminalState.generation != generation
+                    || incompleteTerminalState.generation != generation) {
+                throw new IllegalArgumentException("P4E1_COMPLETE_LEASE_TERMINAL_MISMATCH");
+            }
+            selectedTerminalState = incompleteTerminalState;
         }
 
         private void bind(
@@ -1743,12 +1807,35 @@ final class SkillRetentionRootAuditService {
         }
 
         @Override
+        void markStoreSourceUnchanged(P4E1CompleteRootHandoff handoff) {
+            if (!isCurrent(handoff)) {
+                throw new IllegalStateException("P4E1_COMPLETE_LEASE_NOT_CURRENT");
+            }
+            if (selectedTerminalState == completeTerminalState) {
+                throw new IllegalStateException(
+                        "P4E1_COMPLETE_HANDOFF_SOURCE_UNCHANGED_ALREADY_MARKED");
+            }
+            if (selectedTerminalState != incompleteTerminalState) {
+                throw new IllegalStateException("P4E1_COMPLETE_LEASE_NOT_CURRENT");
+            }
+            selectedTerminalState = completeTerminalState;
+        }
+
+        @Override
         public void release(P4E1CompleteRootHandoff handoff) {
             if (!isCurrent(handoff)) {
                 throw new IllegalStateException("P4E1_COMPLETE_LEASE_NOT_CURRENT");
             }
-            lifecycle.releaseLease(owner, server, activeState, returnState);
-            clear();
+            var terminalState = selectedTerminalState;
+            var discardBacking = terminalState == incompleteTerminalState;
+            lifecycle.releaseLease(owner, server, activeState, terminalState);
+            try {
+                if (discardBacking) {
+                    backing.discard();
+                }
+            } finally {
+                clear();
+            }
         }
 
         private void revoke() {
@@ -1780,7 +1867,9 @@ final class SkillRetentionRootAuditService {
             callChain = null;
             lifecycle = null;
             backing = null;
-            returnState = null;
+            completeTerminalState = null;
+            incompleteTerminalState = null;
+            selectedTerminalState = null;
             activeState = null;
             handoffIdentity = null;
         }

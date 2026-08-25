@@ -419,8 +419,11 @@ final class P4E1B2BApiGateTest {
                 "Codec")) {
             assertFalse(sources.contains(forbidden), forbidden);
         }
-        assertEquals(0, occurrences(
+        assertEquals(1, occurrences(
                 allProduction, "SkillRetentionRootSnapshot.fromCompleteRoots"));
+        assertEquals(1, occurrences(
+                Files.readString(STORE_ROOT.resolve("SkillDefinitionStoreService.java")),
+                "SkillRetentionRootSnapshot.fromCompleteRoots"));
         assertEquals(1, occurrences(
                 allProduction, "new SkillRetentionRootAuditService("));
         assertEquals(1, occurrences(

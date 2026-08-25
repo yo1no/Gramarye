@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
@@ -197,6 +198,7 @@ final class P4E2LifecycleOrderingTest {
         var coordinator = withoutCommentsAndLiterals(Files.readString(COORDINATOR));
         var player = withoutCommentsAndLiterals(Files.readString(PLAYER_SERVICE));
         var storeService = withoutCommentsAndLiterals(Files.readString(STORE_SERVICE));
+        var production = javaSources(MAIN_JAVA);
         var wrapper = slice(
                 coordinator,
                 "    @Override\n    public void reconcileAfterRecovery(",
@@ -215,10 +217,8 @@ final class P4E2LifecycleOrderingTest {
                 player,
                 "    public ReconciliationPublication publishPreparedReconciliation(",
                 "\n    public void discardPreparedReconciliation(");
-        var stop = slice(
-                storeService,
-                "    private void onServerStopped(",
-                "\n    GramaryeSkillSavedData installedAdapter(");
+        var registration = methodBody(storeService, "registerLifecycleListeners");
+        var stop = methodBody(storeService, "onServerStopped");
 
         var resultCall = wrapper.indexOf("var result = reconcile(");
         var directSwitch = wrapper.indexOf("switch (result)", resultCall);
@@ -242,6 +242,7 @@ final class P4E2LifecycleOrderingTest {
                 "publishReplacement(player, replacement, qualificationPlayerView)");
         var applied = e2Publication.indexOf("ReconciliationPublication.APPLIED", e2PublishCall);
 
+        assertLexicalMaskerContract();
         assertAll(
                 () -> assertTrue(resultCall >= 0),
                 () -> assertTrue(directSwitch > resultCall),
@@ -280,8 +281,52 @@ final class P4E2LifecycleOrderingTest {
                         "publishReplacement(player, replacement, null)")),
                 () -> assertTrue(e2PublishCall >= 0),
                 () -> assertTrue(applied > e2PublishCall),
-                () -> assertTrue(stop.indexOf("qualificationStoreView.clearOnServerStopped()")
-                        < stop.indexOf("uninstall(event.getServer())")));
+                () -> assertEquals(2, occurrences(registration, "gameBus.addListener(")),
+                () -> assertEquals(2, occurrences(storeService, "gameBus.addListener(")),
+                () -> assertEquals(1, occurrences(
+                        storeService, "this::onServerStarting")),
+                () -> assertEquals(1, occurrences(
+                        storeService, "this::onServerStopped")),
+                () -> assertEquals(1, occurrences(
+                        storeService, "ServerStoppedEvent event")),
+                () -> assertEquals(1, occurrences(
+                        registration, "this::onServerStopped")),
+                () -> assertEquals(1, occurrences(
+                        production, "gameBus.addListener(this::onServerStopped)")),
+                () -> assertEquals(1, occurrences(stop, "event.getServer()")),
+                () -> assertEquals(1, occurrences(
+                        stop, "var server = event.getServer()")),
+                () -> assertEquals(1, occurrences(
+                        stop, "qualificationStoreView.clearOnServerStopped()")),
+                () -> assertEquals(1, occurrences(
+                        stop,
+                        "qualificationStoreView.e3StartupView()"
+                                + ".clearOnServerStopped(server)")),
+                () -> assertEquals(1, occurrences(
+                        stop, "rootAuditService.removeServer(server)")),
+                () -> assertEquals(1, occurrences(stop, "uninstall(server)")),
+                () -> assertTrue(exactServerStoppedBody(stop)),
+                () -> assertFalse(stop.contains(
+                        "qualificationStoreView.clearOnServerStopped(server)")),
+                () -> assertOrdered(
+                        stop,
+                        "var server = event.getServer()",
+                        "qualificationStoreView.clearOnServerStopped()",
+                        "qualificationStoreView.e3StartupView()"
+                                + ".clearOnServerStopped(server)",
+                        "rootAuditService.removeServer(server)",
+                        "uninstall(server)"),
+                () -> {
+                    for (var forbidden : Set.of(
+                            "CompletableFuture",
+                            "Executor",
+                            "new Thread(",
+                            ".execute(",
+                            ".submit(",
+                            ".post(")) {
+                        assertFalse(stop.contains(forbidden), forbidden);
+                    }
+                });
     }
 
     @Test
@@ -515,6 +560,48 @@ final class P4E2LifecycleOrderingTest {
         return source.substring(startIndex, endIndex);
     }
 
+    private static String methodBody(String source, String methodName) {
+        var signature = source.indexOf("private void " + methodName + "(");
+        if (signature < 0) {
+            throw new AssertionError("method not found: " + methodName);
+        }
+        var open = source.indexOf('{', signature);
+        var depth = 0;
+        for (var index = open; index < source.length(); index++) {
+            var character = source.charAt(index);
+            if (character == '{') {
+                depth++;
+            } else if (character == '}' && --depth == 0) {
+                return source.substring(open + 1, index);
+            }
+        }
+        throw new AssertionError("method body did not close: " + methodName);
+    }
+
+    private static void assertOrdered(String source, String... fragments) {
+        var previous = -1;
+        for (var fragment : fragments) {
+            var current = source.indexOf(fragment, previous + 1);
+            assertTrue(current >= 0, "missing ordered fragment: " + fragment);
+            assertTrue(current > previous, "out-of-order fragment: " + fragment);
+            previous = current;
+        }
+    }
+
+    private static boolean exactServerStoppedBody(String body) {
+        return Pattern.compile(
+                "\\s*var\\s+server\\s*=\\s*event\\.getServer\\(\\)\\s*;\\s*"
+                        + "if\\s*\\(\\s*qualificationStoreView\\s*!=\\s*null\\s*\\)\\s*"
+                        + "\\{\\s*qualificationStoreView\\.clearOnServerStopped\\(\\)\\s*;"
+                        + "\\s*qualificationStoreView\\.e3StartupView\\(\\)"
+                        + "\\.clearOnServerStopped\\(\\s*server\\s*\\)\\s*;\\s*}\\s*"
+                        + "rootAuditService\\.removeServer\\(\\s*server\\s*\\)\\s*;\\s*"
+                        + "uninstall\\(\\s*server\\s*\\)\\s*;\\s*",
+                Pattern.DOTALL)
+                .matcher(body)
+                .matches();
+    }
+
     private static Set<String> sourcePathsContaining(String token) throws Exception {
         try (var stream = Files.walk(MAIN_JAVA)) {
             return stream.filter(path -> path.toString().endsWith(".java"))
@@ -547,12 +634,142 @@ final class P4E2LifecycleOrderingTest {
     }
 
     private static String withoutCommentsAndLiterals(String source) {
-        return source
-                .replaceAll("(?s)/\\*.*?\\*/", " ")
-                .replaceAll("(?m)//.*$", " ")
-                .replaceAll("(?s)\"\"\".*?\"\"\"", "\"\"")
-                .replaceAll("(?s)\"(?:\\\\.|[^\"\\\\])*\"", "\"\"")
-                .replaceAll("'[^']*'", "''");
+        var masked = new StringBuilder(source.length());
+        var state = LexicalState.CODE;
+        for (var index = 0; index < source.length(); index++) {
+            var current = source.charAt(index);
+            var hasNext = index + 1 < source.length();
+            var next = hasNext ? source.charAt(index + 1) : '\0';
+            switch (state) {
+                case CODE -> {
+                    if (current == '/' && next == '/') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.LINE_COMMENT;
+                    } else if (current == '/' && next == '*') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.BLOCK_COMMENT;
+                    } else if (isTextBlockOpeningDelimiterAt(source, index)) {
+                        masked.append("   ");
+                        index += 2;
+                        state = LexicalState.TEXT_BLOCK;
+                    } else if (current == '"') {
+                        masked.append(' ');
+                        state = LexicalState.STRING;
+                    } else if (current == '\'') {
+                        masked.append(' ');
+                        state = LexicalState.CHARACTER;
+                    } else {
+                        masked.append(current);
+                    }
+                }
+                case LINE_COMMENT -> {
+                    appendMasked(masked, current);
+                    if (current == '\r' || current == '\n') {
+                        state = LexicalState.CODE;
+                    }
+                }
+                case BLOCK_COMMENT -> {
+                    if (current == '*' && next == '/') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.CODE;
+                    } else {
+                        appendMasked(masked, current);
+                    }
+                }
+                case STRING, CHARACTER -> {
+                    appendMasked(masked, current);
+                    if (current == '\\' && hasNext) {
+                        appendMasked(masked, next);
+                        index++;
+                    } else if ((state == LexicalState.STRING && current == '"')
+                            || (state == LexicalState.CHARACTER && current == '\'')) {
+                        state = LexicalState.CODE;
+                    }
+                }
+                case TEXT_BLOCK -> {
+                    if (isTripleQuoteAt(source, index)) {
+                        masked.append("   ");
+                        index += 2;
+                        state = LexicalState.CODE;
+                    } else if (current == '\\' && hasNext) {
+                        appendMasked(masked, current);
+                        appendMasked(masked, next);
+                        index++;
+                        if (next == '\r'
+                                && index + 1 < source.length()
+                                && source.charAt(index + 1) == '\n') {
+                            appendMasked(masked, '\n');
+                            index++;
+                        }
+                    } else {
+                        appendMasked(masked, current);
+                    }
+                }
+            }
+        }
+        if (masked.length() != source.length()) {
+            throw new AssertionError("lexical masker changed source length");
+        }
+        return masked.toString();
+    }
+
+    private static boolean isTextBlockOpeningDelimiterAt(String source, int index) {
+        if (!isTripleQuoteAt(source, index)) {
+            return false;
+        }
+        for (var cursor = index + 3; cursor < source.length(); cursor++) {
+            var character = source.charAt(cursor);
+            if (character == '\r' || character == '\n') {
+                return true;
+            }
+            if (character != ' ' && character != '\t' && character != '\f') {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isTripleQuoteAt(String source, int index) {
+        return index + 2 < source.length()
+                && source.charAt(index) == '"'
+                && source.charAt(index + 1) == '"'
+                && source.charAt(index + 2) == '"';
+    }
+
+    private static void appendMasked(StringBuilder masked, char character) {
+        masked.append(character == '\r' || character == '\n' ? character : ' ');
+    }
+
+    private static void assertLineEndingsPreserved(String original, String masked) {
+        for (var index = 0; index < original.length(); index++) {
+            if (original.charAt(index) == '\r' || original.charAt(index) == '\n'
+                    || masked.charAt(index) == '\r' || masked.charAt(index) == '\n') {
+                assertEquals(original.charAt(index), masked.charAt(index),
+                        "line terminator changed at " + index);
+            }
+        }
+    }
+
+    private static void assertLexicalMaskerContract() {
+        var source = String.join("",
+                "// hiddenInvocation()\r",
+                "visibleInvocation();\r",
+                "var text = \"\"\"\n",
+                "hiddenTextBlockInvocation();\n",
+                "\"\"\";\n",
+                "tailInvocation();");
+        var masked = withoutCommentsAndLiterals(source);
+        assertAll(
+                () -> assertFalse(source.endsWith("\n")),
+                () -> assertEquals(source.length(), masked.length()),
+                () -> assertLineEndingsPreserved(source, masked),
+                () -> assertFalse(masked.contains("hiddenInvocation()")),
+                () -> assertFalse(masked.contains("hiddenTextBlockInvocation()")),
+                () -> assertTrue(masked.contains("visibleInvocation()")),
+                () -> assertTrue(masked.contains("tailInvocation()")));
     }
 
     private static int occurrences(String text, String token) {
@@ -574,5 +791,14 @@ final class P4E2LifecycleOrderingTest {
             throw new IllegalStateException("project root unavailable");
         }
         return current;
+    }
+
+    private enum LexicalState {
+        CODE,
+        LINE_COMMENT,
+        BLOCK_COMMENT,
+        STRING,
+        CHARACTER,
+        TEXT_BLOCK
     }
 }

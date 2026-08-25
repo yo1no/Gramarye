@@ -5,6 +5,174 @@ plugins {
     id 'idea'
 }
 
+@groovy.transform.CompileStatic
+@groovy.transform.stc.POJO
+class ProbeRuntimeWorkingDirectoryAction
+        implements org.gradle.api.Action<org.gradle.api.Task>, java.io.Serializable {
+    private static final long serialVersionUID = 1L
+
+    private final String projectRootPathText
+    private final String buildRootPathText
+    private final String taskNameText
+    private final String taskDirectoryPathText
+
+    ProbeRuntimeWorkingDirectoryAction(
+            String projectRootPathText,
+            String buildRootPathText,
+            String taskNameText,
+            String taskDirectoryPathText) {
+        if (projectRootPathText == null
+                || buildRootPathText == null
+                || taskNameText == null
+                || taskDirectoryPathText == null) {
+            throw new IllegalArgumentException('Probe runtime path text must not be null')
+        }
+        this.projectRootPathText = projectRootPathText
+        this.buildRootPathText = buildRootPathText
+        this.taskNameText = taskNameText
+        this.taskDirectoryPathText = taskDirectoryPathText
+    }
+
+    @Override
+    void execute(org.gradle.api.Task ignored) {
+        if (taskNameText.isBlank()
+                || taskNameText.indexOf(0) >= 0
+                || taskNameText.contains('/')
+                || taskNameText.contains('\\')
+                || taskNameText.contains('..')) {
+            throw new org.gradle.api.GradleException(
+                    "Invalid ProbeMain task-name leaf: ${taskNameText}")
+        }
+
+        java.nio.file.Path taskNamePath
+        try {
+            taskNamePath = java.nio.file.Paths.get(taskNameText)
+        } catch (RuntimeException failure) {
+            throw new org.gradle.api.GradleException(
+                    "Invalid ProbeMain task-name path: ${taskNameText}", failure)
+        }
+        if (taskNamePath.isAbsolute()
+                || taskNamePath.getNameCount() != 1
+                || taskNamePath.getFileName().toString() != taskNameText) {
+            throw new org.gradle.api.GradleException(
+                    "ProbeMain task name is not one exact leaf: ${taskNameText}")
+        }
+
+        java.nio.file.Path projectRoot = normalizedAbsolute(projectRootPathText)
+        java.nio.file.Path buildRoot = normalizedAbsolute(buildRootPathText)
+        java.nio.file.Path probeRoot = buildRoot.resolve('probe-runtime-working').normalize()
+        java.nio.file.Path taskDirectory = normalizedAbsolute(taskDirectoryPathText)
+        java.nio.file.Path expectedTaskDirectory = probeRoot.resolve(taskNameText).normalize()
+
+        if (buildRoot == projectRoot
+                || !buildRoot.startsWith(projectRoot)
+                || probeRoot.getParent() != buildRoot
+                || taskDirectory != expectedTaskDirectory
+                || taskDirectory.getParent() != probeRoot
+                || taskDirectory.getFileName().toString() != taskNameText
+                || taskDirectory == buildRoot
+                || taskDirectory == probeRoot
+                || taskDirectory == projectRoot
+                || !taskDirectory.startsWith(probeRoot)) {
+            throw new org.gradle.api.GradleException(
+                    "Unsafe ProbeMain working-directory boundary: ${taskNameText}")
+        }
+
+        requireDirectoryOrAbsent(buildRoot, 'build root')
+        requireDirectoryOrAbsent(probeRoot, 'probe root')
+        if (java.nio.file.Files.exists(
+                    taskDirectory, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                && java.nio.file.Files.isSymbolicLink(taskDirectory)) {
+            throw new org.gradle.api.GradleException(
+                    "ProbeMain task directory is a symbolic link: ${taskNameText}")
+        }
+
+        try {
+            if (java.nio.file.Files.exists(
+                    taskDirectory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                java.nio.file.Files.walkFileTree(
+                        taskDirectory,
+                        java.util.EnumSet.noneOf(java.nio.file.FileVisitOption.class),
+                        Integer.MAX_VALUE,
+                        new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
+                            @Override
+                            java.nio.file.FileVisitResult visitFile(
+                                    java.nio.file.Path file,
+                                    java.nio.file.attribute.BasicFileAttributes attributes)
+                                    throws java.io.IOException {
+                                java.nio.file.Files.delete(file)
+                                return java.nio.file.FileVisitResult.CONTINUE
+                            }
+
+                            @Override
+                            java.nio.file.FileVisitResult visitFileFailed(
+                                    java.nio.file.Path file,
+                                    java.io.IOException failure)
+                                    throws java.io.IOException {
+                                throw failure
+                            }
+
+                            @Override
+                            java.nio.file.FileVisitResult postVisitDirectory(
+                                    java.nio.file.Path directory,
+                                    java.io.IOException failure)
+                                    throws java.io.IOException {
+                                if (failure != null) {
+                                    throw failure
+                                }
+                                java.nio.file.Files.delete(directory)
+                                return java.nio.file.FileVisitResult.CONTINUE
+                            }
+                        })
+            }
+            if (java.nio.file.Files.exists(
+                    taskDirectory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                throw new org.gradle.api.GradleException(
+                        "ProbeMain task directory survived exact deletion: ${taskNameText}")
+            }
+            java.nio.file.Files.createDirectories(taskDirectory)
+        } catch (java.io.IOException failure) {
+            throw new org.gradle.api.GradleException(
+                    "ProbeMain task directory rebuild failed: ${taskNameText}", failure)
+        }
+
+        requireExistingDirectory(buildRoot, 'build root')
+        requireExistingDirectory(probeRoot, 'probe root')
+        requireExistingDirectory(taskDirectory, 'task directory')
+    }
+
+    private static java.nio.file.Path normalizedAbsolute(String pathText) {
+        try {
+            return java.nio.file.Paths.get(pathText).toAbsolutePath().normalize()
+        } catch (RuntimeException failure) {
+            throw new org.gradle.api.GradleException(
+                    "Invalid ProbeMain runtime path: ${pathText}", failure)
+        }
+    }
+
+    private static void requireDirectoryOrAbsent(
+            java.nio.file.Path directory, String label) {
+        if (java.nio.file.Files.exists(
+                    directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                && (java.nio.file.Files.isSymbolicLink(directory)
+                    || !java.nio.file.Files.isDirectory(
+                            directory, java.nio.file.LinkOption.NOFOLLOW_LINKS))) {
+            throw new org.gradle.api.GradleException(
+                    "ProbeMain ${label} is not a safe directory")
+        }
+    }
+
+    private static void requireExistingDirectory(
+            java.nio.file.Path directory, String label) {
+        if (java.nio.file.Files.isSymbolicLink(directory)
+                || !java.nio.file.Files.isDirectory(
+                        directory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            throw new org.gradle.api.GradleException(
+                    "ProbeMain ${label} is unavailable after rebuild")
+        }
+    }
+}
+
 tasks.named('wrapper', Wrapper).configure {
     // Define wrapper values here so as to not have to always do so when updating gradlew.properties.
     // Switching this to Wrapper.DistributionType.ALL will download the full gradle sources that comes with
@@ -35,6 +203,8 @@ def p4C2ProbeSourceSet = sourceSets.create('p4C2Probe')
 def p4C2GameTestSourceSet = sourceSets.create('p4C2GameTest')
 def p4D3ProbeSourceSet = sourceSets.create('p4D3Probe')
 def p4D3GameTestSourceSet = sourceSets.create('p4D3GameTest')
+def p4E3ProbeSourceSet = sourceSets.create('p4E3Probe')
+def p4E3GameTestSourceSet = sourceSets.create('p4E3GameTest')
 def p4E0ResearchSourceSet = sourceSets.create('p4E0Research')
 def p4E0ResearchGameTestSourceSet = sourceSets.create('p4E0ResearchGameTest')
 def p4B2FixedHeapJvmArgs = [
@@ -52,6 +222,37 @@ def p4D3FixedHeapJvmArgs = [
         '-Xmx1024m',
         '-XX:+ExitOnOutOfMemoryError',
 ]
+def p4E3FixedHeapJvmArgs = [
+        '-Xms512m',
+        '-Xmx1536m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
+def containedProbeMainClasses = [
+        'com.yo1no.gramarye.magic.definition.store.P4A3HeapProbeMain',
+        'com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain',
+        'com.yo1no.gramarye.magic.definition.player.P4C2ProbeMain',
+        'com.yo1no.gramarye.magic.definition.store.P4D3ProbeMain',
+] as Set
+def configureProbeMainJavaExecOutputContainment = { JavaExec probeTask ->
+    if (!containedProbeMainClasses.contains(probeTask.mainClass.get())) {
+        throw new GradleException(
+                "Refusing output containment for unreviewed JavaExec ${probeTask.name}")
+    }
+    def projectRootPathText = layout.projectDirectory.asFile.toPath()
+            .toAbsolutePath().normalize().toString()
+    def buildRootPathText = layout.buildDirectory.get().asFile.toPath()
+            .toAbsolutePath().normalize().toString()
+    def taskNameText = probeTask.name
+    def taskDirectoryPathText = java.nio.file.Paths.get(buildRootPathText)
+            .resolve('probe-runtime-working').resolve(taskNameText)
+            .toAbsolutePath().normalize().toString()
+    probeTask.workingDir(new java.io.File(taskDirectoryPathText))
+    probeTask.doFirst(new ProbeRuntimeWorkingDirectoryAction(
+            projectRootPathText,
+            buildRootPathText,
+            taskNameText,
+            taskDirectoryPathText))
+}
 def p4E0ResearchDefaultHeapMiB = '1024'
 def p4E0ResearchHeapMiB = providers
         .systemProperty('gramarye.p4e0.research.heapMiB')
@@ -267,6 +468,22 @@ def p4D3GameTestResources = tasks.register('generateP4D3GameTestResources', Sync
     into(layout.buildDirectory.dir('generated/p4D3GameTestResources'))
 }
 p4D3GameTestSourceSet.resources.srcDir(p4D3GameTestResources)
+def p4E3GameTestGeneratedResourcesDirectory =
+        layout.buildDirectory.dir('generated/p4E3GameTestResources')
+p4E3GameTestSourceSet.output.resourcesDir =
+        p4E3GameTestGeneratedResourcesDirectory.get().asFile
+tasks.named(p4E3GameTestSourceSet.processResourcesTaskName, ProcessResources).configure {
+    destinationDir = p4E3GameTestGeneratedResourcesDirectory.get().asFile
+    dependsOn('createMinecraftArtifacts')
+    from(zipTree(layout.buildDirectory.file(
+            "moddev/artifacts/neoforge-${neo_version}-client-extra-aka-minecraft-resources.jar"))) {
+        include 'data/minecraft/structure/bastion/blocks/air.nbt'
+        eachFile { details ->
+            details.path = 'data/gramarye_p4_e3/structure/p4_e3_probe.nbt'
+        }
+        includeEmptyDirs = false
+    }
+}
 def p4E0ResearchGameTestResources =
         tasks.register('generateP4E0ResearchGameTestResources', Sync) {
     dependsOn('createMinecraftArtifacts')
@@ -299,6 +516,9 @@ def serverGameDirectory = providers.environmentVariable('GRAMARYE_SERVER_GAME_DI
 def commonsCompressVersion = providers.gradleProperty('commons_compress_version').get()
 def commonsCompressCoordinate =
         "org.apache.commons:commons-compress:${commonsCompressVersion}"
+def p4E3GameDirectory = layout.buildDirectory.dir('p4-e3/fixed-heap-world')
+def p4E3CommandDirectory = layout.buildDirectory.dir('p4-e3/command-work')
+def p4E3ReportDirectory = layout.buildDirectory.dir('reports/p4-e3-fixed-heap')
 
 neoForge {
     // Specify the version of NeoForge to use.
@@ -313,6 +533,8 @@ neoForge {
     addModdingDependenciesTo(p4C2GameTestSourceSet)
     addModdingDependenciesTo(p4D3ProbeSourceSet)
     addModdingDependenciesTo(p4D3GameTestSourceSet)
+    addModdingDependenciesTo(p4E3ProbeSourceSet)
+    addModdingDependenciesTo(p4E3GameTestSourceSet)
     addModdingDependenciesTo(p4E0ResearchSourceSet)
     addModdingDependenciesTo(p4E0ResearchGameTestSourceSet)
 
@@ -361,6 +583,11 @@ neoForge {
             sourceSet(p4D3GameTestSourceSet)
         }
 
+        p4E3GameTestHarness {
+            sourceSet(sourceSets.main)
+            sourceSet(p4E3GameTestSourceSet)
+        }
+
         // Research-only source group. It is never used by production runs or the published JAR.
         p4E0ResearchHarness {
             sourceSet(sourceSets.main)
@@ -379,6 +606,7 @@ neoForge {
     def p4B2ProbeMod = mods.named('p4B2HeapProbe').get()
     def p4C2ProbeMod = mods.named('p4C2HeapProbe').get()
     def p4D3ProbeMod = mods.named('p4D3HeapProbe').get()
+    def p4E3GameTestMod = mods.named('p4E3GameTestHarness').get()
     def p4E0ResearchMod = mods.named('p4E0ResearchHarness').get()
 
     // This line is optional. Access Transformers are automatically detected
@@ -776,6 +1004,32 @@ neoForge {
             taskBefore(tasks.named(p4D3GameTestSourceSet.classesTaskName))
         }
 
+        p4E3FirstServer {
+            type = 'gameTestServer'
+            sourceSet = p4E3GameTestSourceSet
+            gameDirectory = p4E3GameDirectory.get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_e3'
+            systemProperty 'gramarye.p4e3.runMode', 'first'
+            systemProperty 'gramarye.p4e3.reportRoot',
+                    p4E3ReportDirectory.get().asFile.absolutePath
+            jvmArguments.addAll(p4E3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4E3GameTestSourceSet.classesTaskName))
+        }
+
+        p4E3RestartServer {
+            type = 'gameTestServer'
+            sourceSet = p4E3GameTestSourceSet
+            gameDirectory = p4E3GameDirectory.get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'gramarye_p4_e3'
+            systemProperty 'gramarye.p4e3.runMode', 'restart'
+            systemProperty 'gramarye.p4e3.reportRoot',
+                    p4E3ReportDirectory.get().asFile.absolutePath
+            jvmArguments.addAll(p4E3FixedHeapJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named(p4E3GameTestSourceSet.classesTaskName))
+        }
+
         p4E0ResearchDedicatedSmoke {
             type = 'gameTestServer'
             sourceSet = p4E0ResearchGameTestSourceSet
@@ -941,6 +1195,7 @@ neoForge {
                     : name.startsWith('p4B2') ? p4B2ProbeMod
                     : name.startsWith('p4C2') ? p4C2ProbeMod
                     : name.startsWith('p4D3') ? p4D3ProbeMod
+                    : name.startsWith('p4E3') ? p4E3GameTestMod
                     : (name == 'p4E0ResearchDedicatedSmoke'
                             || name == 'p4E0R2QDedicatedSmoke'
                             || name == 'p4E0R2QRunnerDedicatedSmoke'
@@ -1036,6 +1291,14 @@ dependencies {
     add(p4D3GameTestSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
     add(p4D3GameTestSourceSet.implementationConfigurationName, p4C2ProbeSourceSet.output)
     add(p4D3GameTestSourceSet.implementationConfigurationName, p4D3ProbeSourceSet.output)
+    add(p4E3ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p4E3ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
+    add(p4E3ProbeSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
+    add(p4E3ProbeSourceSet.implementationConfigurationName, p4C2ProbeSourceSet.output)
+    add(p4E3ProbeSourceSet.implementationConfigurationName, p4D3ProbeSourceSet.output)
+    add(p4E3ProbeSourceSet.implementationConfigurationName, p4E0ResearchSourceSet.output)
+    add(p4E3ProbeSourceSet.implementationConfigurationName, commonsCompressCoordinate)
+    add(p4E3GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p4E0ResearchSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p4E0ResearchSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)
     add(p4E0ResearchSourceSet.implementationConfigurationName, p4B2ProbeSourceSet.output)
@@ -1097,6 +1360,7 @@ def registerP4A3HeapProbe = { String taskName, String workload ->
         javaLauncher.set(p4A3JavaLauncher)
         classpath = p4A3ProbeSourceSet.runtimeClasspath
         mainClass.set('com.yo1no.gramarye.magic.definition.store.P4A3HeapProbeMain')
+        configureProbeMainJavaExecOutputContainment(delegate)
         args(workload)
         jvmArgs(p4A3FixedHeapJvmArgs)
         timeout.set(java.time.Duration.ofSeconds(180))
@@ -1184,6 +1448,7 @@ def prepareP4B2HeapWorld = tasks.register('prepareP4B2HeapWorld', JavaExec) {
     javaLauncher.set(p4A3JavaLauncher)
     classpath = p4B2ProbeSourceSet.runtimeClasspath
     mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    configureProbeMainJavaExecOutputContainment(delegate)
     args('prepare-full', p4B2FullGameDirectory.get().asFile.absolutePath)
     jvmArgs(p4B2FixedHeapJvmArgs)
     timeout.set(java.time.Duration.ofSeconds(300))
@@ -1200,6 +1465,7 @@ def prepareP4B2HostileFnameWorld =
     javaLauncher.set(p4A3JavaLauncher)
     classpath = p4B2ProbeSourceSet.runtimeClasspath
     mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    configureProbeMainJavaExecOutputContainment(delegate)
     args(
             'prepare-hostile-fname',
             p4B2HostileFnameGameDirectory.get().asFile.absolutePath)
@@ -1215,6 +1481,7 @@ def prepareP4B2InvalidWorlds = tasks.register('prepareP4B2InvalidWorlds', JavaEx
     javaLauncher.set(p4A3JavaLauncher)
     classpath = p4B2ProbeSourceSet.runtimeClasspath
     mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    configureProbeMainJavaExecOutputContainment(delegate)
     args(
             'prepare-invalid',
             p4B2MalformedGameDirectory.get().asFile.absolutePath,
@@ -1235,6 +1502,7 @@ def prepareP4B2PackagedRuntimeFixture =
     javaLauncher.set(p4A3JavaLauncher)
     classpath = p4B2ProbeSourceSet.runtimeClasspath
     mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    configureProbeMainJavaExecOutputContainment(delegate)
     args(
             'prepare-packaged-runtime',
             p4B2PackagedFixtureGameDirectory.get().asFile.absolutePath)
@@ -1254,6 +1522,7 @@ def verifyP4B2PackagedArtifact =
     javaLauncher.set(p4A3JavaLauncher)
     classpath = p4B2ProbeSourceSet.runtimeClasspath
     mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    configureProbeMainJavaExecOutputContainment(delegate)
     args(
             'verify-packaged-artifact',
             deployableModArtifact.get().asFile.absolutePath,
@@ -1310,6 +1579,7 @@ def verifyP4B2PackagedRuntimeOutput =
     javaLauncher.set(p4A3JavaLauncher)
     classpath = p4B2ProbeSourceSet.runtimeClasspath
     mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    configureProbeMainJavaExecOutputContainment(delegate)
     args(
             'verify-packaged-runtime',
             p4B2PackagedServerDirectory.get().asFile.absolutePath)
@@ -1332,6 +1602,7 @@ def registerP4B2FileVerifier = {
         javaLauncher.set(p4A3JavaLauncher)
         classpath = p4B2ProbeSourceSet.runtimeClasspath
         mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+        configureProbeMainJavaExecOutputContainment(delegate)
         args(command, gameDirectory.get().asFile.absolutePath)
         jvmArgs(p4B2FixedHeapJvmArgs)
         timeout.set(java.time.Duration.ofSeconds(180))
@@ -1560,6 +1831,7 @@ def prepareP4C2PreservedStore = tasks.register(
     javaLauncher.set(p4A3JavaLauncher)
     classpath = p4B2ProbeSourceSet.runtimeClasspath
     mainClass.set('com.yo1no.gramarye.magic.definition.store.P4B2ProbeMain')
+    configureProbeMainJavaExecOutputContainment(delegate)
     args(
             'prepare-full',
             p4C2PreservedRawGameDirectory.get().asFile.absolutePath)
@@ -1578,6 +1850,7 @@ def prepareP4C2Worlds = tasks.register('prepareP4C2Worlds', JavaExec) {
     javaLauncher.set(p4A3JavaLauncher)
     classpath = p4C2ProbeSourceSet.runtimeClasspath
     mainClass.set('com.yo1no.gramarye.magic.definition.player.P4C2ProbeMain')
+    configureProbeMainJavaExecOutputContainment(delegate)
     args(
             'prepare-worlds',
             p4C2ReadyGameDirectory.get().asFile.absolutePath,
@@ -1597,6 +1870,7 @@ def registerP4C2FileVerifier = {
         javaLauncher.set(p4A3JavaLauncher)
         classpath = p4C2ProbeSourceSet.runtimeClasspath
         mainClass.set('com.yo1no.gramarye.magic.definition.player.P4C2ProbeMain')
+        configureProbeMainJavaExecOutputContainment(delegate)
         args(command, gameDirectory.get().asFile.absolutePath)
         jvmArgs(p4C2FixedHeapJvmArgs)
         timeout.set(java.time.Duration.ofSeconds(180))
@@ -1781,6 +2055,7 @@ def prepareP4D3Worlds = tasks.register('prepareP4D3Worlds', JavaExec) {
     javaLauncher.set(p4A3JavaLauncher)
     classpath = p4D3ProbeSourceSet.runtimeClasspath
     mainClass.set('com.yo1no.gramarye.magic.definition.store.P4D3ProbeMain')
+    configureProbeMainJavaExecOutputContainment(delegate)
     args(
             'prepare-worlds',
             p4D3CrashDGameDirectory.get().asFile.absolutePath,
@@ -1805,6 +2080,7 @@ def registerP4D3FileVerifier = {
         javaLauncher.set(p4A3JavaLauncher)
         classpath = p4D3ProbeSourceSet.runtimeClasspath
         mainClass.set('com.yo1no.gramarye.magic.definition.store.P4D3ProbeMain')
+        configureProbeMainJavaExecOutputContainment(delegate)
         args(command, gameDirectory.get().asFile.absolutePath)
         jvmArgs(p4D3FixedHeapJvmArgs)
         timeout.set(java.time.Duration.ofSeconds(300))
@@ -1990,6 +2266,130 @@ tasks.register('p4D3FixedHeapGate') {
     group = 'verification'
     description = 'Runs all sixteen serialized P4-D3-B crash/restart and combined fixed-heap processes.'
     dependsOn(verifyP4D3CombinedHeapRestart)
+}
+
+def verifyP4E3Configuration = tasks.register(
+        'verifyP4E3Configuration', Exec) {
+    group = 'verification'
+    description = 'Verifies the closed P4-E3 startup observation, fixed-heap tasks, CI, and JAR isolation.'
+    dependsOn(
+            verifyP4D3Configuration,
+            tasks.named('jar'),
+            tasks.named(p4E3ProbeSourceSet.classesTaskName),
+            tasks.named(p4E3GameTestSourceSet.classesTaskName))
+    inputs.file(layout.projectDirectory.file('build.gradle'))
+    inputs.file(layout.projectDirectory.file('.github/workflows/build.yml'))
+    inputs.file(layout.projectDirectory.file('scripts/verify-p4-e3-configuration.sh'))
+    inputs.files(fileTree('src/main/java') { include '**/*.java' })
+    inputs.files(fileTree('src/main/resources'))
+    inputs.files(fileTree('src/test/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4E3Probe/java') { include '**/*.java' })
+    inputs.files(fileTree('src/p4E3GameTest/java') { include '**/*.java' })
+    workingDir(layout.projectDirectory)
+    commandLine(
+            'bash',
+            layout.projectDirectory.file(
+                    'scripts/verify-p4-e3-configuration.sh').asFile.absolutePath)
+}
+
+def prepareP4E3Fixture = tasks.register('prepareP4E3Fixture', JavaExec) {
+    group = 'verification'
+    description = 'Builds the deterministic P4-E3 first/restart fixed-heap fixture.'
+    dependsOn(verifyP4E3Configuration)
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4E3ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4E3ProbeMain')
+    workingDir(p4E3CommandDirectory.get().asFile)
+    doFirst {
+        def directory = p4E3CommandDirectory.get().asFile
+        if ((!directory.exists() && !directory.mkdirs()) || !directory.isDirectory()) {
+            throw new GradleException('P4-E3 command working directory is unavailable')
+        }
+    }
+    args(
+            'prepare-fixture',
+            p4E3GameDirectory.get().asFile.absolutePath,
+            p4E3ReportDirectory.get().asFile.absolutePath)
+    jvmArgs(p4E3FixedHeapJvmArgs)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+}
+
+def runP4E3FirstServer = tasks.named('runP4E3FirstServer', JavaExec)
+def runP4E3RestartServer = tasks.named('runP4E3RestartServer', JavaExec)
+
+runP4E3FirstServer.configure {
+    dependsOn(prepareP4E3Fixture)
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+}
+
+def verifyP4E3First = tasks.register('verifyP4E3First', JavaExec) {
+    group = 'verification'
+    description = 'Strictly verifies the first P4-E3 startup and positive reclaim result.'
+    dependsOn(runP4E3FirstServer)
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4E3ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4E3ProbeMain')
+    workingDir(p4E3CommandDirectory.get().asFile)
+    doFirst {
+        def directory = p4E3CommandDirectory.get().asFile
+        if ((!directory.exists() && !directory.mkdirs()) || !directory.isDirectory()) {
+            throw new GradleException('P4-E3 command working directory is unavailable')
+        }
+    }
+    args(
+            'verify-first',
+            p4E3GameDirectory.get().asFile.absolutePath,
+            p4E3ReportDirectory.get().asFile.absolutePath)
+    jvmArgs(p4E3FixedHeapJvmArgs)
+    timeout.set(java.time.Duration.ofSeconds(300))
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+}
+
+runP4E3RestartServer.configure {
+    dependsOn(verifyP4E3First)
+    javaLauncher.set(p4A3JavaLauncher)
+    timeout.set(java.time.Duration.ofSeconds(600))
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+}
+
+def verifyP4E3Restart = tasks.register('verifyP4E3Restart', JavaExec) {
+    group = 'verification'
+    description = 'Strictly verifies the same-world P4-E3 restart and zero reclaim result.'
+    dependsOn(runP4E3RestartServer)
+    javaLauncher.set(p4A3JavaLauncher)
+    classpath = p4E3ProbeSourceSet.runtimeClasspath
+    mainClass.set('com.yo1no.gramarye.magic.definition.store.P4E3ProbeMain')
+    workingDir(p4E3CommandDirectory.get().asFile)
+    doFirst {
+        def directory = p4E3CommandDirectory.get().asFile
+        if ((!directory.exists() && !directory.mkdirs()) || !directory.isDirectory()) {
+            throw new GradleException('P4-E3 command working directory is unavailable')
+        }
+    }
+    args(
+            'verify-restart',
+            p4E3GameDirectory.get().asFile.absolutePath,
+            p4E3ReportDirectory.get().asFile.absolutePath)
+    jvmArgs(p4E3FixedHeapJvmArgs)
+    timeout.set(java.time.Duration.ofSeconds(300))
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+}
+
+tasks.register('p4E3FixedHeapGate') {
+    group = 'verification'
+    description = 'Runs the serialized P4-E3 first/restart closed-startup fixed-heap Gate.'
+    dependsOn(verifyP4E3Restart)
+    doLast {
+        println('P4_E3_FIXED_HEAP_GATE_COMPLETE')
+    }
 }
 
 def p4E0ResearchSmokeDirectory =
@@ -2962,6 +3362,12 @@ tasks.named(p4D3ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4D3GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4E3ProbeSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p4E3GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4E0ResearchSourceSet.compileJavaTaskName, JavaCompile).configure {

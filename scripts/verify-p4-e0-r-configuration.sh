@@ -330,6 +330,46 @@ is_reviewed_test_path() {
     esac
 }
 
+is_approved_p4e3_changed_path() {
+    case "$1" in
+        .github/workflows/build.yml | \
+        build.gradle | \
+        scripts/verify-p4-b2-b-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java | \
+        src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java | \
+        src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FileVerifier.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureBuilder.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_e1a_changed_path() {
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
@@ -432,6 +472,7 @@ is_reviewed_e1a_changed_path() {
 }
 
 is_reviewed_changed_path() {
+    is_approved_p4e3_changed_path "$1" && return 0
     case "$1" in
         build.gradle | \
         scripts/verify-p4-b2-b-configuration.sh | \
@@ -514,10 +555,10 @@ verify_prohibited_paths_unchanged() {
     git diff --quiet HEAD -- \
         src/main/resources \
         docs/codex-spec \
-        .github/workflows gradle.properties \
-        || fail 'P4-E0-R1 modified production, authority, workflow, or version truth'
+        gradle.properties \
+        || fail 'P4-E0-R1 modified production resource, authority, or version truth'
     untracked="$(git ls-files --others --exclude-standard -- \
-        src/main/resources docs/codex-spec .github/workflows)" || status=$?
+        src/main/resources docs/codex-spec)" || status=$?
     [[ "${status}" -eq 0 ]] || fail 'git failed while checking prohibited untracked paths'
     [[ -z "${untracked}" ]] \
         || fail "P4-E0-R1 added a prohibited untracked path: ${untracked}"

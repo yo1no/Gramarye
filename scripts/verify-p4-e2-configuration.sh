@@ -257,7 +257,48 @@ append_exclusive_slice() {
     printf '\n' >> "${destination}"
 }
 
+is_approved_p4e3_changed_path() {
+    case "$1" in
+        .github/workflows/build.yml | \
+        build.gradle | \
+        scripts/verify-p4-b2-b-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java | \
+        src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java | \
+        src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FileVerifier.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureBuilder.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java | \
+        src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java | \
+        src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_allowed_changed_path() {
+    is_approved_p4e3_changed_path "$1" && return 0
     case "$1" in
         scripts/verify-p4-c2-a-configuration.sh | \
         scripts/verify-p4-c2-b-configuration.sh | \
@@ -391,12 +432,24 @@ self_regression() {
     is_allowed_changed_path \
         'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java' \
         || fail 'self-test rejected an exact P4-E2 Gate path'
+    for approved in \
+        'build.gradle' \
+        '.github/workflows/build.yml' \
+        'scripts/verify-p4-e3-configuration.sh' \
+        'src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java' \
+        'src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java' \
+        'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java' \
+        'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java'; do
+        is_allowed_changed_path "${approved}" \
+            || fail "self-test rejected an exact approved P4-E3 path: ${approved}"
+    done
     for rejected in \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2Unexpected.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/AuditUnexpected.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/ReconciliationUnexpected.java' \
         'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2UnexpectedTest.java' \
-        'build.gradle' \
+        'build.gradle.extra' \
+        'src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3Unexpected.java' \
         '.github/workflows/p4-e2.yml'; do
         if is_allowed_changed_path "${rejected}"; then
             fail "self-test accepted a prefix or phase escape path: ${rejected}"
@@ -433,6 +486,7 @@ while IFS= read -r -d '' source; do
                 "${GRAMARYE}" | \
                 "${PLAYER_SERVICE}" | \
                 "${STORE_SERVICE}" | \
+                "${AUDIT_SERVICE}" | \
                 "${COORDINATOR}" | \
                 "${STORE_ROOT}/PlayerSkillAttachmentReconciliationCapability.java" | \
                 "${STORE_ROOT}/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java" | \
@@ -445,8 +499,8 @@ while IFS= read -r -d '' source; do
         *) grep_failed "${source}" "${facade_status}" ;;
     esac
 done < "${PRODUCTION_SOURCE_LIST}"
-[[ "${facade_owner_count}" -eq 8 ]] \
-    || fail "qualification facade production owner inventory changed (${facade_owner_count}/8)"
+[[ "${facade_owner_count}" -eq 9 ]] \
+    || fail "qualification facade production owner inventory changed (${facade_owner_count}/9)"
 
 for source in \
     "${FACADE}" \
@@ -831,13 +885,20 @@ for forbidden in \
     'CustomPacketPayload' \
     'PayloadRegistrar' \
     'PlayerEvent.Clone' \
-    'PlayerLoggedOutEvent' \
-    'P4E3'; do
+    'PlayerLoggedOutEvent'; do
     forbid_fixed_in_file_list "${E2_SOURCE_LIST}" "${forbidden}" \
         "forbidden P4-E2 authority or later-phase token: ${forbidden}"
     forbid_fixed "${E2_LEGACY_SLICE}" "${forbidden}" \
         "forbidden authority in exact legacy E2 service slices: ${forbidden}"
 done
+
+forbid_fixed "${E2_LEGACY_SLICE}" 'P4E3' \
+    'legacy E2 service slices must not acquire P4-E3 authority'
+while IFS= read -r -d '' source; do
+    [[ "${source}" == "${FACADE}" ]] && continue
+    forbid_fixed "${source}" 'P4E3' \
+        "P4-E3 surface escaped the exact approved facade (${source})"
+done < "${E2_SOURCE_LIST}"
 
 for error_catch in \
     'catch[[:space:]]*\([[:space:]]*Throwable' \
@@ -852,9 +913,9 @@ for error_catch in \
         'exact legacy E2 service slice catches Error, OOME, or Throwable'
 done
 
-[[ "$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" \
-        'SkillRetentionRootSnapshot.fromCompleteRoots')" -eq 0 ]] \
-    || fail 'snapshot factory must remain unused in production'
+require_only_owner \
+    'SkillRetentionRootSnapshot.fromCompleteRoots' "${STORE_SERVICE}" 1 \
+    'snapshot factory must have one exact P4-E3 Store-service owner'
 for direct_marker in \
     'public static final int SCHEMA_VERSION = 1;' \
     'public static final String CASE_ID = "p4-c2-ready";' \
@@ -918,9 +979,9 @@ done
     || fail 'normal required GameTest inventory must remain exactly 12'
 
 git diff --quiet HEAD -- \
-    build.gradle gradle.properties settings.gradle gradle .github \
+    gradle.properties settings.gradle gradle \
     docs/codex-spec docs/architecture src/main/resources src/test/resources \
-    || fail 'P4-E2 must not change Gradle/workflow/authority/resource truth'
+    || fail 'P4-E2 must not change authority/resource/version truth'
 [[ ! -e "${REPOSITORY_ROOT}/src/p4E2Probe" ]] \
     || fail 'P4-E2 must not add a probe source set'
 [[ ! -e "${REPOSITORY_ROOT}/src/p4E2GameTest" ]] \
@@ -975,7 +1036,16 @@ for forbidden_jar_entry in \
     'P4E2PhaseTypes' \
     'P4E2VisibilityCompileTest' \
     'P4E0Research' \
-    'P4E3' \
+    'P4E3StartupObservationTestAccess' \
+    'P4E3StartupMemoryGameTests' \
+    'P4E3ProbeMain' \
+    'P4E3FixtureBuilder' \
+    'P4E3FixtureManifest' \
+    'P4E3FileVerifier' \
+    'P4E3PlayerDataFixture' \
+    'P4E3ApiGateTest' \
+    'P4E3StartupLifecycleTest' \
+    'P4E3LeaseTerminalTest' \
     'org/junit/' \
     'org/hamcrest/'; do
     forbid_fixed "${JAR_LISTING}" "${forbidden_jar_entry}" \

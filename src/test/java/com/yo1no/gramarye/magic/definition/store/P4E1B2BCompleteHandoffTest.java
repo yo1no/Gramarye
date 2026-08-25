@@ -128,7 +128,7 @@ final class P4E1B2BCompleteHandoffTest {
     }
 
     @Test
-    void actualPermitAndLeaseCellsUseTheIndexedBackingAndBlockCompetingWork() {
+    void actualUnmarkedPermitAndLeaseCloseDemotesAtTheSameGeneration() {
         var coordinate = new Coordinate(81);
         var lifecycle = new SkillRetentionRootAuditService.IndexLifecycle(
                 coordinate.owner, coordinate.server);
@@ -162,9 +162,9 @@ final class P4E1B2BCompleteHandoffTest {
         assertSame(FIRST, iterator.next());
         assertFalse(iterator.hasNext());
         handoff.close();
-        assertTrue(lifecycle.isComplete(coordinate.owner, coordinate.server));
+        assertTrue(lifecycle.isIncomplete(coordinate.owner, coordinate.server));
         assertEquals(1L, lifecycle.generation(coordinate.owner, coordinate.server));
-        assertEquals(P4E1RawClaimBuffer.Ownership.AUDITED_INDEX,
+        assertEquals(P4E1RawClaimBuffer.Ownership.DISCARDED,
                 published.rawBacking.ownership());
 
         assertTrue(lifecycle.execute(coordinate.owner, coordinate.server,
@@ -172,6 +172,28 @@ final class P4E1B2BCompleteHandoffTest {
         assertTrue(lifecycle.isIncomplete(coordinate.owner, coordinate.server));
         assertEquals(2L, lifecycle.generation(coordinate.owner, coordinate.server));
         assertEquals(P4E1RawClaimBuffer.Ownership.DISCARDED,
+                published.rawBacking.ownership());
+    }
+
+    @Test
+    void actualMarkedPermitAndLeaseCloseKeepsCompleteAtTheSameGeneration() {
+        var coordinate = new Coordinate(811);
+        var lifecycle = new SkillRetentionRootAuditService.IndexLifecycle(
+                coordinate.owner, coordinate.server);
+        var published = publishComplete(coordinate, lifecycle, FIRST, SECOND, FIRST);
+        var handoff = consume(coordinate, lifecycle, published.complete);
+        var iterator = handoff.iterator();
+
+        assertSame(FIRST, iterator.next());
+        assertSame(SECOND, iterator.next());
+        assertSame(FIRST, iterator.next());
+        assertFalse(iterator.hasNext());
+        handoff.markStoreSourceUnchanged();
+        handoff.close();
+
+        assertTrue(lifecycle.isComplete(coordinate.owner, coordinate.server));
+        assertEquals(1L, lifecycle.generation(coordinate.owner, coordinate.server));
+        assertEquals(P4E1RawClaimBuffer.Ownership.AUDITED_INDEX,
                 published.rawBacking.ownership());
     }
 

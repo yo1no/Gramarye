@@ -299,13 +299,213 @@ public final class SkillDefinitionStoreService {
         var server = event.getServer();
         install(server);
         submissionPort.bootstrapJournal(server);
+        runP4E3StartupReclaim(server);
+    }
+
+    private void runP4E3StartupReclaim(MinecraftServer server) {
+        var observationView = qualificationStoreView == null
+                ? null
+                : qualificationStoreView.e3StartupView();
+        var recording = observationView != null && observationView.beginRecording(server);
+        try {
+            if (recording) {
+                observationView.recordAuditInvocation(server);
+            }
+            var auditResult = rootAuditService.audit(server);
+            if (recording) {
+                var generation = auditResult.summary().indexGeneration();
+                if (generation.isEmpty()) {
+                    throw new IllegalStateException("P4E3_AUDIT_GENERATION_NOT_AVAILABLE");
+                }
+                observationView.recordAuditResult(
+                        server, p4E3AuditVariant(auditResult), generation.getAsLong());
+            }
+            if (!(auditResult instanceof SkillRetentionRootAuditResult.Complete complete)) {
+                if (recording) {
+                    observationView.completeRecording(server);
+                }
+                return;
+            }
+
+            if (recording) {
+                observationView.recordCompleteConsumeInvocation(server);
+            }
+            var handoff = rootAuditService.consumeComplete(server, complete);
+            var normalTerminal = false;
+            var sourceUnchanged = false;
+            try {
+                if (recording) {
+                    observationView.recordSnapshotInvocation(server);
+                }
+                var snapshotResult = SkillRetentionRootSnapshot.fromCompleteRoots(handoff);
+                if (recording) {
+                    observationView.recordSnapshotResult(
+                            server,
+                            p4E3SnapshotVariant(snapshotResult),
+                            snapshotResult instanceof SkillRetentionRootSnapshot.Complete snapshot
+                                    ? snapshot.roots().size() : -1);
+                }
+                if (snapshotResult instanceof SkillRetentionRootSnapshot.Complete snapshot) {
+                    var exactAdapter = recording ? installedAdapter(server) : null;
+                    if (recording) {
+                        observationView.recordReclaimInvocation(server, exactAdapter.isDirty());
+                    }
+                    var reclaimResult = this.reclaim(server, snapshot);
+                    if (reclaimResult
+                            instanceof SkillSubsystemResult.Available<SkillReclaimResult> available
+                            && available.value() instanceof SkillReclaimResult.Completed completed
+                            && completed.report().revisionsReclaimed() == 0) {
+                        sourceUnchanged = true;
+                    }
+                    if (recording) {
+                        recordP4E3ReclaimResult(observationView, server, reclaimResult);
+                        observationView.recordDirtyAfter(server, exactAdapter.isDirty());
+                    }
+                }
+                normalTerminal = true;
+            } finally {
+                try {
+                    if (normalTerminal && sourceUnchanged) {
+                        handoff.markStoreSourceUnchanged();
+                    }
+                } finally {
+                    handoff.close();
+                }
+            }
+            if (recording) {
+                var terminal = rootAuditService.observeP4E3IndexTerminal(server);
+                observationView.recordIndexTerminal(
+                        server, terminal.terminal(), terminal.generation());
+            }
+            if (recording) {
+                observationView.completeRecording(server);
+            }
+        } catch (RuntimeException | Error failure) {
+            if (recording) {
+                observationView.abortRecording(server);
+            }
+            throw failure;
+        }
+    }
+
+    private static P4E2QualificationFacade.E3AuditVariant p4E3AuditVariant(
+            SkillRetentionRootAuditResult result) {
+        return switch (result) {
+            case SkillRetentionRootAuditResult.Complete ignored ->
+                    P4E2QualificationFacade.E3AuditVariant.COMPLETE;
+            case SkillRetentionRootAuditResult.OverLimit ignored ->
+                    P4E2QualificationFacade.E3AuditVariant.OVER_LIMIT;
+            case SkillRetentionRootAuditResult.ReconciliationRequired ignored ->
+                    P4E2QualificationFacade.E3AuditVariant.RECONCILIATION_REQUIRED;
+            case SkillRetentionRootAuditResult.Incomplete incomplete -> switch (
+                    incomplete.reason()) {
+                case GENERATION_EXHAUSTED ->
+                        P4E2QualificationFacade.E3AuditVariant.GENERATION_EXHAUSTED;
+                case HEAP_FLOOR_NOT_MET,
+                        HEAP_FLOOR_UNVERIFIABLE,
+                        STORE_UNAVAILABLE,
+                        JOURNAL_NOT_READY,
+                        JOURNAL_UNAVAILABLE,
+                        JOURNAL_TARGET_INVALID,
+                        INVENTORY_PROVIDER_MISSING,
+                        COUNTER_CAPACITY_EXCEEDED,
+                        DIRECTORY_UNREADABLE,
+                        DIRECTORY_TYPE_UNSUPPORTED,
+                        DIRECTORY_IDENTITY_UNAVAILABLE,
+                        DIRECTORY_RACE_DETECTED,
+                        PLAYERDATA_NAME_NONCANONICAL,
+                        PRIMARY_FILE_UNREADABLE,
+                        PRIMARY_FILE_TYPE_UNSUPPORTED,
+                        PRIMARY_FILE_IDENTITY_UNAVAILABLE,
+                        PRIMARY_FILE_RACE_DETECTED,
+                        PLATFORM_READ_FAILURE_PROVEN,
+                        STRICT_GZIP_REJECTED,
+                        STRICT_NBT_REJECTED,
+                        DATA_VERSION_MISSING,
+                        DATA_VERSION_WRONG_TYPE,
+                        DATA_VERSION_NOT_CURRENT,
+                        ATTACHMENT_ADMISSION_REJECTED,
+                        ATTACHMENT_QUARANTINED,
+                        INTEGRATED_OWNER_IDENTITY_UNAVAILABLE,
+                        INTEGRATED_OWNER_FRESHNESS_LOST,
+                        ONLINE_SOURCE_FRESHNESS_LOST,
+                        SERVER_FRESHNESS_LOST,
+                        CALL_CHAIN_FRESHNESS_LOST,
+                        INDEX_RESERVATION_LOST,
+                        STORE_SOURCE_FRESHNESS_LOST,
+                        JOURNAL_FRESHNESS_LOST,
+                        JOURNAL_TARGET_PROOF_LOST,
+                        INVENTORY_PROVIDER_FRESHNESS_LOST,
+                        SELECTED_FILE_FRESHNESS_LOST,
+                        INTERNAL_RUNTIME_FAILURE ->
+                                P4E2QualificationFacade.E3AuditVariant.INCOMPLETE;
+            };
+        };
+    }
+
+    private static P4E2QualificationFacade.E3SnapshotVariant p4E3SnapshotVariant(
+            SkillRetentionRootSnapshot result) {
+        return switch (result) {
+            case SkillRetentionRootSnapshot.Complete ignored ->
+                    P4E2QualificationFacade.E3SnapshotVariant.COMPLETE;
+            case SkillRetentionRootSnapshot.Incomplete ignored ->
+                    P4E2QualificationFacade.E3SnapshotVariant.INCOMPLETE;
+            case SkillRetentionRootSnapshot.Truncated ignored ->
+                    P4E2QualificationFacade.E3SnapshotVariant.TRUNCATED;
+            case SkillRetentionRootSnapshot.OverLimit ignored ->
+                    P4E2QualificationFacade.E3SnapshotVariant.OVER_LIMIT;
+        };
+    }
+
+    private static void recordP4E3ReclaimResult(
+            P4E2QualificationFacade.E3StartupView observationView,
+            MinecraftServer server,
+            SkillSubsystemResult<SkillReclaimResult> result) {
+        switch (result) {
+            case SkillSubsystemResult.Unavailable<SkillReclaimResult> ignored ->
+                    observationView.recordReclaimResult(
+                            server,
+                            P4E2QualificationFacade.E3ReclaimVariant.UNAVAILABLE,
+                            -1,
+                            -1,
+                            -1,
+                            -1);
+            case SkillSubsystemResult.Available<SkillReclaimResult> available -> {
+                switch (available.value()) {
+                    case SkillReclaimResult.Completed completed -> {
+                        var report = completed.report();
+                        var variant = report.revisionsReclaimed() == 0
+                                ? P4E2QualificationFacade.E3ReclaimVariant.COMPLETED_ZERO
+                                : P4E2QualificationFacade.E3ReclaimVariant.COMPLETED_POSITIVE;
+                        observationView.recordReclaimResult(
+                                server,
+                                variant,
+                                report.historiesScanned(),
+                                report.revisionsScanned(),
+                                report.historiesChanged(),
+                                report.revisionsReclaimed());
+                    }
+                    case SkillReclaimResult.Rejected ignored ->
+                            observationView.recordReclaimResult(
+                                    server,
+                                    P4E2QualificationFacade.E3ReclaimVariant.REJECTED,
+                                    -1,
+                                    -1,
+                                    -1,
+                                    -1);
+                }
+            }
+        }
     }
 
     private void onServerStopped(ServerStoppedEvent event) {
+        var server = event.getServer();
         if (qualificationStoreView != null) {
             qualificationStoreView.clearOnServerStopped();
+            qualificationStoreView.e3StartupView().clearOnServerStopped(server);
         }
-        uninstall(event.getServer());
+        rootAuditService.removeServer(server);
+        uninstall(server);
     }
 
     GramaryeSkillSavedData installedAdapter(MinecraftServer server) {

@@ -162,6 +162,123 @@ final class P4E2QualificationFacadeVisibilityCompileTest {
                 """);
     }
 
+    @Test
+    void externalCodeCannotArmE3Startup() throws IOException {
+        assertRejected("outside/ExternalE3Arm.java", """
+                package outside;
+
+                import com.yo1no.gramarye.P4E2QualificationFacade;
+
+                public final class ExternalE3Arm {
+                    void attack(P4E2QualificationFacade facade) {
+                        facade.armE3Startup(null);
+                    }
+                }
+                """);
+    }
+
+    @Test
+    void externalCodeCannotClaimE3Startup() throws IOException {
+        assertRejected("outside/ExternalE3Claim.java", """
+                package outside;
+
+                import com.yo1no.gramarye.P4E2QualificationFacade;
+
+                public final class ExternalE3Claim {
+                    void attack(P4E2QualificationFacade facade) {
+                        facade.claimE3Startup(null);
+                    }
+                }
+                """);
+    }
+
+    @Test
+    void externalCodeCannotConsumeE3Startup() throws IOException {
+        assertRejected("outside/ExternalE3Consume.java", """
+                package outside;
+
+                import com.yo1no.gramarye.P4E2QualificationFacade;
+
+                public final class ExternalE3Consume {
+                    void attack(P4E2QualificationFacade facade) {
+                        facade.consumeE3Startup(null, null);
+                    }
+                }
+                """);
+    }
+
+    @Test
+    void externalCodeCannotAbortE3Startup() throws IOException {
+        assertRejected("outside/ExternalE3Abort.java", """
+                package outside;
+
+                import com.yo1no.gramarye.P4E2QualificationFacade;
+
+                public final class ExternalE3Abort {
+                    void attack(P4E2QualificationFacade facade) {
+                        facade.abortE3Startup(null, null);
+                    }
+                }
+                """);
+    }
+
+    @Test
+    void externalCodeCannotNameE3Session() throws IOException {
+        assertRejected("outside/ExternalE3Session.java", """
+                package outside;
+
+                import com.yo1no.gramarye.P4E2QualificationFacade;
+
+                public final class ExternalE3Session {
+                    private P4E2QualificationFacade.E3StartupSession stolen;
+                }
+                """);
+    }
+
+    @Test
+    void externalCodeCannotNameE3Snapshot() throws IOException {
+        assertRejected("outside/ExternalE3Snapshot.java", """
+                package outside;
+
+                import com.yo1no.gramarye.P4E2QualificationFacade;
+
+                public final class ExternalE3Snapshot {
+                    private P4E2QualificationFacade.E3StartupSnapshot stolen;
+                }
+                """);
+    }
+
+    @Test
+    void externalCodeCannotConstructOrExtendE3View() throws IOException {
+        assertRejected("outside/ExternalE3View.java", """
+                package outside;
+
+                import com.yo1no.gramarye.P4E2QualificationFacade;
+
+                public final class ExternalE3View
+                        extends P4E2QualificationFacade.E3StartupView {
+                    ExternalE3View(P4E2QualificationFacade owner) {
+                        super(owner);
+                    }
+                }
+                """);
+    }
+
+    @Test
+    void externalE3ViewHasNoRawAuthorityGetter() throws IOException {
+        assertRejected("outside/ExternalE3RawGetter.java", """
+                package outside;
+
+                import com.yo1no.gramarye.P4E2QualificationFacade;
+
+                public final class ExternalE3RawGetter {
+                    Object attack(P4E2QualificationFacade.StoreView view) {
+                        return view.e3StartupView().service();
+                    }
+                }
+                """);
+    }
+
     private void assertRejected(String relativePath, String source) throws IOException {
         var result = compile(relativePath, source);
         assertFalse(result.success(), "negative compile probe unexpectedly succeeded");
