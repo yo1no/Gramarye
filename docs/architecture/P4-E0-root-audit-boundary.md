@@ -7845,3 +7845,428 @@ authorized exact-30 scope. The condition resolves automatically; no second commi
 closure run ID. This closure does not resume or complete implementation, pass the P4-E3 fixed-heap
 Gate, or complete P4-E.
 <!-- P4_E3_Q04_EXACT30_VERIFIER_SCOPE_CORRECTION_AUTHORITY_CLOSURE_COMMON_END -->
+
+<!-- P4_E3_P4_E_FINAL_CLOSURE_COMMON_BEGIN -->
+## P4-E3 / P4-E final implementation and release closure
+
+This is the later active synchronized P4-E3 / P4-E closure block. It records the completed
+P4-E3 implementation lineage, the completed exact-44 output-containment qualification, the
+credential-remediation and ordinary-push history, and the conditional final transition for P4-E3
+and P4-E. Earlier Q0.1 through Q0.4 authority and closure blocks remain immutable historical
+snapshots. This documentation-only closure changes exactly these two architecture ledgers and
+changes no codex-spec authority, Java, test, GameTest, probe, script, Gradle, workflow, resource,
+fixture, README, R2Q payload, or product behavior.
+
+The final phase transition below becomes effective only after this closure commit has one unique
+exact-SHA attempt-1 `Build` run for `push` / `main` whose exact six required jobs all complete with
+`success`. The already successful implementation run `32835489200` is recorded evidence for the
+implementation commit; it does not substitute for this closure commit's own effectiveness Gate.
+
+### P4-E3 implementation identity
+
+| Coordinate | Value |
+| --- | --- |
+| Implementation commit | `4869491cc002147d76a11189f06b072fd3c6e3a8` |
+| Tree | `0466878043ae7c6f25cd7de7240ff4b4120496bf` |
+| Direct parent | `f6f13cc0406ab7530f928de43b6c13e305ae3e03` |
+| Subject | `feat(persistence): complete P4-E3 startup reclaim integration` |
+| Scope / stat | exact 30 paths; 8,000 insertions; 58 deletions |
+| Patch bytes | `426,953` |
+| Patch SHA-256 | `fd0771bd6d577cb17758fbb9f682bf833d0ef6b66c63bd96231341a413768e5a` |
+| Exact-30 sorted path-set SHA-256 | `b0813298542a16ab120980fc7c840b6c9553224979eb9e29fce145416c29caa1` |
+| Qualified source-freeze SHA-256 | `4d83a6ba68f66213ee99c2a359f49d45c54470e20dd6c5b5ad2ca3cbdfc87c62` |
+| Commit paths matching qualified freeze | `30/30` |
+| Documentation paths in implementation commit | `0` |
+| Unknown paths | `0` |
+
+The exact-44 task-family containment delta remains inside the already authorized `build.gradle`
+path. It does not create a thirty-first repository path or change the exact-30 repository scope.
+
+### Exact-30 implementation inventory
+
+The implementation commit contains exactly the following paths and no others:
+
+~~~text
+Production modifications — 4
+  1. src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java
+  2. src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+  3. src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java
+  4. src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java
+
+Modified existing tests — 8
+  5. src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java
+  6. src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java
+  7. src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java
+  8. src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java
+  9. src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java
+ 10. src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java
+ 11. src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java
+ 12. src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java
+
+New P4-E3 tests — 3
+ 13. src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java
+ 14. src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java
+ 15. src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java
+
+Probe files — 5
+ 16. src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureBuilder.java
+ 17. src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java
+ 18. src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java
+ 19. src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java
+ 20. src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FileVerifier.java
+
+Custom GameTest files — 2
+ 21. src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java
+ 22. src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java
+
+Modified existing portable verifiers — 5
+ 23. scripts/verify-p4-b2-b-configuration.sh
+ 24. scripts/verify-p4-e0-r-configuration.sh
+ 25. scripts/verify-p4-e0-r2q-configuration.sh
+ 26. scripts/verify-p4-e1-configuration.sh
+ 27. scripts/verify-p4-e2-configuration.sh
+
+New P4-E3 verifier — 1
+ 28. scripts/verify-p4-e3-configuration.sh
+
+Build and workflow — 2
+ 29. build.gradle
+ 30. .github/workflows/build.yml
+~~~
+
+~~~text
+production modifications              = 4
+modified existing tests               = 8
+new P4-E3 tests                       = 3
+probe files                           = 5
+custom GameTest files                 = 2
+modified existing verifiers           = 5
+new P4-E3 verifier                    = 1
+build.gradle                          = 1
+.github/workflows/build.yml           = 1
+total                                 = 30
+unknown paths                         = 0
+tracked fixture / resource additions  = 0
+codex-spec / ledger / README delta
+  in the implementation commit        = 0
+Gramarye.java                         = NO DELTA
+path 31                               = PROHIBITED
+~~~
+
+### Q0.1 through Q0.4 completed lineage
+
+Q0.1 was repository-external read-only feasibility and public-surface evidence, not a standalone
+repository commit or workflow run. Its result was:
+
+~~~text
+evidence root               = /private/tmp/gramarye-p4-e3-q01-surface-review-evidence-20260823T081707Z
+technical feasibility       = COMPLETE — PASS; CANDIDATE A
+public-surface completion   = COMPLETE — PASS
+surface skeleton SHA-256    = 00bc4b332bc8edce520d7606b8435aff7178f1b09ce596e744e6af5f8668710d
+~~~
+
+The earlier `fdad001c...` commit is the P4-E3 read-only design-review closure. Q0.2 authority then
+formally adopted the Q0.1 result. The complete committed lineage is:
+
+| Node | Commit | Tree | Direct parent | Remote Build run |
+| --- | --- | --- | --- | --- |
+| P4-E3 design-review closure | `fdad001c34e097ca3e0f35bcad92b1ed0c4553b3` | `50e4e434efefe7fca42c7bed3c07e8fb6220e5ee` | `e40bc39584176e691e9289c8bf1272d7f8964424` | `32579844194` |
+| Q0.2 closed-startup authority | `343c3ab60a1422d85e202b8390f67356a25ec958` | `4ac4bcbeee2e0276bea0484ae1b7b69e40280d17` | `fdad001c34e097ca3e0f35bcad92b1ed0c4553b3` | `32632663268` |
+| Q0.2 two-ledger closure | `642f004788427a97133fee7f8eca08453548c5fe` | `4a6aa4ddf0de0ed1ae7cfb87ec8f86387272fdc2` | `343c3ab60a1422d85e202b8390f67356a25ec958` | `32639653895` |
+| Q0.3 exact-29 authority | `a254eebb0e284be641da89c4ac5202c1cf47d462` | `0cd33324786609d2e551d4d0f1ebca83e0603f25` | `642f004788427a97133fee7f8eca08453548c5fe` | `32655695194` |
+| Q0.3 two-ledger closure | `287fecefdb77dc0399658e90d0362516aee27872` | `e525ebacd4d84a695b19003bb3f9bee392a00bba` | `a254eebb0e284be641da89c4ac5202c1cf47d462` | `32686352050` |
+| Q0.4 exact-30 authority | `7242befa9a713c4587c270617b3631590c703c19` | `c14b35ac582eb002e4bfdedf0b34b9fa75418838` | `287fecefdb77dc0399658e90d0362516aee27872` | `32705077606` |
+| Q0.4 two-ledger closure | `f6f13cc0406ab7530f928de43b6c13e305ae3e03` | `966fa6b198b8fe0c5435c207bb11cce28d98e92f` | `7242befa9a713c4587c270617b3631590c703c19` | `32711840987` |
+
+The exact lineage subjects are:
+
+~~~text
+fdad001c = docs(persistence): close P4-E3 review and open implementation
+343c3ab6 = docs(persistence): authorize closed E3 startup observation
+642f0047 = docs(persistence): close P4-E3-Q0.2 and resume implementation
+a254eebb = docs(persistence): authorize P4-E3 exact-29 implementation scope
+287fecef = docs(persistence): close P4-E3 Q0.3 scope authority
+7242befa = docs(persistence): authorize P4-E3 exact-30 verifier scope
+f6f13cc0 = docs(persistence): close P4-E3 Q0.4 verifier authority
+~~~
+
+Every listed run is the sole exact-SHA `Build` run for `push` / `main`, attempt `1`, and completed
+with `success`. Each used the then-current exact five-job workflow and had `5/5` jobs successful;
+missing, extra, duplicate, rerun, skipped, cancelled, and failed jobs were zero. Q0.1, Q0.2,
+Q0.3, and Q0.4 are complete. Their authority/common-block identities and earlier scope
+adjudications remain unchanged.
+
+### Exact-44 containment and completed local qualification
+
+The final local qualification evidence root is:
+
+~~~text
+/private/tmp/gramarye-p4-e3-exact44-containment-evidence-20260825T051115Z
+~~~
+
+Its final containment and source coordinates are:
+
+~~~text
+exact-30 source freeze                 = 30/30 mode / bytes / SHA PASS
+exact-30 source-freeze SHA-256         = 4d83a6ba68f66213ee99c2a359f49d45c54470e20dd6c5b5ad2ca3cbdfc87c62
+exact-44 manifest SHA-256              = e95e98e9df486e11f89abfb1f9e15b8180388b93d41c99cd2534a7f256f2a920
+task families P4A3 / P4B2 / P4C2 / P4D3
+                                        = 3 / 17 / 7 / 17
+helper definitions / application points = 1 / 13
+existing / additional contained tasks    = 41 / 3
+duplicate / unmapped tasks               = 0 / 0
+task-owned directories                   = 44 / 44
+expected task-owned log files            = 88 / 88
+missing / extra / symlink                = 0 / 0 / 0
+repository-root logs/                    = ABSENT
+~~~
+
+The exact-44 execution Action, its four serialized String fields, the JDK NIO NOFOLLOW deletion
+contract, and the formula `build/probe-runtime-working/<exact-task-name>` passed. The final local
+qualification result was:
+
+~~~text
+formal command slots / retry            = 54/54 PASS / 0
+focused portable modes                  = 9/9 PASS
+P4-A3 logical aggregate                 = 3/3 PASS
+P4-B / P4-C / P4-D regression Gates     = 3/3 PASS
+final portable matrix                   = 12 scripts x 3 modes = 36/36 PASS
+configuration-cache reports / problems  = 9 / 0
+full unit suite                         = 202 suites / 1,491 tests
+failures / errors / skipped             = 0 / 0 / 0
+normal GameTest                         = 12/12 PASS
+dedicated-server smoke                  = PASS
+fixture diagnostic                     = PASS
+warning compilation                     = PASS
+fresh production JAR                    = PASS
+required E3 classes / integration       = 9/9 / 3/3
+combined JAR byte identity              = 12/12
+forbidden JAR leaks                     = 0
+javap / jdeps / API / callsite / static = PASS
+official R2Q checksums                   = 5/5 PASS
+~~~
+
+The P4-E3 fixed-heap Gate was not rerun in the exact-44 campaign. Its earlier PASS remains valid by
+qualified exact continuity of every P4-E3-relevant source, script, task-graph, and configuration
+byte; the only intervening delta was the authorized two-line P4-A3 containment change within the
+already authorized `build.gradle` path:
+
+~~~text
+attempt / retry                         = 1 / 0
+product child JVMs                      = 5/5
+fixture / first / first-verified /
+restart / restart-verified / aggregate  = 6/6 markers
+first removed / reclaim / terminal      = 1 / positive / INCOMPLETE(1)
+restart removed / reclaim / terminal    = 0 / zero / COMPLETE_INDEX(1)
+OOME / timeout / crash / unexpected     = 0 / 0 / 0 / 0
+~~~
+
+### Credential remediation and ordinary-push history
+
+The first historical ordinary push attempt for the unchanged implementation commit was rejected
+by GitHub before any remote ref update:
+
+~~~text
+failure                                = GH013 — credential lacks workflow scope
+ordinary push attempts at that point  = 1
+successful pushes                     = 0
+origin/main update                     = 0
+workflow runs                         = 0
+remote Gate                           = NOT STARTED
+~~~
+
+That rejection is a credential-boundary failure. It is not a failed workflow, workflow rerun, or
+Actions run attempt. The implementation commit and tree remained unchanged.
+
+Repository-external remediation then completed with:
+
+~~~text
+hostname / account / protocol          = github.com / yo1no / HTTPS
+credential storage                     = operating-system keyring
+requested additional scope             = workflow
+effective scopes                       = gist, read:org, repo, workflow
+gh auth refresh / setup-git            = return code 0 / 0
+Git binding                            = gh auth git-credential
+GH_TOKEN / GITHUB_TOKEN override       = absent / absent
+token value                            = NOT COLLECTED
+device code                            = NOT RECORDED
+plaintext credential written           = false
+~~~
+
+The later authorized ordinary push was exact once in its remediation turn, used no retry, and
+advanced `origin/main` from `f6f13cc0406ab7530f928de43b6c13e305ae3e03` to the unchanged
+implementation commit `4869491cc002147d76a11189f06b072fd3c6e3a8`. Across the complete history,
+ordinary push attempts / successes were `2 / 1`.
+
+### Implementation exact-SHA six-job remote qualification
+
+| Coordinate | Value |
+| --- | --- |
+| Workflow / database ID | `Build` / `316690179` |
+| Remote run | `32835489200` |
+| URL | `https://github.com/yo1no/Gramarye/actions/runs/32835489200` |
+| Head SHA | `4869491cc002147d76a11189f06b072fd3c6e3a8` |
+| Event / branch / attempt | `push` / `main` / `1` |
+| Exact-SHA run count | `1` |
+| Run result | `completed` / `success` |
+
+The exact job set and result were:
+
+| Job | Database ID | Result |
+| --- | --- | --- |
+| `build` | `97763277381` | `completed / success` |
+| `P4-A3 memory gates` | `97764475183` | `completed / success` |
+| `P4-B memory gates` | `97765067467` | `completed / success` |
+| `P4-C memory gates` | `97766633875` | `completed / success` |
+| `P4-D memory gates` | `97767754359` | `completed / success` |
+| `P4-E memory gates` | `97770354670` | `completed / success` |
+
+~~~text
+job result
+= 6/6 completed/success
+
+missing / extra / duplicate / skipped /
+cancelled / failed / rerun
+= 0 / 0 / 0 / 0 / 0 / 0 / 0
+~~~
+
+### Branch-rule notice, governance boundary, and implementation postflight
+
+The successful implementation push reported:
+
+~~~text
+Bypassed rule violations
+4 of 4 required status checks are expected
+~~~
+
+This is recorded as the server's push-acceptance notice. It does not prove, infer, or modify the
+repository's branch-protection or required-check policy. Branch-protection and required-check
+configuration remain external governance unknown. Push acceptance and workflow success do not
+turn that external governance state into repository authority.
+
+The implementation-push postflight and immediate pre-closure baseline were:
+
+~~~text
+main HEAD
+= 4869491cc002147d76a11189f06b072fd3c6e3a8
+
+origin/main
+= 4869491cc002147d76a11189f06b072fd3c6e3a8
+
+live remote main
+= 4869491cc002147d76a11189f06b072fd3c6e3a8
+
+ahead / behind
+= 0 / 0
+
+main worktree / index / untracked / stash
+= clean / empty / 0 / empty
+
+qualified detached implementation worktree
+= exact same implementation commit; clean / empty / 0 / empty
+~~~
+
+These are explicitly historical implementation-postflight and immediately-pre-closure
+coordinates. After a later final-closure commit, they must not be misreported as that closure
+commit's current HEAD.
+
+### Actual-user-data boundary and retained limitations
+
+Actual user world and playerdata reads were zero throughout P4-E3 implementation qualification,
+commit, credential remediation, push qualification, and this documentation closure. Qualification
+used only deterministic synthetic fixtures and isolated build-owned world/playerdata paths; no
+actual user data was copied into evidence.
+
+This final release adjudication retains all documented limits. In particular, it claims no
+cross-Store/playerdata transaction, fsync durability, rollback, universal memory-safety theorem,
+or protection-policy governance. R2Q remains exploratory and non-normative; its official existing
+report was integrity-checked, not rebuilt as part of this closure.
+
+### Final closure local and integrity evidence
+
+~~~text
+modified repository paths
+= exactly the two architecture ledgers
+
+index before exact staging             = empty
+untracked                              = 0
+git diff --check                       = PASS
+common final-closure blocks            = byte-identical
+Q0.1 / Q0.2 / Q0.3 / Q0.4 blocks       = unchanged
+Markdown fences / tables / links       = PASS
+conflict markers                       = 0
+duplicate-anchor increment             = 0
+~~~
+
+~~~text
+./gradlew verifyPlatformBaseline compileJava test --console=plain
+= BUILD SUCCESSFUL
+  suites / tests              = 202 / 1,491
+  failures / errors / skipped = 0 / 0 / 0
+~~~
+
+The existing official R2Q directory was checked without rerunning or rebuilding the study:
+
+~~~text
+top-level regular files = 6
+symlinks / extras       = 0 / 0
+payload checksums       = 5/5 PASS
+SHA256SUMS.txt SHA-256  = cb296db6f2aae653a0db2af25b20df4a5107e90096eff9766e40fa2798f24da9
+~~~
+
+No GameTest, dedicated server, fixed-heap task, P4-A3/B/C/D regression, portable matrix, R2Q study,
+implementation-worktree qualification, or actual user world/playerdata read was rerun by this
+documentation closure.
+
+### Conditional final phase transition
+
+~~~text
+P4-E0
+= COMPLETE
+
+P4-E1
+= COMPLETE
+
+P4-E2
+= COMPLETE
+
+P4-E3-Q0.1 / Q0.2 / Q0.3 / Q0.4
+= COMPLETE
+
+P4-E3 exact-44 task-family output containment
+= COMPLETE
+
+P4-E3 fixed-heap Gate
+= PASS — PRESERVED BY EXACT CONTINUITY
+
+P4-E3 implementation evidence
+= COMMITTED AND PUSHED;
+  UNIQUE EXACT-SHA ATTEMPT-1
+  SIX-JOB REMOTE GATE PASS
+
+P4-E3 final two-ledger closure
+= COMPLETE UPON THIS CLOSURE COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  SIX-JOB REMOTE GATE PASS
+
+P4-E3 implementation
+= COMPLETE UPON THE SAME CONDITION
+
+P4-E3
+= COMPLETE UPON THE SAME CONDITION
+
+P4-E
+= COMPLETE UPON THE SAME CONDITION
+~~~
+
+Commit and push alone do not resolve the final condition. It resolves automatically only when
+this closure commit has exactly one `Build` run for `push` / `main`, attempt `1`, and the exact
+`build`, `P4-A3 memory gates`, `P4-B memory gates`, `P4-C memory gates`, `P4-D memory gates`, and
+`P4-E memory gates` jobs all complete with `success`. Missing, extra, duplicate, rerun, skipped,
+cancelled, and failed jobs must remain zero. No second commit may be created to record the closure
+run ID.
+
+Until that condition passes, P4-E3 and P4-E remain incomplete. After it passes, P4-E3 and the
+entire P4-E phase are complete. There is no remaining P4-E implementation item; this closure does
+not make a claim about any later engineering phase or about external branch-protection governance.
+<!-- P4_E3_P4_E_FINAL_CLOSURE_COMMON_END -->
