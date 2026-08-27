@@ -1699,3 +1699,1713 @@ Canonical base tree
 
 The companion seal supplies immutable metadata and projection provenance for the original R2
 evidence. It does not replace, reinterpret, or extend R2 product authority.
+
+
+## 47. P5-A-V1 Compile-Closed Runtime Result Vocabulary Amendment
+
+### 47.1 Status and Supersession
+
+This V1 amendment is the compile-closure authority for the P5 V0 runtime vocabulary. It
+supersedes Sections 7, 10, 11, 24, 27, 28, 30 through 34, and 37 only where those sections name a
+Java type, family, variant, component, constructor invariant, absence representation, or
+conversion without a compile-complete declaration. Every queue, counter, lifecycle, scheduler,
+budget, breaker, deadline, persistence, generic-resolution, P6, exception, and cardinality rule in
+the consolidated record remains unchanged.
+
+The two previously unnamed product coordinates are closed without a new action: a duplicate live
+server-minted UUID is `RuntimeAdmissionResult.InvalidEvent` with
+`DUPLICATE_LIVE_SKILL_INSTANCE_ID`, and the already specified all-or-none post-port child
+node/capability structural rejection is `RuntimeExecutionOutcome.InvalidEvent`. Neither mapping
+adds a retry, publication, breaker, fault, or gameplay rule.
+
+### 47.2 Package and Visibility
+
+Every declaration in the following block belongs to `com.yo1no.gramarye`. Every new top-level P5
+type is package-private. Nested permitted records are addressable only through their inaccessible
+package-private owner. V1 creates zero public top-level types, zero public result entry methods,
+and zero public callback or generic payload types. Existing public immutable P3 IDs, definition
+values, and bounded subsystem reasons are imported rather than duplicated.
+
+### 47.3 Exact Java Declarations
+
+The following source is the exact declaration segment compiled by the repository-external Java
+21 probe. It is normative Java, not pseudocode.
+
+```java
+package com.yo1no.gramarye;
+
+import com.yo1no.gramarye.magic.api.id.EventId;
+import com.yo1no.gramarye.magic.api.id.SkillId;
+import com.yo1no.gramarye.magic.api.id.SkillInstanceId;
+import com.yo1no.gramarye.magic.api.id.SkillRevision;
+import com.yo1no.gramarye.magic.capability.TriggerEventKind;
+import com.yo1no.gramarye.magic.definition.document.SkillReference;
+import com.yo1no.gramarye.magic.definition.store.SkillSubsystemUnavailableReason;
+import com.yo1no.gramarye.magic.definition.validation.ValidatedNodeDefinition;
+import com.yo1no.gramarye.magic.definition.validation.ValidatedSkillDefinition;
+import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
+
+record RuntimeServerToken(long value) {
+    RuntimeServerToken {
+        if (value <= 0) {
+            throw new IllegalArgumentException("runtime server token must be positive");
+        }
+    }
+}
+
+record RuntimeSkillInstanceSequence(long value) {
+    RuntimeSkillInstanceSequence {
+        if (value <= 0) {
+            throw new IllegalArgumentException("runtime skill instance sequence must be positive");
+        }
+    }
+}
+
+record RuntimePlayerId(UUID value) {
+    RuntimePlayerId {
+        Objects.requireNonNull(value, "value");
+    }
+}
+
+record RuntimeEntityId(UUID value) {
+    RuntimeEntityId {
+        Objects.requireNonNull(value, "value");
+    }
+}
+
+enum RuntimeEntityKind {
+    ANY_ENTITY,
+    LIVING_ENTITY
+}
+
+sealed interface RuntimeOrigin
+        permits ServerOrigin, PlayerOrigin, EntityOrigin, BlockOrigin {}
+
+record ServerOrigin(RuntimeServerToken server) implements RuntimeOrigin {
+    ServerOrigin {
+        Objects.requireNonNull(server, "server");
+    }
+}
+
+record PlayerOrigin(
+        RuntimeServerToken server,
+        ResourceKey<Level> dimension,
+        RuntimePlayerId player) implements RuntimeOrigin {
+    PlayerOrigin {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(dimension, "dimension");
+        Objects.requireNonNull(player, "player");
+    }
+}
+
+record EntityOrigin(
+        RuntimeServerToken server,
+        ResourceKey<Level> dimension,
+        RuntimeEntityId entity,
+        RuntimeEntityKind expectedKind) implements RuntimeOrigin {
+    EntityOrigin {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(dimension, "dimension");
+        Objects.requireNonNull(entity, "entity");
+        Objects.requireNonNull(expectedKind, "expectedKind");
+    }
+}
+
+record BlockOrigin(
+        RuntimeServerToken server,
+        ResourceKey<Level> dimension,
+        BlockPos position) implements RuntimeOrigin {
+    BlockOrigin {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(dimension, "dimension");
+        position = new BlockPos(Objects.requireNonNull(position, "position"));
+    }
+}
+
+sealed interface RuntimeTarget permits PlayerTarget, EntityTarget, BlockTarget {}
+
+record PlayerTarget(
+        RuntimeServerToken server,
+        ResourceKey<Level> dimension,
+        RuntimePlayerId player) implements RuntimeTarget {
+    PlayerTarget {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(dimension, "dimension");
+        Objects.requireNonNull(player, "player");
+    }
+}
+
+record EntityTarget(
+        RuntimeServerToken server,
+        ResourceKey<Level> dimension,
+        RuntimeEntityId entity,
+        RuntimeEntityKind expectedKind) implements RuntimeTarget {
+    EntityTarget {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(dimension, "dimension");
+        Objects.requireNonNull(entity, "entity");
+        Objects.requireNonNull(expectedKind, "expectedKind");
+    }
+}
+
+record BlockTarget(
+        RuntimeServerToken server,
+        ResourceKey<Level> dimension,
+        BlockPos position) implements RuntimeTarget {
+    BlockTarget {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(dimension, "dimension");
+        position = new BlockPos(Objects.requireNonNull(position, "position"));
+    }
+}
+
+sealed interface RuntimeTriggerCause permits RootTriggerCause, ChildTriggerCause {
+    TriggerEventKind eventKind();
+}
+
+record RootTriggerCause(TriggerEventKind eventKind) implements RuntimeTriggerCause {
+    RootTriggerCause {
+        Objects.requireNonNull(eventKind, "eventKind");
+    }
+}
+
+record ChildTriggerCause(TriggerEventKind eventKind) implements RuntimeTriggerCause {
+    ChildTriggerCause {
+        Objects.requireNonNull(eventKind, "eventKind");
+    }
+}
+
+sealed interface RuntimeExecutionData permits NoRuntimeExecutionData {}
+
+enum NoRuntimeExecutionData implements RuntimeExecutionData {
+    INSTANCE
+}
+
+enum RuntimeSchedulePersistence {
+    MEMORY_ONLY,
+    PERSISTENT
+}
+
+record RuntimeScheduleSpec(
+        int delayTicks,
+        int deadlineHorizonTicks,
+        RuntimeSchedulePersistence persistence) {
+    RuntimeScheduleSpec {
+        Objects.requireNonNull(persistence, "persistence");
+    }
+}
+
+sealed interface RuntimeBudgetAttribution
+        permits PlayerRuntimeBudgetAttribution, NonPlayerRuntimeBudgetAttribution {
+    RuntimeServerToken server();
+}
+
+record PlayerRuntimeBudgetAttribution(
+        RuntimeServerToken server,
+        RuntimePlayerId playerId) implements RuntimeBudgetAttribution {
+    PlayerRuntimeBudgetAttribution {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(playerId, "playerId");
+    }
+}
+
+record NonPlayerRuntimeBudgetAttribution(
+        RuntimeServerToken server,
+        NonPlayerRuntimeBudgetDomain domain) implements RuntimeBudgetAttribution {
+    NonPlayerRuntimeBudgetAttribution {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(domain, "domain");
+    }
+}
+
+enum NonPlayerRuntimeBudgetDomain {
+    SERVER_AUTOMATION
+}
+
+record RuntimeRootEventSpec(
+        SkillReference skillReference,
+        int nodeIndex,
+        RuntimeScheduleSpec schedule,
+        RuntimeBudgetAttribution budgetAttribution,
+        RuntimeOrigin origin,
+        Optional<RuntimeTarget> target,
+        RootTriggerCause triggerCause,
+        RuntimeExecutionData executionData) {
+    RuntimeRootEventSpec {
+        Objects.requireNonNull(skillReference, "skillReference");
+        Objects.requireNonNull(schedule, "schedule");
+        Objects.requireNonNull(budgetAttribution, "budgetAttribution");
+        Objects.requireNonNull(origin, "origin");
+        Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(triggerCause, "triggerCause");
+        Objects.requireNonNull(executionData, "executionData");
+    }
+}
+
+sealed interface RuntimeCancellationHandle
+        permits RuntimeCancellationToken, RuntimeEventToken {}
+
+enum RuntimeCancellationTokenInvalidReason {
+    EVENT_OWNER_MISMATCH
+}
+
+record RuntimeCancellationToken(
+        RuntimeServerToken serverSlotToken,
+        SkillInstanceId skillInstanceId) implements RuntimeCancellationHandle {
+    RuntimeCancellationToken {
+        Objects.requireNonNull(serverSlotToken, "serverSlotToken");
+        Objects.requireNonNull(skillInstanceId, "skillInstanceId");
+    }
+}
+
+record RuntimeEventToken(
+        RuntimeServerToken serverSlotToken,
+        SkillInstanceId skillInstanceId,
+        EventId eventId) implements RuntimeCancellationHandle {
+    RuntimeEventToken {
+        Objects.requireNonNull(serverSlotToken, "serverSlotToken");
+        Objects.requireNonNull(skillInstanceId, "skillInstanceId");
+        Objects.requireNonNull(eventId, "eventId");
+        if (eventId.value() <= 0) {
+            throw new IllegalArgumentException("published EventId must be positive");
+        }
+    }
+}
+
+record RuntimeEvent(
+        EventId eventId,
+        SkillInstanceId skillInstanceId,
+        RuntimeSkillInstanceSequence skillInstanceSequence,
+        RuntimeCancellationToken cancellationToken,
+        Optional<EventId> parentEventId,
+        SkillReference skillReference,
+        int nodeIndex,
+        long createdRuntimeTick,
+        long scheduledRuntimeTick,
+        long deadlineRuntimeTick,
+        int depth,
+        int childSequence,
+        RuntimeSchedulePersistence persistence,
+        RuntimeBudgetAttribution budgetAttribution,
+        RuntimeOrigin origin,
+        Optional<RuntimeTarget> target,
+        RuntimeTriggerCause triggerCause,
+        RuntimeExecutionData executionData) {
+    RuntimeEvent {
+        Objects.requireNonNull(eventId, "eventId");
+        Objects.requireNonNull(skillInstanceId, "skillInstanceId");
+        Objects.requireNonNull(skillInstanceSequence, "skillInstanceSequence");
+        Objects.requireNonNull(cancellationToken, "cancellationToken");
+        Objects.requireNonNull(parentEventId, "parentEventId");
+        Objects.requireNonNull(skillReference, "skillReference");
+        Objects.requireNonNull(persistence, "persistence");
+        Objects.requireNonNull(budgetAttribution, "budgetAttribution");
+        Objects.requireNonNull(origin, "origin");
+        Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(triggerCause, "triggerCause");
+        Objects.requireNonNull(executionData, "executionData");
+        if (eventId.value() <= 0
+                || parentEventId.isPresent() && parentEventId.get().value() <= 0
+                || nodeIndex < 0
+                || nodeIndex >= MagicSafetyCeilings.MAX_NODES
+                || createdRuntimeTick < 0
+                || scheduledRuntimeTick < createdRuntimeTick
+                || deadlineRuntimeTick < scheduledRuntimeTick
+                || depth < 0
+                || childSequence < 0
+                || childSequence > RuntimeChildPlan.PHYSICAL_MAXIMUM) {
+            throw new IllegalArgumentException("invalid published runtime event coordinate");
+        }
+        if (persistence != RuntimeSchedulePersistence.MEMORY_ONLY) {
+            throw new IllegalArgumentException("published P5 event must be memory-only");
+        }
+        if (!skillInstanceId.equals(cancellationToken.skillInstanceId())) {
+            throw new RuntimeKernelException(
+                    RuntimeKernelException.Code.QUEUED_EVENT_IDENTITY_INVARIANT);
+        }
+        var server = cancellationToken.serverSlotToken();
+        if (!server.equals(serverOf(origin))
+                || !server.equals(budgetAttribution.server())
+                || target.isPresent()
+                        && !server.equals(serverOf(target.get()))) {
+            throw new RuntimeKernelException(
+                    RuntimeKernelException.Code.QUEUED_EVENT_IDENTITY_INVARIANT);
+        }
+        if (origin instanceof PlayerOrigin playerOrigin
+                && (!(budgetAttribution instanceof PlayerRuntimeBudgetAttribution playerAttribution)
+                        || !playerOrigin.player().equals(playerAttribution.playerId()))) {
+            throw new RuntimeKernelException(
+                    RuntimeKernelException.Code.QUEUED_EVENT_IDENTITY_INVARIANT);
+        }
+        var rootShape = parentEventId.isEmpty()
+                && depth == 0
+                && childSequence == 0
+                && triggerCause instanceof RootTriggerCause;
+        var childShape = parentEventId.isPresent()
+                && depth > 0
+                && childSequence > 0
+                && triggerCause instanceof ChildTriggerCause;
+        if (!rootShape && !childShape) {
+            throw new RuntimeKernelException(
+                    RuntimeKernelException.Code.QUEUED_EVENT_IDENTITY_INVARIANT);
+        }
+    }
+
+    private static RuntimeServerToken serverOf(RuntimeOrigin origin) {
+        return switch (origin) {
+            case ServerOrigin value -> value.server();
+            case PlayerOrigin value -> value.server();
+            case EntityOrigin value -> value.server();
+            case BlockOrigin value -> value.server();
+        };
+    }
+
+    private static RuntimeServerToken serverOf(RuntimeTarget target) {
+        return switch (target) {
+            case PlayerTarget value -> value.server();
+            case EntityTarget value -> value.server();
+            case BlockTarget value -> value.server();
+        };
+    }
+}
+
+enum RuntimeBudgetDecision {
+    EXECUTE,
+    DEFER_SKILL_INSTANCE_TICK_LIMIT,
+    DEFER_PLAYER_TICK_LIMIT,
+    DEFER_NON_PLAYER_DOMAIN_TICK_LIMIT
+}
+
+enum RuntimeCircuitBreakReason {
+    SKILL_INSTANCE_PENDING_EVENTS_EXCEEDED,
+    PLAYER_PENDING_EVENTS_EXCEEDED,
+    NON_PLAYER_DOMAIN_PENDING_EVENTS_EXCEEDED,
+    SERVER_PENDING_EVENTS_EXCEEDED
+}
+
+record RuntimeCircuitBreakerSummary(
+        RuntimeCircuitBreakReason reason,
+        int pendingBefore,
+        int requestedAdditionalCount,
+        int maximum,
+        int removedQueuedAndDeferredCount,
+        boolean eventInFlight) {
+    RuntimeCircuitBreakerSummary {
+        Objects.requireNonNull(reason, "reason");
+        var hardMaximum = switch (reason) {
+            case SKILL_INSTANCE_PENDING_EVENTS_EXCEEDED -> 256;
+            case PLAYER_PENDING_EVENTS_EXCEEDED,
+                    NON_PLAYER_DOMAIN_PENDING_EVENTS_EXCEEDED -> 1_024;
+            case SERVER_PENDING_EVENTS_EXCEEDED -> 4_096;
+        };
+        if (pendingBefore < 0
+                || requestedAdditionalCount <= 0
+                || requestedAdditionalCount > RuntimeChildPlan.PHYSICAL_MAXIMUM
+                || maximum <= 0
+                || maximum > hardMaximum
+                || pendingBefore > maximum
+                || removedQueuedAndDeferredCount < 0
+                || removedQueuedAndDeferredCount > pendingBefore - (eventInFlight ? 1 : 0) || (eventInFlight && removedQueuedAndDeferredCount > 255)
+                || requestedAdditionalCount <= maximum - pendingBefore) {
+            throw new IllegalArgumentException("invalid circuit-breaker summary");
+        }
+    }
+}
+
+enum RuntimeReferenceFailureReason {
+    WRONG_SERVER,
+    DIMENSION_UNAVAILABLE,
+    WRONG_DIMENSION,
+    MISSING,
+    MISSING_OR_UNLOADED,
+    UNLOADED,
+    TYPE_MISMATCH
+}
+
+enum RuntimePortRejectionReason {
+    PORT_UNAVAILABLE,
+    EFFECT_SPECIFIC_SOURCE_REJECTED,
+    EFFECT_SPECIFIC_TARGET_REJECTED
+}
+
+enum RuntimeSequenceKind {
+    EVENT_SEQUENCE,
+    SKILL_INSTANCE_SEQUENCE
+}
+
+enum RuntimeDrainStopReason {
+    SERVER_EXECUTION_LIMIT_REACHED
+}
+
+enum RuntimeTickAdvanceResult {
+    ADVANCED,
+    EXHAUSTED
+}
+
+enum RuntimeScheduleRejectionReason {
+    DELAY_OUT_OF_RANGE,
+    DELAY_OVERFLOW,
+    DEADLINE_OUT_OF_RANGE,
+    DEADLINE_OVERFLOW,
+    DEADLINE_BEFORE_SCHEDULED_TICK
+}
+
+enum RuntimeBudgetRejectionReason {
+    LINEAGE_EVENT_LIMIT_EXCEEDED,
+    DEPTH_LIMIT_EXCEEDED,
+    DIRECT_CHILD_LIMIT_EXCEEDED,
+    ZERO_DELAY_CHILD_LIMIT_EXCEEDED,
+    EVENT_SEQUENCE_CAPACITY_EXCEEDED
+}
+
+sealed interface SkillRevisionUnavailableReason
+        permits SkillRevisionUnavailableReason.DefinitionSubsystemUnavailable,
+                SkillRevisionUnavailableReason.ExactRevisionMissing,
+                SkillRevisionUnavailableReason.RuntimeProjectionUnavailable,
+                SkillRevisionUnavailableReason.TransientPinUnavailable {
+    record DefinitionSubsystemUnavailable(SkillSubsystemUnavailableReason reason)
+            implements SkillRevisionUnavailableReason {
+        public DefinitionSubsystemUnavailable {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    record ExactRevisionMissing() implements SkillRevisionUnavailableReason {}
+
+    record RuntimeProjectionUnavailable() implements SkillRevisionUnavailableReason {}
+
+    record TransientPinUnavailable() implements SkillRevisionUnavailableReason {}
+}
+
+enum InvalidEventReason {
+    INVALID_NODE_COORDINATE,
+    INVALID_NODE_CAPABILITY,
+    INVALID_TRIGGER_CAUSE,
+    INVALID_REFERENCE_SHAPE,
+    INVALID_EXECUTION_DATA,
+    INVALID_BUDGET_ATTRIBUTION,
+    BUDGET_ATTRIBUTION_MISMATCH,
+    DUPLICATE_LIVE_SKILL_INSTANCE_ID
+}
+
+record RuntimeChildSpec(
+        int nodeIndex,
+        int delayTicks,
+        int deadlineHorizonTicks,
+        RuntimeOrigin origin,
+        Optional<RuntimeTarget> target,
+        ChildTriggerCause triggerCause,
+        RuntimeExecutionData executionData) {
+    RuntimeChildSpec {
+        Objects.requireNonNull(origin, "origin");
+        Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(triggerCause, "triggerCause");
+        Objects.requireNonNull(executionData, "executionData");
+    }
+}
+
+record RuntimeChildPlan(List<RuntimeChildSpec> children) {
+    static final int PHYSICAL_MAXIMUM = 32;
+    static final RuntimeChildPlan EMPTY = new RuntimeChildPlan(List.of());
+
+    RuntimeChildPlan {
+        Objects.requireNonNull(children, "children");
+        if (children.size() > PHYSICAL_MAXIMUM) {
+            throw new RuntimeKernelException(
+                    RuntimeKernelException.Code.CHILD_PLAN_HARD_CAPACITY_EXCEEDED);
+        }
+        children = List.copyOf(children);
+    }
+}
+
+record RuntimeExecutionBudget(
+        int directChildCapacity,
+        int zeroDelayChildCapacity,
+        int remainingLineageEvents,
+        int remainingDepth,
+        int maximumDelayTicks,
+        int maximumDeadlineHorizonTicks,
+        int remainingSkillInstancePending,
+        int remainingAttributionPending,
+        int remainingServerPending) {
+    RuntimeExecutionBudget {
+        if (directChildCapacity < 0
+                || zeroDelayChildCapacity < 0
+                || remainingLineageEvents < 0
+                || remainingDepth < 0
+                || maximumDelayTicks < 0
+                || maximumDeadlineHorizonTicks < 0
+                || remainingSkillInstancePending < 0
+                || remainingAttributionPending < 0
+                || remainingServerPending < 0) {
+            throw new IllegalArgumentException("runtime execution budget cannot be negative");
+        }
+        if (directChildCapacity > RuntimeChildPlan.PHYSICAL_MAXIMUM
+                || zeroDelayChildCapacity > 16
+                || remainingLineageEvents > 511
+                || remainingDepth > 32
+                || maximumDelayTicks > 12_000
+                || maximumDeadlineHorizonTicks > 12_000
+                || remainingSkillInstancePending > 255
+                || remainingAttributionPending > 1_023
+                || remainingServerPending > 4_095
+                || zeroDelayChildCapacity > directChildCapacity
+                || directChildCapacity > remainingLineageEvents
+                || directChildCapacity > remainingSkillInstancePending
+                || directChildCapacity > remainingAttributionPending
+                || directChildCapacity > remainingServerPending
+                || remainingDepth == 0 && directChildCapacity != 0
+                || maximumDelayTicks > maximumDeadlineHorizonTicks) {
+            throw new IllegalArgumentException("runtime execution budget relation violated");
+        }
+    }
+}
+
+sealed interface RuntimeAdmissionResult
+        permits RuntimeAdmissionResult.AcceptedMemoryOnly,
+                RuntimeAdmissionResult.PersistentScheduleUnsupported,
+                RuntimeAdmissionResult.DelayOutOfRange,
+                RuntimeAdmissionResult.DelayOverflow,
+                RuntimeAdmissionResult.DeadlineOutOfRange,
+                RuntimeAdmissionResult.DeadlineOverflow,
+                RuntimeAdmissionResult.DeadlineBeforeScheduledTick,
+                RuntimeAdmissionResult.InvalidRuntimeReference,
+                RuntimeAdmissionResult.SkillRevisionUnavailable,
+                RuntimeAdmissionResult.InvalidEvent,
+                RuntimeAdmissionResult.OwnerInstanceUnavailable,
+                RuntimeAdmissionResult.ActiveLineageCapacityExceeded,
+                RuntimeAdmissionResult.ActiveBudgetAttributionCapacityExceeded,
+                RuntimeAdmissionResult.RootAdmissionBudgetExceeded,
+                RuntimeAdmissionResult.CircuitBroken,
+                RuntimeAdmissionResult.ServerNotRunning,
+                RuntimeAdmissionResult.ServerStopping,
+                RuntimeAdmissionResult.WrongThread,
+                RuntimeAdmissionResult.SequenceExhausted,
+                RuntimeAdmissionResult.TickExhausted,
+                RuntimeAdmissionResult.KernelFaulted {
+    record AcceptedMemoryOnly(
+            RuntimeEventToken eventToken,
+            RuntimeCancellationToken cancellationToken) implements RuntimeAdmissionResult {
+        public AcceptedMemoryOnly {
+            Objects.requireNonNull(eventToken, "eventToken");
+            Objects.requireNonNull(cancellationToken, "cancellationToken");
+            if (!eventToken.serverSlotToken().equals(cancellationToken.serverSlotToken())
+                    || !eventToken.skillInstanceId().equals(cancellationToken.skillInstanceId())) {
+                throw new IllegalArgumentException("accepted handles must share ownership");
+            }
+        }
+    }
+
+    record PersistentScheduleUnsupported() implements RuntimeAdmissionResult {}
+
+    record DelayOutOfRange(int requestedDelayTicks, int maximumDelayTicks)
+            implements RuntimeAdmissionResult {
+        public DelayOutOfRange {
+            requireMaximumInRange(maximumDelayTicks, 12_000);
+            if (requestedDelayTicks >= 0 && requestedDelayTicks <= maximumDelayTicks) {
+                throw new IllegalArgumentException("delay is not out of range");
+            }
+        }
+    }
+
+    record DelayOverflow() implements RuntimeAdmissionResult {}
+
+    record DeadlineOutOfRange(int requestedHorizonTicks, int maximumHorizonTicks)
+            implements RuntimeAdmissionResult {
+        public DeadlineOutOfRange {
+            requireMaximumInRange(maximumHorizonTicks, 12_000);
+            if (requestedHorizonTicks >= 0 && requestedHorizonTicks <= maximumHorizonTicks) {
+                throw new IllegalArgumentException("deadline horizon is not out of range");
+            }
+        }
+    }
+
+    record DeadlineOverflow() implements RuntimeAdmissionResult {}
+
+    record DeadlineBeforeScheduledTick(long scheduledRuntimeTick, long deadlineRuntimeTick)
+            implements RuntimeAdmissionResult {
+        public DeadlineBeforeScheduledTick {
+            if (scheduledRuntimeTick < 0 || deadlineRuntimeTick < 0
+                    || scheduledRuntimeTick <= deadlineRuntimeTick) {
+                throw new IllegalArgumentException("deadline must precede scheduled tick");
+            }
+        }
+    }
+
+    record InvalidRuntimeReference(RuntimeReferenceFailureReason reason)
+            implements RuntimeAdmissionResult {
+        public InvalidRuntimeReference {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    record SkillRevisionUnavailable(SkillRevisionUnavailableReason reason)
+            implements RuntimeAdmissionResult {
+        public SkillRevisionUnavailable {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    record InvalidEvent(InvalidEventReason reason) implements RuntimeAdmissionResult {
+        public InvalidEvent {
+            Objects.requireNonNull(reason, "reason");
+            if (reason == InvalidEventReason.INVALID_NODE_CAPABILITY) {
+                throw new IllegalArgumentException(
+                        "root admission has no node-capability result coordinate");
+            }
+        }
+    }
+
+    record OwnerInstanceUnavailable() implements RuntimeAdmissionResult {}
+
+    record ActiveLineageCapacityExceeded(int current, int maximum)
+            implements RuntimeAdmissionResult {
+        public ActiveLineageCapacityExceeded {
+            requireReached(current, maximum, 128);
+        }
+    }
+
+    record ActiveBudgetAttributionCapacityExceeded(int current, int maximum)
+            implements RuntimeAdmissionResult {
+        public ActiveBudgetAttributionCapacityExceeded {
+            requireReached(current, maximum, 32);
+        }
+    }
+
+    record RootAdmissionBudgetExceeded(int maximum) implements RuntimeAdmissionResult {
+        public RootAdmissionBudgetExceeded {
+            requirePositiveMaximum(maximum, 64);
+        }
+    }
+
+    record CircuitBroken(RuntimeCircuitBreakerSummary summary)
+            implements RuntimeAdmissionResult {
+        public CircuitBroken {
+            Objects.requireNonNull(summary, "summary");
+            if (summary.reason() == RuntimeCircuitBreakReason.SKILL_INSTANCE_PENDING_EVENTS_EXCEEDED
+                    || summary.requestedAdditionalCount() != 1
+                    || summary.removedQueuedAndDeferredCount() != 0
+                    || summary.eventInFlight()) {
+                throw new IllegalArgumentException("invalid root-admission breaker summary");
+            }
+        }
+    }
+
+    record ServerNotRunning() implements RuntimeAdmissionResult {}
+
+    record ServerStopping() implements RuntimeAdmissionResult {}
+
+    record WrongThread() implements RuntimeAdmissionResult {}
+
+    record SequenceExhausted(RuntimeSequenceKind sequenceKind)
+            implements RuntimeAdmissionResult {
+        public SequenceExhausted {
+            Objects.requireNonNull(sequenceKind, "sequenceKind");
+        }
+    }
+
+    record TickExhausted() implements RuntimeAdmissionResult {}
+
+    record KernelFaulted() implements RuntimeAdmissionResult {}
+
+    private static void requirePositiveMaximum(int maximum, int hardMaximum) {
+        if (maximum <= 0 || maximum > hardMaximum) {
+            throw new IllegalArgumentException("maximum is outside its hard range");
+        }
+    }
+
+    private static void requireMaximumInRange(int maximum, int hardMaximum) {
+        if (maximum < 0 || maximum > hardMaximum) {
+            throw new IllegalArgumentException("maximum is outside its hard range");
+        }
+    }
+
+    private static void requireReached(int current, int maximum, int hardMaximum) {
+        requirePositiveMaximum(maximum, hardMaximum);
+        if (current != maximum) {
+            throw new IllegalArgumentException("capacity result requires exact equality");
+        }
+    }
+}
+
+sealed interface RuntimeCancellationResult
+        permits RuntimeCancellationResult.CancelledEvent,
+                RuntimeCancellationResult.CancelledSkillInstance,
+                RuntimeCancellationResult.CancellationRequested,
+                RuntimeCancellationResult.InFlight,
+                RuntimeCancellationResult.AlreadyCancelled,
+                RuntimeCancellationResult.NotPending,
+                RuntimeCancellationResult.WrongServer,
+                RuntimeCancellationResult.WrongThread,
+                RuntimeCancellationResult.ServerNotRunning,
+                RuntimeCancellationResult.ServerStopping,
+                RuntimeCancellationResult.CancellationBudgetExceeded,
+                RuntimeCancellationResult.CancellationTokenInvalid {
+    record CancelledEvent() implements RuntimeCancellationResult {}
+
+    record CancelledSkillInstance(int removedCount) implements RuntimeCancellationResult {
+        public CancelledSkillInstance {
+            if (removedCount <= 0 || removedCount > 256) {
+                throw new IllegalArgumentException("removedCount is outside 1..256");
+            }
+        }
+    }
+
+    record CancellationRequested(int removedCount) implements RuntimeCancellationResult {
+        public CancellationRequested {
+            if (removedCount < 0 || removedCount > 255) {
+                throw new IllegalArgumentException("removedCount is outside 0..255");
+            }
+        }
+    }
+
+    record InFlight() implements RuntimeCancellationResult {}
+
+    record AlreadyCancelled() implements RuntimeCancellationResult {}
+
+    record NotPending() implements RuntimeCancellationResult {}
+
+    record WrongServer() implements RuntimeCancellationResult {}
+
+    record WrongThread() implements RuntimeCancellationResult {}
+
+    record ServerNotRunning() implements RuntimeCancellationResult {}
+
+    record ServerStopping() implements RuntimeCancellationResult {}
+
+    record CancellationBudgetExceeded(int maximum) implements RuntimeCancellationResult {
+        public CancellationBudgetExceeded {
+            if (maximum <= 0 || maximum > 128) {
+                throw new IllegalArgumentException("maximum is outside 1..128");
+            }
+        }
+    }
+
+    record CancellationTokenInvalid(RuntimeCancellationTokenInvalidReason reason)
+            implements RuntimeCancellationResult {
+        public CancellationTokenInvalid {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+}
+
+sealed interface RuntimeExecutionOutcome
+        permits RuntimeExecutionOutcome.Completed,
+                RuntimeExecutionOutcome.CompletedWithChildren,
+                RuntimeExecutionOutcome.RejectedByExecutionPort,
+                RuntimeExecutionOutcome.SkillRevisionUnavailable,
+                RuntimeExecutionOutcome.SourceMissing,
+                RuntimeExecutionOutcome.TargetMissing,
+                RuntimeExecutionOutcome.InvalidRuntimeReference,
+                RuntimeExecutionOutcome.DeadlineExpired,
+                RuntimeExecutionOutcome.Cancelled,
+                RuntimeExecutionOutcome.OwnerInstanceUnavailable,
+                RuntimeExecutionOutcome.ServerStopping,
+                RuntimeExecutionOutcome.BudgetRejected,
+                RuntimeExecutionOutcome.ScheduleRejected,
+                RuntimeExecutionOutcome.CircuitBroken,
+                RuntimeExecutionOutcome.InvalidEvent {
+    record Completed() implements RuntimeExecutionOutcome {}
+
+    record CompletedWithChildren(int count) implements RuntimeExecutionOutcome {
+        public CompletedWithChildren {
+            if (count <= 0 || count > RuntimeChildPlan.PHYSICAL_MAXIMUM) {
+                throw new IllegalArgumentException("completed child count out of range");
+            }
+        }
+    }
+
+    record RejectedByExecutionPort(RuntimePortRejectionReason reason)
+            implements RuntimeExecutionOutcome {
+        public RejectedByExecutionPort {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    record SkillRevisionUnavailable() implements RuntimeExecutionOutcome {}
+
+    record SourceMissing(RuntimeReferenceFailureReason reason)
+            implements RuntimeExecutionOutcome {
+        public SourceMissing {
+            requireMissingReason(reason);
+        }
+    }
+
+    record TargetMissing(RuntimeReferenceFailureReason reason)
+            implements RuntimeExecutionOutcome {
+        public TargetMissing {
+            requireMissingReason(reason);
+        }
+    }
+
+    record InvalidRuntimeReference(RuntimeReferenceFailureReason reason)
+            implements RuntimeExecutionOutcome {
+        public InvalidRuntimeReference {
+            requireInvalidReferenceReason(reason);
+        }
+    }
+
+    record DeadlineExpired(long deadlineRuntimeTick, long observedRuntimeTick)
+            implements RuntimeExecutionOutcome {
+        public DeadlineExpired {
+            if (deadlineRuntimeTick < 0 || observedRuntimeTick <= deadlineRuntimeTick) {
+                throw new IllegalArgumentException("deadline has not expired");
+            }
+        }
+    }
+
+    record Cancelled() implements RuntimeExecutionOutcome {}
+
+    record OwnerInstanceUnavailable() implements RuntimeExecutionOutcome {}
+
+    record ServerStopping() implements RuntimeExecutionOutcome {}
+
+    record BudgetRejected(RuntimeBudgetRejectionReason reason)
+            implements RuntimeExecutionOutcome {
+        public BudgetRejected {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    record ScheduleRejected(RuntimeScheduleRejectionReason reason)
+            implements RuntimeExecutionOutcome {
+        public ScheduleRejected {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+
+    record CircuitBroken(RuntimeCircuitBreakerSummary summary)
+            implements RuntimeExecutionOutcome {
+        public CircuitBroken {
+            Objects.requireNonNull(summary, "summary");
+            if (!summary.eventInFlight()) {
+                throw new IllegalArgumentException(
+                        "execution breaker requires the current in-flight event");
+            }
+        }
+    }
+
+    record InvalidEvent(InvalidEventReason reason) implements RuntimeExecutionOutcome {
+        public InvalidEvent {
+            Objects.requireNonNull(reason, "reason");
+            if (reason != InvalidEventReason.INVALID_NODE_COORDINATE
+                    && reason != InvalidEventReason.INVALID_NODE_CAPABILITY
+                    && reason != InvalidEventReason.INVALID_TRIGGER_CAUSE
+                    && reason != InvalidEventReason.INVALID_REFERENCE_SHAPE
+                    && reason != InvalidEventReason.INVALID_EXECUTION_DATA) {
+                throw new IllegalArgumentException(
+                        "execution InvalidEvent reason is not a child structural rejection");
+            }
+        }
+    }
+
+    private static void requireMissingReason(RuntimeReferenceFailureReason reason) {
+        Objects.requireNonNull(reason, "reason");
+        if (reason != RuntimeReferenceFailureReason.MISSING
+                && reason != RuntimeReferenceFailureReason.MISSING_OR_UNLOADED
+                && reason != RuntimeReferenceFailureReason.UNLOADED) {
+            throw new IllegalArgumentException("reason is not a missing/unloaded reference");
+        }
+    }
+
+    private static void requireInvalidReferenceReason(RuntimeReferenceFailureReason reason) {
+        Objects.requireNonNull(reason, "reason");
+        if (reason != RuntimeReferenceFailureReason.WRONG_SERVER
+                && reason != RuntimeReferenceFailureReason.DIMENSION_UNAVAILABLE
+                && reason != RuntimeReferenceFailureReason.WRONG_DIMENSION
+                && reason != RuntimeReferenceFailureReason.TYPE_MISMATCH) {
+            throw new IllegalArgumentException("reason is not an invalid runtime reference");
+        }
+    }
+}
+
+sealed interface RuntimePortOutcome
+        permits RuntimePortOutcome.Completed, RuntimePortOutcome.Rejected {
+    record Completed() implements RuntimePortOutcome {}
+
+    record Rejected(RuntimePortRejectionReason reason) implements RuntimePortOutcome {
+        public Rejected {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
+}
+
+sealed interface ResolvedRuntimeOrigin
+        permits ResolvedServerOrigin,
+                ResolvedPlayerOrigin,
+                ResolvedEntityOrigin,
+                ResolvedBlockOrigin {}
+
+record ResolvedServerOrigin(MinecraftServer server) implements ResolvedRuntimeOrigin {
+    ResolvedServerOrigin {
+        Objects.requireNonNull(server, "server");
+    }
+}
+
+record ResolvedPlayerOrigin(ServerPlayer player) implements ResolvedRuntimeOrigin {
+    ResolvedPlayerOrigin {
+        Objects.requireNonNull(player, "player");
+    }
+}
+
+record ResolvedEntityOrigin(Entity entity) implements ResolvedRuntimeOrigin {
+    ResolvedEntityOrigin {
+        Objects.requireNonNull(entity, "entity");
+    }
+}
+
+record ResolvedBlockOrigin(ServerLevel level, BlockPos position)
+        implements ResolvedRuntimeOrigin {
+    ResolvedBlockOrigin {
+        Objects.requireNonNull(level, "level");
+        position = new BlockPos(Objects.requireNonNull(position, "position"));
+    }
+}
+
+sealed interface ResolvedRuntimeTarget
+        permits NoResolvedRuntimeTarget,
+                ResolvedPlayerTarget,
+                ResolvedEntityTarget,
+                ResolvedBlockTarget {}
+
+enum NoResolvedRuntimeTarget implements ResolvedRuntimeTarget {
+    INSTANCE
+}
+
+record ResolvedPlayerTarget(ServerPlayer player) implements ResolvedRuntimeTarget {
+    ResolvedPlayerTarget {
+        Objects.requireNonNull(player, "player");
+    }
+}
+
+record ResolvedEntityTarget(Entity entity) implements ResolvedRuntimeTarget {
+    ResolvedEntityTarget {
+        Objects.requireNonNull(entity, "entity");
+    }
+}
+
+record ResolvedBlockTarget(ServerLevel level, BlockPos position)
+        implements ResolvedRuntimeTarget {
+    ResolvedBlockTarget {
+        Objects.requireNonNull(level, "level");
+        position = new BlockPos(Objects.requireNonNull(position, "position"));
+    }
+}
+
+record ResolvedRuntimeReferenceContext(
+        ResolvedRuntimeOrigin origin,
+        ResolvedRuntimeTarget target) {
+    ResolvedRuntimeReferenceContext {
+        Objects.requireNonNull(origin, "origin");
+        Objects.requireNonNull(target, "target");
+    }
+}
+
+record RuntimeExecutionContext(
+        MinecraftServer server,
+        ValidatedSkillDefinition definition,
+        ValidatedNodeDefinition node,
+        long currentRuntimeTick,
+        RuntimeServerToken serverSlotToken,
+        ResolvedRuntimeReferenceContext resolvedReferences,
+        RuntimeExecutionBudget executionBudget) {
+    RuntimeExecutionContext {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(definition, "definition");
+        Objects.requireNonNull(node, "node");
+        Objects.requireNonNull(serverSlotToken, "serverSlotToken");
+        Objects.requireNonNull(resolvedReferences, "resolvedReferences");
+        Objects.requireNonNull(executionBudget, "executionBudget");
+        if (currentRuntimeTick < 0) {
+            throw new IllegalArgumentException("current runtime tick must be non-negative");
+        }
+        var nodeIndex = node.nodeIndex();
+        if (nodeIndex < 0
+                || nodeIndex >= definition.nodes().size()
+                || definition.nodes().get(nodeIndex) != node) {
+            throw new IllegalArgumentException(
+                    "runtime node must be the exact indexed node from the definition");
+        }
+    }
+}
+
+sealed interface RuntimeReferenceResolutionOutcome
+        permits RuntimeReferenceResolutionOutcome.Resolved,
+                RuntimeReferenceResolutionOutcome.SourceMissing,
+                RuntimeReferenceResolutionOutcome.TargetMissing,
+                RuntimeReferenceResolutionOutcome.InvalidRuntimeReference {
+    record Resolved(ResolvedRuntimeReferenceContext context)
+            implements RuntimeReferenceResolutionOutcome {
+        public Resolved {
+            Objects.requireNonNull(context, "context");
+        }
+    }
+
+    record SourceMissing(RuntimeReferenceFailureReason reason)
+            implements RuntimeReferenceResolutionOutcome {
+        public SourceMissing {
+            requireMissingReason(reason);
+        }
+    }
+
+    record TargetMissing(RuntimeReferenceFailureReason reason)
+            implements RuntimeReferenceResolutionOutcome {
+        public TargetMissing {
+            requireMissingReason(reason);
+        }
+    }
+
+    record InvalidRuntimeReference(RuntimeReferenceFailureReason reason)
+            implements RuntimeReferenceResolutionOutcome {
+        public InvalidRuntimeReference {
+            Objects.requireNonNull(reason, "reason");
+            if (reason != RuntimeReferenceFailureReason.WRONG_SERVER
+                    && reason != RuntimeReferenceFailureReason.DIMENSION_UNAVAILABLE
+                    && reason != RuntimeReferenceFailureReason.WRONG_DIMENSION
+                    && reason != RuntimeReferenceFailureReason.TYPE_MISMATCH) {
+                throw new IllegalArgumentException("reason is not an invalid runtime reference");
+            }
+        }
+    }
+
+    private static void requireMissingReason(RuntimeReferenceFailureReason reason) {
+        Objects.requireNonNull(reason, "reason");
+        if (reason != RuntimeReferenceFailureReason.MISSING
+                && reason != RuntimeReferenceFailureReason.MISSING_OR_UNLOADED
+                && reason != RuntimeReferenceFailureReason.UNLOADED) {
+            throw new IllegalArgumentException("reason is not a missing/unloaded reference");
+        }
+    }
+}
+
+interface RuntimeReferenceResolver {
+    RuntimeReferenceResolutionOutcome resolve(MinecraftServer server, RuntimeEvent event);
+}
+
+interface RuntimeExecutionPort {
+    RuntimeExecutionBatch execute(RuntimeEvent event, RuntimeExecutionContext context);
+}
+
+record RuntimeExecutionBatch(RuntimePortOutcome outcome, RuntimeChildPlan children) {
+    RuntimeExecutionBatch {
+        Objects.requireNonNull(outcome, "outcome");
+        Objects.requireNonNull(children, "children");
+        if (!(outcome instanceof RuntimePortOutcome.Completed) && !children.children().isEmpty()) {
+            throw new RuntimeKernelException(
+                    RuntimeKernelException.Code.INVALID_OUTCOME_PLAN_PAIRING);
+        }
+    }
+}
+
+enum UnavailableRuntimeExecutionPort implements RuntimeExecutionPort {
+    INSTANCE;
+
+    @Override
+    public RuntimeExecutionBatch execute(RuntimeEvent event, RuntimeExecutionContext context) {
+        Objects.requireNonNull(event, "event");
+        Objects.requireNonNull(context, "context");
+        return new RuntimeExecutionBatch(
+                new RuntimePortOutcome.Rejected(RuntimePortRejectionReason.PORT_UNAVAILABLE),
+                RuntimeChildPlan.EMPTY);
+    }
+}
+
+@SuppressWarnings("serial")
+final class RuntimeKernelException extends RuntimeException {
+    enum Code {
+        DUPLICATE_SERVER_INSTALL,
+        SECOND_ACTIVE_SERVER,
+        STOPPED_SERVER_INSTALL,
+        TICK_BEFORE_INSTALL,
+        WRONG_THREAD_LIFECYCLE,
+        WRONG_THREAD_DRAIN,
+        WRONG_THREAD_CHILD_ADMISSION,
+        NESTED_DRAIN,
+        QUEUED_EVENT_IDENTITY_INVARIANT,
+        EVENT_INDEX_INVARIANT,
+        RESERVATION_ACCOUNTING_INVARIANT,
+        LEASE_ACCOUNTING_INVARIANT,
+        ATTRIBUTION_STATE_CAPACITY_INVARIANT,
+        DEFERRED_BUFFER_OVERFLOW,
+        BREAKER_SCRATCH_OVERFLOW,
+        CHILD_PLAN_HARD_CAPACITY_EXCEEDED,
+        NULL_EXECUTION_BATCH,
+        INVALID_OUTCOME_PLAN_PAIRING,
+        INVALID_CHILD_PLAN_INVARIANT,
+        SERVER_SLOT_TOKEN_EXHAUSTED
+    }
+
+    private final Code code;
+
+    RuntimeKernelException(Code code) {
+        super(Objects.requireNonNull(code, "code").name());
+        this.code = code;
+    }
+
+    Code code() {
+        return code;
+    }
+}
+
+enum P5RuntimeLimitKey {
+    PENDING_EVENTS_PER_SKILL_INSTANCE,
+    PENDING_EVENTS_PER_ATTRIBUTION,
+    PENDING_EVENTS_PER_SERVER,
+    ACTIVE_SKILL_INSTANCES_PER_ATTRIBUTION,
+    ACTIVE_SKILL_INSTANCES_PER_SERVER,
+    ROOT_ADMISSIONS_PER_TICK,
+    EXECUTIONS_PER_SKILL_INSTANCE_PER_TICK,
+    EXECUTIONS_PER_ATTRIBUTION_PER_TICK,
+    EXECUTIONS_PER_SERVER_PER_TICK,
+    EVENTS_PER_SKILL_INSTANCE,
+    MAXIMUM_DEPTH,
+    DIRECT_CHILDREN_PER_EVENT,
+    ZERO_DELAY_CHILDREN_PER_EVENT,
+    MAXIMUM_DELAY_TICKS,
+    MAXIMUM_DEADLINE_HORIZON_TICKS,
+    CANCELLATIONS_PER_TICK
+}
+
+enum P5RuntimeConfigurationFailureReason {
+    CONFIG_UNAVAILABLE,
+    MISSING_REQUIRED_VALUE,
+    WRONG_VALUE_TYPE,
+    BELOW_MINIMUM,
+    ABOVE_HARD_MAXIMUM,
+    RELATION_VIOLATION,
+    DERIVATION_OVERFLOW
+}
+
+record P5RuntimeConfigurationFailure(
+        P5RuntimeConfigurationFailureReason reason,
+        Optional<P5RuntimeLimitKey> primaryKey,
+        Optional<P5RuntimeLimitKey> relatedKey) {
+    P5RuntimeConfigurationFailure {
+        Objects.requireNonNull(reason, "reason");
+        Objects.requireNonNull(primaryKey, "primaryKey");
+        Objects.requireNonNull(relatedKey, "relatedKey");
+        switch (reason) {
+            case CONFIG_UNAVAILABLE -> {
+                if (primaryKey.isPresent() || relatedKey.isPresent()) {
+                    throw new IllegalArgumentException("config unavailable has no keys");
+                }
+            }
+            case MISSING_REQUIRED_VALUE, WRONG_VALUE_TYPE, BELOW_MINIMUM, ABOVE_HARD_MAXIMUM -> {
+                if (primaryKey.isEmpty() || relatedKey.isPresent()) {
+                    throw new IllegalArgumentException("single-key config failure shape");
+                }
+            }
+            case RELATION_VIOLATION -> {
+                if (primaryKey.isEmpty()
+                        || relatedKey.isEmpty()
+                        || !isAuthorizedRelation(primaryKey.get(), relatedKey.get())) {
+                    throw new IllegalArgumentException("unauthorized relation failure key pair");
+                }
+            }
+            case DERIVATION_OVERFLOW -> {
+                if (primaryKey.isEmpty()
+                        || !isAuthorizedDerivation(primaryKey.get(), relatedKey)) {
+                    throw new IllegalArgumentException("unauthorized derivation failure key shape");
+                }
+            }
+        }
+    }
+
+    private static boolean isAuthorizedRelation(
+            P5RuntimeLimitKey primary,
+            P5RuntimeLimitKey related) {
+        return switch (primary) {
+            case PENDING_EVENTS_PER_SKILL_INSTANCE ->
+                    related == P5RuntimeLimitKey.PENDING_EVENTS_PER_ATTRIBUTION
+                            || related == P5RuntimeLimitKey.EVENTS_PER_SKILL_INSTANCE;
+            case PENDING_EVENTS_PER_ATTRIBUTION ->
+                    related == P5RuntimeLimitKey.PENDING_EVENTS_PER_SERVER;
+            case ACTIVE_SKILL_INSTANCES_PER_ATTRIBUTION ->
+                    related == P5RuntimeLimitKey.ACTIVE_SKILL_INSTANCES_PER_SERVER
+                            || related == P5RuntimeLimitKey.PENDING_EVENTS_PER_ATTRIBUTION;
+            case ACTIVE_SKILL_INSTANCES_PER_SERVER ->
+                    related == P5RuntimeLimitKey.PENDING_EVENTS_PER_SERVER;
+            case EXECUTIONS_PER_SKILL_INSTANCE_PER_TICK ->
+                    related == P5RuntimeLimitKey.EXECUTIONS_PER_ATTRIBUTION_PER_TICK;
+            case EXECUTIONS_PER_ATTRIBUTION_PER_TICK ->
+                    related == P5RuntimeLimitKey.EXECUTIONS_PER_SERVER_PER_TICK;
+            case DIRECT_CHILDREN_PER_EVENT ->
+                    related == P5RuntimeLimitKey.EVENTS_PER_SKILL_INSTANCE;
+            case ZERO_DELAY_CHILDREN_PER_EVENT ->
+                    related == P5RuntimeLimitKey.DIRECT_CHILDREN_PER_EVENT;
+            case MAXIMUM_DEPTH -> related == P5RuntimeLimitKey.DIRECT_CHILDREN_PER_EVENT;
+            case MAXIMUM_DELAY_TICKS ->
+                    related == P5RuntimeLimitKey.MAXIMUM_DEADLINE_HORIZON_TICKS;
+            case PENDING_EVENTS_PER_SERVER,
+                    ROOT_ADMISSIONS_PER_TICK,
+                    EXECUTIONS_PER_SERVER_PER_TICK,
+                    EVENTS_PER_SKILL_INSTANCE,
+                    MAXIMUM_DEADLINE_HORIZON_TICKS,
+                    CANCELLATIONS_PER_TICK -> false;
+        };
+    }
+
+    private static boolean isAuthorizedDerivation(
+            P5RuntimeLimitKey primary,
+            Optional<P5RuntimeLimitKey> related) {
+        return switch (primary) {
+            case EVENTS_PER_SKILL_INSTANCE -> related.isEmpty();
+            case ACTIVE_SKILL_INSTANCES_PER_SERVER ->
+                    related.isEmpty()
+                            || related.get() == P5RuntimeLimitKey.ROOT_ADMISSIONS_PER_TICK;
+            case PENDING_EVENTS_PER_SKILL_INSTANCE,
+                    PENDING_EVENTS_PER_ATTRIBUTION,
+                    PENDING_EVENTS_PER_SERVER,
+                    ACTIVE_SKILL_INSTANCES_PER_ATTRIBUTION,
+                    ROOT_ADMISSIONS_PER_TICK,
+                    EXECUTIONS_PER_SKILL_INSTANCE_PER_TICK,
+                    EXECUTIONS_PER_ATTRIBUTION_PER_TICK,
+                    EXECUTIONS_PER_SERVER_PER_TICK,
+                    MAXIMUM_DEPTH,
+                    DIRECT_CHILDREN_PER_EVENT,
+                    ZERO_DELAY_CHILDREN_PER_EVENT,
+                    MAXIMUM_DELAY_TICKS,
+                    MAXIMUM_DEADLINE_HORIZON_TICKS,
+                    CANCELLATIONS_PER_TICK -> false;
+        };
+    }
+}
+
+@SuppressWarnings("serial")
+final class P5RuntimeConfigurationException extends RuntimeException {
+    private final P5RuntimeConfigurationFailure failure;
+
+    P5RuntimeConfigurationException(P5RuntimeConfigurationFailure failure) {
+        this.failure = Objects.requireNonNull(failure, "failure");
+    }
+
+    P5RuntimeConfigurationFailure failure() {
+        return failure;
+    }
+}
+```
+
+### 47.4 Result-Family Responsibilities
+
+| Family | Sole responsibility | Explicit exclusions |
+|---|---|---|
+| `RuntimeAdmissionResult` | Typed root admission before root event/instance publication | P6 return, post-claim failure, cancellation, completed execution, unexpected throwable |
+| `RuntimeCancellationResult` | Typed result of one cancellation request | Event execution terminal, breaker, expiry, stop-cleanup history |
+| `RuntimeExecutionOutcome` | P5-owned terminal result after dispatch observation, including post-port child-plan validation | Root admission, cancellation request, tier defer, global no-peek stop, unexpected throwable |
+| `RuntimePortOutcome` | Closed nominal result returned only after P6 port entry | Generic resolution, expiry, cancellation, pending breaker, raw-plan programming fault |
+| `RuntimeReferenceResolutionOutcome` | Ephemeral internal loaded-only generic resolution result | P6 gameplay validity, retention, queueing, diagnostics, persistence |
+
+`RuntimeBudgetDecision` owns per-event instance/attribution defer. `RuntimeDrainStopReason` owns
+the server equality no-peek stop. Neither is an execution terminal or breaker reason.
+
+### 47.5 Admission Result Family
+
+The admission family has exactly 21 permitted variants. It is the root-admission family; child
+plans returned after a P6 call are validated by `SkillRuntimeService` and map to execution
+outcomes, not to a second admission call or family.
+
+| Variant | Components | Publication / accounting authority |
+|---|---|---|
+| `AcceptedMemoryOnly` | `RuntimeEventToken eventToken`, `RuntimeCancellationToken cancellationToken` | Atomic one root event, instance, sequence, EventId, lease, and pending publication |
+| `PersistentScheduleUnsupported` | none | Root-attempt debit only; zero publication |
+| `DelayOutOfRange` | requested and maximum `int` | Zero publication |
+| `DelayOverflow` | none | Zero publication |
+| `DeadlineOutOfRange` | requested and maximum `int` | Zero publication |
+| `DeadlineOverflow` | none | Zero publication |
+| `DeadlineBeforeScheduledTick` | scheduled and deadline `long` | Zero publication |
+| `InvalidRuntimeReference` | `RuntimeReferenceFailureReason` | Generic prepublication failure; execution/port `0/0` |
+| `SkillRevisionUnavailable` | `SkillRevisionUnavailableReason` | Zero publication; provisional handle closed |
+| `InvalidEvent` | `InvalidEventReason` | Zero publication; duplicate UUID uses its exact reason and never retries |
+| `OwnerInstanceUnavailable` | none | No new P5 V0 instance-bound seam; zero publication |
+| `ActiveLineageCapacityExceeded` | current and maximum `int` | Typed capacity rejection; no breaker or pin leak |
+| `ActiveBudgetAttributionCapacityExceeded` | current and maximum `int` | Typed capacity rejection; no breaker |
+| `RootAdmissionBudgetExceeded` | maximum `int` | No later schedule or definition work |
+| `CircuitBroken` | `RuntimeCircuitBreakerSummary` | Prospective source terminal; zero event/instance/sequence/pin/pending publication |
+| `ServerNotRunning` | none | Zero mutation |
+| `ServerStopping` | none | Zero new publication |
+| `WrongThread` | none | Zero mutation |
+| `SequenceExhausted` | `RuntimeSequenceKind` | No wrap or reuse |
+| `TickExhausted` | none | Zero publication |
+| `KernelFaulted` | none | Admission remains closed until exact Stopped removal |
+
+There is no queue-capacity variant: effective pending overflow is the already fixed circuit-breaker
+coordinate. Wrong stable server identity is the existing typed reference reason, not a new root
+variant. Root `InvalidEvent` accepts every exact root structural/attribution/identity reason except
+`INVALID_NODE_CAPABILITY`; that reason is reserved for the existing post-port child coordinate.
+
+### 47.6 Cancellation Result Family
+
+The cancellation family has exactly 12 permitted variants:
+
+| Variant | Components | Mutation |
+|---|---|---|
+| `CancelledEvent` | none | Remove one exact queued/deferred event |
+| `CancelledSkillInstance` | positive `removedCount` | Remove all queued/deferred work with no frame in flight |
+| `CancellationRequested` | nonnegative `removedCount` | Remove descendants, retain current frame, suppress children |
+| `InFlight` | none | Exact event is current; no preemption |
+| `AlreadyCancelled` | none | Idempotent whole-instance request |
+| `NotPending` | none | Executed, expired, cancelled, broken, unknown, or old removed handle; no history |
+| `WrongServer` | none | Stale/wrong slot while replacement slot is running; zero mutation |
+| `WrongThread` | none | Zero mutation |
+| `ServerNotRunning` | none | No exact active slot; zero mutation |
+| `ServerStopping` | none | Cleanup only |
+| `CancellationBudgetExceeded` | positive `maximum` | No scan or mutation |
+| `CancellationTokenInvalid` | `RuntimeCancellationTokenInvalidReason` | Current-slot event owner mismatch |
+
+`Already terminal`, `instance unavailable`, and an unknown old handle are not extra variants; the
+no-history authority intentionally folds them into `NotPending`. A prior-slot handle maps to
+`WrongServer` only while the replacement exact slot exists.
+
+### 47.7 Execution Outcome Family
+
+The execution family has exactly 15 permitted variants. The three port rejection coordinates
+share one component-bearing Java variant.
+
+| Variant | Execution / port | Terminal and child action |
+|---|---:|---|
+| `Completed` | `1/1` | Current terminal; empty plan |
+| `CompletedWithChildren(count)` | `1/1` | Current terminal; exactly `count` children publish atomically |
+| `RejectedByExecutionPort(reason)` | `1/1` | Current terminal; zero children |
+| `SkillRevisionUnavailable` | `1/0` | Componentless defensive post-claim loss; no latest fallback |
+| `SourceMissing(reason)` | `1/0` | Missing/unloaded source; terminal |
+| `TargetMissing(reason)` | `1/0` | Missing/unloaded target; terminal |
+| `InvalidRuntimeReference(reason)` | `1/0` | Wrong server/dimension/type or unavailable dimension; terminal |
+| `InvalidEvent(reason)` | `1/1` | Existing post-port P5 structural child rejection; whole plan rejected |
+| `DeadlineExpired(deadline, observed)` | `0/0` | Remove only the expired event |
+| `Cancelled` | fixed pre/post-claim count | Suppress children and terminalize |
+| `OwnerInstanceUnavailable` | `0/0` | Remove defensive stale-owner work |
+| `ServerStopping` | fixed pre/post-claim count | Suppress children and stop-clear |
+| `BudgetRejected(reason)` | `1/1` | Whole returned plan rejected; zero children |
+| `ScheduleRejected(reason)` | `1/1` | Whole returned plan rejected; reserved IDs remain holes |
+| `CircuitBroken(summary)` | `1/1` | Break only source instance; remove same-owner descendants |
+
+`RuntimeExecutionOutcome` excludes execution-budget defer and the global server stop. It also
+excludes unexpected `RuntimeException`, `Error`, and OOME.
+
+### 47.8 P6 Port Outcome Family
+
+`RuntimePortOutcome` has exactly `Completed()` and
+`Rejected(RuntimePortRejectionReason reason)`. The bounded child plan is the separate, mandatory
+second component of `RuntimeExecutionBatch`; it is never nullable. `Completed` may pair with an
+empty or nonempty bounded plan. `Rejected` must pair with the empty plan. The production nominal
+unavailable port returns `Rejected(PORT_UNAVAILABLE)` plus `RuntimeChildPlan.EMPTY`.
+
+P6 cannot return a generic missing-reference result, deadline result, cancellation result,
+breaker, mutable emission buffer, callback, queue owner, or live `RuntimeEvent` component inside
+the outcome. P6 receives the event separately and may not retain it or the context.
+
+### 47.9 Child Plan Vocabulary
+
+`RuntimeChildPlan` is a package-private immutable record over an ordered defensive
+`List.copyOf` of `RuntimeChildSpec`. `RuntimeChildPlan.EMPTY` is the sole no-child value. The raw
+physical maximum is exactly 32. The constructor checks raw size before copying; a null list or
+entry is rejected, and raw size 33 throws the fixed
+`RuntimeKernelException.Code.CHILD_PLAN_HARD_CAPACITY_EXCEEDED`.
+
+Each child spec contains only node index, delay, deadline-horizon input, stable origin, explicit
+optional stable target, child cause, and the closed execution-data value. It cannot carry an
+instance ID, sequence, attribution, persistence setter, parent deadline override, callback, live
+object, or unbounded payload. Those owner coordinates inherit from the current event. Integers are
+accepted by the child-spec constructor so P5 can select the typed schedule/budget result.
+
+A copied plan of size `1..32` above a lower effective direct limit maps to
+`BudgetRejected(DIRECT_CHILD_LIMIT_EXCEEDED)`. It never maps to the raw programming fault and never
+publishes a prefix.
+
+### 47.10 Skill Revision Unavailable Reasons
+
+The root reason family is exactly:
+
+| Variant | Component | Coordinate |
+|---|---|---|
+| `DefinitionSubsystemUnavailable` | non-null existing `SkillSubsystemUnavailableReason` | Controlled exact find or pin reports the bounded P3 subsystem unavailable result |
+| `ExactRevisionMissing` | none | Exact find is available and empty |
+| `RuntimeProjectionUnavailable` | none | Exact immutable document cannot produce the required P3 runtime projection |
+| `TransientPinUnavailable` | none | Exact controlled pin is available and empty |
+
+There is no `UNKNOWN`, `OTHER`, invalidated/currentness, wrong-server, latest, equipped, source,
+target, expiry, or persistence reason. Post-claim defensive revision loss remains the exact
+componentless `RuntimeExecutionOutcome.SkillRevisionUnavailable` because a live lease already owns
+the exact immutable projection.
+
+### 47.11 Invalid Event Reasons
+
+`InvalidEventReason` has exactly eight constants:
+
+| Constant | Authorized use |
+|---|---|
+| `INVALID_NODE_COORDINATE` | Root or child node coordinate fails the fixed P5 structural predicate |
+| `INVALID_NODE_CAPABILITY` | Child origin/target/reference shape fails the selected validated node's already-declared static trigger source/target capability requirement; it does not inspect event kind or P6 gameplay validity |
+| `INVALID_TRIGGER_CAUSE` | Root or child cause variant/event kind is incompatible with the selected node's declared trigger event-kind set; it does not re-evaluate source/target capability |
+| `INVALID_REFERENCE_SHAPE` | Stable origin/target closed shape is invalid, distinct from loaded-only resolution |
+| `INVALID_EXECUTION_DATA` | Value is outside the sealed V0 execution-data shape |
+| `INVALID_BUDGET_ATTRIBUTION` | Root attribution shape or current-slot binding is invalid |
+| `BUDGET_ATTRIBUTION_MISMATCH` | Direct player origin and player attribution identify different players |
+| `DUPLICATE_LIVE_SKILL_INSTANCE_ID` | Server-minted candidate UUID collides with a live instance; zero publication and no retry |
+
+The admission `InvalidEvent` constructor admits the seven root reasons other than
+`INVALID_NODE_CAPABILITY`. The execution constructor admits only the first five structural reasons.
+The three root-only attribution/identity reasons cannot be misused as post-port execution outcomes.
+Depth, direct count, zero-delay count, lifetime, and EventId capacity stay in `BudgetRejected`;
+delay and deadline stay in `ScheduleRejected`; wrong child stable slot, null batch/pairing, and raw
+size 33 stay fixed programming failures. Effect-specific P6 capability remains a port rejection.
+
+### 47.12 Other Dependent Reason / Decision Families
+
+The already closed enum families remain exact and unchanged:
+
+- `RuntimeBudgetDecision`: `EXECUTE` and the three instance/player/non-player defer values.
+- `RuntimeCircuitBreakReason`: the four instance/player/non-player/server pending-overflow values.
+- `RuntimeReferenceFailureReason`: the seven wrong-server/dimension/missing/unloaded/type values.
+- `RuntimePortRejectionReason`: unavailable, effect-specific source, and effect-specific target.
+- `RuntimeScheduleRejectionReason`: the five delay/deadline structural values.
+- `RuntimeBudgetRejectionReason`: lifetime, depth, direct, zero-delay, and EventId capacity.
+- `RuntimeSequenceKind`, `RuntimeDrainStopReason`, `RuntimeTickAdvanceResult`, and
+  `RuntimeCancellationTokenInvalidReason` retain their exact existing constants.
+
+The ephemeral resolver outcome is closed as `Resolved`, `SourceMissing`, `TargetMissing`, or
+`InvalidRuntimeReference`. Missing variants accept only `MISSING`, `MISSING_OR_UNLOADED`, or
+`UNLOADED`; the invalid variant accepts only `WRONG_SERVER`, `DIMENSION_UNAVAILABLE`,
+`WRONG_DIMENSION`, or `TYPE_MISMATCH`. An absent optional target resolves successfully to
+`NoResolvedRuntimeTarget.INSTANCE`.
+
+### 47.13 Constructor and Factory Invariants
+
+All reference components and `Optional` containers are non-null. Runtime server and instance
+sequences are positive. Published EventIds, including a present parent, are positive. The
+`RuntimeEvent` compact constructor owns only self-contained facts: node index `0..255`,
+nonnegative tick/depth coordinates, `created <= scheduled <= deadline`, child sequence `0..32`,
+memory-only persistence, directly comparable cancellation/slot/attribution bindings, direct-player
+attribution equality, and exactly one local root or child shape. Constructor misuse is a
+programming invariant failure and is not a typed admission result.
+
+`SkillRuntimeService` is the sole named root/child event construction-publication factory. Before
+constructing an event it proves the exact immutable definition/node membership, active slot and
+owner, reserved EventId range, current-tick schedule derivation, and atomic queue/accounting state.
+For a child it additionally proves parent EventId, `depth = parent.depth + 1`, inherited instance
+ID and instance sequence, exact skill reference/revision, attribution, memory-only persistence,
+deadline upper bound, stable slot binding, and reserved child ordinal. Ordinary caller/P6 invalidity
+selects its typed result before construction; a violation of P5-minted cross-object state uses the
+fixed kernel invariant path. No second factory owner and no Store/queue/parent component is added
+to `RuntimeEvent`.
+
+Range-result constructors prove the result they name. Delay/deadline maxima are `0..12000`; active
+server/attribution capacity results require `current == maximum` with maximum `1..128` / `1..32`;
+root-attempt and cancellation maxima are `1..64` / `1..128`. Idle whole-instance removal count is
+`1..256`; in-flight descendant removal count is `0..255`. `CompletedWithChildren.count` is
+`1..32`, and expiry requires `observed > deadline`.
+
+`RuntimeCircuitBreakerSummary` requires a positive effective maximum bounded by its reason hard
+cap (`256`, `1024`, or `4096`), `0 <= pendingBefore <= maximum`, request count `1..32`, and
+projected overflow computed without arithmetic overflow. Removal is between zero and
+pending-before; an in-flight summary requires pending-before at least one and same-source removal
+at most the smaller of pending-before minus one and the source-instance hard bound `255`.
+Admission summaries exclude the instance reason and require request
+`1`, removed `0`, and no in-flight event. Execution summaries require an in-flight event.
+`SkillRuntimeService` additionally proves equality to the current slot snapshot and actual
+removal accounting.
+
+`RuntimeExecutionBudget` enforces the architecture hard bounds: direct `0..32`, zero-delay
+`0..16`, remaining lineage `0..511`, remaining depth `0..32`, delay/deadline `0..12000`, and
+in-flight pending headrooms `0..255` / `0..1023` / `0..4095`. It also enforces zero-delay `<=`
+direct, direct `<=` remaining lifetime and all three headrooms, zero remaining depth implies zero
+direct capacity, and maximum delay `<=` maximum deadline horizon. Remaining depth is not sibling
+capacity. The sole service factory proves the exact current snapshot/minimum and EventId headroom.
+
+`P5RuntimeConfigurationFailure` accepts only the twelve ordered relation pairs and three ordered
+derivation shapes fixed in Section 28. Reversed or unrelated keys are constructor failures.
+`RuntimeExecutionBatch` rejects null and rejected/nonempty pairing with the exact fixed kernel code.
+Resolved block positions are defensively copied. `RuntimeExecutionContext` is non-null, has a
+nonnegative current runtime tick, and carries the exact node object at its indexed position in the
+exact immutable definition.
+
+### 47.14 Absence and Null Policy
+
+Nullable components are zero. Stable optional target and parent absence use the already approved
+typed `Optional<RuntimeTarget>` and `Optional<EventId>` containers. Resolved target absence uses
+the explicit sealed singleton `NoResolvedRuntimeTarget.INSTANCE`. No children use
+`RuntimeChildPlan.EMPTY`. Componentless result variants represent result-state absence.
+
+No absence uses null, `Optional<Object>`, empty string, negative-ID sentinel, or maximum-long
+sentinel. There is no nullable plan, reason, summary, context, execution data, or token.
+
+### 47.15 Conversion Boundaries
+
+`SkillRuntimeService` is the sole conversion owner:
+
+| Source | Exact conversion | Forbidden conversion |
+|---|---|---|
+| Root validation | Directly returns one `RuntimeAdmissionResult` | Never a port outcome |
+| Resolver `SourceMissing` / `TargetMissing` / `InvalidRuntimeReference` | Identically named execution outcome with the same reason | Never a P6 rejection |
+| Resolver `Resolved` | Constructs the one-call context and enters P6 once | Never queues or retains the helper result |
+| Port `Completed` + empty plan | `RuntimeExecutionOutcome.Completed` | Never false child success |
+| Port `Completed` + valid nonempty all-published plan | `CompletedWithChildren(count)` | Never publishes a prefix |
+| Port `Rejected(reason)` + empty plan | `RejectedByExecutionPort(reason)` | Never maps to generic reference failure |
+| Port `Rejected` + nonempty plan | Fixed `INVALID_OUTCOME_PLAN_PAIRING` programming failure | Never typed gameplay rejection |
+| Tier budget decision | Execute or unchanged defer | Never an execution outcome or breaker |
+| Pending breaker reason | Admission/execution `CircuitBroken(summary)` at its fixed coordinate | Never a defer |
+
+### 47.16 Coordinate-to-Variant Matrix
+
+| Product coordinate | Owning Java value | Execution / port | Publication / action |
+|---|---|---:|---|
+| Valid memory-only root | `Admission.AcceptedMemoryOnly` | `0/0` | Atomic root publication |
+| Duplicate live UUID | `Admission.InvalidEvent(DUPLICATE_LIVE_SKILL_INSTANCE_ID)` | `0/0` | Zero publication; no retry |
+| Root revision unavailable | `Admission.SkillRevisionUnavailable(reason)` | `0/0` | Zero publication; provisional close |
+| Persistent root | `Admission.PersistentScheduleUnsupported` | `0/0` | Root-attempt debit only |
+| Root delay/deadline invalid | Exact range/overflow/relation admission variant | `0/0` | Zero publication |
+| Root sequence/tick exhausted | Exact admission exhaustion variant | `0/0` | No wrap or reuse |
+| Root pending overflow | `Admission.CircuitBroken(summary)` | `0/0` | Prospective source terminal; zero publication |
+| Bounded valid child plan | Port `Completed` then execution `CompletedWithChildren` | `1/1` | Zero-or-all publication |
+| Child P5 structural invalidity | `Execution.InvalidEvent(reason)` | `1/1` | Current terminal; zero children |
+| Child effective direct/zero/depth/lifetime/EventId limit | `Execution.BudgetRejected(reason)` | `1/1` | Whole plan rejected |
+| Child schedule invalid | `Execution.ScheduleRejected(reason)` | `1/1` | Whole plan rejected |
+| Raw child list 33 | `RuntimeKernelException(CHILD_PLAN_HARD_CAPACITY_EXCEEDED)` | `1/1` | Programming fault; zero children |
+| Null P6 execution batch | `RuntimeKernelException(NULL_EXECUTION_BATCH)` | `1/1` after port return | Programming fault; bounded FAULTED cleanup |
+| Cancel instance/event | Exact cancellation variant | not an execution conversion | Bounded eager removal |
+| Stale/wrong/old cancellation token | `WrongServer`, `CancellationTokenInvalid`, or `NotPending` | none | Zero mutation unless exact cancellation |
+| Cancellation wrong thread / no slot / stopping | `WrongThread`, `ServerNotRunning`, or `ServerStopping` | none | Zero mutation or idempotent lifecycle cleanup only |
+| Deadline expired | `Execution.DeadlineExpired` | `0/0` | Remove only event |
+| Eligible event-level tiers | `RuntimeBudgetDecision.EXECUTE` | `0/0` before claim | Proceed to the one current/in-flight claim |
+| Instance/player/non-player tier exhausted | `RuntimeBudgetDecision` defer | `0/0` | Event unchanged in bounded deferred buffer |
+| Server execution equality | `RuntimeDrainStopReason.SERVER_EXECUTION_LIMIT_REACHED` | no event observation | No peek/poll/result |
+| Checked runtime-tick advance | `RuntimeTickAdvanceResult.ADVANCED` or `.EXHAUSTED` | `0/0` | Begin drain, or clear before drain without wrap |
+| Generic resolver helper return | Exact `RuntimeReferenceResolutionOutcome` variant | `1/0` | Resolve to call-scoped context or map once to the matching execution outcome |
+| Generic source/target missing | Resolver then matching execution outcome | `1/0` | Current terminal |
+| Wrong server/dimension/type | Resolver `InvalidRuntimeReference`, then matching execution outcome | `1/0` | Current terminal |
+| P6 unavailable/effect rejection | Port `Rejected(reason)`, then execution port rejection | `1/1` | Current terminal; zero children |
+| P6 success without children | Port `Completed` + empty, then execution `Completed` | `1/1` | Current terminal |
+| P6 success with children | Port `Completed` + nonempty, then execution child validation | `1/1` | Atomic children or typed whole-plan rejection |
+| Pending child breaker | `Execution.CircuitBroken(summary)` | `1/1` | Break source only; eager descendants cleanup |
+| Server stopping | `Execution.ServerStopping` at the fixed pre/post-claim count | fixed | Suppress children and bounded clear |
+| Unexpected runtime exception | no result variant | fixed by throw coordinate | Bounded FAULTED cleanup; same identity rethrow |
+| `Error` / OOME | no result variant | fixed by throw coordinate | No-intentional-allocation cleanup; same identity rethrow |
+| Next-slot configuration load | `P5RuntimeLimitLoadState.Requested`, `.Invalid`, or `.Unavailable.INSTANCE` | not runtime dispatch | Complete closed base configuration value; never an admission/port outcome |
+
+Every architecture coordinate has one Java owner and one mapping. Coordinates without a Java
+variant and coordinates with conflicting variants are both zero.
+
+### 47.17 Exception Separation
+
+`RuntimeKernelException` retains exactly one non-null fixed `Code` and uses `code.name()` as its
+message. The 20 existing codes remain exact; duplicate UUID does not add a code.
+`P5RuntimeConfigurationException` retains exactly one non-null closed configuration failure, fixes
+no message identity, and is separate from runtime results.
+
+Unexpected `RuntimeException`, `Error`, OOME, constructor misuse, null batch, invalid pairing, raw
+plan overflow, and internal impossible state are not normal result variants. No result carries a
+`Throwable`. The existing same-object rethrow, cardinality, bounded cleanup, and Error/OOME rules
+remain unchanged.
+
+### 47.18 Public API and Retention Boundary
+
+The V1 delta has zero public top-level types. Retained terminal result, reason, decision, token,
+summary, stable event/value, batch, and child-plan graphs contain no `Object`, string-only reason,
+callback, `Throwable`, mutable definition, Store/carrier, provider, config object, or live Minecraft
+object. They retain only bounded primitives, closed enums/records, immutable IDs/references,
+explicit absence, and the bounded child plan.
+
+The already authorized resolved-reference records, ephemeral
+`RuntimeReferenceResolutionOutcome.Resolved` wrapper, and execution context record are the sole
+live-object exception: they are package-private, synchronous, one-call-scoped, never queued,
+diagnosed, persisted, or returned as a terminal result, and must be dropped in `finally`. Their
+exact closed origin/target variants add no P6 gameplay flag or resolution policy. P6 may not retain
+a context.
+
+### 47.19 Compile-Probe Result
+
+Repository-external Java 21 evidence records:
+
+```text
+positive declarations compile = PASS
+exhaustive no-default switches = PASS
+compile-negative expected failures = 8/8
+runtime-negative invariant rejections = 2/2
+unexpected successful negative compile = 0
+negative compile class output = 0
+invariant harness marker = P5_A_V1_VOCABULARY_PROBE_PASS
+public top-level runtime result types = 0
+retained result/value/plan live Minecraft dependencies = 0
+unexpected callback dependencies = 0
+Throwable result components = 0
+```
+
+The full skeleton intentionally contains the exact live Minecraft dependencies only in the
+call-scoped resolver/context exception above; the separately enumerated retained set contains none.
+
+The two runtime negatives are intentionally not misreported as compiler checks: Java accepts a
+null reference expression at compile time and cannot encode list cardinality 32 in the generic
+type system. Their constructors reject null and raw size 33 at execution.
+
+### 47.20 Implementation Authority
+
+The later P5 implementation must use these exact package names, top-level visibility, kinds,
+permits sets, variant names, record components, constructor/factory boundaries, absence values,
+and conversions. It may split package-private declarations among source files and choose private
+owner/helper storage names, but may not add a variant, widen visibility, use a generic payload,
+change an invariant into a normal result, or choose a different conversion.
+
+`SkillRuntimeService` remains the sole queue/scheduler/resolution/conversion owner. This amendment
+does not implement P5, P6, a gameplay action, a persistent schedule, a second owner, or a new
+public seam.
+
+### 47.21 Phase Status
+
+This documentation amendment is complete only when its own unique exact-SHA, attempt-1 Build run
+contains exactly the six existing jobs and all six complete successfully. That same condition
+makes P5 implementation ready but does not start or complete it. There is no P5 split.
+
+### 47.22 Provenance
+
+The compile-closure scan and probes are ordinary repository-external evidence, not product
+authority or a required runtime dependency:
+
+```text
+canonical base commit = 193e23a672b613f8d333993dfde2d42f9843488e
+canonical base tree = ae775617d90795dd27f5998498383995f3464a98
+architecture prefix bytes = 110200
+architecture prefix lines = 1701
+architecture prefix SHA-256 = ea0ecb6271c1e640a95fa8c9539280caed528838ad33a09f9196daa64fbf1287
+evidence root = /private/tmp/gramarye-p5-a-v1-vocabulary-evidence-20260827T083906Z
+probe root = /private/tmp/gramarye-p5-a-v1-vocabulary-probe-20260827T083906Z
+```
+
+The terminal phase state recorded by this amendment is:
+
+```text
+P4-E
+= COMPLETE
+
+P5-A consolidated architecture record /
+review closure
+= COMPLETE
+
+P5-A-V1 COMPILE-CLOSED RUNTIME RESULT
+VOCABULARY AMENDMENT
+= COMPLETE UPON THIS COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  SIX-JOB REMOTE GATE PASS
+
+P5 split
+= NO SPLIT
+
+P5 implementation
+= READY UPON THE SAME CONDITION;
+  NOT STARTED
+
+P6
+= NOT STARTED
+```
