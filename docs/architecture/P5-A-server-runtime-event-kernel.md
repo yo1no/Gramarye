@@ -3409,3 +3409,690 @@ P5 implementation
 P6
 = NOT STARTED
 ```
+
+## 48. P5-A-V2 Corrected Termination-Safe Production-Packaged GameTest Wrong-Thread Authority Amendment
+
+### 48.1 Status and Scope
+
+This strict EOF append-only, documentation-only amendment promotes the completed P5-A-V2.2
+design verdict into repository authority. The unique chosen model is **C1 — SHARED
+PRODUCT-OWNED PURE THREAD-PRECONDITION SEAM**. C1 is the only passing model; no failed candidate
+is retained as an implementation alternative.
+
+This amendment becomes complete only when this amendment commit's unique exact-SHA, attempt-1
+`Build` workflow run contains exactly the six existing jobs and all six complete successfully.
+That condition authorizes the later C1 source/test correction and synchronized P4B2B Gate work;
+it does not perform either change here. This round changes no Java, test, script, Gradle file,
+workflow, resource, codex-spec, GameTest topology, runtime-kernel behavior, or public API.
+
+### 48.2 Evidence Baselines and Historical Limitation
+
+The current prospective V2.2 baseline is fixed as:
+
+```text
+P5_A_V2_2_CURRENT_BUNDLE_IDENTITY_V1
+= 7b10bb9788a571acd437a94f65f4a71263daecf3a75336d12848333a1ccd62ea
+
+P5_A_V2_2_EVIDENCE_CURRENT_IDENTITY_V1
+= 476f66fcbdb3cc94d5718f8b6b801c6410d8f482c80f043ccb2f12ccc63306c9
+
+P5_A_V2_2_PROBE_TREE_IDENTITY_V1
+= 5d52d041e9b0a947810bb72838dc60d59e29e9e0342c948859dbae274bdae58b
+```
+
+The authority inputs are the V2 original review evidence, the V2 current evidence seal, the V2.1
+worker/timeout review, the V2.2 termination-safe harness review, its compile probe, and the V2.2
+current evidence/probe companion seal. The exact V2.2 surface, current-baseline call graphs, two
+wrong-thread control coordinates, future six-path delta, future P4B2B Gate, and future test plan
+are incorporated below.
+
+The original V2.2 POSTFLIGHT did not seal its own final identity, the complete exact-22 evidence
+projection, or the complete recursive probe tree. V2.2 completion-time evidence and probe
+identities therefore remain **UNAVAILABLE**. The current companion is a prospective baseline from
+the state observed at seal creation time; it does not reconstruct or certify the historical
+completion-time bytes. The V2.2 design verdict remains `COMPLETE — PASS`, and the chosen C1 model
+and candidate decisions remain unchanged.
+
+### 48.3 Historical Failure Closure
+
+The candidate closure is exact and final:
+
+```text
+Candidate A
+= FAIL — moving the control outside the production JAR requires an unapproved GameTest topology
+
+B1
+= FAIL — raw-worker timeout escape has no hard bound
+
+B2
+= FAIL — interrupt plus a bounded second wait cannot guarantee termination
+
+B3
+= FAIL — synchronous execution of the exact operation destroys the wrong-thread controls
+
+C2
+= FAIL — raw worker still has no hard terminal and Control 2 moves live authority before its gate
+
+C3
+= FAIL — the platform provides no hard-contained task primitive
+
+C4
+= FAIL — a child JVM tests a surrogate and cannot obtain the exact live identity
+
+C1
+= PASS — UNIQUE CHOSEN MODEL
+```
+
+Candidate A and B1/B2/B3 remain historical failures and are not reopened. C2/C3/C4 remain failed
+and are not implementation alternatives.
+
+### 48.4 Defective Work-Order Withdrawal
+
+The following prior instruction is recorded only to withdraw it:
+
+```text
+WRONG_THREAD
+→ no move
+→ no consume
+→ no clear
+
+= WITHDRAWN
+= DEFECTIVE WORK-ORDER TEXT
+= NON-AUTHORITATIVE
+= NEVER REPOSITORY AUTHORITY
+```
+
+It is replaced by the active authority:
+
+```text
+thread classification
+→ closed Decision
+→ existing single-use claim transition
+→ consumed = true
+→ move / clear into bounded local ownership
+→ bounded cleanup or allowed audit continuation
+```
+
+`ProductThreadPrecondition` is pure, total, nonblocking, and side-effect-free. It does not consume
+capture authority. The existing single-use claim lifecycle owns consumption. A `WRONG_THREAD`
+decision consumes the one-shot capture, performs bounded cleanup, and reports the exact mismatch;
+the capture is never reusable after that attempt.
+
+### 48.5 V2.2 Chosen C1 Model
+
+C1 introduces one package-private, product-owned classifier shared by both exact product controls
+and by their existing production-packaged GameTest holder. Product wrappers observe only the
+current live Thread ID and delegate to package-private same-owner cores. GameTest supplies the
+synthetic impossible live Thread ID `0L` to those same cores; it does not use a copied classifier,
+mock operation, worker, task, process, or alternative product path.
+
+The two controls preserve exactly:
+
+1. `SkillDefinitionStoreService.latestReference` maps rejection to
+   `SkillSubsystemLifecycleException.Code.WRONG_THREAD`.
+2. `P4E1GroupedStoreAudit.audit` maps rejection to
+   `BindingException("P4E1_GROUPED_AUDIT_THREAD_MISMATCH")` and preserves the immediate
+   `P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED` follow-up.
+
+Normal product runtime reachability to the holder remains zero; GameTest route reachability remains
+one; registration and normal GameTest count remain unchanged at 12. Worker/task/process terminal
+liveness and retained runtime authority are structurally zero.
+
+### 48.6 ProductThreadPrecondition Exact Java Surface
+
+The exact surface identity is `0644`, 3430 bytes, SHA-256
+`57a632e9419207e2b7cc96a7ddd614ee9a33f238dfeaa9909e260e8f4085e119`. The exact future placement
+is `src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java`.
+The following block is copied byte-for-byte from the sealed surface evidence:
+
+```java
+package com.yo1no.gramarye.magic.definition.store;
+
+/**
+ * Exact future package-private, product-owned, pure thread-precondition surface.
+ * This top-level class is final and has no public or protected surface.
+ */
+final class ProductThreadPrecondition {
+    private ProductThreadPrecondition() {
+    }
+
+    static Decision classify(long expectedLogicThreadId, long observedThreadId) {
+        return expectedLogicThreadId > 0L && expectedLogicThreadId == observedThreadId
+                ? Decision.ALLOWED
+                : Decision.WRONG_THREAD;
+    }
+
+    enum Decision {
+        ALLOWED,
+        WRONG_THREAD
+    }
+}
+
+/*
+Exact placement:
+  src/main/java/com/yo1no/gramarye/magic/definition/store/
+  ProductThreadPrecondition.java
+
+Constructor/factory invariant:
+  no instance is constructible outside the class; there is no factory and no retained state.
+
+Parameter/return invariant:
+  both parameters are primitive long values; nullable parameters = 0; Object payload = 0;
+  callback = 0; Throwable = 0. A non-positive expectedLogicThreadId fails closed.
+
+Exact product operation 1 binding:
+  public latestReference(server, skillId)
+  -> package-private latestReference(server, skillId, Thread.currentThread().threadId())
+  -> requireServerThread(server, observedThreadId)
+  -> ProductThreadPrecondition.classify(
+         server.getRunningThread().threadId(), observedThreadId)
+  -> WRONG_THREAD maps in SkillDefinitionStoreService to
+     new SkillSubsystemLifecycleException(Code.WRONG_THREAD)
+  -> ALLOWED enters installedAdapter marker/cache access.
+
+Exact product operation 2 binding:
+  audit(capture)
+  -> package-private audit(capture, Thread.currentThread().threadId())
+  -> compute the closed observed-thread decision before capture mutation with
+     ProductThreadPrecondition.classify(
+         serverIdentity.getRunningThread().threadId(), observedThreadId)
+  -> carry Decision into Captured.claim(this, decision)
+  -> Claimed.requireActive(this, decision)
+  -> requireCaptureBinding(..., decision)
+  -> retain the existing exact-server, owner, captured-creation-Thread reference,
+     and same-tick binding checks; MinecraftServer.serverThread is final and the
+     audit owner was constructed only after the same-server-thread precondition
+  -> WRONG_THREAD maps in P4E1GroupedStoreAudit to
+     new BindingException("P4E1_GROUPED_AUDIT_THREAD_MISMATCH")
+     after existing consume/move/clear and failed-claim cleanup
+  -> ALLOWED continues to same-tick validation and audit.
+
+Exact GameTest call shape:
+  long expectedThreadId = server.getRunningThread().threadId();
+  helper.assertTrue(
+      ProductThreadPrecondition.classify(expectedThreadId, expectedThreadId)
+          == ProductThreadPrecondition.Decision.ALLOWED,
+      "shared product thread gate must allow the server logic thread");
+  helper.assertTrue(
+      ProductThreadPrecondition.classify(expectedThreadId, 0L)
+          == ProductThreadPrecondition.Decision.WRONG_THREAD,
+      "shared product thread gate must reject the synthetic no-thread observation");
+  isolated.latestReference(server, skillId, 0L);
+  exactThreadOwner.audit(wrongThreadCapture, 0L);
+
+The two exact typed exceptions are caught only by their exact exception types for assertion.
+No Thread object is constructed, no Thread is started, and no Thread ID is stored in a field,
+result, queue, diagnostic, persistent object, or callback. Public top-level type delta = 0.
+*/
+```
+
+The binary is `com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition`; the method is
+package-private static `classify` with descriptor
+`(JJ)Lcom/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition$Decision;`. The class is
+package-private and final; results are exactly `ALLOWED` and `WRONG_THREAD`. There is no public,
+nullable, boolean-shortcut, `Object`, callback, `Throwable`, retained `Thread`, extra enum value,
+default result, or unknown result surface.
+
+### 48.7 Thread-ID Authority and C1 Retention Scope
+
+A live Java Thread ID is positive, unique during the live-thread lifetime, and stable during that
+lifetime. Product expected identity is the live positive server-thread ID from
+`MinecraftServer.getRunningThread().threadId()`. Product observed identity is obtained only from
+`Thread.currentThread().threadId()`. GameTest's synthetic wrong observation is `0L`; it is an
+impossible live Thread ID and must not appear in the product observed-thread path. A non-positive
+expected ID fails closed to `WRONG_THREAD`.
+
+The no-retention rule is limited to the new C1 observed-thread seam. In that seam, the observed
+`Thread` exists only within the synchronous call scope, observed identity is a method-local
+primitive `long`, and field/result/queue/diagnostic/static retention is zero.
+`ProductThreadPrecondition` retains no `Thread` object or observed identity.
+
+Existing P4E1 `creationThreadIdentity`, binding metadata, and thread-binding fields remain governed
+by existing P4E1 authority and are preserved. C1 neither removes nor changes their types or
+meaning. This is not a repository-wide prohibition on Thread-related binding fields.
+
+### 48.8 Closed Decision Injection and Handoff Boundary
+
+External callers and GameTest may not inject a precomputed `Decision`, directly inject `ALLOWED`
+or `WRONG_THREAD`, bypass `classify` with a boolean or Decision, or use a copied/mock helper to
+manufacture a Decision. A classification result may not be externally rewritten or escape into a
+field, queue, diagnostic, or static state.
+
+GameTest may directly assert the result returned by `classify`; it may not inject that asserted
+Decision into either product core or the claim path. Both product-core negative controls supply
+only primitive observed ID `0L` and let the product classifier create the Decision.
+
+`ProductThreadPrecondition.classify(...)` must produce the closed Decision. That exact Decision is
+then preserved and carried within the same synchronous product call chain. Control 2 must carry it
+through the existing single-use claim chain after classification. The internal Decision is neither
+recomputed nor rewritten. Prohibiting externally supplied precomputed Decisions does not prohibit
+the required internal handoff of the classifier-produced closed Decision.
+
+### 48.9 Product Control 1 Corrected Contract
+
+Control 1 owns these exact future coordinates:
+
+```text
+path = src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+binary = com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService
+public wrapper = latestReference
+public descriptor = (Lnet/minecraft/server/MinecraftServer;Lcom/yo1no/gramarye/magic/api/id/SkillId;)Lcom/yo1no/gramarye/magic/definition/store/SkillSubsystemResult;
+core descriptor = (Lnet/minecraft/server/MinecraftServer;Lcom/yo1no/gramarye/magic/api/id/SkillId;J)Lcom/yo1no/gramarye/magic/definition/store/SkillSubsystemResult;
+observed binding = Thread.currentThread().threadId()
+expected binding = server.getRunningThread().threadId()
+wrong mapping = SkillSubsystemLifecycleException.Code.WRONG_THREAD
+```
+
+The active order is exact:
+
+```text
+public latestReference wrapper
+→ package-private core
+→ requireServerThread(server, observedThreadId)
+→ ProductThreadPrecondition.classify(expectedThreadId, observedThreadId)
+→ exact WRONG_THREAD mapping or ALLOWED continuation
+→ installedAdapter
+→ installedServers.containsKey(server) as first effective authority access
+```
+
+Before classification, installed-server marker/cache access, adapter lookup, Store access, journal
+access, world access, mutation, allocation, and blocking are all zero. The wrong result maps to the
+existing `SkillSubsystemLifecycleException.Code.WRONG_THREAD`.
+
+`PRODUCT_THREAD_GATE_CALL_GRAPH.tsv` records the pre-amendment current baseline, including its
+gate-order defect. It is historical observation, not the active future sequence. The sequence above
+is controlled by the exact surface and `P4B2B_FUTURE_GATE_CONTRACT.md`.
+
+The sealed current-baseline graph is reproduced exactly for historical correlation:
+
+```tsv
+operation	method_descriptor	entry_coordinate	pre_gate_instructions_calls	thread_gate_coordinate	gate_dependency	wrong_thread_result_construction	post_gate_first_call	side_effect_before_gate	allocation_before_gate	blocking_before_gate	authority_access_before_gate
+SkillDefinitionStoreService.latestReference	(Lnet/minecraft/server/MinecraftServer;Lcom/yo1no/gramarye/magic/api/id/SkillId;)Lcom/yo1no/gramarye/magic/definition/store/SkillSubsystemResult;	SkillDefinitionStoreService.java:108-112;BCI0	latestReference invokes installedAdapter;installedAdapter immediately invokes requireServerThread;requireServerThread performs Objects.requireNonNull	SkillDefinitionStoreService.java:534-538;requireServerThread BCI8-21	MinecraftServer.isSameThread;platform implementation compares Thread.currentThread()==getRunningThread()	lifecycle(Code.WRONG_THREAD) creates exact SkillSubsystemLifecycleException at source537/BCI15-21	IdentityHashMap.containsKey at installedAdapter source513/BCI4-12	0	0 on pre-gate success path	0	server reference/null validation only;isSameThread is gate dependency
+P4E1GroupedStoreAudit.audit	(Lcom/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture$Captured;)Lcom/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit$Result;	P4E1GroupedStoreAudit.java:26-30;BCI0	Objects.requireNonNull(capture);Captured.claim calls requireUnconsumed,writes consumed=true,allocates Claimed,moves and clears capture refs;Claimed.requireActive validates active/owner before requireCaptureBinding	P4E1GroupedStoreAudit.java:36-40;requireCaptureBinding BCI23-62 reached through Captured.claim BCI187-220 and Claimed.requireActive BCI47-63	creationThreadIdentity;captured thread identity;Thread.currentThread;MinecraftServer.isSameThread	new BindingException(P4E1_GROUPED_AUDIT_THREAD_MISMATCH) at source39/BCI53-62;failed-claim finally discards moved authority	creationTick comparison then MinecraftServer.getTickCount at source41/BCI63-79	YES: Captured.consumed=true plus move/clear before gate;mechanically factorable by first classifying and carrying closed access decision into same claim path	YES: Claimed allocation before gate	0	YES: capture live-authority fields are read/moved before gate;no world/disk/network API invoked
+```
+
+### 48.10 Product Control 2 Consume-on-Mismatch Contract
+
+Control 2 owns these exact future coordinates:
+
+```text
+path = src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java
+binary = com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit
+wrapper = audit
+wrapper descriptor = (Lcom/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture$Captured;)Lcom/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit$Result;
+core descriptor = (Lcom/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture$Captured;J)Lcom/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit$Result;
+observed binding = Thread.currentThread().threadId()
+expected binding = serverIdentity.getRunningThread().threadId()
+wrong mapping = BindingException("P4E1_GROUPED_AUDIT_THREAD_MISMATCH")
+follow-up = P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED
+```
+
+The only authorized sequence is:
+
+1. Read only bounded immutable thread-binding coordinates. The ordinary wrapper binds
+   `observedThreadId` from `Thread.currentThread().threadId()`; GameTest binds only primitive `0L`.
+2. In the core, call `ProductThreadPrecondition.classify(expectedLiveServerThreadId,
+   observedThreadId)` before capture mutation.
+3. Preserve that classifier-produced closed Decision.
+4. Enter the existing single-use claim transition.
+5. Set `consumed = true`.
+6. Move and clear live capture authority into existing bounded local ownership and cleanup.
+7. For `WRONG_THREAD`, execute existing failed-claim bounded cleanup, perform zero grouped-audit
+   product work and zero Store/journal truth reads, establish no second claim, then throw the exact
+   `BindingException("P4E1_GROUPED_AUDIT_THREAD_MISMATCH")`.
+8. For `ALLOWED`, use the moved claimed state and continue the existing same-tick audit.
+9. Any reuse of that capture must produce `P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED`.
+
+Classification occurs before live-authority move/clear, but classification does not preserve
+capture reusability. The classifier does not consume the capture; the existing one-shot claim
+lifecycle does.
+
+### 48.11 Claim Classification and Single-Use Handoff
+
+The exact claim chain is:
+
+```text
+read bounded immutable binding coordinates
+→ classify(expectedThreadId, observedThreadId)
+→ receive one closed Decision
+→ Captured.claim(this, decision)
+→ consumed = true
+→ move / clear into bounded local ownership
+→ Claimed.requireActive(this, decision)
+→ requireCaptureBinding(..., decision)
+→ WRONG_THREAD: failed-claim discard then exact mismatch
+→ ALLOWED: existing grouped-audit continuation
+```
+
+Existing exact owner, exact server, captured creation-Thread reference, and same-tick checks remain
+unchanged. The claim state machine and cleanup ownership remain unchanged. Moving, clearing, or
+consuming live claim payload before classification; recomputing the Decision; adding a second claim;
+performing product audit work on `WRONG_THREAD`; or removing the immediate
+`P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED` result is forbidden.
+
+### 48.12 GameTest Zero-Worker Negative-Control Model
+
+`SkillSavedDataLifecycleGameTests` remains in the main source set, remains included in the
+production JAR, remains normally unreachable from product runtime, and retains the existing
+GameTest registration and count of 12. Its future role is exactly
+`PRODUCTION_PACKAGED_GAMETEST_THREAD_GATE_NEGATIVE_CONTROL`.
+
+The two sealed current control coordinates are reproduced exactly as
+`PRE-AMENDMENT HISTORICAL OBSERVATION`; every worker mechanism named in these rows is
+`NON-AUTHORITATIVE` for the future harness:
+
+```tsv
+control_id	source_path	harness_method	callsite_coordinate	operation_owner	operation_method	operation_descriptor	arguments	captured_runtime_authority	expected_typed_result	assertion_coordinate	thread_precondition_coordinate	first_post_gate_interaction	test_purpose
+P4_B2_A_STORE_WRONG_THREAD	src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java	startupInstalledExactReadyAdapterInOverworldCache(Lnet/minecraft/gametest/framework/GameTestHelper;)V	source:96-101;bytecode:BCI426-439	com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService	latestReference	(Lnet/minecraft/server/MinecraftServer;Lcom/yo1no/gramarye/magic/api/id/SkillId;)Lcom/yo1no/gramarye/magic/definition/store/SkillSubsystemResult;	server;SkillId(UUID(0,0xB2D))	worker captures SkillDefinitionStoreService isolated and MinecraftServer server;outer worker also captures Runnable and AtomicReference<Throwable>	SkillSubsystemLifecycleException with code WRONG_THREAD	source:102-106;bytecode:BCI441-475	SkillDefinitionStoreService.java:511-538;installedAdapter BCI0-4;requireServerThread BCI0-21	installedServers.containsKey(server) at source513/BCI4-12	Prove service access rejects wrong thread before marker/cache/world/Store inspection;worker scheduling and timeout are not product semantics.
+P4_E1_GROUPED_AUDIT_WRONG_THREAD	src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java	exerciseB2AGroupedAuditLifecycle(Lnet/minecraft/gametest/framework/GameTestHelper;Lnet/minecraft/server/MinecraftServer;Lnet/minecraft/world/level/storage/DimensionDataStorage;Lcom/yo1no/gramarye/magic/definition/store/GramaryeSkillSavedData;Lnet/minecraft/world/level/saveddata/SavedData$Factory;)V	source:269-271;bytecode:BCI428-443	com.yo1no.gramarye.magic.definition.store.P4E1GroupedStoreAudit	audit	(Lcom/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture$Captured;)Lcom/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit$Result;	wrongThreadCapture	worker captures P4E1GroupedStoreAudit exactThreadOwner and P4E1GlobalSourceCapture.Captured wrongThreadCapture;capture retains server,thread,player-list,Store/journal/inventory/directory/integrated witnesses,claims,sources,selected-files,summary;outer worker captures Runnable and AtomicReference<Throwable>	P4E1GroupedStoreAudit.BindingException with message P4E1_GROUPED_AUDIT_THREAD_MISMATCH	source:272-280;bytecode:BCI445-501 including follow-up P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED	P4E1GroupedStoreAudit.java:26-40 via Captured.claim:722-768 and Claimed.requireActive:1038-1046;requireCaptureBinding BCI23-62	allowed path next reads tick identity then server.getTickCount at source41/BCI63-79	Prove grouped audit rejects a distinct observed thread and that the one-shot capture is consumed/cleared on failed claim;worker scheduling/blocking/timeout are not product semantics but cross-thread capture rejection plus consumption is.
+```
+
+The C1 harness removes raw `Thread`, `AtomicReference<Throwable>`, `join(5000)`, `isAlive`,
+`interrupt`, timeout, worker lambda, worker-captured runtime authority, and `catch(Throwable)`.
+The same classifier directly proves the live-ID allowed case and synthetic-`0L` wrong case. The
+same two package-private product cores are then invoked with `0L`, and only the two exact exception
+types are caught for assertion.
+
+The dynamic controls must prove the exact Control 1 mapping, the exact Control 2 mismatch, and the
+immediate Control 2 `P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED` result. Worker/task/process creation is
+`0/0/0`; timeout, Throwable handoff, captured async runtime authority, and method-terminal live
+execution are all zero. The proof type is `MECHANICAL_STRUCTURAL_ZERO`.
+
+### 48.13 Dynamic and Static Proof Composition
+
+Dynamic GameTest and the static/API Gate are jointly required to preserve the original exact product
+invariant. Dynamic proof uses the same classifier for `ALLOWED` and `WRONG_THREAD`, synthetic `0L`,
+both exact typed product mappings, and the Control 2 consumed follow-up, with no worker, timeout, or
+generic Throwable catch.
+
+Static/source/bytecode proof locks both actual operations to that same classifier, product observed
+identity to `Thread.currentThread().threadId()`, Control 1 classification before first effective
+authority access, Control 2 classification before move/clear while preserving consume-on-mismatch,
+and the absence of a duplicate comparison or boolean bypass. It proves GameTest and product refer
+to the same binary type and method. Neither proof component is sufficient alone.
+
+### 48.14 Method-Terminal Structural-Zero Invariant
+
+At every future harness terminal:
+
+```text
+worker alive = 0
+task alive = 0
+process alive = 0
+captured live runtime authority = 0
+captured Throwable = 0
+AtomicReference<Throwable> = absent
+background product work = 0
+proof = MECHANICAL_STRUCTURAL_ZERO
+```
+
+This terminal invariant concerns async/worker capture and method-terminal retention; it does not
+deny the bounded method-local capture used synchronously by Control 2. The harness uses no
+interrupt, join, liveness poll, timeout, daemon setting, `Future.cancel`, executor shutdown, or
+process termination to manufacture this result.
+
+### 48.15 Throwable and Error-Catch Boundary
+
+The existing product failure policy remains exact:
+
+```text
+PRODUCT_PRIMARY_FAILURE = 6
+PRODUCT_SECONDARY_CLEANUP_FAILURE = 5
+primary same caught-object rethrow = 6/6
+secondary same-secondary rethrow = 0/5 by design
+secondary eventual original-primary preservation = 5/5
+production catch(Throwable) = 0
+production-packaged GameTest catch(Throwable) = 0
+production-packaged GameTest worker creation = 0
+unexpected Error/Throwable catches = 0
+exact GameTest thread-negative controls = 2
+```
+
+No file, package, or class-name wildcard may exclude a catch from this policy.
+
+### 48.16 Future P4B2B Exact Gate
+
+The future P4B2B Gate must preserve the product failure policy in Section 48.15 and lock all of the
+following by repository-relative path, binary owner, method descriptor, shared-gate descriptor,
+callsite/control-flow shape, source/bytecode digest, and typed mapping. Line numbers or filename,
+package, or class wildcards are insufficient.
+
+The Gate's exact path allowlist is the six rows reproduced in Section 48.17. No filename or
+package wildcard may substitute for, extend, or reduce that exact allowlist.
+
+#### 48.16.1 Shared Gate
+
+```text
+path = src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java
+binary = com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition
+method = classify
+descriptor = (JJ)Lcom/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition$Decision;
+visibility = package-private static
+top-level kind = final class
+result variants = ALLOWED, WRONG_THREAD
+type/method count = exact 1
+actual product callsites = exact 2
+GameTest controls = exact 2
+product observed provenance = Thread.currentThread().threadId()
+GameTest synthetic observed = 0L
+external/precomputed Decision injection = 0
+internal classifier-produced Decision handoff = required for Control 2
+boolean bypass = 0
+duplicate comparison helper = 0
+```
+
+The classifier has one closed positive-ID/equality classification and no callback, `Object`,
+nullable component, `Throwable`, field mutation, allocation on invocation, blocking call, or
+external dependency.
+
+#### 48.16.2 Control 1
+
+The Gate locks the exact Control 1 paths, owners, wrapper/core descriptors, and caller allowlist in
+Section 48.9. The wrapper delegates directly to the core, the core reaches the shared gate before
+marker/cache/world/Store access, authority access before gate is zero, the observed binding is the
+current Thread ID, and the typed result is `SkillSubsystemLifecycleException.Code.WRONG_THREAD`.
+The only core callers are the public wrapper and exact GameTest control.
+
+#### 48.16.3 Control 2
+
+The Gate locks the exact Control 2 paths, owners, wrapper/core descriptors, and caller allowlist in
+Sections 48.10–48.11. It proves classification before move/clear, required consume-on-mismatch,
+move/clear only after classification, required internal closed-Decision handoff, zero product audit
+work on `WRONG_THREAD`, the exact mismatch result, and the subsequent
+`P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED` result. Existing owner/server/captured creation-Thread
+reference/same-tick checks remain. The only core callers are the wrapper and exact GameTest control.
+The locked platform source must also prove that `MinecraftServer.serverThread` is final and is the
+value returned by `getRunningThread()`.
+
+#### 48.16.4 GameTest and Topology Absence
+
+The Gate proves the holder's production-JAR membership, GameTest route reachability exactly one,
+normal runtime reachability zero, count 12, registration delta zero, and synthetic observation
+constant `0L`. It proves exact two core calls, exact typed mappings, direct allowed/wrong classifier
+assertions, and zero `runOffThread`, `new Thread`, `Thread.start`, `AtomicReference`, `join`,
+`isAlive`, worker name, timeout, executor, `Future`, task, child process, or `catch(Throwable)`.
+New public top-level types, public gate members, source sets, Gradle tasks, workflows, GameTest
+holders, and timeout policies are zero. Static/source plus bytecode proof is mandatory.
+
+### 48.17 Future Six-Path Source Delta
+
+The future semantic delta is copied exactly from the V2.2 TSV:
+
+```tsv
+path	owner	required_semantic_delta	why_needed	product_semantics_changed	public_API_delta	test_only_product
+src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java	shared P4 product thread gate	Add package-private final pure classify(JJ)->Decision surface with positive expected-ID fail-closed rule.	Single product-owned comparison used by both exact operations and GameTest.	0	0	product
+src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java	SkillDefinitionStoreService	Public latestReference binds current threadId to package-private core; core uses shared gate before installedAdapter access and preserves exact exception mapping.	Makes exact operation directly testable without worker or copied gate.	0	0	product
+src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java	P4E1GroupedStoreAudit	One-arg audit binds current threadId to package-private core; core classifies first and carries Decision into binding mapping.	Preserves exact operation and moves first-effective gate before capture mutation.	0	0	product
+src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java	P4E1GlobalSourceCapture	Carry non-null closed Decision through Captured.claim and initial Claimed.requireActive into requireCaptureBinding while preserving consume/move/clear/failure cleanup.	Preserves the second control's one-shot consumed-after-mismatch purpose.	0	0	product
+src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java	production-packaged GameTest holder	Remove runOffThread/worker/AtomicReference/timeout/catch(Throwable); directly assert shared gate and call two exact package-private operation cores with 0L.	Eliminates all executing-worker escape while preserving both controls and count.	0	0	test-only route in production source set
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java	P4B2B static/API Gate	Replace stale helper-catch allowance with exact shared-gate descriptors, caller/provenance/mapping/claim-chain/no-worker/no-catch/no-topology assertions.	Mechanically locks production use of the same gate and prevents surrogate/bypass drift.	0	0	test-only
+```
+
+Product semantics, public top-level API, build topology, GameTest count, and Gradle/workflow deltas
+are zero. Existing P4E1 binding identity fields and Control 2 single-use semantics are preserved.
+This amendment does not declare the final implementation path count; the next round must
+mechanically union this semantic set with the preserved exact-17 candidate.
+
+### 48.18 Future Test and Qualification Plan
+
+The future correction and fresh qualification must prove all of the following:
+
+1. `ProductThreadPrecondition` returns `ALLOWED` for the same positive live expected/observed ID.
+2. It returns `WRONG_THREAD` for the live expected ID and synthetic `0L`.
+3. A non-positive expected ID fails closed.
+4. Control 1 actual callsite is gate-first.
+5. Control 2 classifies before move/clear.
+6. Control 2 `WRONG_THREAD` still consumes the one-shot capture.
+7. Reuse immediately returns `P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED`.
+8. Product observed identity comes only from `Thread.currentThread().threadId()`.
+9. Synthetic `0L` exists only in GameTest.
+10. External/precomputed Decision injection is rejected.
+11. Internal classifier-produced Decision handoff is accepted and required.
+12. Control 1 retains the exact typed mapping.
+13. Control 2 retains the exact typed mapping.
+14. Worker creation remains zero.
+15. `AtomicReference<Throwable>` remains zero.
+16. `catch(Throwable)` remains zero.
+17. Timeout, join, `isAlive`, and interrupt remain zero.
+18. No duplicate expected/observed comparison exists.
+19. Existing P4E1 `creationThreadIdentity` and binding fields are preserved.
+20. Public top-level API delta remains zero.
+21. GameTest registration and count remain unchanged at 12.
+22. Normal runtime reachability to the holder remains zero.
+23. Product primary/secondary policy remains exact 6/5.
+24. Focused P5 tests pass.
+25. Full ordinary unit inventory continuity is preserved.
+26. GameTest result is 12/12.
+27. Dedicated-server smoke passes.
+28. Warning, production-JAR membership, and static/API Gates pass.
+
+Fresh qualification must start as a new continuation campaign and rerun the complete required
+sequence. It must not resume midway from a historical failed attempt.
+
+### 48.19 Public API / Retention / Build Boundary
+
+The gate class, nested Decision, and both operation-core overloads are package-private. Public
+top-level API delta is zero. No new source set, Gradle task, workflow job, GameTest holder, timeout
+policy, heap policy, build topology, or qualification route is authorized. GameTest registration,
+template, timeout ticks, count, and normal-runtime reachability remain unchanged.
+
+The new C1 seam introduces no retained Thread, observed identity, Decision, Throwable, or runtime
+authority. Existing P4E1 binding identities remain preserved under their existing authority.
+
+### 48.20 Supersession
+
+The V2 Candidate A failure and historical STOP remain historical record. V2.1 B1/B2/B3 failures
+remain historical record. V2.2 C1 is the unique safe-model authority. V2.2 completion-time
+evidence/probe identities remain unavailable; the current companion provides only the prospective
+cryptographic baseline.
+
+The defective no-consume instruction in Section 48.4 was never repository authority. C1 supersedes
+only the raw-worker GameTest harness, timeout/Throwable handoff, and future catch-boundary Gate.
+It does not change the P5 runtime kernel, product Error primary/secondary policy, P4 persistence or
+audit semantics, existing P4E1 binding identity metadata, Control 2 one-shot semantics, GameTest
+registration, normal runtime reachability, or P6.
+
+### 48.21 Implementation Authority
+
+```text
+C1 six-path source correction
+= AUTHORIZED UPON THIS AMENDMENT COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  SIX-JOB REMOTE GATE PASS
+
+P4B2B stale Gate synchronization
+= AUTHORIZED UPON THE SAME CONDITION
+
+P5 fresh qualification
+= MAY RESUME ONLY AFTER
+  THE C1 SOURCE / TEST CORRECTION
+
+P5 implementation commit
+= NOT AUTHORIZED BY THIS DOCS-ONLY ROUND
+```
+
+This block does not claim that source correction is complete, P4B2B is synchronized,
+qualification has passed, or P5 implementation has passed.
+
+### 48.22 Phase Status
+
+The terminal phase state is:
+
+```text
+P4-E
+= COMPLETE
+
+P5-A consolidated architecture record
+= COMPLETE
+
+P5-A-V1
+= COMPLETE
+
+P5-A-V2 current evidence seal
+= COMPLETE
+
+P5-A-V2.1
+= COMPLETE — HISTORICAL STOP;
+  B1 / B2 / B3 FAILURES CLOSED
+
+P5-A-V2.2
+= COMPLETE — PASS
+
+P5-A-V2.2 current evidence /
+compile-probe companion seal
+= COMPLETE
+
+P5-A-V2 CORRECTED GAMETEST HARNESS /
+TERMINATION-SAFE WRONG-THREAD
+AUTHORITY AMENDMENT
+= COMPLETE UPON THIS COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  SIX-JOB REMOTE GATE PASS
+
+Chosen model
+= C1
+
+Control 2 single-use semantics
+= CONSUME-ON-MISMATCH PRESERVED
+
+P5 split
+= NO SPLIT
+
+C1 exact source correction
+= READY UPON THE SAME CONDITION;
+  NOT STARTED
+
+P4B2B stale Gate synchronization
+= READY UPON THE SAME CONDITION;
+  NOT STARTED
+
+P5 fresh qualification
+= BLOCKED UNTIL C1 SOURCE /
+  TEST CORRECTION
+
+P5
+= INCOMPLETE
+
+P6
+= NOT STARTED
+```
+
+### 48.23 Provenance
+
+The external evidence coordinates are code text and are not repository dependencies:
+
+```text
+V2 original evidence root = /private/tmp/gramarye-p5-a-v2-gametest-throwable-review-20260828T050145Z
+V2 current seal root = /private/tmp/gramarye-p5-a-v2-current-evidence-seal-20260828T075104Z
+V2.1 evidence root = /private/tmp/gramarye-p5-a-v2-1-worker-timeout-review-20260828T082604Z
+V2.2 evidence root = /private/tmp/gramarye-p5-a-v2-2-termination-safe-harness-review-20260828T091141Z
+V2.2 compile probe root = /private/tmp/gramarye-p5-a-v2-2-harness-probe-20260828T091141Z
+V2.2 current evidence/probe companion seal root = /private/tmp/gramarye-p5-a-v2-2-current-evidence-probe-seal-20260828T103650Z
+canonical base SHA = 1adcede8f4efb69295b57f3f091736f210318280
+architecture prefix bytes = 186829
+architecture prefix lines = 3411
+architecture prefix SHA-256 = 3c03b38353376d84b0fe4aa896df971c7446f5470d0763625d094bad505b7bde
+```
+
+external review evidence is historical provenance; this corrected architecture amendment is the
+repository authority.
