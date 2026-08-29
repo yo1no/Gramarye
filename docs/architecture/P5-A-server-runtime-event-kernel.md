@@ -4096,3 +4096,484 @@ architecture prefix SHA-256 = 3c03b38353376d84b0fe4aa896df971c7446f5470d0763625d
 
 external review evidence is historical provenance; this corrected architecture amendment is the
 repository authority.
+
+## 49. P5-A-V2.3 C1 Closed-Decision Claim-Handoff and Exact-10 Continuation Scope Authority Correction
+
+### 49.1 Status and Scope
+
+This strict EOF append-only, documentation-only amendment corrects the implementation-continuation
+scope of Section 48. It closes the exact future `Captured.claim` and initial
+`Claimed.requireActive` signatures needed to carry one classifier-produced closed `Decision`, and
+it replaces the insufficient future six-path semantic delta with an exact ten-path delta. The C1
+product model, the `ProductThreadPrecondition` surface, and all runtime semantics remain unchanged.
+
+This amendment becomes complete only when this amendment commit's unique exact-SHA, attempt-1
+`Build` workflow run contains exactly the six existing jobs and all six complete successfully.
+Until that condition holds, the additional four paths are not implementation authority. This
+round changes no Java, test, script, Gradle file, workflow, resource, codex-spec, GameTest topology,
+runtime-kernel behavior, or public API, and it does not resume C1 implementation or qualification.
+
+### 49.2 Source-Correction Stop Record
+
+The first C1 source-correction continuation created a detached worktree from
+`e94a229b44ea3309139dffb4627b421d2dd55fe0`, migrated the preserved exact seventeen paths with
+`17 / 17` mode, byte, and SHA agreement, and then stopped before any C1 source edit. Its actual
+repository delta remains the migrated seventeen paths: six tracked modifications and eleven
+untracked new files. All six paths originally authorized for C1 remain unchanged or absent relative
+to that worktree's base, its index is empty, and `git diff --check` passes.
+
+The stop was required and correct. The exact-six authority omitted one stale API Gate whose current
+reflection contract conflicts with the required closed-Decision claim signature, and it omitted
+three active continuation verifiers whose exact path allowlists reject the corrected candidate.
+Adding a seventh path ad hoc, retaining the obsolete signature, adding an overload, or weakening a
+verifier would all have violated the then-active authority.
+
+The formal-failed implementation, the old exact-seventeen candidate, the stopped source-correction
+candidate, the failed-campaign companion, and all V2.2 evidence and probe bytes remain immutable.
+
+### 49.3 Exact Blockers
+
+The current `P4E1GlobalSourceCapture.Captured` declares exactly one package-private `claim` method.
+It returns `P4E1GlobalSourceCapture.Claimed` and accepts only the exact
+`P4E1GroupedStoreAudit` owner. The current descriptor is:
+
+```text
+(Lcom/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit;)Lcom/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture$Claimed;
+```
+
+The current `P4E1GlobalSourceCapture.Claimed` declares exactly one private `requireActive` method.
+It returns `void` and accepts only the same exact owner. The current descriptor is:
+
+```text
+(Lcom/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit;)V
+```
+
+`P4E1B1ApiGateTest.capturedHandoffIsBoundOnlyToTheExactGroupedAuditOwner` currently requires one
+declared `claim`, rejects a zero-argument variant, and requires the sole parameter list to be exactly
+`[P4E1GroupedStoreAudit]`. Replacing the sole signature therefore requires synchronizing that test;
+adding a second signature is forbidden.
+
+The active continuation verifier chain is the existing
+`verifyP4B2Configuration -> verifyP4C2Configuration -> verifyP4D3Configuration ->
+verifyP4E3Configuration` chain, with `verifyP4A3BConfiguration` retained as the first prerequisite.
+After the exact-seventeen migration, P4-C2 and P4-D3 reject the new
+`ProductThreadPrecondition.java`; P4-E3 additionally rejects the exact C1 production and stale-test
+paths enumerated below. These are exact-token allowlist defects, not authority to add a wildcard.
+
+### 49.4 Claim-Handoff Java Surface
+
+The following block is signature-only Java declaration notation. It freezes the exact method names,
+nesting, visibility, return types, parameter types, parameter order, and absence of an explicit
+throws clause; it deliberately does not freeze either method body or add an overload:
+
+```java
+// P4E1GlobalSourceCapture.Captured
+Claimed claim(
+        P4E1GroupedStoreAudit owner,
+        ProductThreadPrecondition.Decision decision);
+
+// P4E1GlobalSourceCapture.Claimed
+private void requireActive(
+        P4E1GroupedStoreAudit owner,
+        ProductThreadPrecondition.Decision decision);
+```
+
+The exact future descriptors are:
+
+```text
+Captured.claim:
+(Lcom/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit;Lcom/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition$Decision;)Lcom/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture$Claimed;
+
+Claimed.requireActive:
+(Lcom/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit;Lcom/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition$Decision;)V
+```
+
+These surfaces are unique. The sole existing signature is replaced in each owner. Existing
+visibility, return type, first parameter, nesting, and no-explicit-throws behavior are preserved.
+The `Decision` parameter is non-null and must be rejected explicitly if an internal programming
+error supplies null; null is not a bypass and is not an externally injectable result.
+
+### 49.5 Exactly-One Claim and No-Overload Contract
+
+The future `Captured` contract is exact:
+
+```text
+declared methods named claim = 1
+claim overloads = 0
+claim parameter count = 2
+claim parameter 1 = P4E1GroupedStoreAudit
+claim parameter 2 = ProductThreadPrecondition.Decision
+claim return = P4E1GlobalSourceCapture.Claimed
+claim visibility = package-private
+```
+
+The future `Claimed` contract is also exact:
+
+```text
+relevant declared methods named requireActive = 1
+requireActive overloads = 0
+requireActive parameter count = 2
+requireActive parameter 1 = P4E1GroupedStoreAudit
+requireActive parameter 2 = ProductThreadPrecondition.Decision
+requireActive return = void
+requireActive visibility = private
+```
+
+The implementation may rename later post-claim active-owner checks when needed to keep the initial
+closed-Decision handoff unique. It may not retain the obsolete one-parameter `requireActive`, create
+a second `requireActive`, store a `Decision`, or manufacture `Decision.ALLOWED` for later access.
+
+### 49.6 Closed Decision Identity and Handoff
+
+The exact synchronous identity chain is:
+
+```text
+ProductThreadPrecondition.classify(...)
+-> one method-local, non-null decision
+-> capture.claim(this, decision)
+-> moved.requireActive(owner, decision)
+-> owner.requireCaptureBinding(..., decision)
+```
+
+The same local value produced by the one classification is passed at each edge. Reclassification,
+replacement, mutation, boolean substitution, `Object` substitution, field or static retention,
+queue or diagnostic retention, cross-thread escape, cross-tick escape, and a second claim are all
+zero. Source and bytecode Gates must prove the callsites and descriptors, not infer identity from a
+count alone.
+
+No public API exposes either method or the nested `Decision`. Package-external callers cannot
+inject it. GameTest supplies only the primitive synthetic observed thread ID `0L` to the authorized
+package-private operation core and may directly assert the classifier result; it may not call
+`claim(..., Decision.WRONG_THREAD)` or otherwise inject a precomputed result.
+
+### 49.7 Control 2 Consume-on-Mismatch Preservation
+
+The only authorized Control 2 order remains:
+
+```text
+read bounded immutable binding coordinates
+-> classify expected live thread ID and observed thread ID
+-> preserve one closed Decision
+-> Captured.claim(owner, decision)
+-> consumed = true
+-> move and clear into bounded local ownership
+-> Claimed.requireActive(owner, decision)
+-> existing exact owner/server/creation-Thread/same-tick binding validation
+-> bounded cleanup or allowed audit continuation
+```
+
+`WRONG_THREAD` consumes the one-shot capture, performs existing failed-claim bounded cleanup,
+performs zero grouped-audit product work and zero Store or journal truth reads, and throws the exact
+`BindingException("P4E1_GROUPED_AUDIT_THREAD_MISMATCH")`. The same capture is not reusable; its
+immediate subsequent use must produce `P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED`. The claim state
+machine, cleanup ownership, creation-thread identity, server identity, tick identity, Store truth,
+journal truth, and audit result semantics are unchanged.
+
+### 49.8 P4E1B1ApiGateTest Synchronization Contract
+
+The future change to
+`src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java` is narrowly limited
+to synchronizing the claim-handoff contract. It must preserve all unrelated assertions and prove:
+
+1. `Captured` declares exactly one `claim`, with no overload;
+2. its parameters are exactly owner then `ProductThreadPrecondition.Decision`;
+3. its package-private visibility and `Claimed` return are unchanged;
+4. `Claimed` declares exactly one private `void requireActive` with the same two parameters;
+5. the same classifier-produced local is passed through `claim` and `requireActive` into binding;
+6. no boolean, `Object`, nullable, duplicate-test, public, package-external, or GameTest injection
+   route exists; and
+7. no `Decision` field, static, queue, callback, or diagnostic retention exists.
+
+The Gate must combine reflection with exact source and bytecode callsite proof. It may not relax
+other P4E1 B1 surface, ownership, construction, static-retention, or zero-argument rejection rules.
+
+### 49.9 Verifier Stale-Consumer Audit
+
+An exhaustive audit covered the canonical and stopped continuation source under `src/test`,
+`scripts`, `build.gradle`, the active workflow, and active verifier inventory. Java consumers were
+classified using comment, string, character-literal, and text-block-aware source reasoning;
+shell consumers were classified from exact case-arm tokens and rejection loops. The exact
+additional semantic-path set outside the original C1 six is:
+
+| Path | Stale coordinate | Required future delta |
+| --- | --- | --- |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java` | current claim reflection contract | synchronize the sole owner-only signature to owner plus Decision and lock the same initial handoff |
+| `scripts/verify-p4-c2-b-configuration.sh` | production path case arm and rejection loops | add the one exact ProductThreadPrecondition path |
+| `scripts/verify-p4-d3-configuration.sh` | production path case arm and rejection loops | add the one exact ProductThreadPrecondition path |
+| `scripts/verify-p4-e3-configuration.sh` | exact repository path case arm and rejection loop | add five exact C10 paths currently rejected by the migrated verifier |
+
+There is no fifth additional direct consumer. `build.gradle` and `.github/workflows/build.yml` have
+no stale C1 path inventory. Other historical phase verifier allowlists are not in the active C1
+continuation verifier chain and already reject portions of the preserved M17 migration itself;
+they are not additional C1 semantic consumers. The direct claim call and internal initial
+`requireActive` call are already owned by original-C6 production paths.
+
+### 49.10 P4-C2 Verifier Contract
+
+After M17 migration, `verify-p4-c2-b-configuration.sh` has an exact 57-path production allowlist.
+The future correction adds only:
+
+```text
+src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java
+```
+
+The continuation allowlist becomes exact 58. For provenance, the un-migrated canonical script has
+51 entries; that historical base count is not the continuation contract. Unknown production-path
+rejection, resource freeze, regular-file handling, source-set separation, and every other verifier
+assertion remain unchanged. Package, directory, and `src/main/java/**` wildcards remain forbidden.
+
+### 49.11 P4-D3 Verifier Contract
+
+After M17 migration, `verify-p4-d3-configuration.sh` has an exact 57-path production allowlist.
+The future correction adds only:
+
+```text
+src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java
+```
+
+The continuation allowlist becomes exact 58. The un-migrated canonical script has 51 entries and
+is provenance only. Unknown production-path rejection, resource and probe separation, symlink and
+regular-file checks, P4-D authority assertions, and every unrelated verifier behavior remain
+unchanged. Wildcard or blanket exemptions are zero.
+
+### 49.12 P4-E3 Verifier Contract
+
+After M17 migration, `verify-p4-e3-configuration.sh` has an exact 45-path repository allowlist.
+The future correction adds exactly these five currently rejected paths:
+
+```text
+src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java
+src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java
+src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java
+```
+
+The first four are rejected original-C6 production paths; the fifth is the newly authorized stale
+API Gate. The continuation allowlist and its diagnostic count become exact 50. The un-migrated
+canonical script has 30 entries and would become 35 under the same token delta, but that base count
+is not the continuation contract. `SkillDefinitionStoreService.java` and `P4B2BApiGateTest.java`
+are already accepted after M17 migration and are not added again.
+
+Unknown-path rejection, resource and documentation freeze, probe and GameTest inventories,
+production/test separation, regular-file and symlink checks, P4-E authority assertions, and all
+unrelated verifier behavior remain unchanged. Wildcard count and blanket exemptions remain zero.
+Five new tokens inside this one already-counted verifier file do not create an eleventh semantic
+path.
+
+### 49.13 Original C1 Exact-Six Scope
+
+The original six rows are copied from the sealed V2.2 `FUTURE_SOURCE_DELTA.tsv` path set:
+
+| Path | Corrected category | Original semantic role |
+| --- | --- | --- |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java` | `NEW_PRODUCTION` | package-private pure shared classifier |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java` | `MODIFIED_PRODUCTION` | Control 1 wrapper/core and gate-first order |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java` | `MODIFIED_PRODUCTION` | Control 2 wrapper/core and pre-claim classification |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java` | `MODIFIED_PRODUCTION` | same-Decision claim handoff and one-shot cleanup |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java` | `MODIFIED_PRODUCTION` | production-packaged zero-worker GameTest holder |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java` | `MODIFIED_EXISTING_TEST` | exact C1 static/API and failure-policy Gate |
+
+The original set has six unique rows: one new production file, four modified production files, and
+one modified existing test. Its sorted-path-LF SHA-256 is
+`6dc4050450f652a920ced4443520bf767618da2af0541c2a4f7af147a4322ed8`.
+
+### 49.14 Additional Exact-Four Scope
+
+The exhaustive audit authorizes exactly four additional semantic paths:
+
+| Path | Category | Exact purpose |
+| --- | --- | --- |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java` | `MODIFIED_EXISTING_TEST` | synchronize exact-one owner-plus-Decision claim and requireActive surfaces |
+| `scripts/verify-p4-c2-b-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | add exact ProductThreadPrecondition production path |
+| `scripts/verify-p4-d3-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | add exact ProductThreadPrecondition production path |
+| `scripts/verify-p4-e3-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | add exact five rejected C10 repository paths and synchronize the exact count |
+
+This set has four unique rows and sorted-path-LF SHA-256
+`9c1f705a1f2c3af096bc04cbea2679811353ddbba03b307f37ab95a0f50cdb53`.
+It does not authorize any other test or verifier change.
+
+### 49.15 Corrected C1 Exact-Ten Scope
+
+The corrected C1 semantic delta is the union of Sections 49.13 and 49.14, sorted here by repository
+path:
+
+| Path | Category | Scope source |
+| --- | --- | --- |
+| `scripts/verify-p4-c2-b-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | `V2_3_ADDITIONAL_SCOPE_CORRECTION` |
+| `scripts/verify-p4-d3-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | `V2_3_ADDITIONAL_SCOPE_CORRECTION` |
+| `scripts/verify-p4-e3-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | `V2_3_ADDITIONAL_SCOPE_CORRECTION` |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java` | `MODIFIED_PRODUCTION` | `V2_2_ORIGINAL_C1_SCOPE` |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java` | `MODIFIED_PRODUCTION` | `V2_2_ORIGINAL_C1_SCOPE` |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java` | `NEW_PRODUCTION` | `V2_2_ORIGINAL_C1_SCOPE` |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java` | `MODIFIED_PRODUCTION` | `V2_2_ORIGINAL_C1_SCOPE` |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java` | `MODIFIED_PRODUCTION` | `V2_2_ORIGINAL_C1_SCOPE` |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java` | `MODIFIED_EXISTING_TEST` | `V2_2_ORIGINAL_C1_SCOPE` |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java` | `MODIFIED_EXISTING_TEST` | `V2_3_ADDITIONAL_SCOPE_CORRECTION` |
+
+The inventory is exact: ten rows, ten unique paths, six original rows, four additional rows, zero
+duplicate, missing, or extra paths. Category counts are
+`NEW_PRODUCTION = 1`, `MODIFIED_PRODUCTION = 4`, `MODIFIED_EXISTING_TEST = 2`, and
+`MODIFIED_EXISTING_VERIFIER = 3`. Its sorted-path-LF SHA-256 is
+`e9e7298e4018f510e5cb2c9c76a274ef0b07cca927506d59067ef0f3ce60fa75`.
+
+Within C1 implementation-continuation scope, this exact-ten inventory supersedes the exact-six
+inventory in Section 48.17. It does not supersede the V2.2 product surface or product semantics.
+
+### 49.16 M/C Overlap and Continuation Arithmetic
+
+The continuation sets were computed from actual sealed path inventories, not from expected counts:
+
+```text
+M = preserved exact-17 migration scope
+C = corrected exact-10 C1 semantic scope
+O = M intersection C
+U = M union C
+
+|M| = 17
+|C| = 10
+|O| = 3
+|U| = 24
+24 = 17 + 10 - 3
+```
+
+The exact overlap is:
+
+```text
+scripts/verify-p4-c2-b-configuration.sh
+scripts/verify-p4-d3-configuration.sh
+scripts/verify-p4-e3-configuration.sh
+```
+
+The sorted-path-LF SHA-256 identities are:
+
+```text
+M17 = 0b6d9a37d1c5c337115f115fd72ca10b961c545cd7f9b76eccf7f32e805a71b3
+C10 = e9e7298e4018f510e5cb2c9c76a274ef0b07cca927506d59067ef0f3ce60fa75
+O3  = 6e968ecdf5af2e206fcda0a125c0da2650bcee1c8b0eec05d004d6d2f0587583
+U24 = 43cf3ebfd505a18aeea9bfaa0619c042136b0df71ef956b4fa708a92b8dfc426
+```
+
+These values are continuation arithmetic, not a permanent product path count. The future source
+round must recompute them from the then-current sealed M17 and C10 inputs before migration or edit.
+
+### 49.17 Unchanged Product Semantics
+
+```text
+P5 runtime semantics changed = 0
+P4 persistence semantics changed = 0
+P4E1 single-use capture semantics changed = 0
+Control 2 consume-on-mismatch changed = 0
+P4E1 binding identity fields changed = 0
+C1 ProductThreadPrecondition surface changed = 0
+P6 semantics changed = 0
+GameTest topology changed = 0
+public top-level API delta = 0
+```
+
+This amendment supplies only the compile-closed claim-handoff surface and exact stale
+test/verifier continuation scope. It does not change Error handling, the P5 result vocabulary,
+budget, breaker, queue, deadline, persistence, configuration, or any execution semantics.
+
+### 49.18 Implementation Authority
+
+```text
+Corrected C1 semantic delta
+= EXACT 10 PATHS
+
+The additional exact-four paths
+= AUTHORIZED UPON THIS COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  SIX-JOB REMOTE GATE PASS
+
+C1 exact source/test/verifier correction
+= READY UPON THE SAME CONDITION;
+  NOT STARTED
+
+Final implementation union
+= MUST BE MECHANICALLY RECOMPUTED
+  FROM M17 AND C10
+
+P5 formal qualification
+= BLOCKED UNTIL CORRECTED
+  SOURCE/TEST/VERIFIER BYTES ARE FROZEN
+
+P5 implementation commit
+= NOT AUTHORIZED BY THIS DOCS-ONLY ROUND
+```
+
+No source correction, candidate freeze, qualification, implementation commit, or P5 closure is
+claimed by this authority correction.
+
+### 49.19 Phase Status
+
+```text
+P4-E
+= COMPLETE
+
+P5-A consolidated architecture record
+= COMPLETE
+
+P5-A-V1
+= COMPLETE
+
+P5-A-V2 corrected authority amendment
+= COMPLETE
+
+P5-A-V2.3 C1 CLOSED-DECISION
+CLAIM-HANDOFF / EXACT-10 SCOPE
+AUTHORITY CORRECTION
+= COMPLETE UPON THIS COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  SIX-JOB REMOTE GATE PASS
+
+Chosen model
+= C1
+
+Control 2 single-use semantics
+= CONSUME-ON-MISMATCH PRESERVED
+
+Corrected C1 semantic delta
+= EXACT 10 PATHS
+
+C1 source/test/verifier correction
+= READY UPON THE SAME CONDITION;
+  NOT STARTED
+
+Corrected candidate source freeze
+= NOT CREATED
+
+P5 fresh qualification
+= BLOCKED UNTIL CORRECTED
+  CANDIDATE FREEZE
+
+P5
+= INCOMPLETE
+
+P6
+= NOT STARTED
+```
+
+This phase state does not declare `P5 implementation PASS`, `P5 READY TO COMMIT`, `P5 COMPLETE`,
+or `P6 READY`.
+
+### 49.20 Provenance
+
+The external evidence coordinates are provenance and are not repository dependencies:
+
+```text
+canonical base SHA = e94a229b44ea3309139dffb4627b421d2dd55fe0
+canonical base tree = 19fd60f574aa375e5f24ba77cc26c3078124c0ea
+architecture prefix bytes = 224044
+architecture prefix lines = 4098
+architecture prefix SHA-256 = 089a052e18eeb932969c01eb2a2a3e2ec9b2e8f05c77bbffd2d9245327a20044
+V2.2 current bundle identity = 7b10bb9788a571acd437a94f65f4a71263daecf3a75336d12848333a1ccd62ea
+V2.2 evidence projection = 476f66fcbdb3cc94d5718f8b6b801c6410d8f482c80f043ccb2f12ccc63306c9
+V2.2 probe projection = 5d52d041e9b0a947810bb72838dc60d59e29e9e0342c948859dbae274bdae58b
+V2.3 ordinary evidence root = /private/tmp/gramarye-p5-a-v2-3-scope-amendment-evidence-20260829T050516Z
+V2.3 backup root = /private/tmp/gramarye-p5-a-v2-3-scope-amendment-20260829T050516Z-backup
+stopped source-correction worktree = /private/tmp/gramarye-p5-c1-source-correction-20260828T155947Z
+```
+
+The V2.2 evidence is historical input. Upon the exact remote condition in Section 49.1, this V2.3
+append becomes the active repository authority for the corrected C1 continuation scope.
