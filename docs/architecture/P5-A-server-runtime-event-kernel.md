@@ -4577,3 +4577,765 @@ stopped source-correction worktree = /private/tmp/gramarye-p5-c1-source-correcti
 
 The V2.2 evidence is historical input. Upon the exact remote condition in Section 49.1, this V2.3
 append becomes the active repository authority for the corrected C1 continuation scope.
+
+## 50. P5-A-V2.4-R1 P3D3 Thread-Surface Gate and P4-E3 Exact-51 Paired Synchronization Authority Correction
+
+### 50.1 Status and Scope
+
+This section is a docs-only, strict EOF append to the active P5-A, V2, and V2.3 authority. It
+corrects the future synchronization contract discovered after the frozen U24 source correction
+and formal Q1 failure. It authorizes no Java, test, script, Gradle, workflow, resource, or
+codex-spec byte in this round. Its paired subject is exactly:
+
+```text
+outside-C10 additional stale path
+= src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java
+
+inside-C10 second-generation stale path
+= scripts/verify-p4-e3-configuration.sh
+```
+
+The sets remain `C11 = C10 + exact P3D3 A1` and `U25 = M17 union C11`. P4-E3 remains one existing
+C10 path and is not a twelfth C1 path. This section becomes implementation authority only upon
+this documentation commit's unique exact-SHA Build run, attempt 1, completing all six jobs
+successfully. Until that condition, both source synchronizations are ready and not started.
+
+### 50.2 Formal Q1 Failure Record
+
+The preserved formal Q1 campaign ran once with no retry. Focused compile, affected JUnit
+`97/97`, P5 focused `70/70`, P4B2B `9/9`, P4E1B1 `7/7`, hard-limit digest
+`994d53cb0c302785`, verifier syntax `4/4`, and verifier matrix `5/5` all passed. The full-unit
+inventory was exactly 1562 IDs and did not drift. Execution ended with 1561 passing tests and one
+failure:
+
+```text
+com.yo1no.gramarye.magic.definition.store.P3D3ApiGateTest
+#storePackageContainsNoP4RuntimeDiscoveryOrDestructiveSurface()
+
+ProductThreadPrecondition.java contains Thread; expected false but was true
+```
+
+The failure is a stale baseline static/API Gate. It is not a product runtime failure. GameTest,
+dedicated smoke, warning compile, JAR, and later formal static Gates were not executed. The failed
+candidate and its exact 16-file partial evidence remain immutable historical input; this round
+does not resume or rerun that campaign.
+
+### 50.3 Initial V2.4 Stop Record
+
+The initial V2.4 review stopped before repository modification, Gradle, staging, commit, or push.
+Its exact nine-file partial evidence and detached clean documentation worktree are preserved. The
+success-only evidence files absent at the stop were not reconstructed. The first work order
+combined three incompatible requirements:
+
+1. make the canonical tracked P3D3 test the sole future changed path outside frozen U24;
+2. preserve every frozen U24 path byte-for-byte; and
+3. require the frozen-U24 P4-E3 exact-scope verifier to accept that new tracked test delta.
+
+The frozen verifier contains an exact 50-path predicate and rejects P3D3. Therefore the test
+correction and verifier pass require a paired delta. The initial byte-preservation contract was
+defective and has no future authority.
+
+### 50.4 Defective Byte-Preservation Contract Withdrawal
+
+The historical all-frozen-path byte-preservation requirement is withdrawn. The replacement is the
+closed `23 + 1 + 1` model:
+
+```text
+F24 = frozen U24 exact 24-path set
+R1  = { scripts/verify-p4-e3-configuration.sh }
+A1  = { src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java }
+
+F24 minus R1 = exact 23 paths with frozen mode, bytes, and SHA-256 preserved
+R1            = exact one frozen path receiving the narrow 50-to-51 revision
+A1            = exact one canonical tracked path receiving the thread-surface Gate correction
+U25           = F24 union A1 = exact 25 paths
+```
+
+No third relative-U24 byte-delta path is authorized. P4-E3 stays inside C11, O3, and U25; its
+second-generation revision changes no set cardinality.
+
+### 50.5 Two-Dimensional Stale-Consumer Model
+
+The exhaustive scan covered `src/test`, `scripts`, `build.gradle`, `.github/workflows`,
+`docs/architecture`, and `docs/codex-spec`, including the required P3D3, C1 thread-identity,
+P4-E3 scope, U24, C10, and background-execution search families. Sixty-seven relevant unique
+paths were classified. The closed result is:
+
+| Dimension | Exact count | Exact path | C11 effect | Relative-U24 byte delta |
+| --- | ---: | --- | --- | --- |
+| `OUTSIDE_C10_ADDITIONAL_PATH` | 1 | `src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java` | add exact A1 | yes |
+| `INSIDE_C10_SECOND_GENERATION_DELTA` | 1 | `scripts/verify-p4-e3-configuration.sh` | retain existing C10 row | yes |
+| `NOT_STALE` | 65 | all other audited paths | none | no |
+
+The audit-scope intersection with C10 is exactly the C2-B, D3, and E3 verifier scripts plus
+`P4B2BApiGateTest.java` and `P4E1B1ApiGateTest.java`. Only E3 is stale. No second path exists in
+either stale dimension, and the exact future byte-delta set has cardinality two.
+
+### 50.6 Exact P3D3 Blocker
+
+The target is the existing test method at annotation line 431 and declaration line 432:
+
+```text
+binary owner = com.yo1no.gramarye.magic.definition.store.P3D3ApiGateTest
+method = storePackageContainsNoP4RuntimeDiscoveryOrDestructiveSurface
+descriptor = ()V
+scan setup = source lines 433-446
+broad token = source line 444, "Thread"
+assertion = source line 450
+```
+
+The method scans sanitized production sources under the store package, masks the exact reviewed
+D1 Store integration slice, and applies 37 case-sensitive substring tokens. The broad token
+rejects the C1-authorized type at the first path
+`src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java`. Its
+executable matches are the type at line 7, private constructor at line 8, type and primitive
+parameter names at line 11, and primitive comparisons at line 12. None creates, owns, starts,
+schedules, retains, or returns a Thread object.
+
+The P3D3 source has canonical Git blob `9ad51e6d91e5bea2de0c714ccd3c34a3eff74843` and SHA-256
+`704f437d7add5a072584905b14e277fbac71fbdce94af50b618e38c0869524d9`. It has zero U24 manifest
+rows and is the exact additional tracked A1. The C1 product source is frozen at 3430 bytes and
+SHA-256 `57a632e9419207e2b7cc96a7ddd614ee9a33f238dfeaa9909e260e8f4085e119`.
+Changing production names to evade the test would violate active C1 authority.
+
+### 50.7 Store-Package Thread-Surface Taxonomy
+
+The frozen U24 store package was inspected with a comment-, string-, character-literal-, and
+text-block-aware linear lexical scan and cross-checked against preserved classfiles, descriptors,
+instructions, and constant pools. The evidence inventory aggregates exact source and bytecode
+coordinates into these closed roles:
+
+```text
+AUTHORIZED_C1_TYPE_NAME
+AUTHORIZED_C1_OBSERVED_THREAD_ID
+AUTHORIZED_C1_EXPECTED_SERVER_THREAD_ID
+AUTHORIZED_EXISTING_P4E1_BINDING_IDENTITY
+FORBIDDEN_THREAD_CREATION
+FORBIDDEN_THREAD_LIFECYCLE
+FORBIDDEN_THREAD_RETENTION
+FORBIDDEN_BACKGROUND_EXECUTION
+UNRELATED_IDENTIFIER_SUBSTRING
+NON_EXECUTABLE_COMMENT_OR_STRING
+```
+
+The scan covers 114 Java files and 331 lexical candidates. It classifies 234 executable tokens:
+228 authorized Thread-related identifiers across 158 lines and 12 files, plus 6 resolved unrelated
+identifier substrings. It separately classifies 97 non-executable tokens: 69 in comments and 28 in
+strings, with zero character-literal or text-block candidates. The coordinate inventory has 53
+aggregate rows: 5 C1 type-name rows / 19 tokens, 5 observed-ID rows / 32 tokens, 4 expected-ID rows /
+13 tokens, 11 existing P4E1 binding rows / 164 tokens, 6 unrelated rows / 6 tokens, and 22
+non-executable rows / 97 tokens.
+
+Fourteen preserved store binaries reference `java/lang/Thread`; their owner-set SHA-256 is
+`536a3ac214f07a7dc147bcb5392774fb682479775bb791a939fc50b4faa08658`. ThreadLocal, ThreadGroup,
+ThreadFactory, executor, future/completion, fork-join, parallel, and lifecycle-method bytecode
+symbols are zero. The 114-path set SHA-256 is
+`9ce0d3ddad81bd5526f9272c895abe37e8eb9d8c09036193d8b5e375b313099c`; the authorized
+Thread-executable 12-path set is
+`a1cbc78c7da7a2d946c3b6c17f8d2fece42f7eaebab97020040314cdbb4b4522`. The line-independent C1
+semantic projection is `8385132680bd372a65da7725a33ad47f1d1a93bf9d29d25fe0a2bf917609b9ec`, and the existing-binding
+projection is `f278dad69c7f52687ad5744a6fa5f3ebf26ef9b1a818ae2520e2e60ee1df25f0`.
+
+Actual unauthorized creation, lifecycle, retention, and background-execution coordinates are zero.
+Unclassified executable coordinates and raw-substring-only classifications are zero.
+
+### 50.8 Authorized C1 Thread-Identity Surface
+
+The exact C1 type surface is:
+
+```text
+source/binary type count = 1
+type = com.yo1no.gramarye.magic.definition.store.ProductThreadPrecondition
+visibility = package-private
+shape = final class; private constructor; no retained state
+classify descriptor =
+(JJ)Lcom/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition$Decision;
+Decision constants = ALLOWED, WRONG_THREAD
+```
+
+Control 1 binds the public `latestReference(server, skillId)` wrapper to the exact package-private
+core with `Thread.currentThread().threadId()`, then compares that primitive observation with
+`server.getRunningThread().threadId()` through `ProductThreadPrecondition.classify`. The exact
+future source coordinates are `SkillDefinitionStoreService.java:111,117-118,549,551-554`.
+
+Control 2 binds `audit(capture)` to `audit(capture, long)` at
+`P4E1GroupedStoreAudit.java:27,30,32-33`, preserving one method-local `Decision` before claim. The
+expected ID is the exact `serverIdentity.getRunningThread().threadId()` expression, and the
+observed ID is the primitive wrapper/core parameter. The same local continues through the exact
+owner-plus-Decision claim and `requireActive` descriptors already frozen by Section 49.
+
+The production-packaged GameTest holder uses only its exact synchronous server-thread
+preconditions, one local expected ID, the direct `ALLOWED`/`WRONG_THREAD` classifier assertions,
+and primitive `0L` negative-control calls. Its exact reviewed families are
+`SkillSavedDataLifecycleGameTests.java:28-37,104-118,206,273-294,339`.
+
+Existing P4E1 binding identities remain authorized only at the exact frozen owners, fields,
+constructors, move/clear operations, currentness predicates, and callsites inventoried for
+`ControlledSkillPin`, `P4E1AuditedCapture`, `P4E1GlobalSourceCapture`,
+`P4E1GroupedStoreAudit`, `P4E1IntegratedSnapshotTraversal`,
+`P4E2OnlineReconciliationCoordinator`,
+`SkillDefinitionStoreService`, `SkillDefinitionStoreSubmissionPort`,
+`SkillRetentionRootAuditService`, `SkillSavedDataLifecycleGameTests`, and
+`SkillSubmissionRecoveryGameTests`. This is a finite preservation of existing P4 ownership checks,
+not permission for a new Thread coordinate.
+
+Every executable allowance key is the tuple:
+
+```text
+repository-relative path
++ binary owner
++ method descriptor
++ resolved symbol
++ closed source role
++ authority family
++ normalized-expression digest
+```
+
+Line numbers are diagnostics and never the sole key. A new or moved executable coordinate must
+fail closed until a later authority explicitly supplies its complete key.
+
+### 50.9 Forbidden Thread-Lifecycle and Async Surface
+
+The future Gate must prove all of the following remain zero throughout its exact scan scope:
+
+```text
+new Thread
+Thread.start / join / sleep / interrupt / isAlive
+ThreadLocal / InheritableThreadLocal
+ThreadGroup / ThreadFactory
+Executor / ExecutorService / Executors
+ScheduledExecutorService
+Future / FutureTask
+CompletableFuture / CompletionStage
+ForkJoinPool / ForkJoinTask
+parallelStream / parallel
+Thread object field / array / collection / return retention outside exact preserved P4E1 bindings
+```
+
+It must also reject an unexpected executable `Thread`-related coordinate, worker, callback,
+queue, scheduler, task, retained diagnostic, or cross-thread/cross-tick escape. Resolved domain
+identifiers such as `FUTURE_SCHEMA_VERSION` and the synchronous `AtomicInteger` GameTest counter
+are classified by owner and descriptor; they do not weaken the concurrency prohibitions.
+
+### 50.10 Exact P3D3 Future Gate
+
+The future correction edits only the existing
+`src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java`, within the existing
+test method, private constants, and private lexical helpers needed by that method. It creates no
+helper file and no new test. The original exact source-root selection, runtime-discovery checks,
+destructive Store protections, and the other 36 forbidden source tokens remain active.
+
+The replacement decision is symbol- and role-aware. It recognizes only the exact C1 and existing
+P4E1 keys in Section 50.8, preserves the zero inventories in Section 50.9, and fails on every
+unclassified executable coordinate. The source type and binary type each occur exactly once, the
+classifier descriptor is exact, and the enum constants are exactly `ALLOWED` and `WRONG_THREAD`.
+
+```text
+unexpected executable Thread-related coordinates = 0
+unclassified coordinates = 0
+wildcard entries = 0
+whole-file exemptions = 0
+package or directory blanket entries = 0
+count-only exemptions = 0
+new test IDs = 0
+```
+
+The correction is test-only. Product bytes, product names, the consume-on-mismatch sequence, and
+existing binding fields are not adapted to satisfy this Gate.
+
+### 50.11 P3D3 Test-ID Continuity
+
+The base and U24 inventories contain the same exact eleven P3D3 IDs. The future U25 correction
+must retain these method names, annotations, and IDs exactly:
+
+```text
+constructionScannerRecognizesQualifiedImportedWildcardAndReferenceSpellings
+finalArchitectureLedgerRecordsP4MigrationAndDirtyObligations
+persistenceSnapshotShapeStillContainsNoPinRootOrReportState
+reclaimConstructionPointsAreCentralizedAtTheStoreBoundary
+reclaimFailureResultAndReportHaveOnlyBoundedTypedComponents
+reclaimSourceKeepsFixedPrecedenceAndPrebuildsBeforePublication
+retentionRootCeilingHasOneProductionTruthAndFactoryUsesIt
+rootSnapshotHasExactSealedShapeAndNoFactoryBypass
+storeHasExactlySevenReviewedDomainMethodsAndTwoTruthStateMaps
+storePackageContainsNoP4RuntimeDiscoveryOrDestructiveSurface
+storedHistoryAddsOnlyTheReviewedPackagePrivateRetainHelper
+```
+
+The sorted exact-ID SHA-256 is
+`e11e5b834af3a75647c1aab755d5b804d782c18910b4d09d3ac2f3eea4d35a12`; the base/U24 subset-row
+projection is `8bc609faf6e5a0286e5691dcbc978de2dad145a48a68d7c2c80bbefbbf83d684`. Added, removed,
+renamed, and disabled IDs are each zero. The class remains independent of the affected 9-class /
+97-test subset while remaining part of the full-unit 1562-ID set.
+
+### 50.12 Frozen-U24 P4-E3 Blocker
+
+The required baseline is the frozen-U24 script, not the pre-U24 canonical script:
+
+```text
+path = scripts/verify-p4-e3-configuration.sh
+mode = 100755
+bytes = 57569
+lines = 1210
+SHA-256 = d3b822a6467173c50c5e6f5ce08a8ee177c9bc6677ffeba38c16e31c7adba8ac
+is_exact_p4e3_path = lines 408-466; exact entries at 410-459
+verify_repository_scope = lines 489-511; changed/untracked decision at 501-503
+```
+
+Mechanical extraction produces 50 entries, 50 unique values, and no wildcard. P3D3 has zero exact
+token occurrences, reaches the predicate's default rejection, and makes the future tracked delta
+fail at line 502. Therefore a P3D3 test correction without the paired script revision cannot pass
+the active continuation verifier. No verifier was executed during this read-only review.
+
+### 50.13 P4-E3 Exact-50 Inventory
+
+The frozen case order is authoritative. Its ordered LF projection SHA-256 is
+`c5b6c033081fd8ca44bfb3f4049759641acdf082df68002659d06a4da9acc913`, and its sorted-set
+SHA-256 is `d8bbaab4d2afd777e3f32dca202ee1b2bb0d7d6893f52a7cf896beaddbaa5b1e`.
+The exact entries, in order, are:
+
+```text
+01 .github/workflows/build.yml
+02 build.gradle
+03 scripts/verify-p4-b2-b-configuration.sh
+04 scripts/verify-p4-c2-b-configuration.sh
+05 scripts/verify-p4-d3-configuration.sh
+06 scripts/verify-p4-e0-r-configuration.sh
+07 scripts/verify-p4-e0-r2q-configuration.sh
+08 scripts/verify-p4-e1-configuration.sh
+09 scripts/verify-p4-e2-configuration.sh
+10 scripts/verify-p4-e3-configuration.sh
+11 src/main/java/com/yo1no/gramarye/Gramarye.java
+12 src/main/java/com/yo1no/gramarye/P5LoadedReferenceResolver.java
+13 src/main/java/com/yo1no/gramarye/P5RuntimeConfiguration.java
+14 src/main/java/com/yo1no/gramarye/P5RuntimeProjector.java
+15 src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java
+16 src/main/java/com/yo1no/gramarye/P5ServerRuntimeConfig.java
+17 src/main/java/com/yo1no/gramarye/SkillRuntimeService.java
+18 src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java
+19 src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java
+20 src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java
+21 src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java
+22 src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java
+23 src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java
+24 src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java
+25 src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java
+26 src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java
+27 src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java
+28 src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java
+29 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java
+30 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FileVerifier.java
+31 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureBuilder.java
+32 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java
+33 src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java
+34 src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java
+35 src/test/java/com/yo1no/gramarye/P5RuntimeConfigurationTest.java
+36 src/test/java/com/yo1no/gramarye/P5RuntimeHardLimitWorkloadTest.java
+37 src/test/java/com/yo1no/gramarye/P5RuntimeKernelTest.java
+38 src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java
+39 src/test/java/com/yo1no/gramarye/P5RuntimeVocabularyTest.java
+40 src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java
+41 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java
+42 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java
+43 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java
+44 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java
+45 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java
+46 src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java
+47 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java
+48 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java
+49 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java
+50 src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java
+```
+
+### 50.14 P4-E3 Exact-51 Paired Synchronization
+
+Future exact-51 retains entries 1 through 50 in the same relative order and adds only:
+
+```text
+51 src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java
+```
+
+The insertion coordinate is fixed immediately after frozen ordinal 50 and before the closing
+case-pattern parenthesis. The store-unit-test group is last, while its historical entries do not
+define a total lexical order; this authority therefore fixes ordinal 51 directly. The future
+ordered LF projection SHA-256 is
+`1470d5d29b37e91f650421158b038e39ddb66f625d065a9c8b020e2c14f2fffc`, and the future sorted-set
+SHA-256 is `19e4e7c4ee9171efe54a84be8efa392ffc4666b149686fff0cb7b8763321ab2c`.
+
+Exactly three directly inventory-linked clauses synchronize:
+
+| Clause | Frozen value | Future value |
+| --- | --- | --- |
+| `is_exact_p4e3_path`, lines 410-459 | 50 exact unique tokens | 51 exact unique tokens; append ordinal 51 |
+| `verify_repository_scope`, diagnostic line 502 | `exact P4-E3 50-path scope` | `exact P4-E3 51-path scope` |
+| success diagnostic, line 1207 | `50 paths` | `51 paths` |
+
+The exact word `50` occurs nowhere else in the frozen script. Added, removed, renamed, duplicate,
+wildcard, package-blanket, and directory-blanket entries are `1/0/0/0/0/0/0`. Unknown-path
+rejection, changed-plus-untracked coverage, existing symlink protections, resource/documentation
+freeze, probe and GameTest inventories, production/test classification, regular-file checks,
+P4-E limits, runtime ceilings, test counts, fixture sizes, timeout values, fixed-heap behavior,
+workflow isolation, and every P4-E semantic assertion remain unchanged.
+
+### 50.15 Original C10 Scope
+
+The V2.3 authority file has mode `0644`, 3597 bytes, eleven lines, and SHA-256
+`03259878fdcd5ef53096818dfa3393060443b7f4e633998d5545502f92f53251`. Its ten unique rows are
+retained without removal or category change:
+
+| Path | Category | V2.3 semantic delta |
+| --- | --- | --- |
+| `scripts/verify-p4-c2-b-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | exact ProductThreadPrecondition token; continuation 57 to 58 |
+| `scripts/verify-p4-d3-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | exact ProductThreadPrecondition token; continuation 57 to 58 |
+| `scripts/verify-p4-e3-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | five exact C10 tokens; continuation 45 to 50 |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java` | `MODIFIED_PRODUCTION` | same closed Decision through claim and initial requireActive |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java` | `MODIFIED_PRODUCTION` | classify before claim and pass the same Decision |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java` | `NEW_PRODUCTION` | package-private pure `classify(JJ)` surface |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java` | `MODIFIED_PRODUCTION` | wrapper/core primitive observation and pre-adapter classification |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java` | `MODIFIED_PRODUCTION` | zero-worker direct classifier and exact-core controls |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java` | `MODIFIED_EXISTING_TEST` | exact classifier/API/call-chain/no-worker Gate |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java` | `MODIFIED_EXISTING_TEST` | exact owner-plus-Decision claim-handoff Gate |
+
+Its category counts are one new production, four modified production, two modified existing tests,
+and three modified existing verifiers. Its sorted-path-LF SHA-256 is
+`e9e7298e4018f510e5cb2c9c76a274ef0b07cca927506d59067ef0f3ce60fa75`.
+
+### 50.16 Corrected C11 Scope
+
+The corrected cumulative scope retains all ten C10 paths and adds one path. The closed scope-source
+labels are `P5_A_V2_3_C10`, `P5_A_V2_3_C10_AND_V2_4_R1_REVISION`, and
+`P5_A_V2_4_R1_ADDITIONAL_A1`.
+
+| Path | Category | Scope source | R1-specific role | Test-ID delta |
+| --- | --- | --- | --- | ---: |
+| `scripts/verify-p4-c2-b-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | `P5_A_V2_3_C10` | none | 0 |
+| `scripts/verify-p4-d3-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | `P5_A_V2_3_C10` | none | 0 |
+| `scripts/verify-p4-e3-configuration.sh` | `MODIFIED_EXISTING_VERIFIER` | `P5_A_V2_3_C10_AND_V2_4_R1_REVISION` | exact 50-to-51 paired inventory revision | 0 |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java` | `MODIFIED_PRODUCTION` | `P5_A_V2_3_C10` | none | 0 |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java` | `MODIFIED_PRODUCTION` | `P5_A_V2_3_C10` | none | 0 |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java` | `NEW_PRODUCTION` | `P5_A_V2_3_C10` | none | 0 |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java` | `MODIFIED_PRODUCTION` | `P5_A_V2_3_C10` | none | 0 |
+| `src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java` | `MODIFIED_PRODUCTION` | `P5_A_V2_3_C10` | none | 0 |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java` | `MODIFIED_EXISTING_TEST` | `P5_A_V2_3_C10` | none | 0 |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java` | `MODIFIED_EXISTING_TEST` | `P5_A_V2_3_C10` | none | 0 |
+| `src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java` | `MODIFIED_EXISTING_TEST` | `P5_A_V2_4_R1_ADDITIONAL_A1` | exact C1 thread-surface Gate synchronization | 0 |
+
+The inventory is eleven rows and eleven unique paths. C10 retention is `10/10`; duplicate,
+missing, and extra paths are `0/0/0`. Category counts are:
+
+```text
+NEW_PRODUCTION = 1
+MODIFIED_PRODUCTION = 4
+MODIFIED_EXISTING_TEST = 3
+MODIFIED_EXISTING_VERIFIER = 3
+```
+
+The sorted-path-LF C11 SHA-256 is
+`9c52ae3e140342cc8933b58defc7baf9e51322ab7af9aa3878ec3b8ea46e7c81`.
+
+### 50.17 M17 / C11 / O3 / U25 Arithmetic
+
+The sets were recomputed from the sealed M17 input and corrected C11 rows:
+
+```text
+M = exact 17 migration paths
+C = corrected exact 11 C1 paths
+O = M intersection C
+U = M union C
+
+|M| = 17
+|C| = 11
+|O| = 3
+|U| = 25
+25 = 17 + 11 - 3
+```
+
+The exact overlap is unchanged:
+
+```text
+scripts/verify-p4-c2-b-configuration.sh
+scripts/verify-p4-d3-configuration.sh
+scripts/verify-p4-e3-configuration.sh
+```
+
+The sorted-path-LF identities are:
+
+```text
+M17 = 0b6d9a37d1c5c337115f115fd72ca10b961c545cd7f9b76eccf7f32e805a71b3
+C11 = 9c52ae3e140342cc8933b58defc7baf9e51322ab7af9aa3878ec3b8ea46e7c81
+O3  = 6e968ecdf5af2e206fcda0a125c0da2650bcee1c8b0eec05d004d6d2f0587583
+U25 = 23d324e2c20599e01a26138ac3096b0c12014ab45f62b30cae45b2069c8a5f8a
+```
+
+The future source-correction round must mechanically recompute the actual path set from the sealed
+inputs. These values do not authorize an inferred path.
+
+### 50.18 Relative-U24 Two-Path Delta Model
+
+Every U25 path has exactly one closed role:
+
+| Role | Count | Exact member or preservation rule |
+| --- | ---: | --- |
+| `U24_UNCHANGED` | 23 | every path in `F24 minus R1`; frozen mode, bytes, and SHA-256 exact |
+| `U24_REVISED_EXISTING_PATH` | 1 | `scripts/verify-p4-e3-configuration.sh`; exact narrow 50-to-51 contract |
+| `U25_ADDED_TRACKED_PATH` | 1 | `src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java`; canonical tracked base to exact Gate delta |
+
+Each role has test-ID delta zero. The future final path set is exact U25. Based on the frozen
+migration topology, the expected Git shape is 13 tracked modified paths and 12 untracked new paths;
+the future round must derive those counts from Git after migration and before validation.
+
+### 50.19 P5-Q1 Continuity
+
+```text
+P5_Q1_TEST_INVENTORY_CONTRACT_V1
+= d00e39ebd140131949232c2c95515e113ce0f6a16f7c20c17f1821b11c6f56e5
+
+base test IDs = 1491
+U24 test IDs = 1562
+future U25 test IDs = exact same 1562-ID set
+P3D3 base / U24 / future = 11 / 11 / 11
+P3D3 added / removed / renamed / disabled = 0 / 0 / 0 / 0
+P4-E3 script test-ID effect = 0
+affected inventory = 9 classes / 97 tests
+P5 focused inventory = 5 classes / 70 tests
+hard-limit digest = 994d53cb0c302785
+full-unit expected = 1562
+Q1 projection = unchanged
+```
+
+The U24 exact-ID-set SHA-256 is
+`be07c0453cbd39d46435ea2d2c178b68d6e7218716abafef15a1c464e7069726`. The future source round
+must run the Q1 scanner and prove the U25 ID set has this exact identity before creating U25 freeze.
+This section creates no Q2 authority.
+
+### 50.20 Future U25 Source-Correction Protocol
+
+After the exact remote condition in Section 50.1, the next source-correction work item is fixed:
+
+1. create a fresh detached worktree from the new canonical V2.4-R1 commit;
+2. migrate the frozen U24 exact 24 paths one file at a time;
+3. after migration, permit relative-U24 byte changes only in P3D3 and P4-E3;
+4. prove frozen mode, bytes, and SHA-256 for all 23 `F24 minus R1` paths;
+5. prove P4-E3 begins at the exact frozen 50 inventory and ends at exact 51 with only P3D3 added;
+6. prove P3D3 begins at canonical tracked bytes, ends at the exact C1 thread-surface Gate, and
+   keeps the exact eleven IDs;
+7. prove the final actual path set is exact U25 and recompute its sorted-path-LF identity;
+8. derive and record the final tracked/untracked counts from Git;
+9. execute only the limited validation in Section 50.21;
+10. create a new exact U25 source freeze; and
+11. stop without staging, committing, or pushing.
+
+A required third relative-U24 byte-delta path stops the U25 correction. It does not expand this
+authority.
+
+### 50.21 Future Limited Validation
+
+Before U25 freeze, the source-correction round must execute in this closed scope:
+
+1. focused compile;
+2. the complete existing `P3D3ApiGateTest` class;
+3. P3D3 exact `11/11`;
+4. affected 9 classes / 97 tests;
+5. P5 focused 5 classes / 70 tests;
+6. hard-limit digest `994d53cb0c302785`;
+7. verifier syntax `4/4`;
+8. verifier matrix `5/5`;
+9. P4-E3 exact-51 static contract;
+10. P3D3 thread-surface source/bytecode contract;
+11. Q1 source-derived exact test-ID continuity; and
+12. full unit `1562/1562` as a limited correction observation.
+
+That full-unit observation is not formal qualification. A failure may be corrected only within the
+exact paired byte-delta paths. Needing any other path stops the round before freeze.
+
+### 50.22 Future Formal Qualification Order
+
+Only after exact U25 freeze, a fresh formal campaign follows this order:
+
+```text
+fresh preflight
+-> Q1 contract continuity
+-> exact U25 migration
+-> frozen-byte continuity
+-> focused compile
+-> complete P3D3ApiGateTest Gate
+-> affected 9 classes / 97 tests
+-> hard-limit digest
+-> verifier syntax 4/4
+-> verifier matrix 5/5
+-> full unit 1562
+-> GameTest 12/12
+-> dedicated smoke
+-> warning compile
+-> fresh JAR
+-> static/API/callsite/retention/Error Gates
+-> P3D3 exact thread-surface Gate
+-> P4-E3 exact-51 Gate
+-> candidate immutability
+-> evidence/postflight
+```
+
+Each formal Gate has attempt 1 and retry zero. Legitimate execution of the same test in different
+formal invocations is not a duplicate within one invocation.
+
+### 50.23 Unchanged Product Semantics
+
+```text
+P5 runtime semantics changed = 0
+C1 ProductThreadPrecondition semantics changed = 0
+Control 1 semantics changed = 0
+Control 2 semantics changed = 0
+Control 2 consume-on-mismatch changed = 0
+P4 persistence/audit semantics changed = 0
+Error primary/secondary policy changed = 0
+GameTest topology changed = 0
+Q1 test-ID inventory changed = 0
+full-unit expected changed = 0
+public top-level API delta = 0
+Gradle/workflow delta = 0
+P4-E verifier product semantics changed = 0
+```
+
+This amendment corrects only the stale P3D3 test Gate, the P4-E3 continuation-scope inventory, and
+the future byte-preservation contract. Server authority, Store truth, journal truth, bounded
+failure behavior, result vocabulary, budget, breaker, queue, deadline, configuration, Error
+primary/secondary `6/5`, and all other P5/P4 semantics remain governed by the preceding authority.
+
+### 50.24 Implementation Authority
+
+```text
+P3D3ApiGateTest exact synchronization
+= AUTHORIZED UPON THIS COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  SIX-JOB REMOTE GATE PASS
+
+P4-E3 exact-50 → exact-51 synchronization
+= AUTHORIZED UPON THE SAME CONDITION
+
+Corrected cumulative C1 scope
+= EXACT 11 PATHS
+
+Future implementation union
+= EXACT 25 PATHS
+  AFTER MECHANICAL RECOMPUTATION
+
+Relative-to-U24 future byte deltas
+= EXACT 2 PATHS
+
+Frozen U24 unchanged subset
+= EXACT 23 PATHS
+
+P5-Q1 test inventory
+= EXACT 1562;
+  PRESERVED
+
+U25 source correction / freeze
+= READY UPON THE SAME REMOTE-PASS CONDITION;
+  NOT STARTED
+
+Fresh P5 qualification
+= BLOCKED UNTIL U25 FREEZE
+
+P5 implementation commit
+= NOT AUTHORIZED BY THIS DOCS-ONLY ROUND
+```
+
+This authority does not claim that either synchronization is implemented, that U25 is frozen, that
+qualification passed, that the implementation passed, or that P5 is complete.
+
+### 50.25 Phase Status
+
+```text
+P4-E
+= COMPLETE
+
+P5-A consolidated architecture record
+= COMPLETE
+
+P5-A-V1
+= COMPLETE
+
+P5-A-V2 corrected authority amendment
+= COMPLETE
+
+P5-A-V2.3
+= COMPLETE
+
+P5-A-V2.4 INITIAL WORK ORDER
+= STOPPED BEFORE REPOSITORY MODIFICATION;
+  DEFECTIVE BYTE-PRESERVATION CONTRACT
+
+P5-A-V2.4-R1 P3D3 THREAD-SURFACE /
+P4-E3 EXACT-51 PAIRED AUTHORITY CORRECTION
+= COMPLETE UPON THIS COMMIT'S
+  UNIQUE EXACT-SHA ATTEMPT-1
+  SIX-JOB REMOTE GATE PASS
+
+Chosen model
+= C1
+
+Corrected C1 semantic delta
+= EXACT 11 PATHS
+
+Future M / C / O / U
+= 17 / 11 / 3 / 25
+
+Relative-to-U24 byte delta
+= EXACT 2 PATHS
+
+Frozen U24 unchanged subset
+= EXACT 23 PATHS
+
+P5-Q1 test-inventory contract
+= COMPLETE;
+  EXACT 1562
+
+P3D3 stale Gate synchronization
+= READY UPON THE SAME CONDITION;
+  NOT STARTED
+
+P4-E3 exact-51 synchronization
+= READY UPON THE SAME CONDITION;
+  NOT STARTED
+
+Corrected U25 source freeze
+= NOT CREATED
+
+P5 fresh qualification
+= BLOCKED UNTIL U25 FREEZE
+
+P5 implementation
+= LOCALLY CORRECTED;
+  UNQUALIFIED;
+  UNCOMMITTED
+
+P5
+= INCOMPLETE
+
+P6
+= NOT STARTED
+```
+
+No stronger phase verdict is implied.
+
+### 50.26 Provenance
+
+The external evidence is historical or prospective provenance; this V2.4-R1 architecture
+amendment is the repository authority. These plain-text coordinates are not repository links or
+runtime dependencies:
+
+```text
+canonical base SHA = 3804ee3f1be234af748426838c896a5fd19eb794
+canonical base tree = 97cb4177ec6b7f419acfd144af3cf05c88a3a803
+architecture prefix bytes = 246809
+architecture prefix lines = 4579
+architecture prefix SHA-256 = 085ec526ea9ce7abb6ebc46e9dbc6ef88c625e7005ded81c757d040cbcfa88e0
+U24 source candidate = /private/tmp/gramarye-p5-c1-exact10-source-correction-20260829T073123Z
+U24 source-freeze evidence = /private/tmp/gramarye-p5-c1-exact10-source-correction-evidence-20260829T073123Z
+P5-Q1 evidence = /private/tmp/gramarye-p5-q1-test-inventory-contract-20260829T120534Z
+failed Q1 qualification worktree = /private/tmp/gramarye-p5-q1-fresh-complete-qualification-20260829T124226Z
+failed Q1 partial evidence = /private/tmp/gramarye-p5-q1-fresh-complete-qualification-evidence-20260829T124226Z
+initial V2.4 partial evidence = /private/tmp/gramarye-p5-a-v2-4-p3d3-thread-gate-evidence-20260829T133100Z
+initial V2.4 docs worktree = /private/tmp/gramarye-p5-a-v2-4-p3d3-thread-gate-authority-20260829T133100Z
+V2.3 scope evidence = /private/tmp/gramarye-p5-a-v2-3-scope-amendment-evidence-20260829T050516Z
+```
