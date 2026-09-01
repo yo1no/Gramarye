@@ -240,7 +240,7 @@ final class P4D2ApiGateTest {
                         "new ValidationContext(MagicPolicyLimits.DEFAULTS)"));
         assertEquals(Set.of("SkillDefinitionStoreSubmissionPort.java"),
                 relativeStoreSourcesMatching(Pattern.compile("\\.\\s*commit\\s*\\(")));
-        assertEquals(Set.of("PlayerSkillAttachmentService.java"),
+        assertEquals(Set.of("PlayerSkillAttachmentService.java", "ManaAttachments.java"),
                 relativeSourcesMatching(Pattern.compile("\\.\\s*setData\\s*\\(")));
         var draftService = withoutCommentsAndLiterals(read(
                 SUBMISSION_ROOT.resolve("SkillDraftCreationService.java")));

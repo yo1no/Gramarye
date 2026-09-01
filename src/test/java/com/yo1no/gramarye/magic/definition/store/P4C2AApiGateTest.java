@@ -80,6 +80,8 @@ class P4C2AApiGateTest {
         var code = withoutCommentsAndLiterals(registration);
         var production = javaSources(MAIN_JAVA);
         var registrationRelative = relative(registrationPath);
+        var manaRegistrationRelative =
+                "com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java";
 
         assertAll(
                 () -> assertTrue(registration.contains("DeferredRegister<AttachmentType<?>>")),
@@ -93,7 +95,7 @@ class P4C2AApiGateTest {
                         ".copyOnDeath()",
                         ".build()"),
                 () -> assertFalse(code.contains(".sync(")),
-                () -> assertEquals(Set.of(registrationRelative),
+                () -> assertEquals(Set.of(registrationRelative, manaRegistrationRelative),
                         relativeFilesContaining(production, "AttachmentType")),
                 () -> assertEquals(Set.of(registrationRelative),
                         relativeFilesContaining(
@@ -213,7 +215,10 @@ class P4C2AApiGateTest {
                 + "PlayerSkillAttachmentGameTests.java";
         var sourceObservation = "com/yo1no/gramarye/magic/definition/player/"
                 + "PlayerSkillAttachmentSourceObservation.java";
-        var reviewedAttachmentAccessors = Set.of(service, gameTests, sourceObservation);
+        var manaAttachments = "com/yo1no/gramarye/magic/runtime/mana/"
+                + "ManaAttachments.java";
+        var reviewedAttachmentAccessors = Set.of(
+                service, gameTests, sourceObservation, manaAttachments);
         var getDataOwners = relativeFilesContaining(production, ".getData(");
         var setDataOwners = relativeFilesContaining(production, ".setData(");
         var playerSources = javaSources(PLAYER_ROOT);
@@ -228,7 +233,7 @@ class P4C2AApiGateTest {
                 () -> assertTrue(getDataOwners.contains(service)),
                 () -> assertTrue(getDataOwners.contains(gameTests)),
                 () -> assertTrue(reviewedAttachmentAccessors.containsAll(getDataOwners)),
-                () -> assertEquals(Set.of(service), setDataOwners),
+                () -> assertEquals(Set.of(service, manaAttachments), setDataOwners),
                 () -> assertTrue(relativeFilesContaining(production, ".removeData(").isEmpty()),
                 () -> assertEquals(Set.of("MutationGeneration.java"), successorOwners),
                 () -> assertTrue(read(PLAYER_ROOT.resolve("MutationGeneration.java"))
@@ -257,7 +262,7 @@ class P4C2AApiGateTest {
                                 && Modifier.isStatic(method.getModifiers()))),
                 () -> assertTrue(holderAnnotation != null
                         && holderAnnotation.value().equals(Gramarye.MOD_ID)),
-                () -> assertEquals(12, occurrences(allMain, "@GameTest(")));
+                () -> assertEquals(19, occurrences(allMain, "@GameTest(")));
     }
 
     @Test

@@ -483,7 +483,7 @@ class P4B2AApiGateTest {
                 "com/yo1no/gramarye/magic/definition/player/"
                         + "PlayerSkillAttachmentGameTests.java"));
 
-        assertEquals(12, occurrences(allMain, "@GameTest("));
+        assertEquals(19, occurrences(allMain, "@GameTest("));
         assertEquals(4, occurrences(platformTests, "@GameTest("));
         assertEquals(1, occurrences(lifecycleTests, "@GameTest("));
         assertEquals(2, occurrences(playerTests, "@GameTest("));

@@ -342,7 +342,7 @@ final class P4D3AApiGateTest {
                 () -> assertTrue(holderAnnotation != null
                         && holderAnnotation.value().equals(Gramarye.MOD_ID)),
                 () -> assertEquals(3, occurrences(read(RECOVERY_GAME_TESTS), "@GameTest(")),
-                () -> assertEquals(12, occurrences(allProduction, "@GameTest(")));
+                () -> assertEquals(19, occurrences(allProduction, "@GameTest(")));
     }
 
     @Test
@@ -354,7 +354,8 @@ final class P4D3AApiGateTest {
                                 "GramaryeSkillSavedData.java",
                                 "SkillDefinitionStoreService.java"),
                         relativeSourcesInvoking(STORE_RECLAIM_METHOD)),
-                () -> assertEquals(Set.of("PlayerSkillAttachmentService.java"),
+                () -> assertEquals(Set.of(
+                                "PlayerSkillAttachmentService.java", "ManaAttachments.java"),
                         relativeSourcesInvoking(SET_DATA_METHOD)),
                 () -> assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
                         relativeSourcesInvoking(PREPARE_CLEAR_METHOD)),

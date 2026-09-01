@@ -185,14 +185,14 @@ final class P4D2BApiGateTest {
                         "postCommitAttachmentDriftReturnsPendingRecovery"),
                 methods.stream().map(method -> method.getName()).collect(Collectors.toSet()));
         assertEquals(2, occurrences(read(SUBMISSION_GAME_TEST_SOURCE), "@GameTest("));
-        assertEquals(12, occurrences(allMain, "@GameTest("));
+        assertEquals(19, occurrences(allMain, "@GameTest("));
     }
 
     @Test
     void uniqueMutationOwnersAndLaterPhaseAbsenceRemainClosed() throws Exception {
         assertEquals(Set.of("SkillDefinitionStoreSubmissionPort.java"),
                 relativeSourcesMatching(STORE_COMMIT_CALL));
-        assertEquals(Set.of("PlayerSkillAttachmentService.java"),
+        assertEquals(Set.of("PlayerSkillAttachmentService.java", "ManaAttachments.java"),
                 relativeSourcesMatching(SET_DATA_CALL));
         assertEquals(Set.of(
                         "GramaryeSkillSavedData.java",

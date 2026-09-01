@@ -1,0 +1,12 @@
+package com.yo1no.gramarye.magic.runtime.mana;
+
+enum ManaRejectReason {
+    INSUFFICIENT_MANA,
+    BALANCE_LIMIT_EXCEEDED,
+    INVALID_AMOUNT,
+    MANA_STATE_UNAVAILABLE,
+    WRONG_THREAD,
+    ALREADY_REFUNDED,
+    RECEIPT_ACCOUNT_MISMATCH,
+    INVALID_TRANSACTION_STATE
+}

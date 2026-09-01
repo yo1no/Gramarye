@@ -272,7 +272,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(main.contains("P4B2ProbeMain")),
                 () -> assertFalse(main.contains("P4B2MemoryGameTests")),
                 () -> assertFalse(main.contains("gramarye_p4_b2")),
-                () -> assertEquals(12, occurrences(main, "@GameTest(")));
+                () -> assertEquals(19, occurrences(main, "@GameTest(")));
     }
 
     @Test
@@ -557,7 +557,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(bodyFollowing(grouped, "long observedThreadId)")
                         .contains("0L")),
                 () -> assertEquals(0, catchTypeCount(allProduction, "Throwable")),
-                () -> assertEquals(12, occurrences(allProductionRaw, "@GameTest(")),
+                () -> assertEquals(19, occurrences(allProductionRaw, "@GameTest(")),
                 () -> assertFalse(Pattern.compile(
                                 "\\.\\s*claim\\s*\\([^;]*"
                                         + "ProductThreadPrecondition\\s*\\.\\s*Decision",

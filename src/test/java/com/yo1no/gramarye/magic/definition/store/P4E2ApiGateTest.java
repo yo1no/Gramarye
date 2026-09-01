@@ -458,10 +458,13 @@ final class P4E2ApiGateTest {
                 () -> assertEquals(
                         Set.of(relative(RECOVERY_SERVICE)),
                         sourcePathsContaining("PlayerEvent.PlayerLoggedInEvent")),
-                () -> assertEquals(1, occurrences(production, ".setData(")),
+                () -> assertEquals(2, occurrences(production, ".setData(")),
                 () -> assertEquals(
-                        Set.of("com/yo1no/gramarye/magic/definition/player/"
-                                + "PlayerSkillAttachmentService.java"),
+                        Set.of(
+                                "com/yo1no/gramarye/magic/definition/player/"
+                                        + "PlayerSkillAttachmentService.java",
+                                "com/yo1no/gramarye/magic/runtime/mana/"
+                                        + "ManaAttachments.java"),
                         sourcePathsContaining(".setData(")),
                 () -> assertEquals(1, occurrences(
                         Files.readString(PLAYER_SERVICE),
@@ -521,7 +524,7 @@ final class P4E2ApiGateTest {
                 () -> assertEquals(1, occurrences(visibilityProbe, "\"-proc:none\"")),
                 () -> assertTrue(visibilityProbe.indexOf("\"-proc:none\"")
                         < visibilityProbe.indexOf("compiler.getTask(")),
-                () -> assertEquals(12, occurrences(production, "@GameTest(")));
+                () -> assertEquals(19, occurrences(production, "@GameTest(")));
     }
 
     private static void assertBoundedFields(Class<?> type) {
