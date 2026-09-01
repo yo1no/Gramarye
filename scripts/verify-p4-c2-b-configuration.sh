@@ -236,6 +236,12 @@ verify_search_helpers() {
 is_reviewed_d3a_production_path() {
     case "$1" in
         src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P5LoadedReferenceResolver.java | \
+        src/main/java/com/yo1no/gramarye/P5RuntimeConfiguration.java | \
+        src/main/java/com/yo1no/gramarye/P5RuntimeProjector.java | \
+        src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java | \
+        src/main/java/com/yo1no/gramarye/P5ServerRuntimeConfig.java | \
+        src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
         src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
@@ -275,6 +281,7 @@ is_reviewed_d3a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1SourceInventory.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1StoreHistoryObservation.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/StrictSingleMemberGzipInput.java | \
         src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \

@@ -719,8 +719,11 @@ final class P4E1GlobalSourceCapture {
             this.summary = Objects.requireNonNull(summary, "summary");
         }
 
-        Claimed claim(P4E1GroupedStoreAudit owner) {
+        Claimed claim(
+                P4E1GroupedStoreAudit owner,
+                ProductThreadPrecondition.Decision decision) {
             requireUnconsumed();
+            Objects.requireNonNull(decision, "decision");
             consumed = true;
             Claimed moved = null;
             try {
@@ -758,7 +761,7 @@ final class P4E1GlobalSourceCapture {
             }
             var accepted = false;
             try {
-                moved.requireActive(owner);
+                moved.requireActive(owner, decision);
                 accepted = true;
                 return moved;
             } finally {
@@ -868,7 +871,7 @@ final class P4E1GlobalSourceCapture {
         }
 
         void visitClaims(P4E1GroupedStoreAudit owner, ClaimVisitor visitor) {
-            requireActive(owner);
+            requireBoundActive(owner);
             Objects.requireNonNull(visitor, "visitor");
             for (var index = 0; index < claims.size(); index++) {
                 visitor.visit(
@@ -882,33 +885,33 @@ final class P4E1GlobalSourceCapture {
         }
 
         int sourceCount(P4E1GroupedStoreAudit owner) {
-            requireActive(owner);
+            requireBoundActive(owner);
             return sources.size();
         }
 
         SourceEntry sourceAt(P4E1GroupedStoreAudit owner, int index) {
-            requireActive(owner);
+            requireBoundActive(owner);
             return sources.get(index);
         }
 
         Summary summary(P4E1GroupedStoreAudit owner) {
-            requireActive(owner);
+            requireBoundActive(owner);
             return summary;
         }
 
         P4E1GroupedStoreAudit.RawInput rawInput(P4E1GroupedStoreAudit owner) {
-            requireActive(owner);
+            requireBoundActive(owner);
             return new P4E1GroupedStoreAudit.RawInput(owner, claims, sources, summary);
         }
 
         boolean journalProofMatches(
                 P4E1GroupedStoreAudit owner, JournalTargetAuditProof proof) {
-            requireActive(owner);
+            requireBoundActive(owner);
             return journalWitness.proofIdentity() == Objects.requireNonNull(proof, "proof");
         }
 
         boolean storeCurrent(P4E1GroupedStoreAudit owner) {
-            requireActive(owner);
+            requireBoundActive(owner);
             try {
                 return storeWitness.owner.isP4E1StoreReadyCurrent(
                         serverIdentity, storeWitness);
@@ -924,7 +927,7 @@ final class P4E1GlobalSourceCapture {
 
         P4E1PendingJournalObservation.Currentness journalCurrentness(
                 P4E1GroupedStoreAudit owner) {
-            requireActive(owner);
+            requireBoundActive(owner);
             var service = storeWitness.owner;
             return journalWitness.currentness(
                     service.submissionPort(),
@@ -935,14 +938,14 @@ final class P4E1GlobalSourceCapture {
 
         P4E1StoreHistoryObservation observeExactHistory(
                 P4E1GroupedStoreAudit owner, SkillId skillId) {
-            requireActive(owner);
+            requireBoundActive(owner);
             return storeWitness.storeIdentity.observeExactHistoryForRootAudit(
                     Objects.requireNonNull(skillId, "skillId"));
         }
 
         P4E1AuditedCapture moveToAudited(
                 P4E1GroupedStoreAudit owner, int distinctSkillIdCount) {
-            requireActive(owner);
+            requireBoundActive(owner);
             if (distinctSkillIdCount < 0 || distinctSkillIdCount > claims.size()) {
                 throw new IllegalArgumentException("invalid distinct SkillId count");
             }
@@ -981,7 +984,7 @@ final class P4E1GlobalSourceCapture {
         }
 
         void discard(P4E1GroupedStoreAudit owner) {
-            requireActive(owner);
+            requireBoundActive(owner);
             discarded = true;
             try {
                 cleanupUnpublished(
@@ -1035,14 +1038,27 @@ final class P4E1GlobalSourceCapture {
             summary = null;
         }
 
-        private void requireActive(P4E1GroupedStoreAudit owner) {
+        private void requireActive(
+                P4E1GroupedStoreAudit owner,
+                ProductThreadPrecondition.Decision decision) {
+            Objects.requireNonNull(decision, "decision");
+            requireClaimedOwner(owner);
+            owner.requireCaptureBinding(
+                    serverIdentity, creationThreadIdentity, capturedTick, decision);
+        }
+
+        private void requireBoundActive(P4E1GroupedStoreAudit owner) {
+            requireClaimedOwner(owner);
+            owner.requireCaptureBinding(serverIdentity, creationThreadIdentity, capturedTick);
+        }
+
+        private void requireClaimedOwner(P4E1GroupedStoreAudit owner) {
             if (discarded || claims == null) {
                 throw new IllegalStateException("P4E1_CLAIMED_CAPTURE_DISCARDED");
             }
             if (ownerIdentity != Objects.requireNonNull(owner, "owner")) {
                 throw new IllegalStateException("P4E1_CLAIMED_CAPTURE_OWNER_MISMATCH");
             }
-            owner.requireCaptureBinding(serverIdentity, creationThreadIdentity, capturedTick);
         }
     }
 

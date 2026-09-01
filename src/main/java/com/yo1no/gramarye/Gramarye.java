@@ -15,6 +15,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.slf4j.Logger;
 
 @Mod(Gramarye.MOD_ID)
@@ -30,6 +31,8 @@ public final class Gramarye {
     private final SkillSubmissionPolicyProvider skillSubmissionPolicyProvider;
     private final SkillDefinitionSubmissionService skillDefinitionSubmissionService;
     private final SkillSubmissionRecoveryService skillSubmissionRecoveryService;
+    private final P5ServerRuntimeConfig p5ServerRuntimeConfig;
+    private final SkillRuntimeService skillRuntimeService;
 
     public Gramarye(IEventBus modBus, ModContainer exactContainer) {
         Objects.requireNonNull(modBus, "modBus");
@@ -60,7 +63,18 @@ public final class Gramarye {
                 skillDefinitionStoreService.onlineReconciliationDependency(),
                 exactFacade.submissionView());
         skillSubmissionRecoveryService.registerOn(NeoForge.EVENT_BUS);
+        p5ServerRuntimeConfig = new P5ServerRuntimeConfig(modBus, exactContainer);
+        skillRuntimeService = SkillRuntimeService.create(
+                NeoForge.EVENT_BUS,
+                skillDefinitionStoreService,
+                skillSubmissionPolicyProvider);
+        NeoForge.EVENT_BUS.addListener(this::handleP5RuntimeStarted);
         exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);
+    }
+
+    private void handleP5RuntimeStarted(ServerStartedEvent event) {
+        var limits = p5ServerRuntimeConfig.snapshotForStarted();
+        skillRuntimeService.handleRuntimeStarted(event, limits);
     }
 
     /** Returns the controlled server skill subsystem port held by this composition root. */

@@ -410,14 +410,28 @@ is_exact_p4e3_path() {
         .github/workflows/build.yml | \
         build.gradle | \
         scripts/verify-p4-b2-b-configuration.sh | \
+        scripts/verify-p4-c2-b-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | \
         scripts/verify-p4-e0-r-configuration.sh | \
         scripts/verify-p4-e0-r2q-configuration.sh | \
         scripts/verify-p4-e1-configuration.sh | \
         scripts/verify-p4-e2-configuration.sh | \
         scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P5LoadedReferenceResolver.java | \
+        src/main/java/com/yo1no/gramarye/P5RuntimeConfiguration.java | \
+        src/main/java/com/yo1no/gramarye/P5RuntimeProjector.java | \
+        src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java | \
+        src/main/java/com/yo1no/gramarye/P5ServerRuntimeConfig.java | \
+        src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
         src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
+        src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1CompleteRootHandoff.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GlobalSourceCapture.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/ProductThreadPrecondition.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataLifecycleGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java | \
         src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java | \
         src/p4E3GameTest/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupMemoryGameTests.java | \
@@ -427,7 +441,13 @@ is_exact_p4e3_path() {
         src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3FixtureManifest.java | \
         src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3ProbeMain.java | \
         src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeTest.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeConfigurationTest.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeHardLimitWorkloadTest.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeKernelTest.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeVocabularyTest.java | \
         src/test/java/com/yo1no/gramarye/P4E2QualificationFacadeVisibilityCompileTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B1ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BCompleteHandoffTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
@@ -436,7 +456,8 @@ is_exact_p4e3_path() {
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3ApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3LeaseTerminalTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java)
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E3StartupLifecycleTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java)
             return 0
             ;;
         *)
@@ -479,7 +500,7 @@ verify_repository_scope() {
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
         is_exact_p4e3_path "${path}" \
-            || fail "repository change escaped exact P4-E3 30-path scope: ${path}"
+            || fail "repository change escaped exact P4-E3 51-path scope: ${path}"
     done <<< "${changed}"$'\n'"${untracked}"
     git diff --quiet HEAD -- \
         src/main/resources src/test/resources docs gradle gradle.properties settings.gradle \
@@ -1184,7 +1205,7 @@ main() {
     verify_workflow_contract
     verify_jar_isolation_if_present
     printf '%s\n' \
-        'Verified exact P4-E3 closed startup route, 30 paths, fixed-heap Gate, workflow, and isolation.'
+        'Verified exact P4-E3 closed startup route, 51 paths, fixed-heap Gate, workflow, and isolation.'
 }
 
 main "$@"

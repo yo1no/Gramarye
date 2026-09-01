@@ -7,7 +7,6 @@ import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentGameTests
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -27,6 +26,15 @@ public final class SkillSavedDataLifecycleGameTests {
             GameTestHelper helper) {
         var server = helper.getLevel().getServer();
         helper.assertTrue(server.isSameThread(), "GameTest must run on the server thread");
+        var expectedThreadId = server.getRunningThread().threadId();
+        helper.assertTrue(
+                ProductThreadPrecondition.classify(expectedThreadId, expectedThreadId)
+                        == ProductThreadPrecondition.Decision.ALLOWED,
+                "shared product thread gate must allow the server logic thread");
+        helper.assertTrue(
+                ProductThreadPrecondition.classify(expectedThreadId, 0L)
+                        == ProductThreadPrecondition.Decision.WRONG_THREAD,
+                "shared product thread gate must reject the synthetic no-thread observation");
         helper.assertTrue(
                 SkillSavedDataPrimaryIngress.resolvePrimaryPath(server).equals(
                         server.getWorldPath(LevelResource.ROOT)
@@ -93,15 +101,19 @@ public final class SkillSavedDataLifecycleGameTests {
                                 == SkillSubsystemLifecycleException.Code.BOOTSTRAP_NOT_INSTALLED,
                 "controlled access before install must fail with the lifecycle code");
 
-        var wrongThreadFailure = runOffThread(
-                "gramarye-p4-b2-a-wrong-thread-gate",
-                () -> isolated.latestReference(
-                        server,
-                        new com.yo1no.gramarye.magic.api.id.SkillId(
-                                new java.util.UUID(0L, 0xB2A + 3L))));
+        SkillSubsystemLifecycleException wrongThreadFailure = null;
+        try {
+            isolated.latestReference(
+                    server,
+                    new com.yo1no.gramarye.magic.api.id.SkillId(
+                            new java.util.UUID(0L, 0xB2A + 3L)),
+                    0L);
+        } catch (SkillSubsystemLifecycleException exception) {
+            wrongThreadFailure = exception;
+        }
         helper.assertTrue(
-                wrongThreadFailure instanceof SkillSubsystemLifecycleException exception
-                        && exception.code()
+                wrongThreadFailure != null
+                        && wrongThreadFailure.code()
                                 == SkillSubsystemLifecycleException.Code.WRONG_THREAD,
                 "controlled wrong-thread access must fail before marker/cache inspection");
 
@@ -266,14 +278,16 @@ public final class SkillSavedDataLifecycleGameTests {
                     attachments,
                     exactThreadOwner,
                     "wrong-thread");
-            var wrongThreadFailure = runOffThread(
-                    "gramarye-p4-e1-b2-a-wrong-thread-gate",
-                    () -> exactThreadOwner.audit(wrongThreadCapture));
+            P4E1GroupedStoreAudit.BindingException wrongThreadFailure = null;
+            try {
+                exactThreadOwner.audit(wrongThreadCapture, 0L);
+            } catch (P4E1GroupedStoreAudit.BindingException failure) {
+                wrongThreadFailure = failure;
+            }
             helper.assertTrue(
-                    wrongThreadFailure
-                                    instanceof P4E1GroupedStoreAudit.BindingException failure
+                    wrongThreadFailure != null
                             && "P4E1_GROUPED_AUDIT_THREAD_MISMATCH".equals(
-                                    failure.getMessage()),
+                                    wrongThreadFailure.getMessage()),
                     "wrong-thread consume must fail with the fixed binding code");
             expectFailure(
                     "P4E1_GLOBAL_CAPTURE_ALREADY_CONSUMED",
@@ -440,25 +454,4 @@ public final class SkillSavedDataLifecycleGameTests {
         throw new AssertionError("expected failure " + code);
     }
 
-    private static Throwable runOffThread(String name, Runnable operation) {
-        var failure = new AtomicReference<Throwable>();
-        var thread = new Thread(() -> {
-            try {
-                operation.run();
-            } catch (Throwable thrown) {
-                failure.set(thrown);
-            }
-        }, name);
-        thread.start();
-        try {
-            thread.join(5_000);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError("wrong-thread gate was interrupted", exception);
-        }
-        if (thread.isAlive()) {
-            throw new AssertionError("wrong-thread gate must terminate promptly");
-        }
-        return failure.get();
-    }
 }

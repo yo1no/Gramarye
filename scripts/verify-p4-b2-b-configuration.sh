@@ -950,6 +950,7 @@ verify_b2_sources_and_outputs() {
     local class_name=''
     local package_path='com/yo1no/gramarye/magic/definition/store'
     local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
+    local runtime_service='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
 
     PRODUCTION_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-b2-production.XXXXXX")" \
         || fail 'P4-B2-B verifier could not create its production source list'
@@ -1122,11 +1123,13 @@ verify_b2_sources_and_outputs() {
             "P4-B2-R production code must not catch dependency linkage failure (${literal})"
     done
     while IFS= read -r -d '' source; do
-        [[ "${source}" == "${store_service}" ]] && continue
+        if [[ "${source}" == "${store_service}" || "${source}" == "${runtime_service}" ]]; then
+            continue
+        fi
         forbid_ere \
             "${source}" \
             'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
-            "production Error catch escaped the sole reviewed P4-E3 owner: ${source}"
+            "production Error catch escaped the reviewed P4-E3/P5 owners: ${source}"
     done < "${PRODUCTION_SOURCE_LIST}"
     require_ere_count \
         "${store_service}" \
@@ -1143,6 +1146,25 @@ verify_b2_sources_and_outputs() {
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
         'SkillDefinitionStoreService must not catch Throwable'
     verify_reviewed_p4_e3_error_catch "${store_service}"
+    require_ere_count \
+        "${runtime_service}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
+        10 \
+        'SkillRuntimeService must contain exactly its ten reviewed Error cleanup catches'
+    require_ere_count \
+        "${runtime_service}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error[[:space:]]+primary[[:space:]]*\)' \
+        5 \
+        'SkillRuntimeService must contain exactly five same-identity primary Error catches'
+    require_ere_count \
+        "${runtime_service}" \
+        '^[[:space:]]*clearSlotAfterError\(slot\);$' \
+        1 \
+        'SkillRuntimeService Error path must perform exactly one bounded no-allocation cleanup'
+    forbid_ere \
+        "${runtime_service}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
+        'SkillRuntimeService must not catch Throwable'
 
     for class_name in \
         P4B2ProbeSummary \

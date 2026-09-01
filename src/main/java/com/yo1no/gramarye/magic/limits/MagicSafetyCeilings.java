@@ -27,6 +27,94 @@ public final class MagicSafetyCeilings {
     /** Technical ceiling that bounds per-lineage visited-target collection growth. */
     public static final int MAX_VISITED_TARGETS = 128;
 
+    /** Technical ceiling for active Minecraft server slots owned by one P5 runtime service. */
+    public static final int MAX_SERVER_SLOTS_PER_MOD_INSTANCE = 1;
+
+    /** Technical ceiling for pending P5 events in one server slot. */
+    public static final int MAX_PENDING_EVENTS_PER_SERVER = 4_096;
+
+    /** Technical ceiling for pending P5 events owned by one skill instance. */
+    public static final int MAX_PENDING_EVENTS_PER_SKILL_INSTANCE = 256;
+
+    /** Technical ceiling for pending P5 events charged to one player attribution. */
+    public static final int MAX_PENDING_EVENTS_PER_PLAYER = 1_024;
+
+    /** Technical ceiling for pending P5 events charged to the non-player domain. */
+    public static final int MAX_PENDING_EVENTS_PER_NON_PLAYER_DOMAIN = 1_024;
+
+    /** Technical ceiling for active P5 lineages in one server slot. */
+    public static final int MAX_ACTIVE_LINEAGES_PER_SERVER = 128;
+
+    /** Technical ceiling for active P5 instances charged to one budget attribution. */
+    public static final int MAX_ACTIVE_SKILL_INSTANCES_PER_BUDGET_ATTRIBUTION = 32;
+
+    /** Technical ceiling for root admissions observed in one P5 runtime tick. */
+    public static final int MAX_ROOT_ADMISSIONS_PER_TICK = 64;
+
+    /** Technical ceiling for executions by one skill instance in one P5 runtime tick. */
+    public static final int MAX_EXECUTIONS_PER_SKILL_INSTANCE_PER_TICK = 64;
+
+    /** Technical ceiling for executions charged to one player in one P5 runtime tick. */
+    public static final int MAX_EXECUTIONS_PER_PLAYER_PER_TICK = 128;
+
+    /** Technical ceiling for non-player-domain executions in one P5 runtime tick. */
+    public static final int MAX_EXECUTIONS_PER_NON_PLAYER_DOMAIN_PER_TICK = 128;
+
+    /** Technical ceiling for all executions in one server slot and P5 runtime tick. */
+    public static final int MAX_EXECUTIONS_PER_SERVER_PER_TICK = 512;
+
+    /** Technical ceiling for events admitted across one P5 lineage lifetime. */
+    public static final int MAX_EVENTS_PER_LINEAGE = 512;
+
+    /** Derived technical ceiling for descendants admitted across one P5 lineage lifetime. */
+    public static final int MAX_DESCENDANTS_PER_LINEAGE = MAX_EVENTS_PER_LINEAGE - 1;
+
+    /** Technical ceiling for P5 lineage depth, with a root at depth zero. */
+    public static final int MAX_DEPTH_PER_LINEAGE = 32;
+
+    /** Technical ceiling for direct children returned by one P5 execution. */
+    public static final int MAX_DIRECT_CHILDREN_PER_EVENT = 32;
+
+    /** Technical ceiling for zero-delay children returned by one P5 execution. */
+    public static final int MAX_ZERO_DELAY_CHILDREN_PER_EVENT = 16;
+
+    /** Technical ceiling for a P5 memory-only schedule delay in runtime ticks. */
+    public static final int MAX_DELAY_TICKS = 12_000;
+
+    /** Technical ceiling for a P5 memory-only deadline horizon in runtime ticks. */
+    public static final int MAX_DEADLINE_HORIZON_TICKS = 12_000;
+
+    /** Technical ceiling for cancellation attempts in one P5 runtime tick. */
+    public static final int MAX_CANCELLATIONS_PER_TICK = 128;
+
+    /** P5 retains no completed or deferred per-event history. */
+    public static final int MAX_RETAINED_EVENT_HISTORY = 0;
+
+    /** Fixed physical capacity of one server slot's P5 breaker-diagnostic ring. */
+    public static final int MAX_BREAKER_DIAGNOSTIC_RECORDS_PER_SERVER = 256;
+
+    /** Fixed number of P5 current-tick top-offender summary slots. */
+    public static final int MAX_CURRENT_TICK_TOP_OFFENDER_SLOTS = 2;
+
+    /** Derived technical ceiling for exact-revision leases in one P5 server slot. */
+    public static final int MAX_DEFINITION_LEASES_PER_SERVER = MAX_ACTIVE_LINEAGES_PER_SERVER;
+
+    /** Fixed physical capacity of one transient P5 child plan. */
+    public static final int MAX_TRANSIENT_CHILD_PLAN_ENTRIES = 32;
+
+    /** Derived technical ceiling for attribution states in one P5 server slot. */
+    public static final int MAX_RUNTIME_BUDGET_ATTRIBUTION_STATES_PER_SERVER =
+            MAX_ACTIVE_LINEAGES_PER_SERVER + MAX_ROOT_ADMISSIONS_PER_TICK;
+
+    /** Fixed physical capacity of one P5 execution-budget deferred buffer. */
+    public static final int MAX_BUDGET_DEFERRED_EVENTS = 4_096;
+
+    /** Fixed physical capacity of one P5 breaker-cleanup scratch buffer. */
+    public static final int MAX_BREAKER_CLEANUP_SCRATCH_EVENTS = 4_096;
+
+    /** P5 accepts no persistent schedules. */
+    public static final int MAX_PERSISTENT_SCHEDULES_PER_SERVER = 0;
+
     /** Technical ceiling for presentation intensity in milli-units (1000 = 1.0). */
     public static final int MAX_APPEARANCE_INTENSITY = 10_000;
 

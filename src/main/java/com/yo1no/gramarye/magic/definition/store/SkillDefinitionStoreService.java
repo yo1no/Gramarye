@@ -108,6 +108,14 @@ public final class SkillDefinitionStoreService {
     public SkillSubsystemResult<Optional<SkillReference>> latestReference(
             MinecraftServer server,
             SkillId skillId) {
+        return latestReference(server, skillId, Thread.currentThread().threadId());
+    }
+
+    SkillSubsystemResult<Optional<SkillReference>> latestReference(
+            MinecraftServer server,
+            SkillId skillId,
+            long observedThreadId) {
+        requireServerThread(server, observedThreadId);
         return installedAdapter(server).latestReference(skillId);
     }
 
@@ -534,6 +542,15 @@ public final class SkillDefinitionStoreService {
     static void requireServerThread(MinecraftServer server) {
         Objects.requireNonNull(server, "server");
         if (!server.isSameThread()) {
+            throw lifecycle(SkillSubsystemLifecycleException.Code.WRONG_THREAD);
+        }
+    }
+
+    static void requireServerThread(MinecraftServer server, long observedThreadId) {
+        Objects.requireNonNull(server, "server");
+        var decision = ProductThreadPrecondition.classify(
+                server.getRunningThread().threadId(), observedThreadId);
+        if (decision == ProductThreadPrecondition.Decision.WRONG_THREAD) {
             throw lifecycle(SkillSubsystemLifecycleException.Code.WRONG_THREAD);
         }
     }

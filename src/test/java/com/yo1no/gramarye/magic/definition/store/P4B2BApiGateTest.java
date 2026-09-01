@@ -8,12 +8,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.spi.ToolProvider;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
@@ -21,6 +24,10 @@ import org.junit.jupiter.api.Test;
 /** Phase-local API, source-set, task, CI, and later-domain gate for P4-B2-B. */
 class P4B2BApiGateTest {
     private static final Path PROJECT_ROOT = projectRoot();
+    private static final Path MAIN_JAVA = PROJECT_ROOT.resolve("src/main/java");
+    private static final Path MAIN_CLASSES = PROJECT_ROOT.resolve("build/classes/java/main");
+    private static final Path STORE_ROOT = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/magic/definition/store");
     private static final Path PROBE_ROOT = PROJECT_ROOT.resolve("src/p4B2Probe/java");
     private static final Path GAME_TEST_ROOT = PROJECT_ROOT.resolve("src/p4B2GameTest/java");
     private static final Set<String> PROBE_FILES = Set.of(
@@ -387,7 +394,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(1, dependencyErrorCatchCount(production)),
+                () -> assertEquals(11, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -404,6 +411,261 @@ class P4B2BApiGateTest {
                         "runP4B2PackagedRuntimeSmoke")),
                 () -> assertTrue(configurationGate.contains(
                         "p4B2RuntimePackagingGate")));
+    }
+
+    @Test
+    void sharedProductThreadGateAndTerminationSafeHarnessAreExact() throws Exception {
+        var gate = ProductThreadPrecondition.class;
+        var classifiers = Arrays.stream(gate.getDeclaredMethods())
+                .filter(method -> method.getName().equals("classify"))
+                .toList();
+        assertEquals(1, classifiers.size());
+        var classifier = classifiers.getFirst();
+        assertAll(
+                () -> assertTrue(Modifier.isFinal(gate.getModifiers())),
+                () -> assertPackagePrivate(gate.getModifiers(), "ProductThreadPrecondition"),
+                () -> assertPackagePrivate(
+                        ProductThreadPrecondition.Decision.class.getModifiers(), "Decision"),
+                () -> assertEquals(List.of(long.class, long.class),
+                        Arrays.asList(classifier.getParameterTypes())),
+                () -> assertEquals(ProductThreadPrecondition.Decision.class,
+                        classifier.getReturnType()),
+                () -> assertTrue(Modifier.isStatic(classifier.getModifiers())),
+                () -> assertPackagePrivate(classifier.getModifiers(), "classify"),
+                () -> assertEquals(
+                        List.of("ALLOWED", "WRONG_THREAD"),
+                        Arrays.stream(ProductThreadPrecondition.Decision.values())
+                                .map(Enum::name)
+                                .toList()),
+                () -> assertEquals(
+                        ProductThreadPrecondition.Decision.ALLOWED,
+                        ProductThreadPrecondition.classify(1L, 1L)),
+                () -> assertEquals(
+                        ProductThreadPrecondition.Decision.WRONG_THREAD,
+                        ProductThreadPrecondition.classify(1L, 0L)),
+                () -> assertEquals(
+                        ProductThreadPrecondition.Decision.WRONG_THREAD,
+                        ProductThreadPrecondition.classify(0L, 0L)),
+                () -> assertEquals(
+                        ProductThreadPrecondition.Decision.WRONG_THREAD,
+                        ProductThreadPrecondition.classify(-1L, -1L)));
+
+        var serviceMethods = Arrays.stream(SkillDefinitionStoreService.class.getDeclaredMethods())
+                .filter(method -> method.getName().equals("latestReference"))
+                .toList();
+        var auditMethods = Arrays.stream(P4E1GroupedStoreAudit.class.getDeclaredMethods())
+                .filter(method -> method.getName().equals("audit"))
+                .toList();
+        assertAll(
+                () -> assertEquals(2, serviceMethods.size()),
+                () -> assertEquals(1, serviceMethods.stream()
+                        .filter(method -> Arrays.equals(
+                                method.getParameterTypes(),
+                                new Class<?>[] {
+                                    net.minecraft.server.MinecraftServer.class,
+                                    com.yo1no.gramarye.magic.api.id.SkillId.class
+                                }))
+                        .filter(method -> Modifier.isPublic(method.getModifiers()))
+                        .count()),
+                () -> assertEquals(1, serviceMethods.stream()
+                        .filter(method -> Arrays.equals(
+                                method.getParameterTypes(),
+                                new Class<?>[] {
+                                    net.minecraft.server.MinecraftServer.class,
+                                    com.yo1no.gramarye.magic.api.id.SkillId.class,
+                                    long.class
+                                }))
+                        .filter(method -> isPackagePrivate(method.getModifiers()))
+                        .count()),
+                () -> assertEquals(2, auditMethods.size()),
+                () -> assertEquals(1, auditMethods.stream()
+                        .filter(method -> Arrays.equals(
+                                method.getParameterTypes(),
+                                new Class<?>[] {P4E1GlobalSourceCapture.Captured.class}))
+                        .filter(method -> isPackagePrivate(method.getModifiers()))
+                        .count()),
+                () -> assertEquals(1, auditMethods.stream()
+                        .filter(method -> Arrays.equals(
+                                method.getParameterTypes(),
+                                new Class<?>[] {
+                                    P4E1GlobalSourceCapture.Captured.class, long.class
+                                }))
+                        .filter(method -> isPackagePrivate(method.getModifiers()))
+                        .count()));
+
+        var gateSource = withoutCommentsAndLiterals(
+                read(STORE_ROOT.resolve("ProductThreadPrecondition.java")));
+        var service = withoutCommentsAndLiterals(
+                read(STORE_ROOT.resolve("SkillDefinitionStoreService.java")));
+        var grouped = withoutCommentsAndLiterals(
+                read(STORE_ROOT.resolve("P4E1GroupedStoreAudit.java")));
+        var capture = withoutCommentsAndLiterals(
+                read(STORE_ROOT.resolve("P4E1GlobalSourceCapture.java")));
+        var holderPath = STORE_ROOT.resolve("SkillSavedDataLifecycleGameTests.java");
+        var holderRaw = read(holderPath);
+        var holder = withoutCommentsAndLiterals(holderRaw);
+        var allProductionRaw = sources(MAIN_JAVA);
+        var allProduction = withoutCommentsAndLiterals(allProductionRaw);
+        var serviceWrapper = bodyFollowing(
+                service,
+                "public SkillSubsystemResult<Optional<SkillReference>> latestReference(");
+        var groupedWrapper = bodyFollowing(
+                grouped,
+                "Result audit(P4E1GlobalSourceCapture.Captured capture)");
+        var serviceThreadGate = bodyFollowing(
+                service,
+                "static void requireServerThread(MinecraftServer server, long observedThreadId)");
+
+        assertAll(
+                () -> assertEquals(1, occurrences(
+                        gateSource, "final class ProductThreadPrecondition")),
+                () -> assertEquals(0, gate.getDeclaredFields().length),
+                () -> assertEquals(1, gate.getDeclaredConstructors().length),
+                () -> assertTrue(Modifier.isPrivate(
+                        gate.getDeclaredConstructors()[0].getModifiers())),
+                () -> assertEquals(1, gate.getDeclaredMethods().length),
+                () -> assertTrue(Pattern.compile(
+                                "return\\s+expectedLogicThreadId\\s*>\\s*0L\\s*&&\\s*"
+                                        + "expectedLogicThreadId\\s*==\\s*observedThreadId\\s*"
+                                        + "\\?\\s*Decision\\.ALLOWED\\s*"
+                                        + ":\\s*Decision\\.WRONG_THREAD\\s*;",
+                                Pattern.DOTALL)
+                        .matcher(gateSource)
+                        .find()),
+                () -> assertFalse(bodyFollowing(gateSource, "static Decision classify(")
+                        .contains("new ")),
+                () -> assertEquals(1, qualifiedInvocationCount(
+                        service, "ProductThreadPrecondition", "classify")),
+                () -> assertEquals(1, qualifiedInvocationCount(
+                        grouped, "ProductThreadPrecondition", "classify")),
+                () -> assertEquals(2, qualifiedInvocationCount(
+                        holder, "ProductThreadPrecondition", "classify")),
+                () -> assertEquals(0, qualifiedInvocationCount(
+                        capture, "ProductThreadPrecondition", "classify")),
+                () -> assertEquals(1, qualifiedInvocationCount(
+                        serviceWrapper, "Thread", "currentThread")),
+                () -> assertEquals(1, qualifiedInvocationCount(
+                        groupedWrapper, "Thread", "currentThread")),
+                () -> assertEquals(4, qualifiedInvocationCount(
+                        allProduction, "ProductThreadPrecondition", "classify")),
+                () -> assertTrue(serviceThreadGate
+                        .contains("server.getRunningThread().threadId()")),
+                () -> assertTrue(bodyFollowing(grouped, "long observedThreadId)")
+                        .contains("serverIdentity.getRunningThread().threadId()")),
+                () -> assertFalse(bodyFollowing(service, "long observedThreadId)")
+                        .contains("0L")),
+                () -> assertFalse(bodyFollowing(grouped, "long observedThreadId)")
+                        .contains("0L")),
+                () -> assertEquals(0, catchTypeCount(allProduction, "Throwable")),
+                () -> assertEquals(12, occurrences(allProductionRaw, "@GameTest(")),
+                () -> assertFalse(Pattern.compile(
+                                "\\.\\s*claim\\s*\\([^;]*"
+                                        + "ProductThreadPrecondition\\s*\\.\\s*Decision",
+                                Pattern.DOTALL)
+                        .matcher(holder)
+                        .find()),
+                () -> assertEquals(0, literalInvocationCount(holder, "requireActive")));
+
+        assertOrdered(
+                bodyFollowing(service, "long observedThreadId"),
+                "requireServerThread(server, observedThreadId)",
+                "installedAdapter(server)");
+        assertOrdered(
+                serviceThreadGate,
+                "ProductThreadPrecondition.classify(",
+                "ProductThreadPrecondition.Decision.WRONG_THREAD",
+                "SkillSubsystemLifecycleException.Code.WRONG_THREAD");
+        assertOrdered(
+                bodyFollowing(grouped, "long observedThreadId"),
+                "ProductThreadPrecondition.classify(",
+                "capture.claim(this, decision)");
+        for (var forbidden : List.of(
+                "runOffThread",
+                "new Thread",
+                ".start(",
+                "AtomicReference",
+                ".join(",
+                ".isAlive(",
+                ".interrupt(",
+                "Executor",
+                "Future",
+                "ProcessBuilder",
+                "catch (Throwable")) {
+            assertFalse(holderRaw.contains(forbidden), forbidden);
+        }
+        for (var forbidden : List.of(
+                "java.util.concurrent.atomic.AtomicReference",
+                "java.time.Duration",
+                "TimeUnit.",
+                "Thread.ofPlatform(",
+                "Thread.ofVirtual(")) {
+            assertFalse(holder.contains(forbidden), forbidden);
+        }
+
+        var runtimeService = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/SkillRuntimeService.java")));
+        var p5Catches = errorCatchBlocks(runtimeService);
+        var p5Primary = p5Catches.stream()
+                .filter(block -> block.binding().equals("primary"))
+                .toList();
+        var secondary = p5Catches.stream()
+                .filter(block -> block.binding().equals("ignoredCleanupFailure"))
+                .toList();
+        var storeCatches = errorCatchBlocks(service);
+        var primary = new java.util.ArrayList<ErrorCatchBlock>(p5Primary);
+        primary.addAll(storeCatches);
+        assertAll(
+                () -> assertEquals(10, p5Catches.size()),
+                () -> assertEquals(5, p5Primary.size()),
+                () -> assertEquals(6, primary.size()),
+                () -> assertEquals(5, secondary.size()),
+                () -> assertEquals(1, storeCatches.size()),
+                () -> assertEquals("failure", storeCatches.getFirst().binding()),
+                () -> assertTrue(storeCatches.getFirst().body().contains("throw failure;")),
+                () -> assertTrue(p5Primary.stream().allMatch(block ->
+                        block.body().contains("throw primary;")
+                                || block.body().contains(
+                                        "throw preserveErrorFault(slot, primary);"))),
+                () -> assertTrue(primary.stream().allMatch(block ->
+                        block.body().contains("throw " + block.binding() + ";")
+                                || block.body().contains(
+                                        "throw preserveErrorFault(slot, "
+                                                + block.binding() + ");"))),
+                () -> assertTrue(secondary.stream().allMatch(block -> block.body().isBlank())),
+                () -> assertEquals(primary.size() + secondary.size(),
+                        dependencyErrorCatchCount(allProduction)),
+                () -> assertEquals(11, dependencyErrorCatchCount(allProduction)));
+        assertOrdered(
+                bodyFollowing(runtimeService, "Error preserveErrorFault("),
+                "enterFaultAfterError(",
+                "return primary;");
+
+        var serviceBytecode = javap("SkillDefinitionStoreService");
+        var groupedBytecode = javap("P4E1GroupedStoreAudit");
+        var holderBytecode = javap("SkillSavedDataLifecycleGameTests");
+        var classifyDescriptor = "(JJ)Lcom/yo1no/gramarye/magic/definition/store/"
+                + "ProductThreadPrecondition$Decision;";
+        var serviceCoreDescriptor = "(Lnet/minecraft/server/MinecraftServer;"
+                + "Lcom/yo1no/gramarye/magic/api/id/SkillId;J)"
+                + "Lcom/yo1no/gramarye/magic/definition/store/SkillSubsystemResult;";
+        var auditCoreDescriptor = "(Lcom/yo1no/gramarye/magic/definition/store/"
+                + "P4E1GlobalSourceCapture$Captured;J)Lcom/yo1no/gramarye/magic/"
+                + "definition/store/P4E1GroupedStoreAudit$Result;";
+        assertAll(
+                () -> assertTrue(serviceBytecode.contains("descriptor: " + serviceCoreDescriptor)),
+                () -> assertTrue(groupedBytecode.contains("descriptor: " + auditCoreDescriptor)),
+                () -> assertEquals(1, invocationCommentCount(
+                        serviceBytecode, "ProductThreadPrecondition.classify:" + classifyDescriptor)),
+                () -> assertEquals(1, invocationCommentCount(
+                        groupedBytecode, "ProductThreadPrecondition.classify:" + classifyDescriptor)),
+                () -> assertEquals(2, invocationCommentCount(
+                        holderBytecode, "ProductThreadPrecondition.classify:" + classifyDescriptor)),
+                () -> assertEquals(1, invocationCommentCount(
+                        holderBytecode,
+                        "SkillDefinitionStoreService.latestReference:" + serviceCoreDescriptor)),
+                () -> assertEquals(1, invocationCommentCount(
+                        holderBytecode,
+                        "P4E1GroupedStoreAudit.audit:" + auditCoreDescriptor)));
     }
 
     private static Set<String> javaFiles(Path root) throws Exception {
@@ -470,6 +732,131 @@ class P4B2BApiGateTest {
             }
         }
         return count;
+    }
+
+    private static boolean isPackagePrivate(int modifiers) {
+        return !Modifier.isPublic(modifiers)
+                && !Modifier.isProtected(modifiers)
+                && !Modifier.isPrivate(modifiers);
+    }
+
+    private static void assertPackagePrivate(int modifiers, String coordinate) {
+        assertTrue(isPackagePrivate(modifiers), coordinate + " must remain package-private");
+    }
+
+    private static int qualifiedInvocationCount(
+            String source, String receiver, String methodName) {
+        var invocation = Pattern.compile(
+                        "(?<![A-Za-z0-9_$])"
+                                + Pattern.quote(receiver)
+                                + "\\s*\\.\\s*"
+                                + Pattern.quote(methodName)
+                                + "\\s*\\(")
+                .matcher(source);
+        var count = 0;
+        while (invocation.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    private static int literalInvocationCount(String source, String methodName) {
+        var invocation = Pattern.compile(
+                        "\\.\\s*" + Pattern.quote(methodName) + "\\s*\\(")
+                .matcher(source);
+        var count = 0;
+        while (invocation.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    private static String bodyFollowing(String source, String marker) {
+        var signature = source.indexOf(marker);
+        if (signature < 0) {
+            throw new AssertionError("source marker not found: " + marker);
+        }
+        var open = source.indexOf('{', signature + marker.length());
+        if (open < 0) {
+            throw new AssertionError("body opening brace not found after: " + marker);
+        }
+        var depth = 0;
+        for (var index = open; index < source.length(); index++) {
+            var character = source.charAt(index);
+            if (character == '{') {
+                depth++;
+            } else if (character == '}' && --depth == 0) {
+                return source.substring(open + 1, index);
+            }
+        }
+        throw new AssertionError("body did not close after: " + marker);
+    }
+
+    private static List<ErrorCatchBlock> errorCatchBlocks(String source) {
+        var catchClause = Pattern.compile("catch\\s*\\(([^)]*)\\)\\s*\\{", Pattern.DOTALL)
+                .matcher(source);
+        var errorType = Pattern.compile(
+                "(?<![A-Za-z0-9_$.])(?:java\\.lang\\.)?Error(?![A-Za-z0-9_$])");
+        var bindingName = Pattern.compile("([A-Za-z_$][A-Za-z0-9_$]*)\\s*$");
+        var blocks = new java.util.ArrayList<ErrorCatchBlock>();
+        while (catchClause.find()) {
+            if (!errorType.matcher(catchClause.group(1)).find()) {
+                continue;
+            }
+            var binding = bindingName.matcher(catchClause.group(1));
+            if (!binding.find()) {
+                throw new AssertionError("Error catch binding unavailable: " + catchClause.group(1));
+            }
+            var open = catchClause.end() - 1;
+            var depth = 0;
+            var close = -1;
+            for (var index = open; index < source.length(); index++) {
+                var character = source.charAt(index);
+                if (character == '{') {
+                    depth++;
+                } else if (character == '}' && --depth == 0) {
+                    close = index;
+                    break;
+                }
+            }
+            if (close < 0) {
+                throw new AssertionError("Error catch body did not close");
+            }
+            blocks.add(new ErrorCatchBlock(
+                    binding.group(1), source.substring(open + 1, close)));
+        }
+        return List.copyOf(blocks);
+    }
+
+    private static void assertOrdered(String source, String... tokens) {
+        var previous = -1;
+        for (var token : tokens) {
+            var next = source.indexOf(token, previous + 1);
+            assertTrue(next > previous, token);
+            previous = next;
+        }
+    }
+
+    private static String javap(String simpleBinaryName) {
+        var binaryName = "com.yo1no.gramarye.magic.definition.store." + simpleBinaryName;
+        var result = runJdkTool(
+                "javap", "-classpath", MAIN_CLASSES.toString(), "-p", "-s", "-c", binaryName);
+        assertEquals(0, result.exitCode(), result.output());
+        return result.output();
+    }
+
+    private static JdkToolResult runJdkTool(String toolName, String... arguments) {
+        var tool = ToolProvider.findFirst(toolName)
+                .orElseThrow(() -> new AssertionError("JDK tool unavailable: " + toolName));
+        var output = new StringWriter();
+        var writer = new PrintWriter(output);
+        var exitCode = tool.run(writer, writer, arguments);
+        writer.flush();
+        return new JdkToolResult(exitCode, output.toString());
+    }
+
+    private static int invocationCommentCount(String bytecode, String ownerMethodDescriptor) {
+        return occurrences(bytecode, ownerMethodDescriptor);
     }
 
     private static int reviewedStartupErrorCatchCount(String methodBody) {
@@ -655,5 +1042,11 @@ class P4B2BApiGateTest {
         STRING,
         CHARACTER,
         TEXT_BLOCK
+    }
+
+    private record ErrorCatchBlock(String binding, String body) {
+    }
+
+    private record JdkToolResult(int exitCode, String output) {
     }
 }

@@ -24,12 +24,36 @@ final class P4E1GroupedStoreAudit {
     }
 
     Result audit(P4E1GlobalSourceCapture.Captured capture) {
+        return audit(capture, Thread.currentThread().threadId());
+    }
+
+    Result audit(P4E1GlobalSourceCapture.Captured capture, long observedThreadId) {
         Objects.requireNonNull(capture, "capture");
-        var claimed = capture.claim(this);
+        var decision = ProductThreadPrecondition.classify(
+                serverIdentity.getRunningThread().threadId(), observedThreadId);
+        var claimed = capture.claim(this, decision);
         return auditClaimed(claimed);
     }
 
     void requireCaptureBinding(MinecraftServer server, Thread thread, int tick) {
+        requireCaptureServerAndThreadBinding(server, thread);
+        requireCaptureTickBinding(server, tick);
+    }
+
+    void requireCaptureBinding(
+            MinecraftServer server,
+            Thread thread,
+            int tick,
+            ProductThreadPrecondition.Decision decision) {
+        Objects.requireNonNull(decision, "decision");
+        requireCaptureServerAndThreadBinding(server, thread);
+        if (decision == ProductThreadPrecondition.Decision.WRONG_THREAD) {
+            throw new BindingException("P4E1_GROUPED_AUDIT_THREAD_MISMATCH");
+        }
+        requireCaptureTickBinding(server, tick);
+    }
+
+    private void requireCaptureServerAndThreadBinding(MinecraftServer server, Thread thread) {
         if (serverIdentity != Objects.requireNonNull(server, "server")) {
             throw new BindingException("P4E1_GROUPED_AUDIT_SERVER_MISMATCH");
         }
@@ -38,6 +62,9 @@ final class P4E1GroupedStoreAudit {
                 || !server.isSameThread()) {
             throw new BindingException("P4E1_GROUPED_AUDIT_THREAD_MISMATCH");
         }
+    }
+
+    private void requireCaptureTickBinding(MinecraftServer server, int tick) {
         if (creationTick != tick || server.getTickCount() != creationTick) {
             throw new BindingException("P4E1_GROUPED_AUDIT_TICK_MISMATCH");
         }
