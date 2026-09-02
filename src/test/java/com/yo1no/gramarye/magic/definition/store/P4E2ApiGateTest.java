@@ -27,6 +27,8 @@ final class P4E2ApiGateTest {
             "com/yo1no/gramarye/magic/definition/store");
     private static final Path PLAYER_SERVICE = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java");
+    private static final Path MANA_GAME_TEST_SOURCE = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java");
     private static final Path QUALIFICATION_FACADE = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/P4E2QualificationFacade.java");
     private static final Path QUALIFICATION_TEST_ACCESS = PROJECT_ROOT.resolve(
@@ -514,6 +516,9 @@ final class P4E2ApiGateTest {
         var visibilityProbe = Files.readString(
                 TEST_STORE_ROOT.resolve("P4E2VisibilityCompileTest.java"));
         var production = javaSources(MAIN_JAVA);
+        var totalGameTestCount = occurrences(production, "@GameTest(");
+        var manaGameTestCount = occurrences(
+                Files.readString(MANA_GAME_TEST_SOURCE), "@GameTest(");
         assertAll(
                 () -> assertFalse(build.contains("p4E2")),
                 () -> assertFalse(build.contains("P4E2")),
@@ -524,7 +529,9 @@ final class P4E2ApiGateTest {
                 () -> assertEquals(1, occurrences(visibilityProbe, "\"-proc:none\"")),
                 () -> assertTrue(visibilityProbe.indexOf("\"-proc:none\"")
                         < visibilityProbe.indexOf("compiler.getTask(")),
-                () -> assertEquals(19, occurrences(production, "@GameTest(")));
+                () -> assertEquals(12, totalGameTestCount - manaGameTestCount),
+                () -> assertEquals(7, manaGameTestCount),
+                () -> assertEquals(19, totalGameTestCount));
     }
 
     private static void assertBoundedFields(Class<?> type) {

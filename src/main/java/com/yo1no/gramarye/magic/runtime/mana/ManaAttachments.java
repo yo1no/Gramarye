@@ -4,13 +4,8 @@ import com.yo1no.gramarye.Gramarye;
 import java.util.Objects;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.attachment.AttachmentType;
-import net.neoforged.neoforge.registries.NeoForgeRegistries;
-import net.neoforged.neoforge.registries.RegisterEvent;
 
-@EventBusSubscriber(modid = Gramarye.MOD_ID)
 final class ManaAttachments {
     private static final ResourceLocation PLAYER_MANA_ID =
             ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, "player_mana");
@@ -23,12 +18,8 @@ final class ManaAttachments {
 
     private ManaAttachments() {}
 
-    @SubscribeEvent
-    private static void register(RegisterEvent event) {
-        event.register(
-                NeoForgeRegistries.Keys.ATTACHMENT_TYPES,
-                PLAYER_MANA_ID,
-                () -> PLAYER_MANA);
+    static ResourceLocation id() {
+        return PLAYER_MANA_ID;
     }
 
     static AttachmentType<ManaState> type() {

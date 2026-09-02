@@ -280,6 +280,7 @@ is_reviewed_e1a_production_path() {
         src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachments.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
@@ -325,6 +326,8 @@ is_reviewed_e1a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java | \
         src/main/java/com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java) return 0 ;;

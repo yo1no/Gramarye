@@ -466,6 +466,42 @@ is_exact_p4e3_path() {
     esac
 }
 
+is_approved_p6_s2_r3_changed_path() {
+    case "$1" in
+        docs/architecture/P5-A-server-runtime-event-kernel.md | \
+        scripts/verify-p4-c2-a-configuration.sh | \
+        scripts/verify-p4-c2-b-configuration.sh | \
+        scripts/verify-p4-d2-configuration.sh | \
+        scripts/verify-p4-d3-a-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachments.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_allowed_changed_path() {
+    is_exact_p4e3_path "$1" || is_approved_p6_s2_r3_changed_path "$1"
+}
+
 is_exact_probe_path() {
     case "$1" in
         src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/player/P4E3PlayerDataFixture.java | \
@@ -499,12 +535,16 @@ verify_repository_scope() {
     [[ "${status}" -eq 0 ]] || fail 'git failed while checking untracked P4-E3 paths'
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
-        is_exact_p4e3_path "${path}" \
+        is_allowed_changed_path "${path}" \
             || fail "repository change escaped exact P4-E3 51-path scope: ${path}"
     done <<< "${changed}"$'\n'"${untracked}"
     git diff --quiet HEAD -- \
-        src/main/resources src/test/resources docs gradle gradle.properties settings.gradle \
+        src/main/resources src/test/resources docs/codex-spec gradle gradle.properties settings.gradle \
         || fail 'P4-E3 changed resource, authority, wrapper, or version truth'
+    git diff --quiet HEAD -- \
+        docs/architecture \
+        ':(exclude)docs/architecture/P5-A-server-runtime-event-kernel.md' \
+        || fail 'P4-E3 changed architecture truth outside the exact P6-A1.2 amendment'
     [[ ! -e src/p4E3Probe/resources ]] \
         || fail 'P4-E3 must not add tracked probe resources'
     [[ ! -e src/p4E3GameTest/resources ]] \
@@ -935,6 +975,10 @@ verify_facade_and_direct_route() {
 verify_test_route_and_fixture_contract() {
     local marker=''
     local access='src/p4E3GameTest/java/com/yo1no/gramarye/P4E3StartupObservationTestAccess.java'
+    local mana_tests='src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java'
+    local total_count=''
+    local mana_count=''
+    local baseline_count=''
     for marker in \
         '@EventBusSubscriber(modid = Gramarye.MOD_ID, value = Dist.DEDICATED_SERVER)' \
         '@SubscribeEvent(priority = EventPriority.HIGHEST)' \
@@ -984,8 +1028,15 @@ verify_test_route_and_fixture_contract() {
         'test-only Observation final indexGeneration field changed'
     [[ "$(count_fixed_in_file_list "${GAME_SOURCE_LIST}" '@GameTest(')" -eq 1 ]] \
         || fail 'P4-E3 custom runtime must contain exactly one GameTest dispatcher'
-    [[ "$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')" -eq 12 ]] \
-        || fail 'normal production GameTest inventory must remain exactly twelve'
+    total_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
+    mana_count="$(LC_ALL=C grep -Fc -- '@GameTest(' "${mana_tests}")"
+    baseline_count=$((total_count - mana_count))
+    [[ "${baseline_count}" -eq 12 ]] \
+        || fail 'historical P4 normal GameTest inventory must remain exactly twelve'
+    [[ "${mana_count}" -eq 7 ]] \
+        || fail 'P6-S2 mana GameTest inventory must remain exactly seven'
+    [[ "${total_count}" -eq 19 ]] \
+        || fail 'combined production GameTest inventory must remain exactly nineteen'
 
     for marker in \
         fixture.json first.json restart.json \

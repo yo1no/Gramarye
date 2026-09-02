@@ -438,6 +438,7 @@ is_reviewed_d3a_production_path() {
         src/main/java/com/yo1no/gramarye/P4E2QualificationFacade.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentAdmission.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachments.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
@@ -483,6 +484,8 @@ is_reviewed_d3a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionGameTests.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java) return 0 ;;
         *) return 1 ;;
@@ -523,6 +526,7 @@ verify_exact_surfaces() {
     local player='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java'
     local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
     local root='src/main/java/com/yo1no/gramarye/Gramarye.java'
+    local mana_tests='src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java'
     local literal=''
 
     for literal in "${recovery}" "${game_tests}" "${port}" "${player}" \
@@ -577,16 +581,26 @@ verify_exact_surfaces() {
         require_fixed_count "${game_tests}" "public static void ${literal}(" 1 \
             "D3-A normal recovery GameTest is missing: ${literal}"
     done
-    local normal_count=''
-    normal_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
-    [[ "${normal_count}" -eq 12 ]] \
-        || fail "P4-D3-A normal required GameTest count must be twelve (found ${normal_count})"
+    local total_count=''
+    local mana_count=''
+    local baseline_count=''
+    require_regular_file "${mana_tests}" 'P6-S2 mana GameTest holder is missing'
+    total_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
+    mana_count="$(LC_ALL=C grep -Fc -- '@GameTest(' "${mana_tests}")"
+    baseline_count=$((total_count - mana_count))
+    [[ "${baseline_count}" -eq 12 ]] \
+        || fail "historical P4 normal GameTest inventory must remain twelve (found ${baseline_count})"
+    [[ "${mana_count}" -eq 7 ]] \
+        || fail "P6-S2 mana GameTest inventory must remain seven (found ${mana_count})"
+    [[ "${total_count}" -eq 19 ]] \
+        || fail "combined production GameTest inventory must remain nineteen (found ${total_count})"
 }
 
 verify_ownership_and_phase_boundary() {
     local recovery='src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java'
     local port='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java'
     local player='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java'
+    local mana_attachments='src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java'
     local saved_data='src/main/java/com/yo1no/gramarye/magic/definition/store/GramaryeSkillSavedData.java'
     local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
     local literal=''
@@ -601,8 +615,9 @@ verify_ownership_and_phase_boundary() {
         'journal-prefix clear commit escaped the unique D3-A recovery service'
     require_only_ere_owner '\.[[:space:]]*commit[[:space:]]*\(' "${port}" \
         'Store commit escaped the unique D1 port'
-    require_only_ere_owner '\.[[:space:]]*setData[[:space:]]*\(' "${player}" \
-        'Attachment setData escaped the unique P4-C service'
+    require_exact_ere_owners '\.[[:space:]]*setData[[:space:]]*\(' 2 \
+        'live Attachment setData escaped the exact reviewed access owners' \
+        "${player}" "${mana_attachments}"
     require_exact_ere_owners '\.[[:space:]]*reclaim[[:space:]]*\(' 2 \
         'Store reclaim escaped reviewed P4-B lifecycle owners' \
         "${saved_data}" "${store_service}"

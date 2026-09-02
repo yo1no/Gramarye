@@ -380,7 +380,10 @@ verify_root_and_normal_gametests() {
     local root='src/main/java/com/yo1no/gramarye/Gramarye.java'
     local player_tests='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java'
     local submission_tests='src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillDefinitionSubmissionGameTests.java'
-    local normal_count=''
+    local mana_tests='src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java'
+    local total_count=''
+    local mana_count=''
+    local baseline_count=''
     local literal=''
 
     for literal in \
@@ -417,14 +420,22 @@ verify_root_and_normal_gametests() {
     require_fixed "${submission_tests}" \
         'postCommitAttachmentDriftReturnsPendingRecovery' \
         'P4-D2-B postcommit-drift GameTest is missing'
-    normal_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
-    [[ "${normal_count}" -eq 12 ]] \
-        || fail "P4-D3-A normal required GameTest count must be twelve (found ${normal_count})"
+    require_regular_file "${mana_tests}" 'P6-S2 mana GameTest holder is missing'
+    total_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
+    mana_count="$(LC_ALL=C grep -Fc -- '@GameTest(' "${mana_tests}")"
+    baseline_count=$((total_count - mana_count))
+    [[ "${baseline_count}" -eq 12 ]] \
+        || fail "historical P4 normal GameTest inventory must remain twelve (found ${baseline_count})"
+    [[ "${mana_count}" -eq 7 ]] \
+        || fail "P6-S2 mana GameTest inventory must remain seven (found ${mana_count})"
+    [[ "${total_count}" -eq 19 ]] \
+        || fail "combined production GameTest inventory must remain nineteen (found ${total_count})"
 }
 
 verify_static_ownership_and_phase_bounds() {
     local store_port='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java'
     local player_service='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java'
+    local mana_attachments='src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java'
     local saved_data='src/main/java/com/yo1no/gramarye/magic/definition/store/GramaryeSkillSavedData.java'
     local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
     local uuid_source='src/main/java/com/yo1no/gramarye/magic/definition/submission/RandomUuidSkillIdSource.java'
@@ -434,8 +445,9 @@ verify_static_ownership_and_phase_bounds() {
 
     require_only_ere_owner '\.[[:space:]]*commit[[:space:]]*\(' "${store_port}" \
         'Store commit escaped the unique D1 submission port'
-    require_only_ere_owner '\.[[:space:]]*setData[[:space:]]*\(' "${player_service}" \
-        'Attachment setData escaped the unique P4-C service'
+    require_exact_ere_owners '\.[[:space:]]*setData[[:space:]]*\(' 2 \
+        'live Attachment setData escaped the exact reviewed access owners' \
+        "${player_service}" "${mana_attachments}"
     require_exact_ere_owners '\.[[:space:]]*reclaim[[:space:]]*\(' 2 \
         'Store reclaim escaped the reviewed P4-B lifecycle owners' \
         "${saved_data}" "${store_service}"

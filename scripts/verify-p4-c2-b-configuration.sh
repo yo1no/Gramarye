@@ -248,6 +248,9 @@ is_reviewed_d3a_production_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSerializer.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentSourceObservation.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachments.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2GroupedStoreValidation.java | \
         src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationCoordinator.java | \

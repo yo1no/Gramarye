@@ -38,6 +38,8 @@ final class P4D2BApiGateTest {
                     + "SkillDefinitionSubmissionGameTests.java");
     private static final Path GRAMARYE_SOURCE = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/Gramarye.java");
+    private static final Path MANA_GAME_TEST_SOURCE = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java");
     private static final Pattern STORE_COMMIT_CALL = Pattern.compile(
             "\\.\\s*commit\\s*\\(");
     private static final Pattern SET_DATA_CALL = Pattern.compile(
@@ -160,6 +162,9 @@ final class P4D2BApiGateTest {
         var allMain = javaSources(MAIN_JAVA).stream()
                 .map(P4D2BApiGateTest::read)
                 .collect(Collectors.joining("\n"));
+        var manaGameTests = read(MANA_GAME_TEST_SOURCE);
+        var totalGameTestCount = occurrences(allMain, "@GameTest(");
+        var manaGameTestCount = occurrences(manaGameTests, "@GameTest(");
         assertTrue(Modifier.isPublic(holder.getModifiers()));
         assertTrue(Modifier.isFinal(holder.getModifiers()));
         assertTrue(Arrays.stream(holder.getDeclaredClasses())
@@ -185,7 +190,9 @@ final class P4D2BApiGateTest {
                         "postCommitAttachmentDriftReturnsPendingRecovery"),
                 methods.stream().map(method -> method.getName()).collect(Collectors.toSet()));
         assertEquals(2, occurrences(read(SUBMISSION_GAME_TEST_SOURCE), "@GameTest("));
-        assertEquals(19, occurrences(allMain, "@GameTest("));
+        assertEquals(12, totalGameTestCount - manaGameTestCount);
+        assertEquals(7, manaGameTestCount);
+        assertEquals(19, totalGameTestCount);
     }
 
     @Test

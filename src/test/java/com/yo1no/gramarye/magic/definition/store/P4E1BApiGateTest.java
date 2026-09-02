@@ -17,6 +17,8 @@ final class P4E1BApiGateTest {
     private static final Path MAIN_JAVA = PROJECT_ROOT.resolve("src/main/java");
     private static final Path STORE_ROOT = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/magic/definition/store");
+    private static final Path MANA_GAME_TEST_SOURCE = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java");
 
     @Test
     void exactE1TypeInventoryHasOnlyTwoReviewedPublicTopLevels() throws Exception {
@@ -92,6 +94,9 @@ final class P4E1BApiGateTest {
         var build = Files.readString(PROJECT_ROOT.resolve("build.gradle"));
         var workflow = Files.readString(PROJECT_ROOT.resolve(".github/workflows/build.yml"));
         var allProduction = javaSources(MAIN_JAVA);
+        var totalGameTestCount = occurrences(allProduction, "@GameTest(");
+        var manaGameTestCount = occurrences(
+                Files.readString(MANA_GAME_TEST_SOURCE), "@GameTest(");
         assertFalse(build.contains("p4E1"));
         assertFalse(build.contains("P4E1"));
         assertFalse(workflow.contains("p4-e1"));
@@ -99,7 +104,9 @@ final class P4E1BApiGateTest {
         assertFalse(Files.exists(PROJECT_ROOT.resolve("src/p4E1Probe")));
         assertFalse(Files.exists(PROJECT_ROOT.resolve("src/p4E1GameTest")));
         assertFalse(build.contains("p4E1FixedHeapGate"));
-        assertEquals(19, occurrences(allProduction, "@GameTest("));
+        assertEquals(12, totalGameTestCount - manaGameTestCount);
+        assertEquals(7, manaGameTestCount);
+        assertEquals(19, totalGameTestCount);
     }
 
     @Test

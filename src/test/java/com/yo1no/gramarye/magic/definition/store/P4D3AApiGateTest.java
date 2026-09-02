@@ -36,6 +36,8 @@ final class P4D3AApiGateTest {
             MAIN_JAVA.resolve(P4D3PhaseTypes.RECOVERY_GAME_TEST_PATH);
     private static final Path PLAYER_SERVICE = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java");
+    private static final Path MANA_GAME_TEST_SOURCE = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java");
     private static final Path STORE_SERVICE = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java");
     private static final Path STORE_PORT = MAIN_JAVA.resolve(
@@ -327,6 +329,9 @@ final class P4D3AApiGateTest {
         var allProduction = javaSources(MAIN_JAVA).stream()
                 .map(P4D3AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
+        var manaGameTests = read(MANA_GAME_TEST_SOURCE);
+        var totalGameTestCount = occurrences(allProduction, "@GameTest(");
+        var manaGameTestCount = occurrences(manaGameTests, "@GameTest(");
         var holderAnnotation = holder.getAnnotation(GameTestHolder.class);
 
         assertAll(
@@ -342,7 +347,9 @@ final class P4D3AApiGateTest {
                 () -> assertTrue(holderAnnotation != null
                         && holderAnnotation.value().equals(Gramarye.MOD_ID)),
                 () -> assertEquals(3, occurrences(read(RECOVERY_GAME_TESTS), "@GameTest(")),
-                () -> assertEquals(19, occurrences(allProduction, "@GameTest(")));
+                () -> assertEquals(12, totalGameTestCount - manaGameTestCount),
+                () -> assertEquals(7, manaGameTestCount),
+                () -> assertEquals(19, totalGameTestCount));
     }
 
     @Test

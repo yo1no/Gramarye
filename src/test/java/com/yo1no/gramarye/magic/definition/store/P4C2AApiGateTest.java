@@ -24,6 +24,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.attachment.AttachmentType;
 import net.neoforged.neoforge.attachment.IAttachmentHolder;
 import net.neoforged.neoforge.gametest.GameTestHolder;
@@ -80,8 +81,54 @@ class P4C2AApiGateTest {
         var code = withoutCommentsAndLiterals(registration);
         var production = javaSources(MAIN_JAVA);
         var registrationRelative = relative(registrationPath);
-        var manaRegistrationRelative =
+        var manaDefinitionRelative =
                 "com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java";
+        var manaBridgeRelative =
+                "com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java";
+        var manaDefinition = withoutCommentsAndLiterals(
+                read(MAIN_JAVA.resolve(manaDefinitionRelative)));
+        var manaBridgeSource = withoutCommentsAndLiterals(
+                read(MAIN_JAVA.resolve(manaBridgeRelative)));
+        var manaBridge = load(
+                "com.yo1no.gramarye.magic.runtime.mana.ManaAttachmentDefinitionBridge");
+        var bridgePublicMethods = Arrays.stream(manaBridge.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers()))
+                .filter(method -> !method.isBridge() && !method.isSynthetic())
+                .toList();
+        var attachmentId = manaBridge.getDeclaredMethod("attachmentId");
+        var attachmentType = manaBridge.getDeclaredMethod("attachmentType");
+        var registryMutationOwners = production.stream()
+                .filter(path -> {
+                    var source = withoutCommentsAndLiterals(read(path));
+                    return source.contains("DeferredRegister<AttachmentType<?>>")
+                            || source.contains("DeferredHolder")
+                            || source.contains("NeoForgeRegistries.Keys.ATTACHMENT_TYPES")
+                            || source.contains("ATTACHMENT_TYPES.register(")
+                            || source.contains("RegisterEvent")
+                            || source.contains("event.register(");
+                })
+                .map(P4C2AApiGateTest::relative)
+                .collect(Collectors.toSet());
+        var registryMutationFragments = List.of(
+                "DeferredRegister<AttachmentType<?>>",
+                "DeferredHolder",
+                "NeoForgeRegistries.Keys.ATTACHMENT_TYPES",
+                "ATTACHMENT_TYPES.register(",
+                "RegisterEvent",
+                "event.register(");
+        var bridgeForbiddenFragments = List.of(
+                "DeferredRegister<AttachmentType<?>>",
+                "DeferredHolder",
+                "NeoForgeRegistries.Keys.ATTACHMENT_TYPES",
+                "ATTACHMENT_TYPES.register(",
+                "RegisterEvent",
+                "event.register(",
+                "AttachmentType.<",
+                ".serialize(",
+                ".copyOnDeath()",
+                ".copyHandler(",
+                ".getData(",
+                ".setData(");
 
         assertAll(
                 () -> assertTrue(registration.contains("DeferredRegister<AttachmentType<?>>")),
@@ -95,16 +142,70 @@ class P4C2AApiGateTest {
                         ".copyOnDeath()",
                         ".build()"),
                 () -> assertFalse(code.contains(".sync(")),
-                () -> assertEquals(Set.of(registrationRelative, manaRegistrationRelative),
+                () -> assertEquals(
+                        Set.of(registrationRelative, manaDefinitionRelative, manaBridgeRelative),
                         relativeFilesContaining(production, "AttachmentType")),
                 () -> assertEquals(Set.of(registrationRelative),
                         relativeFilesContaining(
                                 production, "DeferredRegister<AttachmentType<?>>")),
                 () -> assertEquals(Set.of(registrationRelative),
                         relativeFilesContaining(production, "DeferredHolder")),
+                () -> assertEquals(Set.of(registrationRelative), registryMutationOwners),
+                () -> assertEquals(Set.of(registrationRelative, manaDefinitionRelative),
+                        relativeFilesContaining(production, ".copyOnDeath()")),
+                () -> assertEquals(Set.of(manaDefinitionRelative),
+                        relativeFilesContaining(production, ".copyHandler(")),
+                () -> assertTrue(relativeFilesContaining(production, "RegisterEvent").isEmpty()),
+                () -> assertTrue(
+                        relativeFilesContaining(production, "event.register(").isEmpty()),
+                () -> assertTrue(registryMutationFragments.stream()
+                        .noneMatch(manaDefinition::contains)),
+                () -> assertTrue(bridgeForbiddenFragments.stream()
+                        .noneMatch(manaBridgeSource::contains)),
+                () -> assertEquals(1, occurrences(
+                        registration,
+                        "ManaAttachmentDefinitionBridge.attachmentId().getPath()")),
+                () -> assertEquals(1, occurrences(
+                        registration, "ManaAttachmentDefinitionBridge::attachmentType")),
+                () -> assertEquals(2, occurrences(registration, "DeferredHolder<")),
+                () -> assertEquals(3, occurrences(registration, "ATTACHMENT_TYPES.register(")),
+                () -> assertEquals(1, occurrences(
+                        read(MAIN_JAVA.resolve(manaDefinitionRelative)), "\"player_mana\"")),
                 () -> assertTrue(relativeFilesContaining(production, "\"player_skills\"")
                         .stream().allMatch(path -> path.equals(registrationRelative)
-                                || path.endsWith("PlayerSkillAttachmentGameTests.java"))));
+                                || path.endsWith("PlayerSkillAttachmentGameTests.java"))),
+                () -> assertTrue(Modifier.isPublic(manaBridge.getModifiers())),
+                () -> assertTrue(Modifier.isFinal(manaBridge.getModifiers())),
+                () -> assertEquals(
+                        "com.yo1no.gramarye.magic.runtime.mana",
+                        manaBridge.getPackageName()),
+                () -> assertEquals(1, manaBridge.getDeclaredConstructors().length),
+                () -> assertTrue(Arrays.stream(manaBridge.getDeclaredConstructors())
+                        .allMatch(constructor -> Modifier.isPrivate(constructor.getModifiers()))),
+                () -> assertTrue(Arrays.stream(manaBridge.getDeclaredMethods())
+                        .noneMatch(method -> Modifier.isProtected(method.getModifiers()))),
+                () -> assertEquals(2, bridgePublicMethods.size()),
+                () -> assertEquals(Set.of("attachmentId", "attachmentType"),
+                        bridgePublicMethods.stream()
+                                .map(method -> method.getName())
+                                .collect(Collectors.toSet())),
+                () -> assertTrue(bridgePublicMethods.stream().allMatch(method ->
+                        Modifier.isStatic(method.getModifiers())
+                                && method.getParameterCount() == 0)),
+                () -> assertEquals(ResourceLocation.class, attachmentId.getReturnType()),
+                () -> assertEquals(AttachmentType.class, attachmentType.getReturnType()),
+                () -> assertEquals(
+                        "net.neoforged.neoforge.attachment.AttachmentType<?>",
+                        attachmentType.getGenericReturnType().getTypeName()),
+                () -> assertEquals(
+                        ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, "player_mana"),
+                        attachmentId.invoke(null)),
+                () -> assertTrue(Arrays.stream(manaBridge.getDeclaredFields())
+                        .noneMatch(field -> Modifier.isPublic(field.getModifiers())
+                                || Modifier.isProtected(field.getModifiers()))),
+                () -> assertTrue(Arrays.stream(manaBridge.getDeclaredClasses())
+                        .noneMatch(type -> Modifier.isPublic(type.getModifiers())
+                                || Modifier.isProtected(type.getModifiers()))));
     }
 
     @Test
@@ -230,9 +331,7 @@ class P4C2AApiGateTest {
                 .collect(Collectors.toSet());
 
         assertAll(
-                () -> assertTrue(getDataOwners.contains(service)),
-                () -> assertTrue(getDataOwners.contains(gameTests)),
-                () -> assertTrue(reviewedAttachmentAccessors.containsAll(getDataOwners)),
+                () -> assertEquals(reviewedAttachmentAccessors, getDataOwners),
                 () -> assertEquals(Set.of(service, manaAttachments), setDataOwners),
                 () -> assertTrue(relativeFilesContaining(production, ".removeData(").isEmpty()),
                 () -> assertEquals(Set.of("MutationGeneration.java"), successorOwners),
@@ -252,6 +351,18 @@ class P4C2AApiGateTest {
                 .map(P4C2AApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         var holderAnnotation = holder.getAnnotation(GameTestHolder.class);
+        var manaHolder = load(
+                "com.yo1no.gramarye.magic.runtime.mana.ManaLifecycleGameTests");
+        var manaMethods = Arrays.stream(manaHolder.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(GameTest.class))
+                .toList();
+        var manaMethodNames = manaMethods.stream()
+                .map(method -> method.getName())
+                .collect(Collectors.toSet());
+        var manaSource = read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java"));
+        var totalCount = occurrences(allMain, "@GameTest(");
+        var manaCount = occurrences(manaSource, "@GameTest(");
 
         assertAll(
                 () -> assertTrue(Modifier.isPublic(holder.getModifiers())),
@@ -262,7 +373,22 @@ class P4C2AApiGateTest {
                                 && Modifier.isStatic(method.getModifiers()))),
                 () -> assertTrue(holderAnnotation != null
                         && holderAnnotation.value().equals(Gramarye.MOD_ID)),
-                () -> assertEquals(19, occurrences(allMain, "@GameTest(")));
+                () -> assertEquals(7, manaMethods.size()),
+                () -> assertTrue(manaMethods.stream().allMatch(method ->
+                        Modifier.isPublic(method.getModifiers())
+                                && Modifier.isStatic(method.getModifiers()))),
+                () -> assertEquals(Set.of(
+                                "newPlayerAbsentStateIsAvailableZero",
+                                "validAttachmentSerializesAndLoadsExactly",
+                                "malformedAttachmentRemainsUnavailableWithoutMutation",
+                                "deathCloneCopiesExactManaState",
+                                "nonDeathCloneCopiesExactManaState",
+                                "dimensionTravelKeepsSingleManaTruth",
+                                "duplicatePersistentManaTruthIsAbsent"),
+                        manaMethodNames),
+                () -> assertEquals(12, totalCount - manaCount),
+                () -> assertEquals(7, manaCount),
+                () -> assertEquals(19, totalCount));
     }
 
     @Test

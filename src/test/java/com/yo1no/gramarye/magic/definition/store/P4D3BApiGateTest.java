@@ -21,6 +21,8 @@ final class P4D3BApiGateTest {
     private static final Path PROBE_ROOT = PROJECT_ROOT.resolve("src/p4D3Probe/java");
     private static final Path GAME_TEST_ROOT = PROJECT_ROOT.resolve("src/p4D3GameTest/java");
     private static final Path MAIN_JAVA = PROJECT_ROOT.resolve("src/main/java");
+    private static final Path MANA_GAME_TEST_SOURCE = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java");
     private static final String HALT_CALL = "Runtime.getRuntime()." + "halt(0)";
 
     @Test
@@ -282,11 +284,15 @@ final class P4D3BApiGateTest {
             assertFalse(dedicated.contains(forbidden), () -> "D3-B bypass/later surface: " + forbidden);
         }
 
+        var totalGameTestCount = occurrences(production, "@GameTest(");
+        var manaGameTestCount = occurrences(read(MANA_GAME_TEST_SOURCE), "@GameTest(");
         assertAll(
                 () -> assertFalse(production.contains(HALT_CALL)),
                 () -> assertFalse(production.contains("P4D3ProbeMain")),
                 () -> assertFalse(production.contains("@GameTestHolder(\"gramarye_p4_d3\")")),
-                () -> assertEquals(19, occurrences(production, "@GameTest(")));
+                () -> assertEquals(12, totalGameTestCount - manaGameTestCount),
+                () -> assertEquals(7, manaGameTestCount),
+                () -> assertEquals(19, totalGameTestCount));
     }
 
     private static String namedTaskConfiguration(String build, String taskName) {

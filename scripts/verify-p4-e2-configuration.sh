@@ -36,6 +36,8 @@ TEST_PLAYER_ROOT="${REPOSITORY_ROOT}/src/test/java/com/yo1no/gramarye/magic/defi
 STORE_SERVICE="${STORE_ROOT}/SkillDefinitionStoreService.java"
 AUDIT_SERVICE="${STORE_ROOT}/SkillRetentionRootAuditService.java"
 PLAYER_SERVICE="${PLAYER_ROOT}/PlayerSkillAttachmentService.java"
+MANA_ATTACHMENTS="${MAIN_JAVA}/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java"
+MANA_GAME_TESTS="${MAIN_JAVA}/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java"
 RECOVERY_SERVICE="${SUBMISSION_ROOT}/SkillSubmissionRecoveryService.java"
 COORDINATOR="${STORE_ROOT}/P4E2OnlineReconciliationCoordinator.java"
 FACADE="${ROOT_PACKAGE}/P4E2QualificationFacade.java"
@@ -297,8 +299,41 @@ is_approved_p4e3_changed_path() {
     esac
 }
 
+is_approved_p6_s2_r3_changed_path() {
+    case "$1" in
+        docs/architecture/P5-A-server-runtime-event-kernel.md | \
+        scripts/verify-p4-c2-a-configuration.sh | \
+        scripts/verify-p4-c2-b-configuration.sh | \
+        scripts/verify-p4-d2-configuration.sh | \
+        scripts/verify-p4-d3-a-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachments.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_allowed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
+    is_approved_p6_s2_r3_changed_path "$1" && return 0
     case "$1" in
         scripts/verify-p4-c2-a-configuration.sh | \
         scripts/verify-p4-c2-b-configuration.sh | \
@@ -713,8 +748,12 @@ forbid_fixed "${STORE_ROOT}/P4E2OnlineReconciliationDependency.java" 'RecoverySt
     'the public dependency must not expose the coordinator recovery status'
 forbid_fixed "${RECOVERY_SERVICE}" 'recoveryStatus(' \
     'the recovery service must not retain a dead RecoveryStatus projection helper'
-require_only_owner '.setData(' "${PLAYER_SERVICE}" 1 \
-    'Attachment publication must retain its sole player-service owner'
+require_fixed_count "${PLAYER_SERVICE}" '.setData(' 1 \
+    'player-skill Attachment publication must retain one service write'
+require_fixed_count "${MANA_ATTACHMENTS}" '.setData(' 1 \
+    'mana Attachment access must retain one package-private write'
+[[ "$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '.setData(')" -eq 2 ]] \
+    || fail 'live Attachment setData escaped the exact two reviewed access owners'
 require_only_owner '.invalidateForReconciliation(' "${COORDINATOR}" 1 \
     'E2 index invalidation must have at most one exact coordinator callsite'
 require_fixed_count "${COORDINATOR}" \
@@ -975,13 +1014,24 @@ for verifier_marker in \
     require_fixed_count "${P4C2_FILE_VERIFIER}" "${verifier_marker}" 1 \
         "P4-C2 strict direct verifier/archive changed: ${verifier_marker}"
 done
-[[ "$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')" -eq 12 ]] \
-    || fail 'normal required GameTest inventory must remain exactly 12'
+total_game_test_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
+mana_game_test_count="$(LC_ALL=C grep -Fc -- '@GameTest(' "${MANA_GAME_TESTS}")"
+baseline_game_test_count=$((total_game_test_count - mana_game_test_count))
+[[ "${baseline_game_test_count}" -eq 12 ]] \
+    || fail 'historical P4 normal GameTest inventory must remain exactly 12'
+[[ "${mana_game_test_count}" -eq 7 ]] \
+    || fail 'P6-S2 mana GameTest inventory must remain exactly 7'
+[[ "${total_game_test_count}" -eq 19 ]] \
+    || fail 'combined production GameTest inventory must remain exactly 19'
 
 git diff --quiet HEAD -- \
     gradle.properties settings.gradle gradle \
-    docs/codex-spec docs/architecture src/main/resources src/test/resources \
+    docs/codex-spec src/main/resources src/test/resources \
     || fail 'P4-E2 must not change authority/resource/version truth'
+git diff --quiet HEAD -- \
+    docs/architecture \
+    ':(exclude)docs/architecture/P5-A-server-runtime-event-kernel.md' \
+    || fail 'P4-E2 changed architecture truth outside the exact P6-A1.2 amendment'
 [[ ! -e "${REPOSITORY_ROOT}/src/p4E2Probe" ]] \
     || fail 'P4-E2 must not add a probe source set'
 [[ ! -e "${REPOSITORY_ROOT}/src/p4E2GameTest" ]] \

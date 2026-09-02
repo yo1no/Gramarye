@@ -3,6 +3,7 @@ package com.yo1no.gramarye.magic.runtime.mana;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.Gramarye;
@@ -45,6 +46,7 @@ final class ManaBoundaryTest {
             "com/yo1no/gramarye/magic/definition/player");
     private static final List<Class<?>> PRODUCT_TYPES = List.of(
             ManaAccountAccess.class,
+            ManaAttachmentDefinitionBridge.class,
             ManaAttachmentSerializer.class,
             ManaAttachments.class,
             ManaAvailability.class,
@@ -66,7 +68,18 @@ final class ManaBoundaryTest {
 
     @Test
     void registrationAndPersistentSchemaAreExact() throws Exception {
-        var registration = code(MANA_MAIN.resolve("ManaAttachments.java"));
+        var playerRegistration = code(PLAYER_MAIN.resolve("PlayerSkillAttachments.java"));
+        var manaDefinition = code(MANA_MAIN.resolve("ManaAttachments.java"));
+        var bridge = code(MANA_MAIN.resolve("ManaAttachmentDefinitionBridge.java"));
+        var attachmentRegistryOwners = javaSources(MAIN_JAVA).stream()
+                .filter(path -> code(path).contains(
+                        "NeoForgeRegistries.Keys.ATTACHMENT_TYPES"))
+                .map(path -> MAIN_JAVA.relativize(path).toString().replace('\\', '/'))
+                .collect(Collectors.toSet());
+        var bridgeConsumers = javaSources(MAIN_JAVA).stream()
+                .filter(path -> code(path).contains("ManaAttachmentDefinitionBridge"))
+                .map(path -> MAIN_JAVA.relativize(path).toString().replace('\\', '/'))
+                .collect(Collectors.toSet());
         var idField = ManaAttachments.class.getDeclaredField("PLAYER_MANA_ID");
         assertTrue(idField.trySetAccessible());
         var id = (ResourceLocation) idField.get(null);
@@ -76,21 +89,58 @@ final class ManaBoundaryTest {
         var fields = Set.of(
                 ManaStateCodec.SCHEMA_VERSION_FIELD,
                 ManaStateCodec.BALANCE_FIELD);
+        var allMain = javaSources(MAIN_JAVA).stream()
+                .map(ManaBoundaryTest::code)
+                .collect(Collectors.joining("\n"));
+        var manaGameTests = code(MANA_MAIN.resolve("ManaLifecycleGameTests.java"));
+        var totalGameTests = occurrences(allMain, "@GameTest(");
+        var manaGameTestCount = occurrences(manaGameTests, "@GameTest(");
+        var baselineGameTests = totalGameTests - manaGameTestCount;
 
         assertAll(
                 () -> assertEquals(
                         ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, "player_mana"),
                         id),
                 () -> assertEquals("gramarye:player_mana", id.toString()),
-                () -> assertEquals(1, occurrences(registration, "event.register(")),
-                () -> assertEquals(1, occurrences(
-                        registration, "NeoForgeRegistries.Keys.ATTACHMENT_TYPES")),
-                () -> assertEquals(1, occurrences(registration, ".serialize(")),
-                () -> assertEquals(1, occurrences(registration, ".copyOnDeath()")),
-                () -> assertEquals(1, occurrences(registration, ".copyHandler(")),
-                () -> assertTrue(registration.contains(
+                () -> assertSame(id, ManaAttachmentDefinitionBridge.attachmentId()),
+                () -> assertSame(
+                        ManaAttachments.type(),
+                        ManaAttachmentDefinitionBridge.attachmentType()),
+                () -> assertEquals(
+                        Set.of("com/yo1no/gramarye/magic/definition/player/"
+                                + "PlayerSkillAttachments.java"),
+                        attachmentRegistryOwners),
+                () -> assertEquals(
+                        Set.of(
+                                "com/yo1no/gramarye/magic/definition/player/"
+                                        + "PlayerSkillAttachments.java",
+                                "com/yo1no/gramarye/magic/runtime/mana/"
+                                        + "ManaAttachmentDefinitionBridge.java"),
+                        bridgeConsumers),
+                () -> assertEquals(
+                        3, occurrences(playerRegistration, "ATTACHMENT_TYPES.register(")),
+                () -> assertEquals(2, occurrences(playerRegistration, "DeferredHolder<")),
+                () -> assertTrue(playerRegistration.contains(
+                        "ManaAttachmentDefinitionBridge.attachmentId().getPath()")),
+                () -> assertTrue(playerRegistration.contains(
+                        "ManaAttachmentDefinitionBridge::attachmentType")),
+                () -> assertEquals(0, occurrences(manaDefinition, ".register(")),
+                () -> assertFalse(manaDefinition.contains("RegisterEvent")),
+                () -> assertFalse(manaDefinition.contains("EventBusSubscriber")),
+                () -> assertFalse(manaDefinition.contains("SubscribeEvent")),
+                () -> assertFalse(manaDefinition.contains("NeoForgeRegistries")),
+                () -> assertFalse(manaDefinition.contains("DeferredRegister")),
+                () -> assertEquals(1, occurrences(manaDefinition, ".serialize(")),
+                () -> assertEquals(1, occurrences(manaDefinition, ".copyOnDeath()")),
+                () -> assertEquals(1, occurrences(manaDefinition, ".copyHandler(")),
+                () -> assertTrue(manaDefinition.contains(
                         "AttachmentType.<ManaState>builder(ManaState::freshDefault)")),
-                () -> assertFalse(registration.contains(".sync(")),
+                () -> assertFalse(manaDefinition.contains(".sync(")),
+                () -> assertFalse(bridge.contains(".register(")),
+                () -> assertFalse(bridge.contains(".getData(")),
+                () -> assertFalse(bridge.contains(".setData(")),
+                () -> assertFalse(bridge.contains("ServerPlayer")),
+                () -> assertFalse(bridge.contains("ManaState")),
                 () -> assertEquals(0, ManaStateCodec.CURRENT_SCHEMA_VERSION),
                 () -> assertEquals(1_000_000_000L, P6ManaBounds.MAX_MANA_VALUE),
                 () -> assertEquals(fields, minimum.getAllKeys()),
@@ -103,7 +153,10 @@ final class ManaBoundaryTest {
                 () -> assertEquals(0L, minimum.getLong(ManaStateCodec.BALANCE_FIELD)),
                 () -> assertEquals(
                         P6ManaBounds.MAX_MANA_VALUE,
-                        maximum.getLong(ManaStateCodec.BALANCE_FIELD)));
+                        maximum.getLong(ManaStateCodec.BALANCE_FIELD)),
+                () -> assertEquals(12, baselineGameTests),
+                () -> assertEquals(7, manaGameTestCount),
+                () -> assertEquals(19, totalGameTests));
     }
 
     @Test
@@ -122,7 +175,21 @@ final class ManaBoundaryTest {
         var playerDefinitionSource = javaSources(PLAYER_MAIN).stream()
                 .map(ManaBoundaryTest::code)
                 .collect(Collectors.joining("\n"));
-        var registration = code(MANA_MAIN.resolve("ManaAttachments.java"));
+        var playerStateSource = javaSources(PLAYER_MAIN).stream()
+                .filter(path -> !path.getFileName().toString()
+                        .equals("PlayerSkillAttachments.java"))
+                .map(ManaBoundaryTest::code)
+                .collect(Collectors.joining("\n"));
+        var manaDefinition = code(MANA_MAIN.resolve("ManaAttachments.java"));
+        var playerRegistration = code(PLAYER_MAIN.resolve("PlayerSkillAttachments.java"));
+        var playerManaRegistrationOwners = javaSources(PLAYER_MAIN).stream()
+                .filter(path -> {
+                    var source = code(path);
+                    return source.contains("ManaAttachmentDefinitionBridge")
+                            || source.contains("PLAYER_MANA");
+                })
+                .map(path -> path.getFileName().toString())
+                .collect(Collectors.toSet());
 
         assertAll(
                 () -> assertEquals(1, attachmentFields.size()),
@@ -130,12 +197,19 @@ final class ManaBoundaryTest {
                 () -> assertEquals("PLAYER_MANA", attachmentField.getName()),
                 () -> assertEquals(ManaState.class, generic.getActualTypeArguments()[0]),
                 () -> assertEquals(Set.of("ManaAttachments.java"), accessOwners),
-                () -> assertEquals(1, occurrences(registration, ".getData(")),
-                () -> assertEquals(1, occurrences(registration, ".setData(")),
-                () -> assertFalse(
-                        playerDefinitionSource.toLowerCase(java.util.Locale.ROOT)
-                                .contains("mana"),
-                        "player_skills must not acquire a mana field or second truth"));
+                () -> assertEquals(1, occurrences(manaDefinition, ".getData(")),
+                () -> assertEquals(1, occurrences(manaDefinition, ".setData(")),
+                () -> assertEquals(
+                        Set.of("PlayerSkillAttachments.java"),
+                        playerManaRegistrationOwners),
+                () -> assertFalse(playerRegistration.contains(".getData(")),
+                () -> assertFalse(playerRegistration.contains(".setData(")),
+                () -> assertFalse(playerDefinitionSource.contains("ManaState")),
+                () -> assertFalse(playerDefinitionSource.contains("ManaAttachmentSerializer")),
+                () -> assertFalse(playerDefinitionSource.toLowerCase(java.util.Locale.ROOT)
+                        .contains("balance")),
+                () -> assertFalse(playerStateSource.toLowerCase(java.util.Locale.ROOT)
+                        .contains("mana")));
     }
 
     @Test
@@ -146,13 +220,39 @@ final class ManaBoundaryTest {
                         + "(?:class|interface|record|enum)\\b");
         var protectedMember = Pattern.compile("(?m)^\\s*protected\\s+");
         var accountField = PlayerManaAccountAccess.class.getDeclaredField("player");
+        var publicProductTypes = PRODUCT_TYPES.stream()
+                .filter(type -> Modifier.isPublic(type.getModifiers())
+                        || Modifier.isProtected(type.getModifiers()))
+                .collect(Collectors.toSet());
+        var bridge = ManaAttachmentDefinitionBridge.class;
+        var bridgeConstructors = bridge.getDeclaredConstructors();
+        var bridgeMethods = bridge.getDeclaredMethods();
+        var attachmentId = bridge.getDeclaredMethod("attachmentId");
+        var attachmentType = bridge.getDeclaredMethod("attachmentType");
 
         assertAll(
-                () -> assertFalse(publicTopLevel.matcher(productSource).find()),
+                () -> assertEquals(1L, publicTopLevel.matcher(productSource).results().count()),
                 () -> assertFalse(protectedMember.matcher(productSource).find()),
-                () -> assertTrue(PRODUCT_TYPES.stream().noneMatch(type ->
-                        Modifier.isPublic(type.getModifiers())
-                                || Modifier.isProtected(type.getModifiers()))),
+                () -> assertEquals(Set.of(bridge), publicProductTypes),
+                () -> assertTrue(Modifier.isPublic(bridge.getModifiers())),
+                () -> assertTrue(Modifier.isFinal(bridge.getModifiers())),
+                () -> assertEquals(0, bridge.getDeclaredFields().length),
+                () -> assertEquals(1, bridgeConstructors.length),
+                () -> assertTrue(Modifier.isPrivate(bridgeConstructors[0].getModifiers())),
+                () -> assertEquals(2, bridgeMethods.length),
+                () -> assertEquals(
+                        Set.of("attachmentId", "attachmentType"),
+                        Arrays.stream(bridgeMethods)
+                                .map(method -> method.getName())
+                                .collect(Collectors.toSet())),
+                () -> assertTrue(Arrays.stream(bridgeMethods).allMatch(method ->
+                        Modifier.isPublic(method.getModifiers())
+                                && Modifier.isStatic(method.getModifiers()))),
+                () -> assertEquals(ResourceLocation.class, attachmentId.getReturnType()),
+                () -> assertEquals(AttachmentType.class, attachmentType.getReturnType()),
+                () -> assertEquals(
+                        "net.neoforged.neoforge.attachment.AttachmentType<?>",
+                        attachmentType.getGenericReturnType().getTypeName()),
                 () -> assertFalse(Modifier.isPublic(ManaAccountAccess.class.getModifiers())),
                 () -> assertFalse(
                         Modifier.isPublic(PlayerManaAccountAccess.class.getModifiers())),

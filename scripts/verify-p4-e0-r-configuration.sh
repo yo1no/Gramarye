@@ -370,6 +370,38 @@ is_approved_p4e3_changed_path() {
     esac
 }
 
+is_approved_p6_s2_r3_changed_path() {
+    case "$1" in
+        docs/architecture/P5-A-server-runtime-event-kernel.md | \
+        scripts/verify-p4-c2-a-configuration.sh | \
+        scripts/verify-p4-c2-b-configuration.sh | \
+        scripts/verify-p4-d2-configuration.sh | \
+        scripts/verify-p4-d3-a-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachments.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_e1a_changed_path() {
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
@@ -473,6 +505,7 @@ is_reviewed_e1a_changed_path() {
 
 is_reviewed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
+    is_approved_p6_s2_r3_changed_path "$1" && return 0
     case "$1" in
         build.gradle | \
         scripts/verify-p4-b2-b-configuration.sh | \

@@ -111,6 +111,24 @@ require_fixed_count() {
     fi
 }
 
+require_ere_count() {
+    local file="$1"
+    local pattern="$2"
+    local expected="$3"
+    local message="$4"
+    local actual=''
+    local status=0
+    actual="$(LC_ALL=C grep -Ec -- "${pattern}" "${file}")" || status=$?
+    case "${status}" in
+        0) ;;
+        1) actual=0 ;;
+        *) grep_failed "${file}" "${status}" ;;
+    esac
+    if [[ "${actual}" -ne "${expected}" ]]; then
+        fail "${message} (expected ${expected}, found ${actual})"
+    fi
+}
+
 require_regular_file() {
     local file="$1"
     local message="$2"
@@ -156,11 +174,13 @@ forbid_fixed_outside() {
     local allowed_two="${4:-}"
     local allowed_three="${5:-}"
     local message="$6"
+    local allowed_four="${7:-}"
     local file=''
     while IFS= read -r -d '' file; do
         if [[ "${file}" == "${allowed_one}" \
                 || ( -n "${allowed_two}" && "${file}" == "${allowed_two}" ) \
-                || ( -n "${allowed_three}" && "${file}" == "${allowed_three}" ) ]]; then
+                || ( -n "${allowed_three}" && "${file}" == "${allowed_three}" ) \
+                || ( -n "${allowed_four}" && "${file}" == "${allowed_four}" ) ]]; then
             continue
         fi
         forbid_fixed "${file}" "${needle}" "${message} (${file})"
@@ -191,9 +211,14 @@ verify_exact_sources_and_registration() {
     local package_path='src/main/java/com/yo1no/gramarye/magic/definition/player'
     local registration="${package_path}/PlayerSkillAttachments.java"
     local service="${package_path}/PlayerSkillAttachmentService.java"
+    local source_observation="${package_path}/PlayerSkillAttachmentSourceObservation.java"
     local admission_source='src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSource.java'
     local bound_source='src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.java'
     local game_tests="${package_path}/PlayerSkillAttachmentGameTests.java"
+    local mana_path='src/main/java/com/yo1no/gramarye/magic/runtime/mana'
+    local mana_definition="${mana_path}/ManaAttachments.java"
+    local mana_bridge="${mana_path}/ManaAttachmentDefinitionBridge.java"
+    local mana_game_tests="${mana_path}/ManaLifecycleGameTests.java"
     local serialize_line=''
     local death_line=''
 
@@ -218,6 +243,12 @@ verify_exact_sources_and_registration() {
         'P4-E1-A.1 sealed Attachment admission source is missing'
     require_regular_file "${bound_source}" \
         'P4-E1-A.1 bound Attachment admission source is missing'
+    require_regular_file "${mana_definition}" \
+        'P6-S2 mana Attachment definition owner is missing'
+    require_regular_file "${mana_bridge}" \
+        'P6-S2-R3 public mana Attachment definition bridge is missing'
+    require_regular_file "${mana_game_tests}" \
+        'P6-S2 mana lifecycle GameTest holder is missing'
     require_fixed "${admission_source}" \
         'public sealed abstract class PlayerSkillAttachmentAdmissionSource<I, P>' \
         'P4-E1-A.1 sealed Attachment admission declaration drifted'
@@ -248,7 +279,7 @@ verify_exact_sources_and_registration() {
     require_fixed_count "${registration}" '.serialize(PlayerSkillAttachmentSerializer.INSTANCE)' 1 \
         'P4-C2-A registration must wire the C1 serializer exactly once'
     require_fixed_count "${registration}" '.copyOnDeath()' 1 \
-        'P4-C2-A registration must enable copyOnDeath exactly once'
+        'P4-C2-A player-skills definition must enable copyOnDeath exactly once'
     serialize_line="$(LC_ALL=C grep -Fn -- '.serialize(PlayerSkillAttachmentSerializer.INSTANCE)' "${registration}")"
     death_line="$(LC_ALL=C grep -Fn -- '.copyOnDeath()' "${registration}")"
     serialize_line="${serialize_line%%:*}"
@@ -260,25 +291,101 @@ verify_exact_sources_and_registration() {
         'P4-C2-A permanent Attachment must remain server-only and unsynchronized'
 
     for literal in \
-        'AttachmentType' \
+        'public final class ManaAttachmentDefinitionBridge' \
+        'public static ResourceLocation attachmentId()' \
+        'public static AttachmentType<?> attachmentType()'; do
+        require_fixed_count "${mana_bridge}" "${literal}" 1 \
+            "P6-S2-R3 mana definition bridge lost exact public surface ${literal}"
+    done
+    require_fixed_count "${mana_bridge}" 'private ManaAttachmentDefinitionBridge()' 1 \
+        'P6-S2-R3 mana definition bridge must have one private constructor'
+    require_ere_count "${mana_bridge}" '^[[:space:]]*public[[:space:]]' 3 \
+        'P6-S2-R3 mana definition bridge must expose only its class and two accessors'
+    require_ere_count "${mana_bridge}" \
+        '^[[:space:]]+public static (ResourceLocation attachmentId|AttachmentType<\?> attachmentType)\(\)[[:space:]]*\{' \
+        2 'P6-S2-R3 mana definition bridge public accessor declarations must be exact'
+    require_ere_count "${mana_bridge}" '^[[:space:]]*protected[[:space:]]' 0 \
+        'P6-S2-R3 mana definition bridge must expose no protected member'
+    require_fixed_count \
+        "${registration}" 'ManaAttachmentDefinitionBridge.attachmentId().getPath()' 1 \
+        'P6-S2-R3 player_mana ID must enter the sole DeferredRegister exactly once'
+    require_fixed_count \
+        "${registration}" 'ManaAttachmentDefinitionBridge::attachmentType' 1 \
+        'P6-S2-R3 player_mana definition must enter the sole DeferredRegister exactly once'
+    require_fixed_count "${registration}" 'DeferredHolder<' 2 \
+        'P6-S2-R3 sole registration owner must contain exactly two Attachment holders'
+    require_fixed_count "${registration}" 'ATTACHMENT_TYPES.register(' 3 \
+        'P6-S2-R3 sole registration owner must contain two entries and one bus registration'
+    require_fixed_count "${mana_definition}" '"player_mana"' 1 \
+        'P6-S2 mana definition must own the stable player_mana path exactly once'
+    require_fixed_count \
+        "${mana_definition}" '.serialize(ManaAttachmentSerializer.INSTANCE)' 1 \
+        'P6-S2 mana definition must wire its serializer exactly once'
+    require_fixed_count "${mana_definition}" '.copyOnDeath()' 1 \
+        'P6-S2 mana definition must enable copyOnDeath exactly once'
+    require_fixed_count "${mana_definition}" '.copyHandler(ManaLifecycle::copy)' 1 \
+        'P6-S2 mana definition must wire the exact custom copy handler once'
+
+    forbid_fixed_outside \
+        "${PRODUCTION_SOURCE_LIST}" 'AttachmentType' "${registration}" "${mana_definition}" \
+        "${mana_bridge}" 'Attachment definition surface escaped the exact three-file allowlist'
+    for literal in \
         'DeferredRegister<AttachmentType<?>>' \
         'DeferredHolder' \
         'NeoForgeRegistries.Keys.ATTACHMENT_TYPES' \
-        '.copyOnDeath()'; do
+        'ATTACHMENT_TYPES.register('; do
         forbid_fixed_outside \
             "${PRODUCTION_SOURCE_LIST}" "${literal}" "${registration}" '' '' \
-            'Attachment registration surface escaped its unique owner'
+            'Attachment registry mutation surface escaped its unique owner'
+    done
+    forbid_fixed_outside \
+        "${PRODUCTION_SOURCE_LIST}" '.copyOnDeath()' "${registration}" \
+        "${mana_definition}" '' \
+        'Attachment copyOnDeath definition escaped its exact two-file allowlist'
+    forbid_fixed_outside \
+        "${PRODUCTION_SOURCE_LIST}" '.copyHandler(' "${mana_definition}" '' '' \
+        'Attachment copyHandler definition escaped the mana definition owner'
+    forbid_fixed_in_file_list \
+        "${PRODUCTION_SOURCE_LIST}" 'RegisterEvent' \
+        'legacy direct RegisterEvent registry mutation must remain absent'
+    forbid_fixed_in_file_list \
+        "${PRODUCTION_SOURCE_LIST}" 'event.register(' \
+        'legacy direct event.register registry mutation must remain absent'
+    for literal in \
+        'DeferredRegister<AttachmentType<?>>' \
+        'DeferredHolder' \
+        'NeoForgeRegistries.Keys.ATTACHMENT_TYPES' \
+        'ATTACHMENT_TYPES.register(' \
+        'RegisterEvent' \
+        'event.register('; do
+        forbid_fixed "${mana_definition}" "${literal}" \
+            "ManaAttachments must remain definition/access-only, not registry mutation (${literal})"
+        forbid_fixed "${mana_bridge}" "${literal}" \
+            "ManaAttachmentDefinitionBridge must remain mutation-free (${literal})"
     done
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" '"player_skills"' "${registration}" "${game_tests}" '' \
         'stable player skill Attachment ID escaped registration/tests'
     forbid_fixed_outside \
-        "${PRODUCTION_SOURCE_LIST}" '.getData(' "${service}" "${game_tests}" \
-        "${package_path}/PlayerSkillAttachmentSourceObservation.java" \
-        'player Attachment getData escaped the controlled service/GameTest seam'
+        "${PRODUCTION_SOURCE_LIST}" '"player_mana"' "${mana_definition}" \
+        "${mana_game_tests}" '' \
+        'stable player mana Attachment ID escaped definition/tests'
+    for owner in "${service}" "${game_tests}" "${source_observation}" "${mana_definition}"; do
+        require_fixed "${owner}" '.getData(' \
+            "reviewed Attachment getData owner lost its access (${owner})"
+    done
     forbid_fixed_outside \
-        "${PRODUCTION_SOURCE_LIST}" '.setData(' "${service}" '' '' \
-        'player Attachment setData escaped the controlled service'
+        "${PRODUCTION_SOURCE_LIST}" '.getData(' "${service}" "${game_tests}" \
+        "${source_observation}" \
+        'player Attachment getData escaped the exact four-file access allowlist' \
+        "${mana_definition}"
+    require_fixed "${service}" '.setData(' \
+        'player skill Attachment service lost its controlled setData access'
+    require_fixed "${mana_definition}" '.setData(' \
+        'mana Attachment definition/access owner lost its controlled setData access'
+    forbid_fixed_outside \
+        "${PRODUCTION_SOURCE_LIST}" '.setData(' "${service}" "${mana_definition}" '' \
+        'Attachment setData escaped the exact two-file access allowlist'
     forbid_fixed_in_file_list \
         "${PRODUCTION_SOURCE_LIST}" '.removeData(' \
         'production must never remove the permanent player skill Attachment entry'
@@ -286,6 +393,9 @@ verify_exact_sources_and_registration() {
 
 verify_phase_bounds_and_normal_tests() {
     local game_tests='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java'
+    local mana_game_tests='src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java'
+    local baseline_count=''
+    local mana_count=''
     local normal_count=''
 
     for literal in \
@@ -326,13 +436,34 @@ verify_phase_bounds_and_normal_tests() {
         'P4-C2-A generation must remain int/Integer.MAX_VALUE'
 
     normal_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
-    if [[ "${normal_count}" -ne 12 ]]; then
-        fail "P4-C2-A plus reviewed P4-D3-A normal GameTest count must be twelve (found ${normal_count})"
+    mana_count="$(count_fixed_in_file_list <(printf '%s\0' "${mana_game_tests}") '@GameTest(')"
+    baseline_count=$((normal_count - mana_count))
+    if [[ "${baseline_count}" -ne 12 ]]; then
+        fail "P4-C2-A reviewed baseline GameTest count must be twelve (found ${baseline_count})"
+    fi
+    if [[ "${mana_count}" -ne 7 ]]; then
+        fail "P6-S2 mana lifecycle GameTest addition must be seven (found ${mana_count})"
+    fi
+    if [[ "${normal_count}" -ne 19 ]]; then
+        fail "P4-C2-A baseline twelve plus P6-S2 seven GameTests must total nineteen (found ${normal_count})"
     fi
     require_fixed_count "${game_tests}" '@GameTest(' 2 \
         'P4-C2-A normal holder must contain exactly two GameTests'
     require_fixed "${game_tests}" '@GameTestHolder(Gramarye.MOD_ID)' \
         'P4-C2-A normal holder lost the production GameTest namespace'
+    require_fixed "${mana_game_tests}" '@GameTestHolder(Gramarye.MOD_ID)' \
+        'P6-S2 mana lifecycle holder lost the production GameTest namespace'
+    for test_id in \
+        newPlayerAbsentStateIsAvailableZero \
+        validAttachmentSerializesAndLoadsExactly \
+        malformedAttachmentRemainsUnavailableWithoutMutation \
+        deathCloneCopiesExactManaState \
+        nonDeathCloneCopiesExactManaState \
+        dimensionTravelKeepsSingleManaTruth \
+        duplicatePersistentManaTruthIsAbsent; do
+        require_fixed_count "${mana_game_tests}" "public static void ${test_id}(" 1 \
+            "P6-S2 mana lifecycle GameTest ID changed or disappeared: ${test_id}"
+    done
 
     require_regular_file \
         'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
@@ -421,7 +552,8 @@ verify_production_jar() {
             'com/yo1no/gramarye/magic/definition/store/P4E1BoundPlayerSkillAttachmentAdmissionSource.class' \
             'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$OpaqueAdmissionSource.class' \
             'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditAdmitted.class' \
-            'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditSink.class'; do
+            'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditSink.class' \
+            'com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.class'; do
             require_fixed "${JAR_LISTING}" "${class_path}" \
                 "P4-E1-A.1 production JAR lacks reviewed class ${class_path}"
         done

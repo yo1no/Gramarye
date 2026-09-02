@@ -35,6 +35,8 @@ final class P4E1B2BApiGateTest {
     private static final Path MAIN_JAVA = PROJECT_ROOT.resolve("src/main/java");
     private static final Path STORE_ROOT = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/magic/definition/store");
+    private static final Path MANA_GAME_TEST_SOURCE = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java");
 
     @Test
     void exactTopLevelsHaveOnlyTheReviewedVisibilityAndConstruction() {
@@ -358,6 +360,9 @@ final class P4E1B2BApiGateTest {
                 + Files.readString(STORE_ROOT.resolve("P4E1FinalFreshness.java"))
                 + Files.readString(STORE_ROOT.resolve("P4E1CompleteRootHandoff.java"));
         var allProduction = javaSources(MAIN_JAVA);
+        var totalGameTestCount = occurrences(allProduction, "@GameTest(");
+        var manaGameTestCount = occurrences(
+                Files.readString(MANA_GAME_TEST_SOURCE), "@GameTest(");
 
         assertTrue(service.contains(
                 "IdentityHashMap<MinecraftServer, IndexSlot> index = new IdentityHashMap<>()"));
@@ -429,7 +434,9 @@ final class P4E1B2BApiGateTest {
         assertEquals(1, occurrences(
                 Files.readString(STORE_ROOT.resolve("SkillDefinitionStoreService.java")),
                 "new SkillRetentionRootAuditService("));
-        assertEquals(19, occurrences(allProduction, "@GameTest("));
+        assertEquals(12, totalGameTestCount - manaGameTestCount);
+        assertEquals(7, manaGameTestCount);
+        assertEquals(19, totalGameTestCount);
     }
 
     @Test
