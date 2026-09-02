@@ -492,6 +492,46 @@ is_reviewed_d3a_production_path() {
     esac
 }
 
+is_approved_p6_s3_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/DamageEffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectCommitPlan.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionEngine.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionGuard.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectRequest.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectResolution.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectStep.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectStepOutcome.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectTrace.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/P6EffectBounds.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/P6ExecutionInvariantException.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPlan.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionEngine.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionGuard.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectRequest.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectResolution.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectStep.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectStepOutcome.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectTrace.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/P6EffectBounds.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/P6ExecutionInvariantException.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionExecutorRegistry.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionInvocation.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionEngine.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 verify_change_boundary() {
     local changed=''
     local untracked=''
@@ -505,6 +545,7 @@ verify_change_boundary() {
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
         is_reviewed_d3a_production_path "${path}" \
+            || is_approved_p6_s3_production_path "${path}" \
             || fail "production Java escaped exact reviewed D3-A/E1-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
@@ -515,6 +556,7 @@ verify_change_boundary() {
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
         is_reviewed_d3a_production_path "${path}" \
+            || is_approved_p6_s3_production_path "${path}" \
             || fail "untracked production path escaped exact reviewed D3-A/E1-A allowlist: ${path}"
     done <<< "${untracked}"
 }

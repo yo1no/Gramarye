@@ -151,9 +151,134 @@ is_approved_p6_s2_r3_changed_path() {
     esac
 }
 
+is_approved_p6_s3_relocation_deletion_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/DamageEffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectCommitPlan.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionEngine.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionGuard.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectRequest.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectResolution.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectStep.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectStepOutcome.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectTrace.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/P6EffectBounds.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/P6ExecutionInvariantException.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/DamageEffectCommitPortTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/DamageEffectRequestTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/DamageEffectResolverTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectCommitPlanTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectEngineTestDoubles.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionEngineFailureTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionEngineSuccessTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionGuardTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionResultTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectSemanticBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectStepOutcomeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectTestFixtures.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectTraceTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/P6EffectVocabularyTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p6_s3_changed_path() {
+    case "$1" in
+        scripts/verify-p4-c2-b-configuration.sh | \
+        scripts/verify-p4-d3-a-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/DamageEffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectCommitPlan.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionEngine.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionGuard.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectRequest.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectResolution.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectStep.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectStepOutcome.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/EffectTrace.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/P6EffectBounds.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/effect/P6ExecutionInvariantException.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPlan.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionEngine.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionGuard.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectRequest.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectResolution.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectStep.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectStepOutcome.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectTrace.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/P6EffectBounds.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/P6ExecutionInvariantException.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionExecutorRegistry.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionInvocation.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionEngine.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/DamageEffectCommitPortTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/DamageEffectRequestTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/DamageEffectResolverTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectCommitPlanTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectEngineTestDoubles.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionEngineFailureTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionEngineSuccessTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionGuardTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectExecutionResultTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectSemanticBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectStepOutcomeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectTestFixtures.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/EffectTraceTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/effect/P6EffectVocabularyTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPortTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectRequestTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectResolverTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPlanTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectEngineTestDoubles.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionEngineFailureTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionEngineSuccessTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionGuardTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionResultTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectSemanticBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectStepOutcomeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectTestFixtures.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectTraceTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/P6EffectVocabularyTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionExecutorRegistryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionExecutorTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionPreDebitTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionDebitTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionOutcomeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionCompensationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionThrowableTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionTraceTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionResultTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/P6S3BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionTransactionTestFixtures.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_allowed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
+    is_approved_p6_s3_changed_path "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \
@@ -293,6 +418,11 @@ verify_changed_paths() {
             is_allowed_changed_path "$path" \
                 || fail "changed path is outside the exact E1-A allowlist: $path"
             candidate="$REPOSITORY_ROOT/$path"
+            if is_approved_p6_s3_relocation_deletion_path "$path"; then
+                [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+                    || fail "approved P6-S1 relocation source still exists: $path"
+                continue
+            fi
             [ -f "$candidate" ] \
                 || fail "allowed E1-A path is missing or not a regular file: $path"
             [ ! -L "$candidate" ] \

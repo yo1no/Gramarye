@@ -42,8 +42,65 @@ final class ManaBoundaryTest {
     private static final Path MAIN_JAVA = PROJECT_ROOT.resolve("src/main/java");
     private static final Path MANA_MAIN = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/magic/runtime/mana");
+    private static final Path EFFECT_MAIN = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/magic/runtime/effect");
+    private static final Path TEST_JAVA = PROJECT_ROOT.resolve("src/test/java");
+    private static final Path MANA_TEST = TEST_JAVA.resolve(
+            "com/yo1no/gramarye/magic/runtime/mana");
+    private static final Path EFFECT_TEST = TEST_JAVA.resolve(
+            "com/yo1no/gramarye/magic/runtime/effect");
     private static final Path PLAYER_MAIN = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/magic/definition/player");
+    private static final Pattern TEST_METHOD = Pattern.compile(
+            "(?m)^\\s*@Test\\s*\\R\\s*void\\s+"
+                    + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(");
+    private static final List<String> S1_PRODUCTION_FILE_NAMES = List.of(
+            "DamageEffectCommitPort.java",
+            "EffectCommitPlan.java",
+            "EffectExecutionEngine.java",
+            "EffectExecutionGuard.java",
+            "EffectExecutionResult.java",
+            "EffectRequest.java",
+            "EffectResolution.java",
+            "EffectStep.java",
+            "EffectStepOutcome.java",
+            "EffectTrace.java",
+            "P6EffectBounds.java",
+            "P6ExecutionInvariantException.java");
+    private static final List<String> S1_TEST_FILE_NAMES = List.of(
+            "DamageEffectCommitPortTest.java",
+            "DamageEffectRequestTest.java",
+            "DamageEffectResolverTest.java",
+            "EffectCommitPlanTest.java",
+            "EffectEngineTestDoubles.java",
+            "EffectExecutionEngineFailureTest.java",
+            "EffectExecutionEngineSuccessTest.java",
+            "EffectExecutionGuardTest.java",
+            "EffectExecutionResultTest.java",
+            "EffectSemanticBoundaryTest.java",
+            "EffectStepOutcomeTest.java",
+            "EffectTestFixtures.java",
+            "EffectTraceTest.java",
+            "P6EffectVocabularyTest.java");
+    private static final List<String> S2_PRODUCT_FILE_NAMES = List.of(
+            "ManaAccountAccess.java",
+            "ManaAttachmentDefinitionBridge.java",
+            "ManaAttachmentSerializer.java",
+            "ManaAttachments.java",
+            "ManaAvailability.java",
+            "ManaDecodeFailure.java",
+            "ManaLifecycle.java",
+            "ManaMutationBudget.java",
+            "ManaOperationKind.java",
+            "ManaReason.java",
+            "ManaReceipt.java",
+            "ManaRejectReason.java",
+            "ManaState.java",
+            "ManaStateCodec.java",
+            "ManaTransactionResult.java",
+            "ManaTransactionService.java",
+            "P6ManaBounds.java",
+            "PlayerManaAccountAccess.java");
     private static final List<Class<?>> PRODUCT_TYPES = List.of(
             ManaAccountAccess.class,
             ManaAttachmentDefinitionBridge.class,
@@ -331,7 +388,7 @@ final class ManaBoundaryTest {
     @Test
     void noAsyncRandomMapJournalReservationRetryOrCrossTickStateExists()
             throws Exception {
-        var source = productSource();
+        var source = s2ProductSource();
         var forbiddenFragments = List.of(
                 "java.lang.Thread",
                 "new Thread(",
@@ -403,19 +460,61 @@ final class ManaBoundaryTest {
                 "src/main/java/com/yo1no/gramarye/Gramarye.java",
                 ":(glob)src/main/java/com/yo1no/gramarye/P5*.java",
                 "src/main/java/com/yo1no/gramarye/SkillRuntimeService.java",
-                ":(glob)src/test/java/com/yo1no/gramarye/P5*.java",
-                "src/main/java/com/yo1no/gramarye/magic/runtime/effect",
-                "src/test/java/com/yo1no/gramarye/magic/runtime/effect"));
+                ":(glob)src/test/java/com/yo1no/gramarye/P5*.java"));
         var process = new ProcessBuilder(command)
                 .directory(PROJECT_ROOT.toFile())
                 .redirectErrorStream(true)
                 .start();
         var output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         var exit = process.waitFor();
+        var relocatedProduction = S1_PRODUCTION_FILE_NAMES.stream()
+                .map(MANA_MAIN::resolve)
+                .toList();
+        var relocatedTests = S1_TEST_FILE_NAMES.stream()
+                .map(MANA_TEST::resolve)
+                .toList();
+        var productionCopies = javaSources(MAIN_JAVA).stream()
+                .filter(path -> S1_PRODUCTION_FILE_NAMES.contains(
+                        path.getFileName().toString()))
+                .collect(Collectors.toUnmodifiableSet());
+        var testCopies = javaSources(TEST_JAVA).stream()
+                .filter(path -> S1_TEST_FILE_NAMES.contains(
+                        path.getFileName().toString()))
+                .collect(Collectors.toUnmodifiableSet());
+        var relocatedTestCoordinates = relocatedTests.stream()
+                .flatMap(path -> testCoordinates(
+                        path.getFileName().toString(), readSource(path)).stream())
+                .collect(Collectors.toUnmodifiableSet());
+        var baselineTestCoordinates = S1_TEST_FILE_NAMES.stream()
+                .flatMap(fileName -> testCoordinates(
+                        fileName, baselineS1TestSource(fileName)).stream())
+                .collect(Collectors.toUnmodifiableSet());
         assertAll(
                 () -> assertEquals(0, exit, () -> "git continuity check failed: " + output),
                 () -> assertTrue(output.isBlank(),
-                        () -> "P5/P6-S1 source drift: " + output));
+                        () -> "P5 source drift: " + output),
+                () -> assertEquals(12, relocatedProduction.size()),
+                () -> assertTrue(relocatedProduction.stream().allMatch(Files::isRegularFile)),
+                () -> assertEquals(Set.copyOf(relocatedProduction), productionCopies),
+                () -> assertTrue(S1_PRODUCTION_FILE_NAMES.stream()
+                        .map(EFFECT_MAIN::resolve)
+                        .noneMatch(Files::exists)),
+                () -> assertTrue(!Files.exists(EFFECT_MAIN)
+                        || javaSources(EFFECT_MAIN).isEmpty()),
+                () -> assertEquals(14, relocatedTests.size()),
+                () -> assertTrue(relocatedTests.stream().allMatch(Files::isRegularFile)),
+                () -> assertEquals(Set.copyOf(relocatedTests), testCopies),
+                () -> assertTrue(S1_TEST_FILE_NAMES.stream()
+                        .map(EFFECT_TEST::resolve)
+                        .noneMatch(Files::exists)),
+                () -> assertTrue(!Files.exists(EFFECT_TEST)
+                        || javaSources(EFFECT_TEST).isEmpty()),
+                () -> assertTrue(relocatedProduction.stream().allMatch(
+                        ManaBoundaryTest::usesManaPackage)),
+                () -> assertTrue(relocatedTests.stream().allMatch(
+                        ManaBoundaryTest::usesManaPackage)),
+                () -> assertEquals(91, baselineTestCoordinates.size()),
+                () -> assertEquals(baselineTestCoordinates, relocatedTestCoordinates));
     }
 
     private static void assertGuardPrecedes(String section, String... accesses) {
@@ -433,6 +532,61 @@ final class ManaBoundaryTest {
                         .equals("ManaLifecycleGameTests.java"))
                 .map(ManaBoundaryTest::code)
                 .collect(Collectors.joining("\n"));
+    }
+
+    private static String s2ProductSource() {
+        return S2_PRODUCT_FILE_NAMES.stream()
+                .map(MANA_MAIN::resolve)
+                .map(ManaBoundaryTest::code)
+                .collect(Collectors.joining("\n"));
+    }
+
+    private static boolean usesManaPackage(Path path) {
+        try {
+            return Files.readString(path).startsWith(
+                    "package com.yo1no.gramarye.magic.runtime.mana;");
+        } catch (IOException exception) {
+            throw new AssertionError("unable to inspect " + path, exception);
+        }
+    }
+
+    private static String readSource(Path path) {
+        try {
+            return Files.readString(path);
+        } catch (IOException exception) {
+            throw new AssertionError("unable to inspect " + path, exception);
+        }
+    }
+
+    private static Set<String> testCoordinates(String fileName, String source) {
+        return TEST_METHOD.matcher(source).results()
+                .map(result -> fileName + "#" + result.group(1))
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    private static String baselineS1TestSource(String fileName) {
+        var path = "src/test/java/com/yo1no/gramarye/magic/runtime/effect/" + fileName;
+        try {
+            var process = new ProcessBuilder(
+                    "git", "show", P6_S1_BASE + ":" + path)
+                    .directory(PROJECT_ROOT.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            var output = new String(
+                    process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            var exit = process.waitFor();
+            if (exit != 0) {
+                throw new AssertionError("unable to read baseline S1 test: " + path
+                        + "\n" + output);
+            }
+            return output;
+        } catch (IOException exception) {
+            throw new AssertionError("unable to read baseline S1 test: " + path, exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("interrupted while reading baseline S1 test: " + path,
+                    exception);
+        }
     }
 
     private static List<Path> javaSources(Path root) throws IOException {
