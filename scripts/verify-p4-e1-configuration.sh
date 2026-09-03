@@ -275,10 +275,33 @@ is_approved_p6_s3_changed_path() {
     esac
 }
 
+is_approved_p6_s4_r1_changed_path() {
+    case "$1" in
+        scripts/verify-p4-c2-b-configuration.sh | scripts/verify-p4-d3-a-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java | \
+        src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
+        src/main/java/com/yo1no/gramarye/P6RuntimeExecutionCapability.java | \
+        src/main/java/com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/P6RuntimeExecutionBridge.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java | \
+        src/test/java/com/yo1no/gramarye/P6RuntimeExecutionCapabilityTest.java | \
+        src/test/java/com/yo1no/gramarye/P6RuntimeExecutionAdapterTest.java | \
+        src/test/java/com/yo1no/gramarye/P6S4BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/P6RuntimeExecutionBridgeTest.java)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 is_allowed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
     is_approved_p6_s3_changed_path "$1" && return 0
+    is_approved_p6_s4_r1_changed_path "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \

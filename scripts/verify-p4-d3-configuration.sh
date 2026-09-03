@@ -375,6 +375,21 @@ is_approved_p6_s3_production_path() {
     esac
 }
 
+is_approved_p6_s4_r1_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java | \
+        src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
+        src/main/java/com/yo1no/gramarye/P6RuntimeExecutionCapability.java | \
+        src/main/java/com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/P6RuntimeExecutionBridge.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 verify_production_no_diff() {
     local changed=''
     local untracked=''
@@ -389,6 +404,7 @@ verify_production_no_diff() {
         [[ -z "${path}" ]] && continue
         is_reviewed_e1a_production_path "${path}" \
             || is_approved_p6_s3_production_path "${path}" \
+            || is_approved_p6_s4_r1_production_path "${path}" \
             || fail "production Java escaped exact reviewed E1-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
@@ -400,6 +416,7 @@ verify_production_no_diff() {
         [[ -z "${path}" ]] && continue
         is_reviewed_e1a_production_path "${path}" \
             || is_approved_p6_s3_production_path "${path}" \
+            || is_approved_p6_s4_r1_production_path "${path}" \
             || fail "untracked production path escaped exact reviewed E1-A allowlist: ${path}"
     done <<< "${untracked}"
 }

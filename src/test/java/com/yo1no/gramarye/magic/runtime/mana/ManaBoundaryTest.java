@@ -271,7 +271,7 @@ final class ManaBoundaryTest {
 
     @Test
     void productApiIsPackagePrivateAndAccountHandleIsNotPublic() throws Exception {
-        var productSource = productSource();
+        var productSource = s2ProductSource();
         var publicTopLevel = Pattern.compile(
                 "(?m)^public\\s+(?:(?:final|sealed|non-sealed|abstract)\\s+)*"
                         + "(?:class|interface|record|enum)\\b");
@@ -467,6 +467,9 @@ final class ManaBoundaryTest {
                 .start();
         var output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         var exit = process.waitFor();
+        var exactS4P5Changes = output.lines()
+                .filter(line -> !line.isBlank())
+                .collect(Collectors.toUnmodifiableSet());
         var relocatedProduction = S1_PRODUCTION_FILE_NAMES.stream()
                 .map(MANA_MAIN::resolve)
                 .toList();
@@ -491,8 +494,13 @@ final class ManaBoundaryTest {
                 .collect(Collectors.toUnmodifiableSet());
         assertAll(
                 () -> assertEquals(0, exit, () -> "git continuity check failed: " + output),
-                () -> assertTrue(output.isBlank(),
-                        () -> "P5 source drift: " + output),
+                () -> assertEquals(
+                        Set.of(
+                                "src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java",
+                                "src/main/java/com/yo1no/gramarye/SkillRuntimeService.java",
+                                "src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java"),
+                        exactS4P5Changes,
+                        () -> "unexpected P5 source drift: " + output),
                 () -> assertEquals(12, relocatedProduction.size()),
                 () -> assertTrue(relocatedProduction.stream().allMatch(Files::isRegularFile)),
                 () -> assertEquals(Set.copyOf(relocatedProduction), productionCopies),

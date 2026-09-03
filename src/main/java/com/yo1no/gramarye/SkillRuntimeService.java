@@ -66,7 +66,7 @@ final class SkillRuntimeService {
                 policyProvider,
                 new P5RuntimeProjector(),
                 new P5LoadedReferenceResolver(),
-                UnavailableRuntimeExecutionPort.INSTANCE);
+                new P6RuntimeExecutionPortAdapter());
         gameBus.addListener(EventPriority.LOWEST, service::handleRuntimePost);
         gameBus.addListener(service::handleRuntimeStopping);
         gameBus.addListener(service::handleRuntimeStopped);
@@ -635,7 +635,8 @@ final class SkillRuntimeService {
                     slot.runtimeTick,
                     slot.token,
                     resolvedReferences,
-                    reservation.budget);
+                    reservation.budget,
+                    () -> runtimeExecutionGuardDecision(slot, instance, event));
             slot.diagnostics.portInvocationsThisTick++;
             var batch = executionPort.execute(event, context);
             return batch == null
@@ -1572,6 +1573,19 @@ final class SkillRuntimeService {
         Objects.requireNonNull(slot, "slot");
         Objects.requireNonNull(event, "event");
         return slot.runtimeTick > event.deadlineRuntimeTick();
+    }
+
+    static RuntimeExecutionGuardDecision runtimeExecutionGuardDecision(
+            ServerSlot slot, ServerSlot.InstanceState instance, RuntimeEvent event) {
+        Objects.requireNonNull(slot, "slot");
+        Objects.requireNonNull(instance, "instance");
+        Objects.requireNonNull(event, "event");
+        if (slot.state != ServerSlot.State.RUNNING || instance.cancellationRequested) {
+            return RuntimeExecutionGuardDecision.CANCELLED;
+        }
+        return deadlineExpired(slot, event)
+                ? RuntimeExecutionGuardDecision.DEADLINE_EXCEEDED
+                : RuntimeExecutionGuardDecision.ALLOWED;
     }
 
     void observeExpired(ServerSlot slot, RuntimeEvent event) {

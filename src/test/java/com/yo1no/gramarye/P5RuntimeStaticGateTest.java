@@ -324,7 +324,8 @@ final class P5RuntimeStaticGateTest {
     }
 
     @Test
-    void v1AuthorityFencedJavaIsByteForByteTheProductionVocabulary() throws Exception {
+    void v1AuthorityPlusTheExactS4GuardIsByteForByteTheProductionVocabulary()
+            throws Exception {
         var authority = Files.readString(P5_AUTHORITY);
         var heading = authority.indexOf("### 47.3 Exact Java Declarations");
         assertTrue(heading >= 0, "missing V1 exact-declarations heading");
@@ -334,7 +335,32 @@ final class P5RuntimeStaticGateTest {
         var fenceEnd = authority.indexOf("\n```\n\n### 47.4 Result-Family Responsibilities", fenceStart);
         assertTrue(fenceEnd >= 0, "missing unique V1 Java fence terminator");
         var exactDeclarations = authority.substring(fenceStart, fenceEnd) + "\n";
-        assertEquals(exactDeclarations, Files.readString(VOCABULARY_SOURCE));
+        var guardDeclaration = "enum RuntimeExecutionGuardDecision {\n"
+                + "    ALLOWED,\n"
+                + "    CANCELLED,\n"
+                + "    DEADLINE_EXCEEDED\n"
+                + "}\n\n"
+                + "@FunctionalInterface\n"
+                + "interface RuntimeExecutionGuard {\n"
+                + "    RuntimeExecutionGuardDecision check();\n"
+                + "}\n\n";
+        var s4Vocabulary = exactDeclarations
+                .replace(
+                        "record RuntimeExecutionContext(\n",
+                        guardDeclaration + "record RuntimeExecutionContext(\n")
+                .replace(
+                        "        RuntimeExecutionBudget executionBudget) {\n",
+                        "        RuntimeExecutionBudget executionBudget,\n"
+                                + "        RuntimeExecutionGuard executionGuard) {\n")
+                .replace(
+                        "        Objects.requireNonNull(executionBudget, \"executionBudget\");\n",
+                        "        Objects.requireNonNull(executionBudget, \"executionBudget\");\n"
+                                + "        Objects.requireNonNull(executionGuard, \"executionGuard\");\n");
+        assertAll(
+                () -> assertEquals(1, occurrences(s4Vocabulary, guardDeclaration)),
+                () -> assertEquals(1, occurrences(
+                        s4Vocabulary, "RuntimeExecutionGuard executionGuard")),
+                () -> assertEquals(s4Vocabulary, Files.readString(VOCABULARY_SOURCE)));
     }
 
     @Test
@@ -834,6 +860,7 @@ final class P5RuntimeStaticGateTest {
                 "resolution instanceof RuntimeReferenceResolutionOutcome.Resolved",
                 "reserveForPort(slot, instance, attribution, event)",
                 "context = new RuntimeExecutionContext(",
+                "() -> runtimeExecutionGuardDecision(slot, instance, event)",
                 "slot.diagnostics.portInvocationsThisTick++",
                 "executionPort.execute(event, context)",
                 "finally {",

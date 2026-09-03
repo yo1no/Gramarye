@@ -980,6 +980,17 @@ record ResolvedRuntimeReferenceContext(
     }
 }
 
+enum RuntimeExecutionGuardDecision {
+    ALLOWED,
+    CANCELLED,
+    DEADLINE_EXCEEDED
+}
+
+@FunctionalInterface
+interface RuntimeExecutionGuard {
+    RuntimeExecutionGuardDecision check();
+}
+
 record RuntimeExecutionContext(
         MinecraftServer server,
         ValidatedSkillDefinition definition,
@@ -987,7 +998,8 @@ record RuntimeExecutionContext(
         long currentRuntimeTick,
         RuntimeServerToken serverSlotToken,
         ResolvedRuntimeReferenceContext resolvedReferences,
-        RuntimeExecutionBudget executionBudget) {
+        RuntimeExecutionBudget executionBudget,
+        RuntimeExecutionGuard executionGuard) {
     RuntimeExecutionContext {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(definition, "definition");
@@ -995,6 +1007,7 @@ record RuntimeExecutionContext(
         Objects.requireNonNull(serverSlotToken, "serverSlotToken");
         Objects.requireNonNull(resolvedReferences, "resolvedReferences");
         Objects.requireNonNull(executionBudget, "executionBudget");
+        Objects.requireNonNull(executionGuard, "executionGuard");
         if (currentRuntimeTick < 0) {
             throw new IllegalArgumentException("current runtime tick must be non-negative");
         }
