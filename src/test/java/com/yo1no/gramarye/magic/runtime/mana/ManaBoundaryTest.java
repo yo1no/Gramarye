@@ -492,6 +492,14 @@ final class ManaBoundaryTest {
                 .flatMap(fileName -> testCoordinates(
                         fileName, baselineS1TestSource(fileName)).stream())
                 .collect(Collectors.toUnmodifiableSet());
+        var expectedRelocatedTestCoordinates = java.util.stream.Stream.concat(
+                        baselineTestCoordinates.stream(),
+                        java.util.stream.Stream.of(
+                                "P6EffectVocabularyTest.java#"
+                                        + "effectRequestCardinalityIsStructurallyExactlyOne",
+                                "DamageEffectRequestTest.java#"
+                                        + "damageTargetCardinalityIsStructurallyExactlyOne"))
+                .collect(Collectors.toUnmodifiableSet());
         assertAll(
                 () -> assertEquals(0, exit, () -> "git continuity check failed: " + output),
                 () -> assertEquals(
@@ -522,7 +530,10 @@ final class ManaBoundaryTest {
                 () -> assertTrue(relocatedTests.stream().allMatch(
                         ManaBoundaryTest::usesManaPackage)),
                 () -> assertEquals(91, baselineTestCoordinates.size()),
-                () -> assertEquals(baselineTestCoordinates, relocatedTestCoordinates));
+                () -> assertEquals(93, expectedRelocatedTestCoordinates.size()),
+                () -> assertEquals(93, relocatedTestCoordinates.size()),
+                () -> assertEquals(
+                        expectedRelocatedTestCoordinates, relocatedTestCoordinates));
     }
 
     private static void assertGuardPrecedes(String section, String... accesses) {
