@@ -615,11 +615,51 @@ is_approved_p6_s4_r1_changed_path() {
     esac
 }
 
+is_approved_p7_s1_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkBounds.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7SemanticInvariantException.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CastInputKind.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/AimHint.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/EntityHint.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CastIntent.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CastIntentValidation.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7IntentFailureReason.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentAcknowledgement.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/ConnectionEpochState.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7SessionIdentity.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentSequenceState.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentTokenBucket.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentTickBudget.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/RateStrikeState.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/PendingPermitAccounting.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CastIntentAdmissionSemantics.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7NetworkBoundsTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/CastIntentTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/IntentAcknowledgementTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/ConnectionEpochStateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7SessionIdentityTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/IntentSequenceStateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/IntentTokenBucketTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/IntentTickBudgetTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/RateStrikeStateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/PendingPermitAccountingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/CastIntentAdmissionSemanticsTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S1BoundaryTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_allowed_changed_path() {
     is_exact_p4e3_path "$1" \
         || is_approved_p6_s2_r3_changed_path "$1" \
         || is_approved_p6_s3_changed_path "$1" \
-        || is_approved_p6_s4_r1_changed_path "$1"
+        || is_approved_p6_s4_r1_changed_path "$1" \
+        || is_approved_p7_s1_changed_path "$1"
 }
 
 is_exact_probe_path() {

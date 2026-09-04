@@ -369,11 +369,39 @@ is_approved_p6_s4_r1_production_path() {
     esac
 }
 
+is_approved_p7_s1_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkBounds.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7SemanticInvariantException.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CastInputKind.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/AimHint.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/EntityHint.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CastIntent.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CastIntentValidation.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7IntentFailureReason.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentAcknowledgement.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/ConnectionEpochState.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7SessionIdentity.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentSequenceState.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentTokenBucket.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentTickBudget.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/RateStrikeState.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/PendingPermitAccounting.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CastIntentAdmissionSemantics.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
     is_approved_p6_s3_production_path "$1" && return 0
     is_approved_p6_s4_r1_production_path "$1" && return 0
+    is_approved_p7_s1_production_path "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \
