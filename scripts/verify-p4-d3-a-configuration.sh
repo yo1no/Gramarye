@@ -574,6 +574,38 @@ is_approved_p7_s1_production_path() {
     esac
 }
 
+is_approved_p7_s2_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CooldownSnapshotEntry.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ClientMirrorDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ClientPayloadHandlers.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ConnectionEpochSnapshotSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7CooldownDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7IntentAckDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ManaDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkComposition.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PayloadCodecSupport.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermit.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7QueuedCastIntent.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerIntentDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 verify_change_boundary() {
     local changed=''
     local untracked=''
@@ -590,6 +622,7 @@ verify_change_boundary() {
             || is_approved_p6_s3_production_path "${path}" \
             || is_approved_p6_s4_r1_production_path "${path}" \
             || is_approved_p7_s1_production_path "${path}" \
+            || is_approved_p7_s2_production_path "${path}" \
             || fail "production Java escaped exact reviewed D3-A/E1-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
@@ -603,6 +636,7 @@ verify_change_boundary() {
             || is_approved_p6_s3_production_path "${path}" \
             || is_approved_p6_s4_r1_production_path "${path}" \
             || is_approved_p7_s1_production_path "${path}" \
+            || is_approved_p7_s2_production_path "${path}" \
             || fail "untracked production path escaped exact reviewed D3-A/E1-A allowlist: ${path}"
     done <<< "${untracked}"
 }
@@ -715,8 +749,6 @@ verify_ownership_and_phase_boundary() {
         OfflineRoot \
         RootCollector \
         RootIndex \
-        CustomPacketPayload \
-        PayloadRegistrar \
         PacketDistributor \
         'Runtime.getRuntime().halt' \
         'Runtime.halt(' \
@@ -724,6 +756,19 @@ verify_ownership_and_phase_boundary() {
         forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" "${literal}" \
             "D3-B/P4-E/network/test surface appeared in production (${literal})"
     done
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        CustomPacketPayload \
+        'CustomPacketPayload escaped the exact P7-S2 payload owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java'
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        PayloadRegistrar \
+        'PayloadRegistrar escaped the exact P7-S2 registrar owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java'
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'Reconciliation' \

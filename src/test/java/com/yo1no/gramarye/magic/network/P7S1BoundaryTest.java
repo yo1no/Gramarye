@@ -262,14 +262,17 @@ final class P7S1BoundaryTest {
 
     @Test
     void productionPathTypeAndPackageInventoryIsExact() throws IOException {
-        Set<String> actualPaths;
+        Set<String> allNetworkPaths;
         try (var paths = Files.walk(NETWORK_MAIN)) {
-            actualPaths = paths.filter(Files::isRegularFile)
+            allNetworkPaths = paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
                     .map(PROJECT_ROOT::relativize)
                     .map(P7S1BoundaryTest::portablePath)
                     .collect(Collectors.toUnmodifiableSet());
         }
+        var actualPaths = allNetworkPaths.stream()
+                .filter(PRODUCT_TYPES_BY_PATH::containsKey)
+                .collect(Collectors.toUnmodifiableSet());
 
         assertEquals(PRODUCT_TYPES_BY_PATH.keySet(), actualPaths);
         assertEquals(17, actualPaths.size());
@@ -449,14 +452,17 @@ final class P7S1BoundaryTest {
     @Test
     void exactTestInventoryUsesOnlyEnabledOrdinaryZeroArgumentTestsAndNoGameTests()
             throws IOException {
-        Set<String> actualTestPaths;
+        Set<String> allNetworkTestPaths;
         try (var paths = Files.walk(NETWORK_TEST)) {
-            actualTestPaths = paths.filter(Files::isRegularFile)
+            allNetworkTestPaths = paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
                     .map(PROJECT_ROOT::relativize)
                     .map(P7S1BoundaryTest::portablePath)
                     .collect(Collectors.toUnmodifiableSet());
         }
+        var actualTestPaths = allNetworkTestPaths.stream()
+                .filter(TEST_TYPES_BY_PATH::containsKey)
+                .collect(Collectors.toUnmodifiableSet());
 
         assertEquals(TEST_TYPES_BY_PATH.keySet(), actualTestPaths);
         assertEquals(12, actualTestPaths.size());

@@ -476,13 +476,24 @@ verify_static_ownership_and_phase_bounds() {
         'OfflineRoot' \
         'RootCollector' \
         'RootIndex' \
-        'CustomPacketPayload' \
-        'PayloadRegistrar' \
         'PacketDistributor' \
         'org.junit'; do
         forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" "${literal}" \
             "P4-D3/P4-E/network/test surface appeared in production (${literal})"
     done
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        'CustomPacketPayload' \
+        'CustomPacketPayload escaped the exact P7-S2 payload owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java'
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        'PayloadRegistrar' \
+        'PayloadRegistrar escaped the exact P7-S2 registrar owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java'
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'Reconciliation' \

@@ -382,6 +382,38 @@ is_approved_p7_s1_production_path() {
     esac
 }
 
+is_approved_p7_s2_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CooldownSnapshotEntry.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ClientMirrorDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ClientPayloadHandlers.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ConnectionEpochSnapshotSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7CooldownDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7IntentAckDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ManaDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkComposition.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PayloadCodecSupport.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermit.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7QueuedCastIntent.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerIntentDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 verify_production_freeze() {
     local changed=''
     local path=''
@@ -402,6 +434,7 @@ verify_production_freeze() {
             || is_approved_p6_s3_production_path "${path}" \
             || is_approved_p6_s4_r1_production_path "${path}" \
             || is_approved_p7_s1_production_path "${path}" \
+            || is_approved_p7_s2_production_path "${path}" \
             || fail "production Java changed outside exact current P4-D3-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
@@ -416,6 +449,7 @@ verify_production_freeze() {
             || is_approved_p6_s3_production_path "${path}" \
             || is_approved_p6_s4_r1_production_path "${path}" \
             || is_approved_p7_s1_production_path "${path}" \
+            || is_approved_p7_s2_production_path "${path}" \
             || fail "untracked production path escaped exact current P4-D3-A allowlist: ${path}"
     done <<< "${untracked}"
 }

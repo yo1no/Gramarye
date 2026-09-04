@@ -243,11 +243,19 @@ final class P4D2BApiGateTest {
                 "OfflineRoot",
                 "RootCollector",
                 "RootIndex",
-                "CustomPacketPayload",
-                "PayloadRegistrar",
                 "PacketDistributor")) {
             assertFalse(allMain.contains(forbidden), forbidden);
         }
+        assertEquals(
+                Set.of(
+                        "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
+                        "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
+                        "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
+                        "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java"),
+                relativeProductionPathsContaining("CustomPacketPayload"));
+        assertEquals(
+                Set.of("com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java"),
+                relativeProductionPathsContaining("PayloadRegistrar"));
         assertFalse(mainWithoutReviewedReconciliationOwners.contains("Reconciliation"),
                 "reconciliation escaped the exact E1/E2 owners");
         var build = read(PROJECT_ROOT.resolve("build.gradle"));
@@ -279,6 +287,15 @@ final class P4D2BApiGateTest {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
+                .collect(Collectors.toSet());
+    }
+
+    private static Set<String> relativeProductionPathsContaining(String fragment)
+            throws Exception {
+        return javaSources(MAIN_JAVA).stream()
+                .filter(path -> read(path).contains(fragment))
+                .map(MAIN_JAVA::relativize)
+                .map(path -> path.toString().replace('\\', '/'))
                 .collect(Collectors.toSet());
     }
 

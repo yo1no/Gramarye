@@ -224,6 +224,21 @@ verify_d2a_sources_and_owners() {
     done
 }
 
+is_reviewed_p7_s2_platform_owner() {
+    case "$1:$2" in
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java | \
+        PayloadRegistrar:src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 verify_phase_boundary() {
     local token=''
     local source=''
@@ -247,9 +262,12 @@ verify_phase_boundary() {
         RootCollector \
         CustomPacketPayload \
         PayloadRegistrar; do
-        if grep -R -Fq --include='*.java' -- "${token}" src/main/java; then
-            fail "later-phase production token appeared: ${token}"
-        fi
+        while IFS= read -r -d '' source; do
+            if grep -Fq -- "${token}" "${source}" \
+                    && ! is_reviewed_p7_s2_platform_owner "${token}" "${source}"; then
+                fail "later-phase production token escaped its exact owner allowlist: ${token} (${source})"
+            fi
+        done < <(find src/main/java -type f -name '*.java' -print0)
     done
     while IFS= read -r -d '' source; do
         case "${source}" in

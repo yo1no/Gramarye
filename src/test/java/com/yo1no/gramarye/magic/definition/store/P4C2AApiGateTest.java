@@ -464,12 +464,20 @@ class P4C2AApiGateTest {
                 "OfflineRoot",
                 "RootCollector",
                 "RootIndex",
-                "CustomPacketPayload",
-                "PayloadRegistrar",
                 "PacketDistributor")) {
             assertFalse(allProduction.contains(forbidden),
                     () -> "Later phase production surface appeared: " + forbidden);
         }
+        assertEquals(
+                Set.of(
+                        "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
+                        "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
+                        "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
+                        "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java"),
+                relativeFilesContaining(javaSources(MAIN_JAVA), "CustomPacketPayload"));
+        assertEquals(
+                Set.of("com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java"),
+                relativeFilesContaining(javaSources(MAIN_JAVA), "PayloadRegistrar"));
         assertFalse(productionWithoutReviewedReconciliationOwners.contains("Reconciliation"),
                 "reconciliation escaped the exact B2-A/B2-B owners");
         assertTrue(reviewedD1JournalOwners.containsAll(journalOwners),

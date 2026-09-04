@@ -399,11 +399,19 @@ final class P4D3AApiGateTest {
                 "OfflineRoot",
                 "RootCollector",
                 "RootIndex",
-                "CustomPacketPayload",
-                "PayloadRegistrar",
                 "PacketDistributor")) {
             assertFalse(allProduction.contains(forbidden), forbidden);
         }
+        assertEquals(
+                Set.of(
+                        "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
+                        "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
+                        "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
+                        "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java"),
+                relativeProductionPathsContaining("CustomPacketPayload"));
+        assertEquals(
+                Set.of("com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java"),
+                relativeProductionPathsContaining("PayloadRegistrar"));
         assertFalse(productionWithoutReviewedReconciliationOwners.contains("Reconciliation"),
                 "reconciliation escaped the exact E1/E2 owners");
         assertAll(
@@ -519,6 +527,15 @@ final class P4D3AApiGateTest {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
+                .collect(Collectors.toSet());
+    }
+
+    private static Set<String> relativeProductionPathsContaining(String fragment)
+            throws Exception {
+        return javaSources(MAIN_JAVA).stream()
+                .filter(path -> read(path).contains(fragment))
+                .map(MAIN_JAVA::relativize)
+                .map(path -> path.toString().replace('\\', '/'))
                 .collect(Collectors.toSet());
     }
 

@@ -396,12 +396,45 @@ is_approved_p7_s1_production_path() {
     esac
 }
 
+is_approved_p7_s2_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CooldownSnapshotEntry.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ClientMirrorDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ClientPayloadHandlers.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ConnectionEpochSnapshotSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7CooldownDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7IntentAckDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ManaDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkComposition.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PayloadCodecSupport.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermit.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7QueuedCastIntent.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerIntentDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
     is_approved_p6_s3_production_path "$1" && return 0
     is_approved_p6_s4_r1_production_path "$1" && return 0
     is_approved_p7_s1_production_path "$1" && return 0
+    is_approved_p7_s2_production_path "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \

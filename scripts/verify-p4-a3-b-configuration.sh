@@ -131,6 +131,30 @@ forbid_fixed_in_file_list() {
     done < "${file_list}"
 }
 
+forbid_fixed_in_file_list_except() {
+    local file_list="$1"
+    local needle="$2"
+    local message="$3"
+    local file=''
+    local allowed_file=''
+    local allowed=0
+    shift 3
+
+    while IFS= read -r -d '' file; do
+        allowed=0
+        for allowed_file in "$@"; do
+            if [[ "${file}" == "${allowed_file}" ]]; then
+                allowed=1
+                break
+            fi
+        done
+        if [[ "${allowed}" -eq 1 ]]; then
+            continue
+        fi
+        forbid_fixed "${file}" "${needle}" "${message} (${file})"
+    done < "${file_list}"
+}
+
 cleanup() {
     if [[ -n "${SOURCE_FILE_LIST}" ]]; then
         rm -f -- "${SOURCE_FILE_LIST}"
@@ -320,17 +344,29 @@ main() {
     # P4-C2-A phase-local: exact Attachment registration, controlled ServerPlayer mutation,
     # prepared transition, and per-player roots are reviewed by the portable C2-A verifier.
     # D1/D2 composition and the single D3-A login recovery owner are reviewed by their own
-    # portable gates. Manual clone hooks, offline roots, and networking remain forbidden.
+    # portable gates. Manual clone hooks, offline roots, and unreviewed networking remain
+    # forbidden.
     for literal in \
         'OfflineRoot' \
-        'CustomPacketPayload' \
-        'PayloadRegistrar' \
         'PacketDistributor'; do
         forbid_fixed_in_file_list \
             "${SOURCE_FILE_LIST}" \
             "${literal}" \
             'Unreviewed later lifecycle/root/network surface appeared in production'
     done
+    forbid_fixed_in_file_list_except \
+        "${SOURCE_FILE_LIST}" \
+        'CustomPacketPayload' \
+        'CustomPacketPayload escaped the exact P7-S2 payload owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java'
+    forbid_fixed_in_file_list_except \
+        "${SOURCE_FILE_LIST}" \
+        'PayloadRegistrar' \
+        'PayloadRegistrar escaped the exact P7-S2 registrar owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java'
     require_fixed \
         'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
         'PlayerEvent.PlayerLoggedInEvent' \

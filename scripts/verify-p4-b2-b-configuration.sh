@@ -298,6 +298,30 @@ forbid_fixed_in_file_list() {
     done < "${file_list}"
 }
 
+forbid_fixed_in_file_list_except() {
+    local file_list="$1"
+    local needle="$2"
+    local message="$3"
+    local file=''
+    local allowed_file=''
+    local allowed=0
+    shift 3
+
+    while IFS= read -r -d '' file; do
+        allowed=0
+        for allowed_file in "$@"; do
+            if [[ "${file}" == "${allowed_file}" ]]; then
+                allowed=1
+                break
+            fi
+        done
+        if [[ "${allowed}" -eq 1 ]]; then
+            continue
+        fi
+        forbid_fixed "${file}" "${needle}" "${message}: ${file}"
+    done < "${file_list}"
+}
+
 forbid_ere_in_file_list() {
     local file_list="$1"
     local pattern="$2"
@@ -951,6 +975,7 @@ verify_b2_sources_and_outputs() {
     local package_path='com/yo1no/gramarye/magic/definition/store'
     local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
     local runtime_service='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
+    local p7_network_handler='src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java'
 
     PRODUCTION_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-b2-production.XXXXXX")" \
         || fail 'P4-B2-B verifier could not create its production source list'
@@ -1088,17 +1113,29 @@ verify_b2_sources_and_outputs() {
     done
 
     # P4-C2-A and D1/D2 composition are reviewed by their own portable verifiers. D3-A adds one
-    # exact login-event owner; offline-root, manual-clone, and networking surfaces remain absent.
+    # exact login-event owner; offline-root, manual-clone, and unreviewed networking surfaces
+    # remain absent.
     for literal in \
         'OfflineRoot' \
-        'CustomPacketPayload' \
-        'PayloadRegistrar' \
         'PacketDistributor'; do
         forbid_fixed_in_file_list \
             "${PRODUCTION_SOURCE_LIST}" \
             "${literal}" \
             "unreviewed later lifecycle/root/network surface appeared (${literal})"
     done
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        'CustomPacketPayload' \
+        'CustomPacketPayload escaped the exact P7-S2 payload owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java'
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        'PayloadRegistrar' \
+        'PayloadRegistrar escaped the exact P7-S2 registrar owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java'
     require_fixed \
         'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
         'PlayerEvent.PlayerLoggedInEvent' \
@@ -1123,7 +1160,9 @@ verify_b2_sources_and_outputs() {
             "P4-B2-R production code must not catch dependency linkage failure (${literal})"
     done
     while IFS= read -r -d '' source; do
-        if [[ "${source}" == "${store_service}" || "${source}" == "${runtime_service}" ]]; then
+        if [[ "${source}" == "${store_service}" \
+                || "${source}" == "${runtime_service}" \
+                || "${source}" == "${p7_network_handler}" ]]; then
             continue
         fi
         forbid_ere \
@@ -1165,6 +1204,15 @@ verify_b2_sources_and_outputs() {
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
         'SkillRuntimeService must not catch Throwable'
+    require_ere_count \
+        "${p7_network_handler}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
+        1 \
+        'P7CastIntentNetworkHandler must contain exactly its one reviewed enqueue cleanup Error catch'
+    forbid_ere \
+        "${p7_network_handler}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
+        'P7CastIntentNetworkHandler must not catch Throwable'
 
     for class_name in \
         P4B2ProbeSummary \

@@ -394,7 +394,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(11, dependencyErrorCatchCount(production)),
+                () -> assertEquals(12, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -604,6 +604,8 @@ class P4B2BApiGateTest {
 
         var runtimeService = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/SkillRuntimeService.java")));
+        var networkHandler = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java")));
         var p5Catches = errorCatchBlocks(runtimeService);
         var p5Primary = p5Catches.stream()
                 .filter(block -> block.binding().equals("primary"))
@@ -612,16 +614,22 @@ class P4B2BApiGateTest {
                 .filter(block -> block.binding().equals("ignoredCleanupFailure"))
                 .toList();
         var storeCatches = errorCatchBlocks(service);
+        var networkCatches = errorCatchBlocks(networkHandler);
         var primary = new java.util.ArrayList<ErrorCatchBlock>(p5Primary);
         primary.addAll(storeCatches);
+        primary.addAll(networkCatches);
         assertAll(
                 () -> assertEquals(10, p5Catches.size()),
                 () -> assertEquals(5, p5Primary.size()),
-                () -> assertEquals(6, primary.size()),
+                () -> assertEquals(7, primary.size()),
                 () -> assertEquals(5, secondary.size()),
                 () -> assertEquals(1, storeCatches.size()),
+                () -> assertEquals(1, networkCatches.size()),
                 () -> assertEquals("failure", storeCatches.getFirst().binding()),
                 () -> assertTrue(storeCatches.getFirst().body().contains("throw failure;")),
+                () -> assertEquals("failure", networkCatches.getFirst().binding()),
+                () -> assertTrue(networkCatches.getFirst().body().contains("permit.release();")),
+                () -> assertTrue(networkCatches.getFirst().body().contains("throw failure;")),
                 () -> assertTrue(p5Primary.stream().allMatch(block ->
                         block.body().contains("throw primary;")
                                 || block.body().contains(
@@ -634,7 +642,8 @@ class P4B2BApiGateTest {
                 () -> assertTrue(secondary.stream().allMatch(block -> block.body().isBlank())),
                 () -> assertEquals(primary.size() + secondary.size(),
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(11, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(12, dependencyErrorCatchCount(allProduction)));
+        assertOrdered(networkCatches.getFirst().body(), "permit.release();", "throw failure;");
         assertOrdered(
                 bodyFollowing(runtimeService, "Error preserveErrorFault("),
                 "enterFaultAfterError(",
