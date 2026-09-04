@@ -720,6 +720,57 @@ is_approved_p7_s2_changed_path() {
     esac
 }
 
+is_approved_p7_s3_r1_changed_path() {
+    case "$1" in
+        scripts/verify-p4-c2-b-configuration.sh | \
+        scripts/verify-p4-d3-a-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngress.java | \
+        src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7AdmissionDispositionMapper.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7AdvisoryTargetValidator.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkComposition.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ReloadAdmissionGate.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationBoundary.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationDispatcher.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerDisconnectPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerIntentResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerIntentResultSink.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerSessionService.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerSessionState.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java | \
+        src/test/java/com/yo1no/gramarye/P6RuntimeExecutionCapabilityTest.java | \
+        src/test/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngressTest.java | \
+        src/test/java/com/yo1no/gramarye/P7P5AdmissionMapperTest.java | \
+        src/test/java/com/yo1no/gramarye/SkillRuntimeAuthenticatedCastIngressTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7AdmissionDispositionMapperTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7AdvisoryTargetValidatorTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7NetworkCompositionS3Test.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ReloadAdmissionGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S2BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S3BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationDispatcherTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerIntentResultTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerPlatformBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerSequenceRateIntegrationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerSessionServiceTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
@@ -727,6 +778,7 @@ is_reviewed_changed_path() {
     is_approved_p6_s4_r1_changed_path "$1" && return 0
     is_approved_p7_s1_changed_path "$1" && return 0
     is_approved_p7_s2_changed_path "$1" && return 0
+    is_approved_p7_s3_r1_changed_path "$1" && return 0
     case "$1" in
         build.gradle | \
         scripts/verify-p4-b2-b-configuration.sh | \

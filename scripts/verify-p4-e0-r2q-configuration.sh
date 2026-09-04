@@ -428,6 +428,31 @@ is_approved_p7_s2_production_path() {
     esac
 }
 
+is_approved_p7_s3_r1_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngress.java | \
+        src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7AdmissionDispositionMapper.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7AdvisoryTargetValidator.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkComposition.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ReloadAdmissionGate.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationBoundary.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationDispatcher.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerDisconnectPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerIntentResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerIntentResultSink.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerSessionService.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerSessionState.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
@@ -435,6 +460,7 @@ is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p6_s4_r1_production_path "$1" && return 0
     is_approved_p7_s1_production_path "$1" && return 0
     is_approved_p7_s2_production_path "$1" && return 0
+    is_approved_p7_s3_r1_production_path "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \

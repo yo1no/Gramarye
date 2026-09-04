@@ -414,6 +414,31 @@ is_approved_p7_s2_production_path() {
     esac
 }
 
+is_approved_p7_s3_r1_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngress.java | \
+        src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7AdmissionDispositionMapper.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7AdvisoryTargetValidator.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkComposition.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ReloadAdmissionGate.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationBoundary.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationDispatcher.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerDisconnectPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerIntentResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerIntentResultSink.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerSessionService.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerSessionState.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 verify_production_freeze() {
     local changed=''
     local path=''
@@ -435,6 +460,7 @@ verify_production_freeze() {
             || is_approved_p6_s4_r1_production_path "${path}" \
             || is_approved_p7_s1_production_path "${path}" \
             || is_approved_p7_s2_production_path "${path}" \
+            || is_approved_p7_s3_r1_production_path "${path}" \
             || fail "production Java changed outside exact current P4-D3-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
@@ -450,6 +476,7 @@ verify_production_freeze() {
             || is_approved_p6_s4_r1_production_path "${path}" \
             || is_approved_p7_s1_production_path "${path}" \
             || is_approved_p7_s2_production_path "${path}" \
+            || is_approved_p7_s3_r1_production_path "${path}" \
             || fail "untracked production path escaped exact current P4-D3-A allowlist: ${path}"
     done <<< "${untracked}"
 }

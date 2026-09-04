@@ -10,6 +10,7 @@ import com.yo1no.gramarye.magic.definition.submission.SkillDraftCreationService;
 import com.yo1no.gramarye.magic.definition.submission.SkillIdSource;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import java.util.Objects;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -68,6 +69,13 @@ public final class Gramarye {
                 NeoForge.EVENT_BUS,
                 skillDefinitionStoreService,
                 skillSubmissionPolicyProvider);
+        var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(
+                skillRuntimeService,
+                playerSkillAttachmentService,
+                skillDefinitionStoreService);
+        P7ServerAuthorizationBoundary.install(
+                P6RuntimeExecutionCapability.forRuntimeAdapter(),
+                p7AuthenticatedPlayerCastIngress);
         NeoForge.EVENT_BUS.addListener(this::handleP5RuntimeStarted);
         exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);
     }

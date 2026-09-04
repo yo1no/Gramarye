@@ -10,15 +10,40 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.GuardDecision;
 import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 final class P6RuntimeExecutionCapabilityTest {
+    private static final Path MAIN_JAVA = projectRoot().resolve("src/main/java");
+    private static final Pattern CAPABILITY_ACQUISITION = Pattern.compile(
+            "\\bP6RuntimeExecutionCapability\\s*\\.\\s*forRuntimeAdapter\\s*\\(");
+
     @Test
-    void runtimeAdapterIsTheSoleNormalCapabilityAcquirer() throws Exception {
+    void runtimeAdapterAndRootBootstrapAreTheExactCapabilityAcquirers() throws Exception {
         var accessor = P6RuntimeExecutionCapability.class.getDeclaredMethod(
                 "forRuntimeAdapter");
+        var callers = new HashSet<String>();
+        var callCount = 0L;
+        try (var paths = Files.walk(MAIN_JAVA)) {
+            for (var path : paths.filter(Files::isRegularFile)
+                    .filter(candidate -> candidate.toString().endsWith(".java"))
+                    .toList()) {
+                var matches = CAPABILITY_ACQUISITION.matcher(Files.readString(path))
+                        .results()
+                        .count();
+                if (matches > 0) {
+                    callers.add(MAIN_JAVA.relativize(path).toString());
+                    callCount += matches;
+                }
+            }
+        }
+        var exactCallCount = callCount;
 
         assertAll(
                 () -> assertSame(
@@ -29,7 +54,13 @@ final class P6RuntimeExecutionCapabilityTest {
                 () -> assertFalse(Modifier.isProtected(accessor.getModifiers())),
                 () -> assertFalse(Modifier.isPrivate(accessor.getModifiers())),
                 () -> assertEquals(
-                        P6RuntimeExecutionCapability.class, accessor.getReturnType()));
+                        P6RuntimeExecutionCapability.class, accessor.getReturnType()),
+                () -> assertEquals(
+                        Set.of(
+                                "com/yo1no/gramarye/Gramarye.java",
+                                "com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java"),
+                        callers),
+                () -> assertEquals(2, exactCallCount));
     }
 
     @Test
@@ -106,5 +137,16 @@ final class P6RuntimeExecutionCapabilityTest {
                         "P6ExecutionInvariantException",
                         failure.getClass().getSimpleName()),
                 () -> assertEquals(0, guardCalls.get()));
+    }
+
+    private static Path projectRoot() {
+        for (var candidate = Path.of("").toAbsolutePath().normalize();
+                candidate != null;
+                candidate = candidate.getParent()) {
+            if (Files.isRegularFile(candidate.resolve("settings.gradle"))) {
+                return candidate;
+            }
+        }
+        throw new AssertionError("project root unavailable");
     }
 }

@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.store.ControlledSkillPin;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -364,7 +366,7 @@ final class P5RuntimeStaticGateTest {
     }
 
     @Test
-    void rootAdmissionHasNoProductionCallerAndEveryP5TopLevelTypeIsNonPublic()
+    void rootAdmissionHasOneTokenSafeCallerAndMandatoryOverrideIsExact()
             throws Exception {
         var callsites = 0;
         try (var paths = Files.walk(PROJECT_ROOT.resolve("src/main/java"))) {
@@ -377,9 +379,66 @@ final class P5RuntimeStaticGateTest {
                 }
             }
         }
-        assertEquals(1, callsites, "admitRoot must have its declaration and zero callers");
+        assertEquals(2, callsites, "admitRoot must have one declaration and one tail caller");
         assertTrue(Files.readString(SERVICE_SOURCE).contains(
                 "RuntimeAdmissionResult admitRoot(MinecraftServer server, RuntimeRootEventSpec spec)"));
+        var serviceSource = Files.readString(SERVICE_SOURCE);
+        assertEquals(1, occurrences(
+                serviceSource,
+                "RuntimeAdmissionResult admitAuthenticatedPlayerCast("));
+        assertEquals(1, occurrences(serviceSource, "return admitRoot("));
+
+        var authenticatedIngress = SkillRuntimeService.class.getDeclaredMethod(
+                "admitAuthenticatedPlayerCast",
+                MinecraftServer.class,
+                ServerPlayer.class,
+                SkillReference.class);
+        assertFalse(Modifier.isPublic(authenticatedIngress.getModifiers()));
+        assertFalse(Modifier.isProtected(authenticatedIngress.getModifiers()));
+        assertFalse(Modifier.isPrivate(authenticatedIngress.getModifiers()));
+        assertFalse(Modifier.isStatic(authenticatedIngress.getModifiers()));
+        assertEquals(RuntimeAdmissionResult.class, authenticatedIngress.getReturnType());
+        assertEquals(0, authenticatedIngress.getExceptionTypes().length);
+
+        var owner = P7AuthenticatedPlayerCastIngress.class;
+        var override = owner.getDeclaredMethod(
+                "authorizeAndAdmit",
+                MinecraftServer.class,
+                ServerPlayer.class,
+                int.class,
+                P7ServerAuthorizationBoundary.AdvisoryTargetCheck.class);
+        var publicProtectedMethods = Arrays.stream(owner.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers())
+                        || Modifier.isProtected(method.getModifiers()))
+                .toList();
+        assertAll(
+                () -> assertTrue(Modifier.isFinal(owner.getModifiers())),
+                () -> assertFalse(Modifier.isPublic(owner.getModifiers())),
+                () -> assertFalse(Modifier.isProtected(owner.getModifiers())),
+                () -> assertEquals(
+                        List.of(P7ServerAuthorizationBoundary.RootIngressPort.class),
+                        List.of(owner.getInterfaces())),
+                () -> assertEquals(List.of(override), publicProtectedMethods),
+                () -> assertTrue(Modifier.isPublic(override.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(override.getModifiers())),
+                () -> assertFalse(override.isBridge()),
+                () -> assertFalse(override.isSynthetic()),
+                () -> assertEquals(
+                        P7ServerAuthorizationBoundary.AdmissionDisposition.class,
+                        override.getReturnType()),
+                () -> assertEquals(0, override.getExceptionTypes().length),
+                () -> assertEquals(0, Arrays.stream(owner.getDeclaredConstructors())
+                        .filter(constructor -> Modifier.isPublic(constructor.getModifiers())
+                                || Modifier.isProtected(constructor.getModifiers()))
+                        .count()),
+                () -> assertEquals(0, Arrays.stream(owner.getDeclaredFields())
+                        .filter(field -> Modifier.isPublic(field.getModifiers())
+                                || Modifier.isProtected(field.getModifiers()))
+                        .count()),
+                () -> assertEquals(0, Arrays.stream(owner.getDeclaredMethods())
+                        .filter(method -> Modifier.isPublic(method.getModifiers())
+                                && Modifier.isStatic(method.getModifiers()))
+                        .count()));
 
         var topLevels = p5TopLevelClasses();
         assertFalse(topLevels.isEmpty());

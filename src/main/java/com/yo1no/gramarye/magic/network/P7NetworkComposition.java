@@ -1,7 +1,6 @@
 package com.yo1no.gramarye.magic.network;
 
 import java.util.Objects;
-import java.util.OptionalLong;
 
 final class P7NetworkComposition {
     private final P7ConnectionEpochSnapshotSource connectionEpochSource;
@@ -45,10 +44,27 @@ final class P7NetworkComposition {
     }
 
     private static final class ProductionHolder {
+        private static final P7ServerAccess SERVER_ACCESS = new P7ServerAccess();
+        private static final P7ReloadAdmissionGate RELOAD_GATE =
+                new P7ReloadAdmissionGate();
+        private static final P7ServerSessionService SESSION_SERVICE =
+                new P7ServerSessionService(SERVER_ACCESS, RELOAD_GATE);
+        private static final P7AdvisoryTargetValidator TARGET_VALIDATOR =
+                new P7AdvisoryTargetValidator();
+        private static final P7ServerIntentResultSink RESULT_SINK = ignored -> {};
+        private static final P7ServerDisconnectPort DISCONNECT_PORT =
+                (server, actor) -> SERVER_ACCESS.disconnectCurrent(server, actor);
+        private static final P7ServerAuthorizationDispatcher SERVER_DISPATCHER =
+                new P7ServerAuthorizationDispatcher(
+                        SESSION_SERVICE,
+                        SERVER_ACCESS,
+                        TARGET_VALIDATOR,
+                        RESULT_SINK,
+                        DISCONNECT_PORT);
         private static final P7NetworkComposition INSTANCE = new P7NetworkComposition(
-                ignored -> OptionalLong.empty(),
+                SESSION_SERVICE::currentEpoch,
                 new P7PendingPermitOwner(),
-                ignored -> {},
+                SERVER_DISPATCHER::dispatch,
                 new P7ClientMirrorDispatchPort() {
                     @Override
                     public void onIntentAcknowledgement(

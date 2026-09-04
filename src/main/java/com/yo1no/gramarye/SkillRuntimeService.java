@@ -4,6 +4,7 @@ import com.yo1no.gramarye.magic.api.id.EventId;
 import com.yo1no.gramarye.magic.api.id.SkillInstanceId;
 import com.yo1no.gramarye.magic.capability.SourceRequirement;
 import com.yo1no.gramarye.magic.capability.TargetRequirement;
+import com.yo1no.gramarye.magic.capability.TriggerEventKind;
 import com.yo1no.gramarye.magic.definition.document.SkillDocument;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.store.ControlledSkillPin;
@@ -23,7 +24,9 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.PriorityQueue;
 import java.util.UUID;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
@@ -108,6 +111,39 @@ final class SkillRuntimeService {
         var slot = newRunningSlot(token, limits);
         slots.put(server, slot);
         serverTokenHighWater = token.value();
+    }
+
+    RuntimeAdmissionResult admitAuthenticatedPlayerCast(
+            MinecraftServer server,
+            ServerPlayer actor,
+            SkillReference exactReference) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(exactReference, "exactReference");
+        if (!server.isSameThread()) {
+            return new RuntimeAdmissionResult.WrongThread();
+        }
+        var slot = slots.get(server);
+        if (slot == null) {
+            return new RuntimeAdmissionResult.ServerNotRunning();
+        }
+        var playerId = new RuntimePlayerId(actor.getUUID());
+        return admitRoot(
+                server,
+                new RuntimeRootEventSpec(
+                        exactReference,
+                        0,
+                        new RuntimeScheduleSpec(
+                                0,
+                                0,
+                                RuntimeSchedulePersistence.MEMORY_ONLY),
+                        new PlayerRuntimeBudgetAttribution(slot.token, playerId),
+                        new PlayerOrigin(slot.token, actor.serverLevel().dimension(), playerId),
+                        Optional.empty(),
+                        new RootTriggerCause(new TriggerEventKind(
+                                ResourceLocation.fromNamespaceAndPath(
+                                        Gramarye.MOD_ID, "active_cast"))),
+                        NoRuntimeExecutionData.INSTANCE));
     }
 
     RuntimeAdmissionResult admitRoot(MinecraftServer server, RuntimeRootEventSpec spec) {

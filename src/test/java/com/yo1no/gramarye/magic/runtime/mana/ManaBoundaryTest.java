@@ -504,6 +504,7 @@ final class ManaBoundaryTest {
                 () -> assertEquals(0, exit, () -> "git continuity check failed: " + output),
                 () -> assertEquals(
                         Set.of(
+                                "src/main/java/com/yo1no/gramarye/Gramarye.java",
                                 "src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java",
                                 "src/main/java/com/yo1no/gramarye/SkillRuntimeService.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java"),
