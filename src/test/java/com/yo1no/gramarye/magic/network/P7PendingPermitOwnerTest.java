@@ -35,6 +35,7 @@ final class P7PendingPermitOwnerTest {
         assertSame(owner, permit.owner());
         assertEquals(playerId, permit.authenticatedPlayerId());
         assertEquals(17L, permit.connectionEpoch());
+        assertEquals(1L, permit.serverGeneration());
         assertFalse(permit.released());
         assertEquals(1, owner.playerPending(playerId));
         assertEquals(1, owner.serverPending());
@@ -146,6 +147,8 @@ final class P7PendingPermitOwnerTest {
         var permit = owner.acquire(playerId, 1L).permit().orElseThrow();
 
         assertThrows(P7SemanticInvariantException.class, () -> foreignOwner.release(permit));
+        assertThrows(P7SemanticInvariantException.class, () ->
+                foreignOwner.releaseAfterEnqueueFailure(permit));
         assertEquals(1, owner.playerPending(playerId));
         assertEquals(1, owner.serverPending());
         assertEquals(0, foreignOwner.serverPending());
@@ -153,9 +156,17 @@ final class P7PendingPermitOwnerTest {
         permit.release();
         assertTrue(permit.released());
         assertThrows(P7SemanticInvariantException.class, permit::release);
+        assertThrows(P7SemanticInvariantException.class, permit::releaseAfterEnqueueFailure);
         assertEquals(0, owner.playerPending(playerId));
         assertEquals(0, owner.serverPending());
         assertEquals(0, owner.trackedPlayerCount());
+
+        var started = owner.acquire(playerId, 2L).permit().orElseThrow();
+        assertTrue(started.tryStartTask());
+        assertThrows(P7SemanticInvariantException.class, started::releaseAfterEnqueueFailure);
+        assertEquals(1, owner.serverPending());
+        started.releaseAfterTask();
+        assertEquals(0, owner.serverPending());
     }
 
     @Test
@@ -171,6 +182,105 @@ final class P7PendingPermitOwnerTest {
     }
 
     @Test
+    void exactSessionInvalidationReleasesOnlyMatchingEpochAndSuppressesItsTask() {
+        var owner = new P7PendingPermitOwner();
+        var playerId = new UUID(0L, 105L);
+        var oldPermit = owner.acquire(playerId, 1L).permit().orElseThrow();
+        var currentPermit = owner.acquire(playerId, 2L).permit().orElseThrow();
+        var dispatchCalls = new int[1];
+        var oldTask = new P7ServerDispatchTask(
+                new P7QueuedCastIntent(playerId, 1L, minimumIntent(1L)),
+                ignored -> dispatchCalls[0]++,
+                oldPermit);
+
+        assertEquals(1, owner.invalidateSession(playerId, 1L));
+        assertTrue(oldPermit.released());
+        assertEquals(1, owner.playerPending(playerId));
+        assertEquals(1, owner.serverPending());
+        oldTask.run();
+
+        assertEquals(0, dispatchCalls[0]);
+        assertEquals(1, owner.playerPending(playerId));
+        assertEquals(1, owner.serverPending());
+        assertThrows(P7SemanticInvariantException.class, oldPermit::release);
+        currentPermit.release();
+        assertEquals(0, owner.serverPending());
+    }
+
+    @Test
+    void lifecycleTerminationDuringStartedTaskMakesOnlyItsLateFinallyBenign() {
+        var owner = new P7PendingPermitOwner();
+        var playerId = new UUID(0L, 106L);
+        var permit = owner.acquire(playerId, 7L).permit().orElseThrow();
+
+        assertTrue(permit.tryStartTask());
+        assertEquals(1, owner.invalidateSession(playerId, 7L));
+        permit.releaseAfterTask();
+
+        assertTrue(permit.released());
+        assertEquals(0, owner.playerPending(playerId));
+        assertEquals(0, owner.serverPending());
+        assertThrows(P7SemanticInvariantException.class, permit::release);
+        assertFalse(permit.tryStartTask());
+    }
+
+    @Test
+    void stopTerminalizesAllPermitsAndNewServerGenerationIsIndependent() {
+        var owner = new P7PendingPermitOwner();
+        var firstPlayer = new UUID(0L, 107L);
+        var secondPlayer = new UUID(0L, 108L);
+        var oldPermit = owner.acquire(firstPlayer, 1L).permit().orElseThrow();
+        var otherOldPermit = owner.acquire(secondPlayer, 1L).permit().orElseThrow();
+
+        assertEquals(2, owner.stopAll());
+        assertEquals(0, owner.serverPending());
+        assertEquals(0, owner.trackedPlayerCount());
+        var newPermit = owner.acquire(firstPlayer, 1L).permit().orElseThrow();
+
+        assertEquals(2L, newPermit.serverGeneration());
+        oldPermit.releaseAfterTask();
+        otherOldPermit.releaseAfterTask();
+        assertEquals(1, owner.playerPending(firstPlayer));
+        assertEquals(1, owner.serverPending());
+        assertThrows(P7SemanticInvariantException.class, oldPermit::release);
+        newPermit.release();
+        assertEquals(0, owner.serverPending());
+    }
+
+    @Test
+    void absentSessionInvalidationAndEmptyStopAreBoundedNoOps() {
+        var owner = new P7PendingPermitOwner();
+        var playerId = new UUID(0L, 109L);
+
+        assertThrows(NullPointerException.class, () -> owner.invalidateSession(null, 1L));
+        assertThrows(P7SemanticInvariantException.class, () ->
+                owner.invalidateSession(playerId, 0L));
+        assertEquals(0, owner.invalidateSession(playerId, 1L));
+        assertEquals(0, owner.stopAll());
+        assertEquals(0, owner.serverPending());
+        assertEquals(0, owner.trackedPlayerCount());
+    }
+
+    @Test
+    void staleServerGenerationAcquisitionIsBusyAndDoesNotMutateCounts() {
+        var owner = new P7PendingPermitOwner();
+        var playerId = new UUID(0L, 110L);
+        var oldGeneration = owner.captureServerGeneration();
+        assertEquals(0, owner.stopAll());
+
+        var stale = owner.acquire(playerId, 1L, oldGeneration);
+        var current = owner.acquire(
+                playerId, 1L, owner.captureServerGeneration());
+
+        assertEquals(P7PendingPermitOwner.AcquireOutcome.SERVER_BUSY, stale.outcome());
+        assertTrue(stale.permit().isEmpty());
+        assertEquals(P7PendingPermitOwner.AcquireOutcome.GRANTED, current.outcome());
+        assertEquals(1, owner.playerPending(playerId));
+        assertEquals(1, owner.serverPending());
+        current.permit().orElseThrow().release();
+    }
+
+    @Test
     void ownerUsesOnePrivateMonitorAndS1AccountingWithoutExposingItsMap()
             throws IOException {
         var fieldsByName = Arrays.stream(P7PendingPermitOwner.class.getDeclaredFields())
@@ -178,9 +288,16 @@ final class P7PendingPermitOwnerTest {
                         java.lang.reflect.Field::getName, Function.identity()));
         var monitor = fieldsByName.get("monitor");
         var perPlayerPending = fieldsByName.get("perPlayerPending");
+        var activePermitsByPlayer = fieldsByName.get("activePermitsByPlayer");
         var serverPending = fieldsByName.get("serverPending");
+        var serverGeneration = fieldsByName.get("serverGeneration");
 
-        assertEquals(Set.of("monitor", "perPlayerPending", "serverPending"),
+        assertEquals(Set.of(
+                        "monitor",
+                        "perPlayerPending",
+                        "activePermitsByPlayer",
+                        "serverPending",
+                        "serverGeneration"),
                 fieldsByName.keySet());
         assertEquals(Object.class, monitor.getType());
         assertTrue(Modifier.isPrivate(monitor.getModifiers()));
@@ -188,18 +305,24 @@ final class P7PendingPermitOwnerTest {
         assertEquals(Map.class, perPlayerPending.getType());
         assertTrue(Modifier.isPrivate(perPlayerPending.getModifiers()));
         assertTrue(Modifier.isFinal(perPlayerPending.getModifiers()));
+        assertEquals(Map.class, activePermitsByPlayer.getType());
+        assertTrue(Modifier.isPrivate(activePermitsByPlayer.getModifiers()));
+        assertTrue(Modifier.isFinal(activePermitsByPlayer.getModifiers()));
         assertEquals(int.class, serverPending.getType());
         assertTrue(Modifier.isPrivate(serverPending.getModifiers()));
+        assertEquals(long.class, serverGeneration.getType());
+        assertTrue(Modifier.isPrivate(serverGeneration.getModifiers()));
         assertFalse(Arrays.stream(P7PendingPermitOwner.class.getDeclaredMethods())
                 .anyMatch(method -> Map.class.isAssignableFrom(method.getReturnType())));
 
         var source = Files.readString(OWNER_SOURCE);
         assertTrue(source.contains("new PendingPermitAccounting(playerPending, serverPending)"));
         assertTrue(source.contains("accounting.acquire()"));
-        assertTrue(source.contains("accounting.release(\n"
-                + "                    permit.accountingPermitUnderOwnerLock())"));
-        assertEquals(6, occurrences(source, "synchronized (monitor)"));
-        assertEquals(3, occurrences(source, "permit.accountingPermitUnderOwnerLock()"));
+        assertTrue(source.contains(
+                "var decision = accounting.release(permit.accountingPermitUnderOwnerLock())"));
+        assertTrue(source.contains("int invalidateSession("));
+        assertTrue(source.contains("int stopAll()"));
+        assertTrue(source.contains("P7PendingPermit.LifecycleState.LIFECYCLE_TERMINATED"));
         assertEquals(1, occurrences(source, "permit.markReleasedUnderOwnerLock("));
         try (var paths = Files.list(OWNER_SOURCE.getParent())) {
             var tokenStateCallers = paths
@@ -228,10 +351,15 @@ final class P7PendingPermitOwnerTest {
                 "owner", P7PendingPermitOwner.class,
                 "authenticatedPlayerId", UUID.class,
                 "connectionEpoch", long.class,
-                "accountingPermit", PendingPermitAccounting.Permit.class), fields);
+                "serverGeneration", long.class,
+                "accountingPermit", PendingPermitAccounting.Permit.class,
+                "lifecycleState", P7PendingPermit.LifecycleState.class), fields);
         assertTrue(Arrays.stream(P7PendingPermit.class.getDeclaredFields())
                 .filter(field -> Set.of(
-                                "owner", "authenticatedPlayerId", "connectionEpoch")
+                                "owner",
+                                "authenticatedPlayerId",
+                                "connectionEpoch",
+                                "serverGeneration")
                         .contains(field.getName()))
                 .allMatch(field -> Modifier.isPrivate(field.getModifiers())
                         && Modifier.isFinal(field.getModifiers())));
@@ -251,6 +379,10 @@ final class P7PendingPermitOwnerTest {
             offset += fragment.length();
         }
         return count;
+    }
+
+    private static CastIntent minimumIntent(long sequence) {
+        return new CastIntent(sequence, 0, CastInputKind.CAST, 0, null, null);
     }
 
     private static String read(Path path) {

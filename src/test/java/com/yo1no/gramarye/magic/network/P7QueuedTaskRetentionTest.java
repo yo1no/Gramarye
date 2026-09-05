@@ -54,13 +54,16 @@ final class P7QueuedTaskRetentionTest {
                 "permit", P7PendingPermit.class));
         assertExactPrivateFinalFields(P7IntentAckDispatchTask.class, Map.of(
                 "acknowledgement", IntentAcknowledgement.class,
-                "dispatchPort", P7ClientMirrorDispatchPort.class));
+                "dispatchPort", P7ClientMirrorDispatchPort.class,
+                "dispatchGeneration", long.class));
         assertExactPrivateFinalFields(P7ManaDispatchTask.class, Map.of(
                 "snapshot", PlayerManaSnapshot.class,
-                "dispatchPort", P7ClientMirrorDispatchPort.class));
+                "dispatchPort", P7ClientMirrorDispatchPort.class,
+                "dispatchGeneration", long.class));
         assertExactPrivateFinalFields(P7CooldownDispatchTask.class, Map.of(
                 "snapshot", SkillCooldownSnapshot.class,
-                "dispatchPort", P7ClientMirrorDispatchPort.class));
+                "dispatchPort", P7ClientMirrorDispatchPort.class,
+                "dispatchGeneration", long.class));
     }
 
     @Test
@@ -251,19 +254,30 @@ final class P7QueuedTaskRetentionTest {
         private SkillCooldownSnapshot lastCooldownSnapshot;
 
         @Override
-        public void onIntentAcknowledgement(IntentAcknowledgement acknowledgement) {
+        public long captureDispatchGeneration() {
+            return 1L;
+        }
+
+        @Override
+        public void onIntentAcknowledgement(
+                long dispatchGeneration, IntentAcknowledgement acknowledgement) {
+            assertEquals(1L, dispatchGeneration);
             acknowledgementCalls++;
             lastAcknowledgement = acknowledgement;
         }
 
         @Override
-        public void onPlayerManaSnapshot(PlayerManaSnapshot snapshot) {
+        public void onPlayerManaSnapshot(
+                long dispatchGeneration, PlayerManaSnapshot snapshot) {
+            assertEquals(1L, dispatchGeneration);
             manaCalls++;
             lastManaSnapshot = snapshot;
         }
 
         @Override
-        public void onSkillCooldownSnapshot(SkillCooldownSnapshot snapshot) {
+        public void onSkillCooldownSnapshot(
+                long dispatchGeneration, SkillCooldownSnapshot snapshot) {
+            assertEquals(1L, dispatchGeneration);
             cooldownCalls++;
             lastCooldownSnapshot = snapshot;
         }
@@ -279,17 +293,25 @@ final class P7QueuedTaskRetentionTest {
         }
 
         @Override
-        public void onIntentAcknowledgement(IntentAcknowledgement acknowledgement) {
+        public long captureDispatchGeneration() {
+            return 1L;
+        }
+
+        @Override
+        public void onIntentAcknowledgement(
+                long dispatchGeneration, IntentAcknowledgement acknowledgement) {
             fail();
         }
 
         @Override
-        public void onPlayerManaSnapshot(PlayerManaSnapshot snapshot) {
+        public void onPlayerManaSnapshot(
+                long dispatchGeneration, PlayerManaSnapshot snapshot) {
             fail();
         }
 
         @Override
-        public void onSkillCooldownSnapshot(SkillCooldownSnapshot snapshot) {
+        public void onSkillCooldownSnapshot(
+                long dispatchGeneration, SkillCooldownSnapshot snapshot) {
             fail();
         }
 

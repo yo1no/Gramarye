@@ -152,7 +152,7 @@ final class ManaBoundaryTest {
         var manaGameTests = code(MANA_MAIN.resolve("ManaLifecycleGameTests.java"));
         var totalGameTests = occurrences(allMain, "@GameTest(");
         var manaGameTestCount = occurrences(manaGameTests, "@GameTest(");
-        var baselineGameTests = totalGameTests - manaGameTestCount;
+        var baselineGameTests = totalGameTests - manaGameTestCount - com.yo1no.gramarye.P7GameTestInventory.s4Count();
 
         assertAll(
                 () -> assertEquals(
@@ -213,7 +213,7 @@ final class ManaBoundaryTest {
                         maximum.getLong(ManaStateCodec.BALANCE_FIELD)),
                 () -> assertEquals(12, baselineGameTests),
                 () -> assertEquals(7, manaGameTestCount),
-                () -> assertEquals(19, totalGameTests));
+                () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTests));
     }
 
     @Test
@@ -507,6 +507,7 @@ final class ManaBoundaryTest {
                                 "src/main/java/com/yo1no/gramarye/Gramarye.java",
                                 "src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java",
                                 "src/main/java/com/yo1no/gramarye/SkillRuntimeService.java",
+                                "src/test/java/com/yo1no/gramarye/P5RuntimeHardLimitWorkloadTest.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java"),
                         exactS4P5Changes,
                         () -> "unexpected P5 source drift: " + output),

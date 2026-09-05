@@ -976,6 +976,8 @@ verify_b2_sources_and_outputs() {
     local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
     local runtime_service='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
     local p7_network_handler='src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java'
+    local p7_sync='src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java'
+    local p7_lifecycle='src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java'
 
     PRODUCTION_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-b2-production.XXXXXX")" \
         || fail 'P4-B2-B verifier could not create its production source list'
@@ -1130,7 +1132,9 @@ verify_b2_sources_and_outputs() {
         'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
-        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java'
+        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java'
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'PayloadRegistrar' \
@@ -1142,7 +1146,10 @@ verify_b2_sources_and_outputs() {
         'P4-D3-A reviewed login recovery event owner is missing'
     while IFS= read -r -d '' source; do
         if [[ "${source}" != \
-                'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' ]]; then
+                'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+                && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
+                && "${source}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+                && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]]; then
             forbid_fixed "${source}" 'PlayerEvent' \
                 'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
         fi
@@ -1162,7 +1169,11 @@ verify_b2_sources_and_outputs() {
     while IFS= read -r -d '' source; do
         if [[ "${source}" == "${store_service}" \
                 || "${source}" == "${runtime_service}" \
-                || "${source}" == "${p7_network_handler}" ]]; then
+                || "${source}" == "${p7_network_handler}" \
+                || "${source}" == "${p7_sync}" \
+                || "${source}" == "${p7_lifecycle}" \
+                || "${source}" == 'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java' \
+                || "${source}" == 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]]; then
             continue
         fi
         forbid_ere \
@@ -1213,6 +1224,43 @@ verify_b2_sources_and_outputs() {
         "${p7_network_handler}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
         'P7CastIntentNetworkHandler must not catch Throwable'
+    require_fixed_count_in_range "${p7_network_handler}" \
+        '        } catch (RuntimeException | Error failure) {' '        }' \
+        'permit.releaseAfterEnqueueFailure();' 1 \
+        'P7 enqueue failure must use its exact lifecycle-terminal-safe permit cleanup'
+    require_fixed_count_in_range "${p7_network_handler}" \
+        '        } catch (RuntimeException | Error failure) {' '        }' \
+        'throw failure;' 1 \
+        'P7 enqueue cleanup must rethrow the same observed failure'
+    forbid_fixed "${p7_network_handler}" 'permit.release();' \
+        'P7 enqueue failure must not use non-lifecycle-safe explicit release'
+    require_ere_count "${p7_sync}" \
+        'catch[[:space:]]*\(RuntimeException \| Error primary\)' 1 \
+        'P7 transport must have exactly one observed-primary cleanup catch'
+    require_ere_count "${p7_sync}" \
+        'catch[[:space:]]*\([^)]*Error' 1 \
+        'P7 transport Error catches escaped the exact submit operation'
+    require_fixed "${p7_sync}" \
+        'lifecycle.submissionFailed(server, actor, identity, primary);' \
+        'P7 transport lost exact session cleanup'
+    require_fixed "${p7_sync}" 'throw primary;' \
+        'P7 transport must rethrow the same observed object'
+    require_ere_count "${p7_lifecycle}" \
+        'catch[[:space:]]*\(RuntimeException \| Error secondary\)' 5 \
+        'P7 cleanup must isolate its exact five cleanup stages'
+    require_ere_count "${p7_lifecycle}" \
+        'catch[[:space:]]*\(RuntimeException \| Error suppressionFailure\)' 1 \
+        'P7 suppression must preserve the original throwable if suppression fails'
+    require_ere_count "${p7_lifecycle}" \
+        'catch[[:space:]]*\([^)]*Error' 6 \
+        'P7 lifecycle Error catches escaped exact cleanup/suppression operations'
+    require_ere_count "${p7_lifecycle}" \
+        '^[[:space:]]*suppress\(primary, secondary\);$' 5 \
+        'P7 secondary failures must use the exact same-primary suppression policy'
+    for source in "${p7_sync}" "${p7_lifecycle}"; do
+        forbid_ere "${source}" 'catch[[:space:]]*\([^)]*Throwable' \
+            'P7 transport/lifecycle must not catch Throwable'
+    done
 
     for class_name in \
         P4B2ProbeSummary \

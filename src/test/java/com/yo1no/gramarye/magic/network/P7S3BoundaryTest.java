@@ -44,14 +44,15 @@ final class P7S3BoundaryTest {
         try (var paths = Files.walk(MAIN_JAVA)) {
             names = paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .flatMap(path -> publicP7.matcher(read(path)).results())
                     .map(match -> match.group(1))
                     .collect(Collectors.toUnmodifiableSet());
         }
 
         assertEquals(S3_NETWORK_PATHS, actual);
-        assertEquals(Set.of("P7ServerAuthorizationBoundary"), names);
-        assertEquals(4, Arrays.stream(P7ServerAuthorizationBoundary.class.getDeclaredClasses())
+        assertEquals(Set.of("P7ServerAuthorizationBoundary", "P7ManaSnapshotBridge"), names);
+        assertEquals(5, Arrays.stream(P7ServerAuthorizationBoundary.class.getDeclaredClasses())
                 .filter(type -> Modifier.isPublic(type.getModifiers()))
                 .count());
     }
@@ -113,11 +114,13 @@ final class P7S3BoundaryTest {
         var runtime = source.indexOf("SkillRuntimeService.create(");
         var ingress = source.indexOf("new P7AuthenticatedPlayerCastIngress(");
         var capability = source.indexOf("P6RuntimeExecutionCapability.forRuntimeAdapter()");
+        var loginPort = source.indexOf("P7ServerAuthorizationBoundary.loginReadyPort(");
         var install = source.indexOf("P7ServerAuthorizationBoundary.install(");
 
         assertTrue(attachment >= 0 && attachment < store);
         assertTrue(store < runtime && runtime < ingress);
-        assertTrue(ingress < install && install < capability);
+        assertTrue(capability >= 0 && capability < loginPort && loginPort < store);
+        assertTrue(ingress < install);
         assertEquals(1, occurrences(source, "new P7AuthenticatedPlayerCastIngress("));
         assertEquals(1, occurrences(source, "P7ServerAuthorizationBoundary.install("));
     }
@@ -131,7 +134,7 @@ final class P7S3BoundaryTest {
                     .map(P7S3BoundaryTest::read)
                     .collect(Collectors.joining("\n"));
         }
-        assertEquals(19, occurrences(combined, "@Game" + "Test("));
+        assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), occurrences(combined, "@Game" + "Test("));
     }
 
     private static long occurrences(String source, String needle) {

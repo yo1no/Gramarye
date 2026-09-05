@@ -39,6 +39,8 @@ final class P7CastIntentNetworkHandler {
         Objects.requireNonNull(authenticatedPlayerId, "authenticatedPlayerId");
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(composition, "composition");
+        var permitOwner = composition.pendingPermitOwner();
+        var serverGeneration = permitOwner.captureServerGeneration();
         var epochSnapshot = composition
                 .connectionEpochSource()
                 .currentEpoch(authenticatedPlayerId);
@@ -50,10 +52,14 @@ final class P7CastIntentNetworkHandler {
             throw new P7SemanticInvariantException(
                     "connection epoch source returned an invalid value");
         }
-        var acquisition = composition
-                .pendingPermitOwner()
-                .acquire(authenticatedPlayerId, connectionEpoch);
+        var acquisition = permitOwner.acquire(
+                authenticatedPlayerId, connectionEpoch, serverGeneration);
         if (acquisition.outcome() == P7PendingPermitOwner.AcquireOutcome.SERVER_BUSY) {
+            context.reply(new IntentAckPayload(new IntentAcknowledgement(
+                    payload.intent().sequence(),
+                    IntentAcknowledgement.Disposition.SERVER_BUSY,
+                    0,
+                    null)));
             return;
         }
         var permit = acquisition.permit().orElseThrow();
@@ -64,7 +70,7 @@ final class P7CastIntentNetworkHandler {
         try {
             context.enqueueWork(task);
         } catch (RuntimeException | Error failure) {
-            permit.release();
+            permit.releaseAfterEnqueueFailure();
             throw failure;
         }
     }

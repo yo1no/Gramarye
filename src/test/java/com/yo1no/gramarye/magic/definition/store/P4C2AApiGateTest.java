@@ -386,9 +386,9 @@ class P4C2AApiGateTest {
                                 "dimensionTravelKeepsSingleManaTruth",
                                 "duplicatePersistentManaTruthIsAbsent"),
                         manaMethodNames),
-                () -> assertEquals(12, totalCount - manaCount),
+                () -> assertEquals(12, totalCount - manaCount - com.yo1no.gramarye.P7GameTestInventory.s4Count()),
                 () -> assertEquals(7, manaCount),
-                () -> assertEquals(19, totalCount));
+                () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalCount));
     }
 
     @Test
@@ -425,6 +425,7 @@ class P4C2AApiGateTest {
                 .map(path -> path.toAbsolutePath().normalize())
                 .forEach(reviewedReconciliationOwners::add);
         var productionWithoutReviewedReconciliationOwners = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4ReconciliationPath(path))
                 .filter(path -> !reviewedReconciliationOwners.contains(
                         path.toAbsolutePath().normalize()))
                 .map(P4C2AApiGateTest::read)
@@ -473,7 +474,8 @@ class P4C2AApiGateTest {
                         "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
                         "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
                         "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
-                        "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java"),
+                        "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java",
+                        "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java"),
                 relativeFilesContaining(javaSources(MAIN_JAVA), "CustomPacketPayload"));
         assertEquals(
                 Set.of("com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java"),
@@ -596,6 +598,7 @@ class P4C2AApiGateTest {
 
     private static Set<String> relativeFilesContaining(List<Path> sources, String fragment) {
         return sources.stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(P4C2AApiGateTest::relative)
                 .collect(Collectors.toSet());

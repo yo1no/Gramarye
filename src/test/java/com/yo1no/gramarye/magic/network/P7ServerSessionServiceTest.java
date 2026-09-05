@@ -81,6 +81,7 @@ final class P7ServerSessionServiceTest {
                 P7ServerAccess.class,
                 P7ReloadAdmissionGate.class,
                 ConnectionEpochState.class,
+                boolean.class,
                 IntentTickBudget.class), fields.stream()
                 .map(java.lang.reflect.Field::getType)
                 .collect(java.util.stream.Collectors.toSet()));
@@ -471,6 +472,8 @@ final class P7ServerSessionServiceTest {
         for (var fileName : List.of(
                 "P7ServerSessionService.java",
                 "P7ServerSessionState.java",
+                "P7ServerSyncState.java",
+                "P7SyncSequence.java",
                 "P7SessionIdentity.java",
                 "ConnectionEpochState.java",
                 "P7NetworkBounds.java",

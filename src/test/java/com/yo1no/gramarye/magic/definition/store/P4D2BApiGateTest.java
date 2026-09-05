@@ -190,9 +190,9 @@ final class P4D2BApiGateTest {
                         "postCommitAttachmentDriftReturnsPendingRecovery"),
                 methods.stream().map(method -> method.getName()).collect(Collectors.toSet()));
         assertEquals(2, occurrences(read(SUBMISSION_GAME_TEST_SOURCE), "@GameTest("));
-        assertEquals(12, totalGameTestCount - manaGameTestCount);
+        assertEquals(12, totalGameTestCount - manaGameTestCount - com.yo1no.gramarye.P7GameTestInventory.s4Count());
         assertEquals(7, manaGameTestCount);
-        assertEquals(19, totalGameTestCount);
+        assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount);
     }
 
     @Test
@@ -221,6 +221,7 @@ final class P4D2BApiGateTest {
                 .map(P4D2BApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         var mainWithoutReviewedReconciliationOwners = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4ReconciliationPath(path))
                 .filter(path -> !Set.of(
                                 MAIN_JAVA.resolve("com/yo1no/gramarye/magic/definition/store/"
                                                 + "P4E1GroupedStoreAudit.java")
@@ -238,8 +239,10 @@ final class P4D2BApiGateTest {
                 .collect(Collectors.joining("\n"));
         assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
                 relativeSourcesContaining("PlayerLoggedInEvent"));
+        assertEquals(
+                Set.of("com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java"),
+                relativeProductionPathsContaining("PlayerLoggedOutEvent"));
         for (var forbidden : List.of(
-                "PlayerLoggedOutEvent",
                 "OfflineRoot",
                 "RootCollector",
                 "RootIndex",
@@ -251,7 +254,8 @@ final class P4D2BApiGateTest {
                         "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
                         "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
                         "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
-                        "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java"),
+                        "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java",
+                        "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java"),
                 relativeProductionPathsContaining("CustomPacketPayload"));
         assertEquals(
                 Set.of("com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java"),
@@ -285,6 +289,7 @@ final class P4D2BApiGateTest {
 
     private static Set<String> relativeSourcesContaining(String fragment) throws Exception {
         return javaSources(MAIN_JAVA).stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
@@ -293,6 +298,7 @@ final class P4D2BApiGateTest {
     private static Set<String> relativeProductionPathsContaining(String fragment)
             throws Exception {
         return javaSources(MAIN_JAVA).stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(MAIN_JAVA::relativize)
                 .map(path -> path.toString().replace('\\', '/'))
@@ -301,6 +307,7 @@ final class P4D2BApiGateTest {
 
     private static Set<String> relativeSourcesMatching(Pattern pattern) throws Exception {
         return javaSources(MAIN_JAVA).stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> pattern.matcher(withoutCommentsAndLiterals(read(path))).find())
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());

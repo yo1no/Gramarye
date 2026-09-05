@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.network;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,11 +34,20 @@ final class P7S2DedicatedRegistrationTest {
 
     @Test
     void productionNetworkSourcesContainNoMinecraftClientReference() throws IOException {
+        var clientOwner = NETWORK_MAIN.resolve("P7ClientLifecycleEvents.java");
+        var client = read(clientOwner);
+        assertTrue(client.contains("@EventBusSubscriber(modid = Gramarye.MOD_ID, value = Dist.CLIENT)"));
+        assertTrue(client.contains("final class P7ClientLifecycleEvents"));
+        assertFalse(client.contains("public class P7ClientLifecycleEvents"));
+        assertEquals(3, client.split("@SubscribeEvent", -1).length - 1);
         try (var paths = Files.walk(NETWORK_MAIN)) {
             assertTrue(paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !path.equals(clientOwner))
                     .map(P7S2DedicatedRegistrationTest::read)
-                    .noneMatch(source -> source.contains("net.minecraft.client")));
+                    .noneMatch(source -> source.contains("net.minecraft.client")
+                            || source.contains("P7ClientLifecycleEvents")
+                            || source.contains("Dist.CLIENT")));
         }
     }
 

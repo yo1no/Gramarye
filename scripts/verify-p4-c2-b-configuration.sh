@@ -461,6 +461,7 @@ verify_production_freeze() {
             || is_approved_p7_s1_production_path "${path}" \
             || is_approved_p7_s2_production_path "${path}" \
             || is_approved_p7_s3_r1_production_path "${path}" \
+            || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${path}" \
             || fail "production Java changed outside exact current P4-D3-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
@@ -477,6 +478,7 @@ verify_production_freeze() {
             || is_approved_p7_s1_production_path "${path}" \
             || is_approved_p7_s2_production_path "${path}" \
             || is_approved_p7_s3_r1_production_path "${path}" \
+            || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${path}" \
             || fail "untracked production path escaped exact current P4-D3-A allowlist: ${path}"
     done <<< "${untracked}"
 }
@@ -581,7 +583,10 @@ verify_sources() {
         'P4-D3-A reviewed login recovery event owner is missing'
     while IFS= read -r -d '' source; do
         if [[ "${source}" != \
-                'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' ]]; then
+                'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+                && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
+                && "${source}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+                && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]]; then
             forbid_fixed "${source}" 'PlayerEvent' \
                 'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
         fi

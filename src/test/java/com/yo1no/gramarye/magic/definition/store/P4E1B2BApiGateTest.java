@@ -434,9 +434,9 @@ final class P4E1B2BApiGateTest {
         assertEquals(1, occurrences(
                 Files.readString(STORE_ROOT.resolve("SkillDefinitionStoreService.java")),
                 "new SkillRetentionRootAuditService("));
-        assertEquals(12, totalGameTestCount - manaGameTestCount);
+        assertEquals(12, totalGameTestCount - manaGameTestCount - com.yo1no.gramarye.P7GameTestInventory.s4Count());
         assertEquals(7, manaGameTestCount);
-        assertEquals(19, totalGameTestCount);
+        assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount);
     }
 
     @Test

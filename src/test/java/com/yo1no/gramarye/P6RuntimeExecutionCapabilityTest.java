@@ -33,6 +33,8 @@ final class P6RuntimeExecutionCapabilityTest {
         try (var paths = Files.walk(MAIN_JAVA)) {
             for (var path : paths.filter(Files::isRegularFile)
                     .filter(candidate -> candidate.toString().endsWith(".java"))
+                    .filter(candidate -> !candidate.equals(MAIN_JAVA.resolve(
+                            "com/yo1no/gramarye/P7S4LoginManaGameTests.java")))
                     .toList()) {
                 var matches = CAPABILITY_ACQUISITION.matcher(Files.readString(path))
                         .results()

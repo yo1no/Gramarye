@@ -6,6 +6,7 @@ import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.definition.document.SkillDocument;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import java.util.IdentityHashMap;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,20 +46,25 @@ public final class SkillDefinitionStoreService {
         qualificationStoreView = null;
     }
 
-    private SkillDefinitionStoreService(PlayerSkillAttachmentService attachmentService) {
-        this(attachmentService, null, null);
+    private SkillDefinitionStoreService(
+            PlayerSkillAttachmentService attachmentService,
+            P7ServerAuthorizationBoundary.LoginReadyPort loginReadyPort) {
+        this(attachmentService, loginReadyPort, null, null);
     }
 
     private SkillDefinitionStoreService(
             PlayerSkillAttachmentService attachmentService,
+            P7ServerAuthorizationBoundary.LoginReadyPort loginReadyPort,
             P4E2QualificationFacade.StoreView qualificationStoreView,
             P4E2QualificationFacade.PlayerView qualificationPlayerView) {
         Objects.requireNonNull(attachmentService, "attachmentService");
+        Objects.requireNonNull(loginReadyPort, "loginReadyPort");
         rootAuditService = new SkillRetentionRootAuditService(this, attachmentService);
         onlineReconciliationDependency = new P4E2OnlineReconciliationCoordinator(
                 this,
                 attachmentService,
                 rootAuditService,
+                loginReadyPort,
                 qualificationStoreView,
                 qualificationPlayerView);
         this.qualificationStoreView = qualificationStoreView;
@@ -66,10 +72,13 @@ public final class SkillDefinitionStoreService {
 
     /** Creates the unique fully composed service and attaches its server lifecycle listeners. */
     public static SkillDefinitionStoreService registerOn(
-            IEventBus gameBus, PlayerSkillAttachmentService attachmentService) {
+            IEventBus gameBus,
+            PlayerSkillAttachmentService attachmentService,
+            P7ServerAuthorizationBoundary.LoginReadyPort loginReadyPort) {
         Objects.requireNonNull(gameBus, "gameBus");
         var service = new SkillDefinitionStoreService(
-                Objects.requireNonNull(attachmentService, "attachmentService"));
+                Objects.requireNonNull(attachmentService, "attachmentService"),
+                Objects.requireNonNull(loginReadyPort, "loginReadyPort"));
         service.registerLifecycleListeners(gameBus);
         return service;
     }
@@ -81,11 +90,13 @@ public final class SkillDefinitionStoreService {
     public static SkillDefinitionStoreService registerOn(
             IEventBus gameBus,
             PlayerSkillAttachmentService attachmentService,
+            P7ServerAuthorizationBoundary.LoginReadyPort loginReadyPort,
             P4E2QualificationFacade.StoreView qualificationStoreView,
             P4E2QualificationFacade.PlayerView qualificationPlayerView) {
         Objects.requireNonNull(gameBus, "gameBus");
         var service = new SkillDefinitionStoreService(
                 Objects.requireNonNull(attachmentService, "attachmentService"),
+                Objects.requireNonNull(loginReadyPort, "loginReadyPort"),
                 Objects.requireNonNull(qualificationStoreView, "qualificationStoreView"),
                 Objects.requireNonNull(qualificationPlayerView, "qualificationPlayerView"));
         service.registerLifecycleListeners(gameBus);

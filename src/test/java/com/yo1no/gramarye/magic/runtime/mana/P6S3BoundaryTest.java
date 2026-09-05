@@ -308,7 +308,7 @@ final class P6S3BoundaryTest {
                 Set.of("com/yo1no/gramarye/magic/definition/player/"
                         + "PlayerSkillAttachments.java"),
                 registrationOwners);
-        assertEquals(19, occurrences(allMain, "@GameTest("));
+        assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), occurrences(allMain, "@GameTest("));
     }
 
     private static List<Path> paths(Path root, List<String> names) {

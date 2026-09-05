@@ -1,23 +1,45 @@
 package com.yo1no.gramarye.magic.network;
 
 import net.minecraft.server.MinecraftServer;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Event-unwired S3 reload admission gate; production begins open. */
+/** Only the monotonic close request may be changed off the server thread. */
 final class P7ReloadAdmissionGate {
+    private final AtomicBoolean closeRequested = new AtomicBoolean();
     private State state = State.OPEN;
 
     boolean isOpen(MinecraftServer server) {
         requireServerThread(server);
-        return state == State.OPEN;
+        return state == State.OPEN && !closeRequested.get();
+    }
+
+    void requestReloadClose() {
+        closeRequested.set(true);
+    }
+
+    boolean beginReconciliation(MinecraftServer server) {
+        requireServerThread(server);
+        state = State.RECONCILING;
+        var observed = closeRequested.getAndSet(false);
+        state = State.RECONCILING;
+        return observed;
     }
 
     void close(MinecraftServer server) {
         requireServerThread(server);
-        state = State.RELOAD_IN_PROGRESS;
+        state = State.RECONCILING;
     }
 
     void open(MinecraftServer server) {
         requireServerThread(server);
+        if (!closeRequested.get()) {
+            state = State.OPEN;
+        }
+    }
+
+    void reset(MinecraftServer server) {
+        requireServerThread(server);
+        closeRequested.set(false);
         state = State.OPEN;
     }
 
@@ -29,6 +51,6 @@ final class P7ReloadAdmissionGate {
 
     private enum State {
         OPEN,
-        RELOAD_IN_PROGRESS
+        RECONCILING
     }
 }

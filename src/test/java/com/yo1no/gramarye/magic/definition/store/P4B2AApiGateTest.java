@@ -427,6 +427,7 @@ class P4B2AApiGateTest {
         assertTrue(root.contains("SkillDefinitionStoreService.registerOn(\n"
                 + "                NeoForge.EVENT_BUS,\n"
                 + "                playerSkillAttachmentService,\n"
+                + "                p7LoginReadyPort,\n"
                 + "                exactFacade.storeView(),\n"
                 + "                exactFacade.playerView())"));
 
@@ -483,7 +484,7 @@ class P4B2AApiGateTest {
                 "com/yo1no/gramarye/magic/definition/player/"
                         + "PlayerSkillAttachmentGameTests.java"));
 
-        assertEquals(19, occurrences(allMain, "@GameTest("));
+        assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), occurrences(allMain, "@GameTest("));
         assertEquals(4, occurrences(platformTests, "@GameTest("));
         assertEquals(1, occurrences(lifecycleTests, "@GameTest("));
         assertEquals(2, occurrences(playerTests, "@GameTest("));
@@ -628,6 +629,7 @@ class P4B2AApiGateTest {
 
     private static Set<String> filesContaining(List<Path> sources, String fragment) {
         return sources.stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(MAIN_JAVA::relativize)
                 .map(Path::toString)
@@ -637,6 +639,7 @@ class P4B2AApiGateTest {
 
     private static Set<String> fileNamesContaining(List<Path> sources, String fragment) {
         return sources.stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
@@ -644,6 +647,7 @@ class P4B2AApiGateTest {
 
     private static Set<String> filesMatching(List<Path> sources, Pattern pattern) {
         return sources.stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> pattern.matcher(
                         withoutCommentsAndLiterals(read(path))).find())
                 .map(MAIN_JAVA::relativize)

@@ -45,9 +45,12 @@ public final class Gramarye {
         MagicRegistries.register(modBus);
         new DescriptorMigrationAudit().register(modBus);
         playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus);
+        var p7Capability = P6RuntimeExecutionCapability.forRuntimeAdapter();
+        var p7LoginReadyPort = P7ServerAuthorizationBoundary.loginReadyPort(p7Capability);
         skillDefinitionStoreService = SkillDefinitionStoreService.registerOn(
                 NeoForge.EVENT_BUS,
                 playerSkillAttachmentService,
+                p7LoginReadyPort,
                 exactFacade.storeView(),
                 exactFacade.playerView());
         skillIdSource = SkillDraftCreationService.randomUuidSkillIdSource();
@@ -74,7 +77,7 @@ public final class Gramarye {
                 playerSkillAttachmentService,
                 skillDefinitionStoreService);
         P7ServerAuthorizationBoundary.install(
-                P6RuntimeExecutionCapability.forRuntimeAdapter(),
+                p7Capability,
                 p7AuthenticatedPlayerCastIngress);
         NeoForge.EVENT_BUS.addListener(this::handleP5RuntimeStarted);
         exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);

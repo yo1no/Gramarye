@@ -290,9 +290,9 @@ final class P4D3BApiGateTest {
                 () -> assertFalse(production.contains(HALT_CALL)),
                 () -> assertFalse(production.contains("P4D3ProbeMain")),
                 () -> assertFalse(production.contains("@GameTestHolder(\"gramarye_p4_d3\")")),
-                () -> assertEquals(12, totalGameTestCount - manaGameTestCount),
+                () -> assertEquals(12, totalGameTestCount - manaGameTestCount - com.yo1no.gramarye.P7GameTestInventory.s4Count()),
                 () -> assertEquals(7, manaGameTestCount),
-                () -> assertEquals(19, totalGameTestCount));
+                () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount));
     }
 
     private static String namedTaskConfiguration(String build, String taskName) {

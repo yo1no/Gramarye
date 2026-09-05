@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
+import java.util.List;
 import net.minecraft.server.MinecraftServer;
 
 /** Sole bounded owner of transient P7 server-session and admission-transition state. */
@@ -17,6 +18,7 @@ final class P7ServerSessionService {
     private ConnectionEpochState connectionEpochState = ConnectionEpochState.initial();
     private IntentTickBudget globalBudget =
             IntentTickBudget.initial(IntentTickBudget.Kind.GLOBAL_WORK, 0L);
+    private boolean stopping;
 
     P7ServerSessionService(
             P7ServerAccess serverAccess, P7ReloadAdmissionGate reloadGate) {
@@ -25,21 +27,30 @@ final class P7ServerSessionService {
     }
 
     OptionalLong openSession(MinecraftServer server, UUID authenticatedPlayerId) {
+        var result = open(server, authenticatedPlayerId);
+        return result == OpenResult.OPENED ? currentEpoch(authenticatedPlayerId) : OptionalLong.empty();
+    }
+
+    enum OpenResult { OPENED, ALREADY_ACTIVE, CAPACITY_REJECTED, EPOCH_EXHAUSTED, INTERNAL_FAULT }
+
+    OpenResult open(MinecraftServer server, UUID authenticatedPlayerId) {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(authenticatedPlayerId, "authenticatedPlayerId");
         requireServerThread(server);
-        if (!serverAccess.running(server)) {
-            return OptionalLong.empty();
+        if (!serverAccess.running(server) || stopping) {
+            return OpenResult.INTERNAL_FAULT;
         }
         var authoritativeTick = serverAccess.authoritativeTick(server);
         synchronized (stateLock) {
-            if (sessions.containsKey(authenticatedPlayerId)
-                    || sessions.size() == P7NetworkBounds.MAX_ACTIVE_SESSIONS_PER_SERVER) {
-                return OptionalLong.empty();
+            if (sessions.containsKey(authenticatedPlayerId)) {
+                return OpenResult.ALREADY_ACTIVE;
+            }
+            if (sessions.size() == P7NetworkBounds.MAX_ACTIVE_SESSIONS_PER_SERVER) {
+                return OpenResult.CAPACITY_REJECTED;
             }
             var allocation = connectionEpochState.allocate();
             if (!allocation.accepted()) {
-                return OptionalLong.empty();
+                return OpenResult.EPOCH_EXHAUSTED;
             }
             var epoch = allocation.allocatedEpoch().orElseThrow();
             var identity = new P7SessionIdentity(authenticatedPlayerId, epoch);
@@ -47,7 +58,7 @@ final class P7ServerSessionService {
                     authenticatedPlayerId,
                     P7ServerSessionState.initial(identity, authoritativeTick));
             connectionEpochState = allocation.nextState();
-            return OptionalLong.of(epoch);
+            return OpenResult.OPENED;
         }
     }
 
@@ -97,7 +108,7 @@ final class P7ServerSessionService {
         requireServerThread(server);
         synchronized (stateLock) {
             var current = sessions.get(identity.authenticatedPlayerId());
-            if (current == null || !current.identity().equals(identity)) {
+            if (stopping || current == null || !current.identity().equals(identity)) {
                 return Optional.empty();
             }
             var decision = CastIntentAdmissionSemantics.evaluate(
@@ -120,7 +131,64 @@ final class P7ServerSessionService {
     }
 
     boolean admissionOpen(MinecraftServer server) {
-        return reloadGate.isOpen(server);
+        requireServerThread(server);
+        return !stopping && reloadGate.isOpen(server);
+    }
+
+    boolean consumeSyncWork(MinecraftServer server, long tick) {
+        requireServerThread(server);
+        synchronized (stateLock) {
+            if (stopping) {
+                return false;
+            }
+            var decision = globalBudget.consume(tick);
+            globalBudget = decision.nextState();
+            return switch (decision.outcome()) {
+                case ADMITTED -> true;
+                case DENIED -> false;
+                case INTERNAL_SERVER_FAULT -> throw new P7SemanticInvariantException("global work tick regressed");
+            };
+        }
+    }
+
+    void updateSync(MinecraftServer server, P7SessionIdentity identity, P7ServerSyncState next) {
+        requireServerThread(server);
+        synchronized (stateLock) {
+            var current = sessions.get(identity.authenticatedPlayerId());
+            if (current == null || !current.identity().equals(identity)) {
+                throw new P7SemanticInvariantException("sync session is no longer current");
+            }
+            sessions.put(identity.authenticatedPlayerId(), current.withSyncState(next));
+        }
+    }
+
+    List<UUID> activePlayerIds(MinecraftServer server) {
+        requireServerThread(server);
+        synchronized (stateLock) {
+            return sessions.keySet().stream().sorted().toList();
+        }
+    }
+
+    int stop(MinecraftServer server) {
+        requireServerThread(server);
+        synchronized (stateLock) {
+            stopping = true;
+            var count = sessions.size();
+            sessions.clear();
+            return count;
+        }
+    }
+
+    void start(MinecraftServer server) {
+        requireServerThread(server);
+        synchronized (stateLock) {
+            if (!sessions.isEmpty()) {
+                throw new P7SemanticInvariantException("live sessions survived server stop");
+            }
+            connectionEpochState = ConnectionEpochState.initial();
+            globalBudget = IntentTickBudget.initial(IntentTickBudget.Kind.GLOBAL_WORK, 0L);
+            stopping = false;
+        }
     }
 
     int activeSessionCount() {

@@ -1446,7 +1446,8 @@ final class P5RuntimeHardLimitWorkloadTest {
     private static ServiceFixture serviceFixture() {
         var bus = BusBuilder.builder().build();
         var attachments = PlayerSkillAttachmentServiceTestSupport.createService();
-        var store = SkillDefinitionStoreService.registerOn(bus, attachments);
+        var store = SkillDefinitionStoreService.registerOn(
+                bus, attachments, (server, actor) -> {});
         var policy = SkillSubmissionPolicyProvider.defaults();
         return new ServiceFixture(
                 SkillRuntimeService.create(bus, store, policy), store, policy);

@@ -21,7 +21,7 @@ final class P7ReloadAdmissionGateTest {
 
         assertEquals("OPEN", state.name());
         assertEquals(
-                java.util.Set.of("OPEN", "RELOAD_IN_PROGRESS"),
+                java.util.Set.of("OPEN", "RECONCILING"),
                 Arrays.stream(stateType.getEnumConstants())
                         .map(value -> ((Enum<?>) value).name())
                         .collect(java.util.stream.Collectors.toSet()));
@@ -37,6 +37,11 @@ final class P7ReloadAdmissionGateTest {
 
         assertTrue(source.contains("void close(MinecraftServer server)"));
         assertTrue(source.contains("void open(MinecraftServer server)"));
+        assertTrue(source.contains("private final AtomicBoolean closeRequested"));
+        assertTrue(source.contains("void requestReloadClose()"));
+        assertTrue(source.contains("closeRequested.set(true)"));
+        assertTrue(source.contains("state == State.OPEN && !closeRequested.get()"));
+        assertTrue(source.contains("closeRequested.getAndSet(false)"));
         assertTrue(source.contains("!server.isSameThread()"));
         assertFalse(source.contains("SubscribeEvent"));
         assertFalse(source.contains("addListener"));

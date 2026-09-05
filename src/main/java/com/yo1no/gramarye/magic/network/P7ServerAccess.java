@@ -57,6 +57,6 @@ final class P7ServerAccess {
         if (!currentConnectedPlayer(server, actor, actor.getUUID())) {
             return;
         }
-        actor.connection.disconnect(Component.literal("Rate limit exceeded"));
+        actor.connection.disconnect(Component.literal("Network session closed"));
     }
 }

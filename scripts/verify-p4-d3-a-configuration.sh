@@ -329,6 +329,9 @@ require_only_fixed_owner() {
     local found=0
     local status=0
     while IFS= read -r -d '' file; do
+        if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}"; then
+            continue
+        fi
         status=0
         LC_ALL=C grep -Fq -- "${needle}" "${file}" || status=$?
         case "${status}" in
@@ -352,6 +355,9 @@ require_only_ere_owner() {
     local found=0
     local status=0
     while IFS= read -r -d '' file; do
+        if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}"; then
+            continue
+        fi
         status=0
         LC_ALL=C grep -Eq -- "${pattern}" "${file}" || status=$?
         case "${status}" in
@@ -649,6 +655,7 @@ verify_change_boundary() {
             || is_approved_p7_s1_production_path "${path}" \
             || is_approved_p7_s2_production_path "${path}" \
             || is_approved_p7_s3_r1_production_path "${path}" \
+            || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${path}" \
             || fail "production Java escaped exact reviewed D3-A/E1-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
@@ -664,6 +671,7 @@ verify_change_boundary() {
             || is_approved_p7_s1_production_path "${path}" \
             || is_approved_p7_s2_production_path "${path}" \
             || is_approved_p7_s3_r1_production_path "${path}" \
+            || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${path}" \
             || fail "untracked production path escaped exact reviewed D3-A/E1-A allowlist: ${path}"
     done <<< "${untracked}"
 }
@@ -736,12 +744,12 @@ verify_exact_surfaces() {
     require_regular_file "${mana_tests}" 'P6-S2 mana GameTest holder is missing'
     total_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
     mana_count="$(LC_ALL=C grep -Fc -- '@GameTest(' "${mana_tests}")"
-    baseline_count=$((total_count - mana_count))
+    baseline_count=$((total_count - mana_count - $(bash scripts/verify-p7-s4-source-contracts.sh --game-test-count) + 19))
     [[ "${baseline_count}" -eq 12 ]] \
         || fail "historical P4 normal GameTest inventory must remain twelve (found ${baseline_count})"
     [[ "${mana_count}" -eq 7 ]] \
         || fail "P6-S2 mana GameTest inventory must remain seven (found ${mana_count})"
-    [[ "${total_count}" -eq 19 ]] \
+    [[ "${total_count}" -eq "$(bash scripts/verify-p7-s4-source-contracts.sh --game-test-count)" ]] \
         || fail "combined production GameTest inventory must remain nineteen (found ${total_count})"
 }
 
@@ -771,8 +779,11 @@ verify_ownership_and_phase_boundary() {
         'Store reclaim escaped reviewed P4-B lifecycle owners' \
         "${saved_data}" "${store_service}"
 
+    require_only_fixed_owner \
+        'PlayerLoggedOutEvent' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
+        'PlayerLoggedOutEvent escaped the exact P7-S4 lifecycle owner'
     for literal in \
-        PlayerLoggedOutEvent \
         OfflineRoot \
         RootCollector \
         RootIndex \
@@ -790,7 +801,9 @@ verify_ownership_and_phase_boundary() {
         'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
-        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java'
+        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java'
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         PayloadRegistrar \
@@ -800,6 +813,10 @@ verify_ownership_and_phase_boundary() {
         "${PRODUCTION_SOURCE_LIST}" \
         'Reconciliation' \
         'reconciliation escaped the exact B2-A/B2-B owners' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7ReloadAdmissionGate.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java' \
+        'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditService.java' \

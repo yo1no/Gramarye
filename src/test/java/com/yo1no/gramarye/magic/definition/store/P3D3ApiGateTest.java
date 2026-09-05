@@ -297,7 +297,7 @@ class P3D3ApiGateTest {
                     Set.of("P4E2_SERVER_THREAD_CONFINEMENT"),
                     2,
                     "6dc6386d7fddb701de0fb69b0d62f3b0b11e73024f57c81503ec308b9549fb88",
-                    "0f55b2cec30292b884ba38d3388b33707186ff55b83917c3ee1137407abc2f63"),
+                    "0e6aa8e5291b52b3044b55bc45d5059a290faea0b3b57cd2c56c207c9dd98c38"),
             new ThreadSourceAuthority(
                     STORE_SOURCE_PREFIX + "ProductThreadPrecondition.java",
                     Set.of("com.yo1no.gramarye.magic.definition.store.ProductThreadPrecondition",
@@ -337,7 +337,7 @@ class P3D3ApiGateTest {
                     Set.of("C1_CONTROL_1", "P4_EXISTING_SERVER_THREAD_CONFINEMENT"),
                     28,
                     "1aaf829ecdcd321a9a72e4ea09b20644fd45355e092468e411bc49607089c04c",
-                    "2e76d913a9802c5467b83c95c874b92659bb74bc5659cab4fede8baa9ccb476b"),
+                    "c7876fccd4831f99e208f04e31d260b8e969f5d269200442faea58b1d3d73450"),
             new ThreadSourceAuthority(
                     STORE_SOURCE_PREFIX + "SkillDefinitionStoreSubmissionPort.java",
                     Set.of("com.yo1no.gramarye.magic.definition.store."
@@ -441,7 +441,7 @@ class P3D3ApiGateTest {
                     Set.of("P4_RECOVERY_GAMETEST_THREAD_PRECONDITION"),
                     1,
                     "8f5548e0d724bf902b3f6597f386fd2c73ec202cbd54a5bc6749d5562ce566dc",
-                    "b4b467e371d332b42bef6492d9f91ba40b3fb67d09c34daee7d65e79d8687dbe"),
+                    "3e8d4979517449af96df542792a3d57c11f271dcb9cf3ac29a479879b601db13"),
             unrelatedFutureAuthority(
                     "SkillSavedDataCarrierMigrationFailure.java",
                     "com.yo1no.gramarye.magic.definition.store."
@@ -1057,8 +1057,37 @@ class P3D3ApiGateTest {
             backgroundProjection.addAll(normalizedExpressionProjection(
                     path, executable, BACKGROUND_CANDIDATE_IDENTIFIER));
             for (var forbidden : FORBIDDEN_THREAD_SURFACES) {
+                var forbiddenSource = executable;
+                if (forbidden.role().equals("BACKGROUND_SUBMISSION")
+                        && path.equals(STORE_SOURCE_PREFIX
+                                + "SkillSubmissionRecoveryGameTests.java")) {
+                    // §59.6/§60.32: exact synchronous local-bus test realization,
+                    // not a class-wide or production background-submission exemption.
+                    var start = executable.indexOf(
+                            "private static void assertRecoveryChangedHandoffOnce(");
+                    var end = executable.indexOf(
+                            "private static InstalledRecoveryFixture installRecoveryFixture(",
+                            start);
+                    assertTrue(start >= 0 && end > start, path);
+                    var handoff = executable.substring(start, end);
+                    assertEquals(1, countMatches(Pattern.compile(Pattern.quote(
+                            "var bus = BusBuilder.builder().build();")), handoff), path);
+                    var synchronousPosts = List.of(
+                            "bus.post(new ServerStartingEvent(server));",
+                            "bus.post(new PlayerEvent.PlayerLoggedInEvent(player));",
+                            "bus.post(new ServerStoppedEvent(server));");
+                    assertEquals(synchronousPosts.stream()
+                                    .map(statement -> path + "\tpost\t" + statement).toList(),
+                            normalizedExpressionProjection(
+                                    path, handoff, Pattern.compile("\\bpost\\b")), path);
+                    for (var statement : synchronousPosts) {
+                        assertEquals(1, countMatches(
+                                Pattern.compile(Pattern.quote(statement)), executable), path);
+                        forbiddenSource = forbiddenSource.replace(statement, "");
+                    }
+                }
                 assertFalse(
-                        forbidden.pattern().matcher(executable).find(),
+                        forbidden.pattern().matcher(forbiddenSource).find(),
                         path + " contains forbidden " + forbidden.role());
             }
         }
@@ -1067,9 +1096,9 @@ class P3D3ApiGateTest {
         assertEquals(234, executableCandidateCount);
         assertEquals(97, rawCandidateCount - executableCandidateCount);
         assertEquals(authoritiesByPath.keySet(), actualAuthorityPaths);
-        assertEquals(6, backgroundProjection.size());
+        assertEquals(9, backgroundProjection.size());
         assertEquals(
-                "19cdf82440e233873e37100ddece5c085b20229eab2075c31caa315d3667ba84",
+                "1154c3b33f8030214a7baee5cb5c1158fbec4ef8ac732bf08ffa7f1d781d462c",
                 sha256(String.join("\n", backgroundProjection) + "\n"));
 
         var authorizedThreadPaths = THREAD_SOURCE_AUTHORITIES.stream()

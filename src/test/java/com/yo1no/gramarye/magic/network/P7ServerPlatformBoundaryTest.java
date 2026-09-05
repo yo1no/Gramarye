@@ -92,7 +92,7 @@ final class P7ServerPlatformBoundaryTest {
             throws Exception {
         var type = P7ServerDisconnectPort.class;
         var method = type.getDeclaredMethod(
-                "disconnect", MinecraftServer.class, ServerPlayer.class);
+                "disconnect", MinecraftServer.class, ServerPlayer.class, P7SessionIdentity.class);
 
         assertTrue(type.isInterface());
         assertTrue(type.isAnnotationPresent(FunctionalInterface.class));
@@ -110,7 +110,7 @@ final class P7ServerPlatformBoundaryTest {
     @Test
     void productionDisconnectRevalidatesThreadAndCurrentActorThenUsesBoundedReason() {
         var source = read(NETWORK_SOURCE.resolve("P7ServerAccess.java"));
-        var reason = "Rate limit exceeded";
+        var reason = "Network session closed";
 
         assertTrue(reason.length() <= P7NetworkBounds.MAX_WIRE_STRING_OR_RESOURCE_BYTES);
         assertTrue(source.contains("if (!server.isSameThread())"));

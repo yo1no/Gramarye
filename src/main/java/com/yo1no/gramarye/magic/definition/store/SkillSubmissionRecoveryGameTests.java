@@ -16,6 +16,7 @@ import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
 import com.yo1no.gramarye.magic.definition.migration.PipelineFactReport;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentGameTests;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService;
 import io.netty.channel.embedded.EmbeddedChannel;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,6 +36,10 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.level.storage.LevelResource;
+import net.neoforged.bus.api.BusBuilder;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -170,6 +175,19 @@ public final class SkillSubmissionRecoveryGameTests {
                         helper, fixture, firstTarget, finalTarget);
                 case FINAL -> assertFinalJournal(helper, fixture);
             }
+            if (position == PersistedPosition.FINAL) {
+                fixture.close();
+                fixture = null;
+                assertRecoveryChangedHandoffOnce(
+                        helper,
+                        server,
+                        attachments,
+                        reloaded.player(),
+                        draft,
+                        skillId,
+                        firstTarget,
+                        finalTarget);
+            }
             helper.succeed();
         } finally {
             removeOnlinePlayer(server, playerId);
@@ -183,6 +201,97 @@ public final class SkillSubmissionRecoveryGameTests {
                 fixture.close();
             }
             deletePlayerdata(server, playerId);
+        }
+    }
+
+    private static void assertRecoveryChangedHandoffOnce(
+            GameTestHelper helper,
+            MinecraftServer server,
+            PlayerSkillAttachmentService attachments,
+            ServerPlayer player,
+            SkillDraft draft,
+            SkillId skillId,
+            SkillReference firstTarget,
+            SkillReference finalTarget) {
+        var storage = server.overworld().getDataStorage();
+        var productionAdapter = storage.get(CACHE_HIT_ONLY_FACTORY, SAVED_DATA_NAME);
+        if (!(productionAdapter instanceof GramaryeSkillSavedData)) {
+            throw new AssertionError("RecoveryChanged handoff requires the installed Store");
+        }
+
+        var bus = BusBuilder.builder().build();
+        var calls = new int[1];
+        var activeFixture = new InstalledRecoveryFixture[1];
+        var store = SkillDefinitionStoreService.registerOn(
+                bus,
+                attachments,
+                (exactServer, exactPlayer) -> {
+                    helper.assertTrue(
+                            exactServer == server
+                                    && exactPlayer == player
+                                    && server.getPlayerList().getPlayer(player.getUUID())
+                                            == player,
+                            "RecoveryChanged must hand off the exact current player");
+                    var exactFixture = activeFixture[0];
+                    if (exactFixture == null) {
+                        throw new AssertionError(
+                                "RecoveryChanged handoff ran without its installed fixture");
+                    }
+                    assertFinalJournal(helper, exactFixture);
+                    assertFinalAttachment(helper, attachments, player, draft, finalTarget);
+                    assertStoreUnchanged(helper, exactFixture);
+                    helper.assertTrue(calls[0] == 0,
+                            "RecoveryChanged must hand off exactly once");
+                    calls[0] = 1;
+                });
+        var recovery = SkillSubmissionRecoveryService.create(
+                attachments,
+                store.submissionPort(),
+                store.onlineReconciliationDependency());
+        recovery.registerOn(bus);
+        bus.start();
+        try {
+            bus.post(new ServerStartingEvent(server));
+            activeFixture[0] = installRecoveryFixture(
+                    server,
+                    new SkillOwnerId(player.getUUID()),
+                    skillId,
+                    firstTarget,
+                    finalTarget);
+            onlyChain(activeFixture[0], 2);
+            assertFinalAttachment(helper, attachments, player, draft, finalTarget);
+            assertStoreUnchanged(helper, activeFixture[0]);
+            var before = latestState(attachments, player, skillId).orElseThrow(
+                    () -> new AssertionError(
+                            "RecoveryChanged fixture must begin at the final attachment tuple"));
+            var loginTick = server.getTickCount();
+
+            bus.post(new PlayerEvent.PlayerLoggedInEvent(player));
+
+            helper.assertTrue(calls[0] == 1,
+                    "actual RecoveryChanged completion must hand off exactly once");
+            helper.assertTrue(server.getTickCount() == loginTick,
+                    "recovery, RecoveryChanged reconciliation and handoff must stay in one turn");
+            assertFinalJournal(helper, activeFixture[0]);
+            assertFinalAttachment(helper, attachments, player, draft, finalTarget);
+            assertStoreUnchanged(helper, activeFixture[0]);
+            var after = latestState(attachments, player, skillId).orElseThrow(
+                    () -> new AssertionError(
+                            "RecoveryChanged handoff must retain the final attachment tuple"));
+            helper.assertTrue(after.equals(before),
+                    "journal progress without E2 attachment mutation must be RecoveryChanged");
+        } finally {
+            try {
+                if (activeFixture[0] != null) {
+                    activeFixture[0].close();
+                }
+            } finally {
+                try {
+                    bus.post(new ServerStoppedEvent(server));
+                } finally {
+                    storage.set(SAVED_DATA_NAME, productionAdapter);
+                }
+            }
         }
     }
 

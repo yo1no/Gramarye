@@ -18,10 +18,13 @@ final class P7ServerDispatchTask implements Runnable {
 
     @Override
     public void run() {
+        if (!permit.tryStartTask()) {
+            return;
+        }
         try {
             dispatchPort.dispatch(queuedIntent);
         } finally {
-            permit.release();
+            permit.releaseAfterTask();
         }
     }
 }

@@ -145,10 +145,12 @@ final class P7PayloadRegistrarTest {
     void registrarAndHandlersHaveNoClientOnlyOrGenericRegistrationSurface()
             throws IOException {
         var source = javaSources(NETWORK_MAIN).stream()
+                .filter(path -> !path.equals(NETWORK_MAIN.resolve("P7ClientLifecycleEvents.java")))
                 .map(P7PayloadRegistrarTest::read)
                 .collect(Collectors.joining("\n"));
 
         assertFalse(source.contains("net.minecraft.client"));
+        assertFalse(source.contains("P7ClientLifecycleEvents"));
         assertFalse(source.contains("Object payload"));
         assertFalse(source.contains("ServiceLoader"));
         assertFalse(source.contains("playBidirectional"));

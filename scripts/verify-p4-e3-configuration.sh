@@ -776,7 +776,8 @@ is_allowed_changed_path() {
         || is_approved_p6_s4_r1_changed_path "$1" \
         || is_approved_p7_s1_changed_path "$1" \
         || is_approved_p7_s2_changed_path "$1" \
-        || is_approved_p7_s3_r1_changed_path "$1"
+        || is_approved_p7_s3_r1_changed_path "$1" \
+        || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1"
 }
 
 is_exact_probe_path() {
@@ -1307,13 +1308,13 @@ verify_test_route_and_fixture_contract() {
         || fail 'P4-E3 custom runtime must contain exactly one GameTest dispatcher'
     total_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
     mana_count="$(LC_ALL=C grep -Fc -- '@GameTest(' "${mana_tests}")"
-    baseline_count=$((total_count - mana_count))
+    baseline_count=$((total_count - mana_count - $(bash scripts/verify-p7-s4-source-contracts.sh --game-test-count) + 19))
     [[ "${baseline_count}" -eq 12 ]] \
         || fail 'historical P4 normal GameTest inventory must remain exactly twelve'
     [[ "${mana_count}" -eq 7 ]] \
         || fail 'P6-S2 mana GameTest inventory must remain exactly seven'
-    [[ "${total_count}" -eq 19 ]] \
-        || fail 'combined production GameTest inventory must remain exactly nineteen'
+    [[ "${total_count}" -eq "$(bash scripts/verify-p7-s4-source-contracts.sh --game-test-count)" ]] \
+        || fail 'combined production GameTest inventory must match the exact current method/path set'
 
     for marker in \
         fixture.json first.json restart.json \

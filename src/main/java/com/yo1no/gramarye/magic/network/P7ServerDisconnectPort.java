@@ -5,5 +5,5 @@ import net.minecraft.server.level.ServerPlayer;
 
 @FunctionalInterface
 interface P7ServerDisconnectPort {
-    void disconnect(MinecraftServer server, ServerPlayer actor);
+    void disconnect(MinecraftServer server, ServerPlayer actor, P7SessionIdentity identity);
 }

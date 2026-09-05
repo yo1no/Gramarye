@@ -492,6 +492,7 @@ verify_production_no_diff() {
             || is_approved_p7_s1_production_path "${path}" \
             || is_approved_p7_s2_production_path "${path}" \
             || is_approved_p7_s3_r1_production_path "${path}" \
+            || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${path}" \
             || fail "production Java escaped exact reviewed E1-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
@@ -507,6 +508,7 @@ verify_production_no_diff() {
             || is_approved_p7_s1_production_path "${path}" \
             || is_approved_p7_s2_production_path "${path}" \
             || is_approved_p7_s3_r1_production_path "${path}" \
+            || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${path}" \
             || fail "untracked production path escaped exact reviewed E1-A allowlist: ${path}"
     done <<< "${untracked}"
 }

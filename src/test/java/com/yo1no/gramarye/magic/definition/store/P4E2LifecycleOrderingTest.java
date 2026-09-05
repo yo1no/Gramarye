@@ -199,10 +199,7 @@ final class P4E2LifecycleOrderingTest {
         var player = withoutCommentsAndLiterals(Files.readString(PLAYER_SERVICE));
         var storeService = withoutCommentsAndLiterals(Files.readString(STORE_SERVICE));
         var production = javaSources(MAIN_JAVA);
-        var wrapper = slice(
-                coordinator,
-                "    @Override\n    public void reconcileAfterRecovery(",
-                "\n    P4E2ReconciliationResult reconcile(");
+        var wrapper = methodBody(coordinator, "reconcileAfterRecovery");
         var invalidation = slice(
                 coordinator,
                 "    private SkillRetentionRootAuditService.InvalidationResult invalidate(",
@@ -561,7 +558,7 @@ final class P4E2LifecycleOrderingTest {
     }
 
     private static String methodBody(String source, String methodName) {
-        var signature = source.indexOf("private void " + methodName + "(");
+        var signature = source.indexOf("void " + methodName + "(");
         if (signature < 0) {
             throw new AssertionError("method not found: " + methodName);
         }
@@ -605,6 +602,7 @@ final class P4E2LifecycleOrderingTest {
     private static Set<String> sourcePathsContaining(String token) throws Exception {
         try (var stream = Files.walk(MAIN_JAVA)) {
             return stream.filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .filter(path -> {
                         try {
                             return withoutCommentsAndLiterals(Files.readString(path))
@@ -626,6 +624,7 @@ final class P4E2LifecycleOrderingTest {
         var text = new StringBuilder();
         try (var stream = Files.walk(root)) {
             for (var path : stream.filter(candidate -> candidate.toString().endsWith(".java"))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .toList()) {
                 text.append(withoutCommentsAndLiterals(Files.readString(path))).append('\n');
             }

@@ -118,6 +118,13 @@ final class P7S2BoundaryTest {
             "P7ServerSessionService.java",
             "P7ServerSessionState.java");
 
+    private static final Set<String> S4_PRODUCTION_PATHS = Set.of(
+            "P7SyncSequence.java", "P7ServerSyncState.java",
+            "P7AuthoritativeSyncService.java", "P7ServerLifecycleCoordinator.java",
+            "P7ServerLifecycleEvents.java", "P7ReloadStartEvents.java",
+            "P7Diagnostics.java", "P7ClientMirror.java",
+            "P7ClientMirrorDispatchFactory.java", "P7ClientLifecycleEvents.java");
+
     private static final Set<String> S2_TEST_PATHS = Set.of(
             "CastIntentPayloadCodecTest.java",
             "IntentAckPayloadCodecTest.java",
@@ -151,6 +158,8 @@ final class P7S2BoundaryTest {
         var actualS2Paths = allNetworkPaths.stream()
                 .filter(path -> !S1_PRODUCTION_PATHS.contains(path))
                 .filter(path -> !S3_R1_PRODUCTION_PATHS.contains(path))
+                .filter(path -> !S4_PRODUCTION_PATHS.contains(path))
+                .filter(path -> !path.equals("P7S4NetworkGameTests.java"))
                 .collect(Collectors.toUnmodifiableSet());
         var actualS3R1Paths = allNetworkPaths.stream()
                 .filter(S3_R1_PRODUCTION_PATHS::contains)
@@ -161,6 +170,8 @@ final class P7S2BoundaryTest {
         assertEquals(S2_PRODUCTION_TYPES.keySet(), actualS2Paths);
         assertEquals(11, S3_R1_PRODUCTION_PATHS.size());
         assertEquals(S3_R1_PRODUCTION_PATHS, actualS3R1Paths);
+        assertEquals(S4_PRODUCTION_PATHS, allNetworkPaths.stream()
+                .filter(S4_PRODUCTION_PATHS::contains).collect(Collectors.toSet()));
         assertTrue(allNetworkPaths.containsAll(S1_PRODUCTION_PATHS));
         S2_PRODUCTION_TYPES.forEach((path, type) -> {
             assertEquals(PACKAGE_NAME, type.getPackageName(), path);
@@ -277,15 +288,18 @@ final class P7S2BoundaryTest {
         production.serverIntentDispatchPort().dispatch(new P7QueuedCastIntent(
                 playerId, 1, validIntent()));
         production.clientMirrorDispatchPort().onIntentAcknowledgement(
+                production.clientMirrorDispatchPort().captureDispatchGeneration(),
                 new IntentAcknowledgement(
                         1,
                         IntentAcknowledgement.Disposition.ACCEPTED,
                         IntentAcknowledgement.SEQUENCE_CONSUMED,
                         null));
         production.clientMirrorDispatchPort().onPlayerManaSnapshot(
+                production.clientMirrorDispatchPort().captureDispatchGeneration(),
                 new PlayerManaSnapshot(
                         1, PlayerManaSnapshot.Availability.UNAVAILABLE, 0));
         production.clientMirrorDispatchPort().onSkillCooldownSnapshot(
+                production.clientMirrorDispatchPort().captureDispatchGeneration(),
                 new SkillCooldownSnapshot(1, List.of()));
         assertEquals(0, production.pendingPermitOwner().serverPending());
     }
@@ -300,11 +314,11 @@ final class P7S2BoundaryTest {
                         P7ServerIntentDispatchPort.class,
                         P7PendingPermit.class));
         assertFieldTypes(P7IntentAckDispatchTask.class,
-                Set.of(IntentAcknowledgement.class, P7ClientMirrorDispatchPort.class));
+                Set.of(IntentAcknowledgement.class, P7ClientMirrorDispatchPort.class, long.class));
         assertFieldTypes(P7ManaDispatchTask.class,
-                Set.of(PlayerManaSnapshot.class, P7ClientMirrorDispatchPort.class));
+                Set.of(PlayerManaSnapshot.class, P7ClientMirrorDispatchPort.class, long.class));
         assertFieldTypes(P7CooldownDispatchTask.class,
-                Set.of(SkillCooldownSnapshot.class, P7ClientMirrorDispatchPort.class));
+                Set.of(SkillCooldownSnapshot.class, P7ClientMirrorDispatchPort.class, long.class));
 
         var retainedTypes = List.of(
                         P7QueuedCastIntent.class,
@@ -345,10 +359,8 @@ final class P7S2BoundaryTest {
                 "sendToServer(",
                 "sendToAllPlayers(",
                 ".send(",
-                ".reply(",
                 "SkillRuntimeService",
                 "P6RuntimeExecutionBridge",
-                "P7ManaSnapshotBridge",
                 "ServiceLoader",
                 "java.lang.reflect",
                 "java.lang.invoke",
@@ -365,6 +377,15 @@ final class P7S2BoundaryTest {
                 "UUID.randomUUID(")) {
             assertFalse(combined.contains(forbidden), forbidden);
         }
+        assertEquals(1, occurrences(c2sHandler, "context.reply("));
+        assertTrue(c2sHandler.contains("IntentAcknowledgement.Disposition.SERVER_BUSY"));
+        assertTrue(c2sHandler.replaceAll("\\s+", " ").contains("0, null"));
+        var manaObservationOwners = S2_PRODUCTION_TYPES.keySet().stream()
+                .filter(path -> read(NETWORK_MAIN.resolve(path)).contains("P7ManaSnapshotBridge"))
+                .collect(Collectors.toSet());
+        assertEquals(Set.of("P7NetworkComposition.java"), manaObservationOwners);
+        assertEquals(1, occurrences(read(NETWORK_MAIN.resolve("P7NetworkComposition.java")),
+                "P7ManaSnapshotBridge.observeBalance("));
         for (var forbidden : List.of(
                 "IntentSequenceState",
                 "IntentTokenBucket",
@@ -397,7 +418,7 @@ final class P7S2BoundaryTest {
         assertFalse(s1Source.contains("CustomPacketPayload"));
         assertFalse(s1Source.contains("StreamCodec"));
         assertFalse(s1Source.contains("PayloadRegistrar"));
-        assertEquals(19, occurrences(allProduction, "@Game" + "Test("));
+        assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), occurrences(allProduction, "@Game" + "Test("));
     }
 
     private static void assertExactS3R1PublicBoundary() throws Exception {
@@ -406,6 +427,11 @@ final class P7S2BoundaryTest {
         var targetCheck = P7ServerAuthorizationBoundary.AdvisoryTargetCheck.class;
         var install = boundary.getDeclaredMethod(
                 "install", P6RuntimeExecutionCapability.class, rootIngress);
+        var loginReadyPort = P7ServerAuthorizationBoundary.LoginReadyPort.class;
+        var acquireLogin = boundary.getDeclaredMethod(
+                "loginReadyPort", P6RuntimeExecutionCapability.class);
+        var onLoginReady = loginReadyPort.getDeclaredMethod(
+                "onLoginReady", MinecraftServer.class, ServerPlayer.class);
         var dispatch = boundary.getDeclaredMethod(
                 "dispatch",
                 MinecraftServer.class,
@@ -429,6 +455,7 @@ final class P7S2BoundaryTest {
         try (var paths = Files.walk(MAIN_JAVA)) {
             combinedP6P7PublicTypes = paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .flatMap(path -> PUBLIC_P6_P7_TOP_LEVEL.matcher(read(path)).results())
                     .map(result -> result.group(1))
                     .collect(Collectors.toUnmodifiableSet());
@@ -445,7 +472,14 @@ final class P7S2BoundaryTest {
                 .filter(field -> java.lang.reflect.Modifier.isPublic(field.getModifiers())
                         || java.lang.reflect.Modifier.isProtected(field.getModifiers()))
                 .count());
-        assertEquals(List.of(install), publicOperations);
+        assertEquals(Set.of(install, acquireLogin), Set.copyOf(publicOperations));
+        assertTrue(java.lang.reflect.Modifier.isStatic(acquireLogin.getModifiers()));
+        assertEquals(loginReadyPort, acquireLogin.getReturnType());
+        assertEquals(1, Arrays.stream(boundary.getDeclaredMethods())
+                .filter(method -> method.getName().equals("loginReadyPort")).count());
+        assertEquals(1, loginReadyPort.getDeclaredMethods().length);
+        assertTrue(java.lang.reflect.Modifier.isAbstract(onLoginReady.getModifiers()));
+        assertEquals(void.class, onLoginReady.getReturnType());
         assertTrue(java.lang.reflect.Modifier.isStatic(install.getModifiers()));
         assertEquals(void.class, install.getReturnType());
         assertEquals(0, install.getExceptionTypes().length);
@@ -469,7 +503,8 @@ final class P7S2BoundaryTest {
                         "RootIngressPort",
                         "AdvisoryTargetCheck",
                         "AdmissionDisposition",
-                        "TargetDisposition"),
+                        "TargetDisposition",
+                        "LoginReadyPort"),
                 nested.stream().map(Class::getSimpleName).collect(Collectors.toSet()));
         assertTrue(nested.stream().allMatch(type ->
                 java.lang.reflect.Modifier.isPublic(type.getModifiers())));
@@ -506,7 +541,8 @@ final class P7S2BoundaryTest {
                         ManaAttachmentDefinitionBridge.class.getSimpleName(),
                         P6RuntimeExecutionCapability.class.getSimpleName(),
                         P6RuntimeExecutionBridge.class.getSimpleName(),
-                        P7ServerAuthorizationBoundary.class.getSimpleName()),
+                        P7ServerAuthorizationBoundary.class.getSimpleName(),
+                        "P7ManaSnapshotBridge"),
                 combinedP6P7PublicTypes);
     }
 

@@ -3,6 +3,7 @@ package com.yo1no.gramarye.magic.definition.store;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Modifier;
@@ -305,10 +306,16 @@ final class P4E2ApiGateTest {
         var storeService = Class.forName(P4E2PhaseTypes.STORE_PACKAGE
                 + "SkillDefinitionStoreService");
         var gameBus = Class.forName("net.neoforged.bus.api.IEventBus");
+        var loginReadyPort = Class.forName(
+                "com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary$LoginReadyPort");
         var observedRegisterOn = storeService.getDeclaredMethod(
-                "registerOn", gameBus, playerService, storeView, playerView);
+                "registerOn", gameBus, playerService, loginReadyPort, storeView, playerView);
         var unobservedRegisterOn = storeService.getDeclaredMethod(
-                "registerOn", gameBus, playerService);
+                "registerOn", gameBus, playerService, loginReadyPort);
+        assertThrows(NoSuchMethodException.class, () -> storeService.getDeclaredMethod(
+                "registerOn", gameBus, playerService, storeView, playerView));
+        assertThrows(NoSuchMethodException.class, () -> storeService.getDeclaredMethod(
+                "registerOn", gameBus, playerService));
         assertAll(
                 () -> assertTrue(Modifier.isPublic(continueAfterRecovery.getModifiers())),
                 () -> assertEquals(void.class, continueAfterRecovery.getReturnType()),
@@ -447,7 +454,7 @@ final class P4E2ApiGateTest {
 
     @Test
     void compositionOwnersAndGlobalSideEffectOwnersRemainExact() throws Exception {
-        var production = javaSources(MAIN_JAVA);
+        var production = com.yo1no.gramarye.P7GameTestInventory.productionSource();
         var storeService = STORE_ROOT.resolve("SkillDefinitionStoreService.java");
         assertAll(
                 () -> assertEquals(1, occurrences(
@@ -529,9 +536,9 @@ final class P4E2ApiGateTest {
                 () -> assertEquals(1, occurrences(visibilityProbe, "\"-proc:none\"")),
                 () -> assertTrue(visibilityProbe.indexOf("\"-proc:none\"")
                         < visibilityProbe.indexOf("compiler.getTask(")),
-                () -> assertEquals(12, totalGameTestCount - manaGameTestCount),
+                () -> assertEquals(12, totalGameTestCount - manaGameTestCount - com.yo1no.gramarye.P7GameTestInventory.s4Count()),
                 () -> assertEquals(7, manaGameTestCount),
-                () -> assertEquals(19, totalGameTestCount));
+                () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount));
     }
 
     private static void assertBoundedFields(Class<?> type) {
@@ -592,6 +599,7 @@ final class P4E2ApiGateTest {
     private static Set<String> sourcePathsContaining(String token) throws Exception {
         try (var stream = Files.walk(MAIN_JAVA)) {
             return stream.filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .filter(path -> {
                         try {
                             return Files.readString(path).contains(token);

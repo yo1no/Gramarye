@@ -187,6 +187,7 @@ final class P4D1ApiGateTest {
                 .map(P4D1ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
         var mainWithoutReviewedReconciliationOwners = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4ReconciliationPath(path))
                 .filter(path -> !Set.of(
                                 STORE_ROOT.resolve("P4E1GroupedStoreAudit.java")
                                         .toAbsolutePath().normalize(),
@@ -211,7 +212,8 @@ final class P4D1ApiGateTest {
                         "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
                         "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
                         "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
-                        "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java"),
+                        "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java",
+                        "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java"),
                 relativeProductionPathsContaining("CustomPacketPayload"));
         assertEquals(
                 Set.of("com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java"),
@@ -236,6 +238,7 @@ final class P4D1ApiGateTest {
 
     private static Set<String> relativeFilesContaining(String fragment) throws Exception {
         return javaSources(MAIN_JAVA).stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
@@ -244,6 +247,7 @@ final class P4D1ApiGateTest {
     private static Set<String> relativeProductionPathsContaining(String fragment)
             throws Exception {
         return javaSources(MAIN_JAVA).stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(MAIN_JAVA::relativize)
                 .map(path -> path.toString().replace('\\', '/'))

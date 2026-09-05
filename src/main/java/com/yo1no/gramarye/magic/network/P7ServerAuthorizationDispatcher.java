@@ -73,11 +73,11 @@ final class P7ServerAuthorizationDispatcher {
         }
         var decision = transition.orElseThrow();
         if (decision.disconnect()) {
-            sessionService.invalidateAfterRateLimit(server, identity);
             var result = P7AdmissionDispositionMapper.fromAdmissionSemantics(
                     identity, intent.sequence(), decision);
             resultSink.accept(result);
-            disconnectPort.disconnect(server, actor);
+            sessionService.invalidateAfterRateLimit(server, identity);
+            disconnectPort.disconnect(server, actor, identity);
             return;
         }
         if (decision.outcome() != CastIntentAdmissionSemantics.Outcome.ELIGIBLE) {

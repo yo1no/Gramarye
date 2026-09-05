@@ -121,11 +121,30 @@ final class P7CastIntentNetworkHandlerTest {
 
         assertEquals(0, context.enqueueCalls());
         assertEquals(0, context.queuedTaskCount());
+        assertEquals(1, context.replyCalls());
+        var reply = (IntentAckPayload) context.replyPayload();
+        assertEquals(73L, reply.acknowledgement().sequence());
+        assertEquals(IntentAcknowledgement.Disposition.SERVER_BUSY,
+                reply.acknowledgement().disposition());
+        assertEquals(0, reply.acknowledgement().flags());
+        assertTrue(reply.acknowledgement().expectedNext().isEmpty());
         assertEquals(8, owner.playerPending(playerId));
         assertEquals(8, owner.serverPending());
         assertEquals(0, dispatchCalls.get());
 
         existingPermits.forEach(P7PendingPermit::release);
+    }
+
+    @Test
+    void busyReplyRuntimeExceptionPropagatesSameObjectWithoutCleanupOrEnqueue() {
+        var failure = new IllegalStateException("runtime reply failure");
+        assertBusyReplyFailureIsSameObject(failure);
+    }
+
+    @Test
+    void busyReplyErrorPropagatesSameObjectWithoutCleanupOrEnqueue() {
+        var failure = new AssertionError("error reply failure");
+        assertBusyReplyFailureIsSameObject(failure);
     }
 
     @Test
@@ -149,6 +168,36 @@ final class P7CastIntentNetworkHandlerTest {
         assertEquals(0, context.enqueueCalls());
         assertEquals(0, owner.serverPending());
         assertEquals(0, owner.trackedPlayerCount());
+        assertEquals(0, dispatchCalls.get());
+    }
+
+    @Test
+    void serverRestartBetweenGenerationAndEpochReadsFailsBusyWithoutOldEpochPermit() {
+        var playerId = new UUID(0L, 208L);
+        var owner = new P7PendingPermitOwner();
+        var dispatchCalls = new AtomicInteger();
+        var composition = composition(
+                ignored -> {
+                    assertEquals(0, owner.stopAll());
+                    return OptionalLong.of(1L);
+                },
+                owner,
+                ignored -> dispatchCalls.incrementAndGet());
+        var context = new P7RecordingPayloadContext(null);
+
+        P7CastIntentNetworkHandler.handleAuthenticated(
+                new CastIntentPayload(minimumIntent(79L)),
+                playerId,
+                context,
+                composition);
+
+        assertEquals(1, context.replyCalls());
+        assertEquals(IntentAcknowledgement.Disposition.SERVER_BUSY,
+                ((IntentAckPayload) context.replyPayload())
+                        .acknowledgement().disposition());
+        assertEquals(0, context.enqueueCalls());
+        assertEquals(0, owner.playerPending(playerId));
+        assertEquals(0, owner.serverPending());
         assertEquals(0, dispatchCalls.get());
     }
 
@@ -180,58 +229,59 @@ final class P7CastIntentNetworkHandlerTest {
 
     @Test
     void synchronousEnqueueRuntimeExceptionReleasesPermitAndPropagatesSameObject() {
-        var playerId = new UUID(0L, 205L);
-        var failure = new IllegalStateException("runtime enqueue failure");
-        var owner = new P7PendingPermitOwner();
-        var dispatchCalls = new AtomicInteger();
-        var context = new P7RecordingPayloadContext(null, failure);
-        var composition = composition(
-                ignored -> OptionalLong.of(1L),
-                owner,
-                ignored -> dispatchCalls.incrementAndGet());
-
-        var observed = assertThrows(IllegalStateException.class, () ->
-                P7CastIntentNetworkHandler.handleAuthenticated(
-                        new CastIntentPayload(minimumIntent(76L)),
-                        playerId,
-                        context,
-                        composition));
-
-        assertSame(failure, observed);
-        assertEquals(1, context.enqueueCalls());
-        assertEquals(0, context.queuedTaskCount());
-        assertEquals(0, owner.playerPending(playerId));
-        assertEquals(0, owner.serverPending());
-        assertEquals(0, owner.trackedPlayerCount());
-        assertEquals(0, dispatchCalls.get());
+        assertEnqueueFailureDuringLifecycle(new IllegalStateException("runtime enqueue failure"));
     }
 
     @Test
     void synchronousEnqueueErrorReleasesPermitAndPropagatesSameObject() {
-        var playerId = new UUID(0L, 206L);
-        var failure = new AssertionError("error enqueue failure");
-        var owner = new P7PendingPermitOwner();
-        var dispatchCalls = new AtomicInteger();
-        var context = new P7RecordingPayloadContext(null, failure);
-        var composition = composition(
-                ignored -> OptionalLong.of(1L),
-                owner,
-                ignored -> dispatchCalls.incrementAndGet());
+        assertEnqueueFailureDuringLifecycle(new AssertionError("error enqueue failure"));
+    }
 
-        var observed = assertThrows(AssertionError.class, () ->
-                P7CastIntentNetworkHandler.handleAuthenticated(
-                        new CastIntentPayload(minimumIntent(77L)),
-                        playerId,
-                        context,
-                        composition));
+    private static void assertEnqueueFailureDuringLifecycle(Throwable failure) {
+        for (var terminal : new String[] {"active", "disconnect", "stop"}) {
+            var playerId = new UUID(0L, 205L);
+            var owner = new P7PendingPermitOwner();
+            var dispatchCalls = new AtomicInteger();
+            var replacement = new AtomicReference<P7PendingPermit>();
+            var context = new P7RecordingPayloadContext(null, failure, null,
+                    net.minecraft.network.protocol.PacketFlow.SERVERBOUND, () -> {
+                        assertEquals(1, owner.serverPending());
+                        switch (terminal) {
+                            case "active" -> { }
+                            case "disconnect" -> {
+                                assertEquals(1, owner.invalidateSession(playerId, 1L));
+                                replacement.set(owner.acquire(playerId, 2L).permit().orElseThrow());
+                            }
+                            case "stop" -> {
+                                assertEquals(1, owner.stopAll());
+                                replacement.set(owner.acquire(playerId, 1L).permit().orElseThrow());
+                            }
+                            default -> throw new AssertionError("unknown fixture terminal");
+                        }
+                    });
+            var composition = composition(ignored -> OptionalLong.of(1L), owner,
+                    ignored -> dispatchCalls.incrementAndGet());
 
-        assertSame(failure, observed);
-        assertEquals(1, context.enqueueCalls());
-        assertEquals(0, context.queuedTaskCount());
-        assertEquals(0, owner.playerPending(playerId));
-        assertEquals(0, owner.serverPending());
-        assertEquals(0, owner.trackedPlayerCount());
-        assertEquals(0, dispatchCalls.get());
+            var observed = assertThrows(failure.getClass(), () ->
+                    P7CastIntentNetworkHandler.handleAuthenticated(
+                            new CastIntentPayload(minimumIntent(76L)), playerId, context, composition));
+
+            assertSame(failure, observed);
+            assertEquals(1, context.enqueueCalls());
+            assertEquals(0, context.queuedTaskCount());
+            assertEquals(0, context.replyCalls());
+            assertEquals(0, context.disconnectCalls());
+            assertEquals(0, dispatchCalls.get());
+            var expectedRemaining = replacement.get() == null ? 0 : 1;
+            assertEquals(expectedRemaining, owner.playerPending(playerId));
+            assertEquals(expectedRemaining, owner.serverPending());
+            assertEquals(expectedRemaining, owner.trackedPlayerCount());
+            if (replacement.get() != null) {
+                assertFalse(replacement.get().released());
+                replacement.get().release();
+            }
+            assertEquals(0, owner.serverPending());
+        }
     }
 
     @Test
@@ -242,6 +292,8 @@ final class P7CastIntentNetworkHandlerTest {
         assertTrue(source.contains("player instanceof ServerPlayer serverPlayer"));
         assertTrue(source.contains("serverPlayer.getUUID()"));
         assertTrue(source.contains("handleAuthenticated("));
+        assertTrue(source.indexOf("captureServerGeneration()")
+                < source.indexOf("currentEpoch(authenticatedPlayerId)"));
         assertTrue(source.contains("context.enqueueWork(task)"));
         assertFalse(source.contains("IntentSequenceState"));
         assertFalse(source.contains("IntentTokenBucket"));
@@ -250,7 +302,8 @@ final class P7CastIntentNetworkHandlerTest {
         assertFalse(source.contains("CastIntentAdmissionSemantics"));
         assertFalse(source.contains("SkillRuntimeService"));
         assertFalse(source.contains("P6RuntimeExecutionBridge"));
-        assertFalse(source.contains("IntentAcknowledgement"));
+        assertTrue(source.contains("context.reply(new IntentAckPayload("));
+        assertTrue(source.contains("IntentAcknowledgement.Disposition.SERVER_BUSY"));
         assertPlatformEntryBehavior();
     }
 
@@ -304,6 +357,8 @@ final class P7CastIntentNetworkHandlerTest {
                     Object player();
 
                     void disconnect(Component reason);
+
+                    void reply(Object payload);
 
                     void enqueueWork(Runnable task);
                 }
@@ -395,6 +450,11 @@ final class P7CastIntentNetworkHandlerTest {
                         }
 
                         @Override
+                        public void reply(Object ignored) {
+                            throw new AssertionError("unexpected reply");
+                        }
+
+                        @Override
                         public void enqueueWork(Runnable queued) {
                             enqueueCalls++;
                             task = queued;
@@ -403,6 +463,9 @@ final class P7CastIntentNetworkHandlerTest {
                 }
 
                 final class CastIntent {
+                    long sequence() {
+                        return 1L;
+                    }
                 }
 
                 final class CastIntentPayload {
@@ -414,6 +477,24 @@ final class P7CastIntentNetworkHandlerTest {
 
                     CastIntent intent() {
                         return intent;
+                    }
+                }
+
+                final class IntentAckPayload {
+                    IntentAckPayload(IntentAcknowledgement ignored) {
+                    }
+                }
+
+                final class IntentAcknowledgement {
+                    enum Disposition {
+                        SERVER_BUSY
+                    }
+
+                    IntentAcknowledgement(
+                            long sequence,
+                            Disposition disposition,
+                            int flags,
+                            Long expectedNext) {
                     }
                 }
 
@@ -462,7 +543,14 @@ final class P7CastIntentNetworkHandlerTest {
                     long epoch;
                     P7PendingPermit permit;
 
-                    AcquireResult acquire(UUID authenticatedPlayerId, long connectionEpoch) {
+                    long captureServerGeneration() {
+                        return 1L;
+                    }
+
+                    AcquireResult acquire(
+                            UUID authenticatedPlayerId,
+                            long connectionEpoch,
+                            long serverGeneration) {
                         playerId = authenticatedPlayerId;
                         epoch = connectionEpoch;
                         permit = new P7PendingPermit();
@@ -490,6 +578,10 @@ final class P7CastIntentNetworkHandlerTest {
                     int releases;
 
                     void release() {
+                        releases++;
+                    }
+
+                    void releaseAfterEnqueueFailure() {
                         releases++;
                     }
                 }
@@ -604,6 +696,38 @@ final class P7CastIntentNetworkHandlerTest {
         return new CastIntent(sequence, 0, CastInputKind.CAST, 0, null, null);
     }
 
+    private static void assertBusyReplyFailureIsSameObject(Throwable failure) {
+        var playerId = new UUID(0L, 207L);
+        var owner = new P7PendingPermitOwner();
+        var existingPermits = new ArrayList<P7PendingPermit>();
+        for (var epoch = 1L; epoch <= 8L; epoch++) {
+            existingPermits.add(owner.acquire(playerId, epoch).permit().orElseThrow());
+        }
+        var dispatchCalls = new AtomicInteger();
+        var context = new P7RecordingPayloadContext(
+                null, null, failure,
+                net.minecraft.network.protocol.PacketFlow.SERVERBOUND);
+        var composition = composition(
+                ignored -> OptionalLong.of(99L),
+                owner,
+                ignored -> dispatchCalls.incrementAndGet());
+
+        var observed = assertThrows(failure.getClass(), () ->
+                P7CastIntentNetworkHandler.handleAuthenticated(
+                        new CastIntentPayload(minimumIntent(78L)),
+                        playerId,
+                        context,
+                        composition));
+
+        assertSame(failure, observed);
+        assertEquals(1, context.replyCalls());
+        assertEquals(0, context.enqueueCalls());
+        assertEquals(8, owner.playerPending(playerId));
+        assertEquals(8, owner.serverPending());
+        assertEquals(0, dispatchCalls.get());
+        existingPermits.forEach(P7PendingPermit::release);
+    }
+
     private static P7NetworkComposition composition(
             P7ConnectionEpochSnapshotSource epochSource,
             P7PendingPermitOwner owner,
@@ -625,12 +749,20 @@ final class P7CastIntentNetworkHandlerTest {
 
     private static final class NoOpClientDispatchPort implements P7ClientMirrorDispatchPort {
         @Override
-        public void onIntentAcknowledgement(IntentAcknowledgement acknowledgement) {}
+        public long captureDispatchGeneration() {
+            return 0L;
+        }
 
         @Override
-        public void onPlayerManaSnapshot(PlayerManaSnapshot snapshot) {}
+        public void onIntentAcknowledgement(
+                long dispatchGeneration, IntentAcknowledgement acknowledgement) {}
 
         @Override
-        public void onSkillCooldownSnapshot(SkillCooldownSnapshot snapshot) {}
+        public void onPlayerManaSnapshot(
+                long dispatchGeneration, PlayerManaSnapshot snapshot) {}
+
+        @Override
+        public void onSkillCooldownSnapshot(
+                long dispatchGeneration, SkillCooldownSnapshot snapshot) {}
     }
 }

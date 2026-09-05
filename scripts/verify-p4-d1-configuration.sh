@@ -230,6 +230,8 @@ is_reviewed_p7_s2_platform_owner() {
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java | \
         PayloadRegistrar:src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java)
             return 0
             ;;
@@ -253,6 +255,9 @@ verify_phase_boundary() {
         || fail 'P4-D3-A reviewed login recovery event owner is missing'
     while IFS= read -r -d '' source; do
         if [[ "${source}" != "${RECOVERY_SERVICE}" ]] \
+                && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' ]] \
+                && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]] \
+                && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]] \
                 && grep -Fq -- 'PlayerEvent' "${source}"; then
             fail "PlayerEvent escaped the exact P4-D3-A recovery-service allowlist: ${source}"
         fi
@@ -272,6 +277,10 @@ verify_phase_boundary() {
     while IFS= read -r -d '' source; do
         case "${source}" in
             "${GROUPED_STORE_AUDIT}" | \
+            'src/main/java/com/yo1no/gramarye/magic/network/P7ReloadAdmissionGate.java' | \
+            'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java' | \
+            'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' | \
+            'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' | \
             "${STORE_ROOT}/SkillRetentionRootAuditResult.java" | \
             "${STORE_ROOT}/SkillRetentionRootAuditService.java" | \
             'src/main/java/com/yo1no/gramarye/Gramarye.java' | \

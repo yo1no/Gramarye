@@ -8,6 +8,8 @@ import net.minecraft.server.level.ServerPlayer;
 public final class P7ServerAuthorizationBoundary {
     private static final RootIngressPort UNAVAILABLE_ROOT_INGRESS =
             (server, actor, slot, targetCheck) -> AdmissionDisposition.P5_UNAVAILABLE;
+    private static final LoginReadyPort LOGIN_READY_PORT =
+            (server, actor) -> P7NetworkComposition.onLoginReady(server, actor);
 
     private static volatile RootIngressPort installedRootIngress = UNAVAILABLE_ROOT_INGRESS;
 
@@ -22,8 +24,14 @@ public final class P7ServerAuthorizationBoundary {
                 throw new P7SemanticInvariantException(
                         "root ingress boundary is already installed");
             }
+            P7NetworkComposition.bindManaCapability(capability);
             installedRootIngress = rootIngressPort;
         }
+    }
+
+    public static LoginReadyPort loginReadyPort(P6RuntimeExecutionCapability capability) {
+        Objects.requireNonNull(capability, "capability");
+        return LOGIN_READY_PORT;
     }
 
     static AdmissionDisposition dispatch(
@@ -64,5 +72,10 @@ public final class P7ServerAuthorizationBoundary {
         VALID,
         INVALID_TARGET,
         TARGET_UNAVAILABLE
+    }
+
+    @FunctionalInterface
+    public interface LoginReadyPort {
+        void onLoginReady(MinecraftServer server, ServerPlayer actor);
     }
 }

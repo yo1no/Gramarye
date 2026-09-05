@@ -1,8 +1,13 @@
 package com.yo1no.gramarye.magic.network;
 
 import java.util.Objects;
+import com.yo1no.gramarye.P6RuntimeExecutionCapability;
+import com.yo1no.gramarye.magic.runtime.mana.P7ManaSnapshotBridge;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 
 final class P7NetworkComposition {
+    private static P6RuntimeExecutionCapability manaCapability;
     private final P7ConnectionEpochSnapshotSource connectionEpochSource;
     private final P7PendingPermitOwner pendingPermitOwner;
     private final P7ServerIntentDispatchPort serverIntentDispatchPort;
@@ -25,6 +30,27 @@ final class P7NetworkComposition {
 
     static P7NetworkComposition production() {
         return ProductionHolder.INSTANCE;
+    }
+
+    // Called only by the existing write-once boundary installation, before publication.
+    static void bindManaCapability(P6RuntimeExecutionCapability capability) {
+        Objects.requireNonNull(capability, "capability");
+        if (manaCapability != null) {
+            throw new P7SemanticInvariantException("mana capability already bound");
+        }
+        manaCapability = capability;
+    }
+
+    static void onLoginReady(MinecraftServer server, ServerPlayer actor) {
+        ProductionHolder.LIFECYCLE.onLoginReady(server, actor);
+    }
+
+    static P7ServerLifecycleCoordinator lifecycle() {
+        return ProductionHolder.LIFECYCLE;
+    }
+
+    static P7ReloadAdmissionGate reloadGate() {
+        return ProductionHolder.RELOAD_GATE;
     }
 
     P7ConnectionEpochSnapshotSource connectionEpochSource() {
@@ -51,9 +77,14 @@ final class P7NetworkComposition {
                 new P7ServerSessionService(SERVER_ACCESS, RELOAD_GATE);
         private static final P7AdvisoryTargetValidator TARGET_VALIDATOR =
                 new P7AdvisoryTargetValidator();
-        private static final P7ServerIntentResultSink RESULT_SINK = ignored -> {};
+        private static final P7PendingPermitOwner PERMITS = new P7PendingPermitOwner();
+        private static final P7ServerLifecycleCoordinator LIFECYCLE =
+                new P7ServerLifecycleCoordinator(SESSION_SERVICE, SERVER_ACCESS, PERMITS,
+                        RELOAD_GATE, new P7Diagnostics(),
+                        actor -> P7ManaSnapshotBridge.observeBalance(manaCapability, actor));
+        private static final P7ServerIntentResultSink RESULT_SINK = LIFECYCLE::accept;
         private static final P7ServerDisconnectPort DISCONNECT_PORT =
-                (server, actor) -> SERVER_ACCESS.disconnectCurrent(server, actor);
+                LIFECYCLE::finishInvalidated;
         private static final P7ServerAuthorizationDispatcher SERVER_DISPATCHER =
                 new P7ServerAuthorizationDispatcher(
                         SESSION_SERVICE,
@@ -63,19 +94,9 @@ final class P7NetworkComposition {
                         DISCONNECT_PORT);
         private static final P7NetworkComposition INSTANCE = new P7NetworkComposition(
                 SESSION_SERVICE::currentEpoch,
-                new P7PendingPermitOwner(),
+                PERMITS,
                 SERVER_DISPATCHER::dispatch,
-                new P7ClientMirrorDispatchPort() {
-                    @Override
-                    public void onIntentAcknowledgement(
-                            IntentAcknowledgement acknowledgement) {}
-
-                    @Override
-                    public void onPlayerManaSnapshot(PlayerManaSnapshot snapshot) {}
-
-                    @Override
-                    public void onSkillCooldownSnapshot(SkillCooldownSnapshot snapshot) {}
-                });
+                P7ClientMirrorDispatchFactory.production());
 
         private ProductionHolder() {
             throw new AssertionError("no instances");

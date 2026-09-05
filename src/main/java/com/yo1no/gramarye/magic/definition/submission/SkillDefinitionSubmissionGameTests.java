@@ -324,7 +324,8 @@ public final class SkillDefinitionSubmissionGameTests {
                 storage.get(CACHE_HIT_ONLY_FACTORY, SAVED_DATA_NAME),
                 "startup SavedData adapter");
         IEventBus bus = BusBuilder.builder().build();
-        var service = SkillDefinitionStoreService.registerOn(bus, attachments);
+        var service = SkillDefinitionStoreService.registerOn(
+                bus, attachments, (loginServer, actor) -> {});
         StoreFixture fixture = null;
         try {
             bus.start();

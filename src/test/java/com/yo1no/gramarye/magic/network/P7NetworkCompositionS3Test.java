@@ -61,7 +61,9 @@ final class P7NetworkCompositionS3Test {
         assertEquals(1, occurrences(source, "P7ServerIntentResultSink RESULT_SINK"));
         assertFalse(source.contains("OptionalLong.empty()"));
         assertFalse(source.contains("PacketDistributor"));
-        assertFalse(source.contains("P7ManaSnapshotBridge"));
+        assertEquals(1, occurrences(source, "P7ManaSnapshotBridge.observeBalance("));
+        assertTrue(source.contains("RESULT_SINK = LIFECYCLE::accept"));
+        assertTrue(source.contains("P7ClientMirrorDispatchFactory.production()"));
     }
 
     @Test

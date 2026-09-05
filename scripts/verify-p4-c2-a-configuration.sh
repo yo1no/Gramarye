@@ -437,15 +437,15 @@ verify_phase_bounds_and_normal_tests() {
 
     normal_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
     mana_count="$(count_fixed_in_file_list <(printf '%s\0' "${mana_game_tests}") '@GameTest(')"
-    baseline_count=$((normal_count - mana_count))
+    baseline_count=$((normal_count - mana_count - $(bash scripts/verify-p7-s4-source-contracts.sh --game-test-count) + 19))
     if [[ "${baseline_count}" -ne 12 ]]; then
         fail "P4-C2-A reviewed baseline GameTest count must be twelve (found ${baseline_count})"
     fi
     if [[ "${mana_count}" -ne 7 ]]; then
         fail "P6-S2 mana lifecycle GameTest addition must be seven (found ${mana_count})"
     fi
-    if [[ "${normal_count}" -ne 19 ]]; then
-        fail "P4-C2-A baseline twelve plus P6-S2 seven GameTests must total nineteen (found ${normal_count})"
+    if [[ "${normal_count}" -ne "$(bash scripts/verify-p7-s4-source-contracts.sh --game-test-count)" ]]; then
+        fail "P4-C2-A preserved twelve plus mana seven plus exact S4 GameTests inventory differs (found ${normal_count})"
     fi
     require_fixed_count "${game_tests}" '@GameTest(' 2 \
         'P4-C2-A normal holder must contain exactly two GameTests'
@@ -474,8 +474,11 @@ verify_phase_bounds_and_normal_tests() {
         'P4-D3-A reviewed login recovery event owner is missing'
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" 'PlayerEvent' \
-        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' '' '' \
-        'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
+        'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+        'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java'
 
     for literal in \
         "sourceSets.create('p4C2Probe')" \

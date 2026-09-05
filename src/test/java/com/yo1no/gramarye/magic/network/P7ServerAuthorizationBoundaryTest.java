@@ -30,7 +30,7 @@ final class P7ServerAuthorizationBoundaryTest {
         assertTrue(Modifier.isFinal(boundary.getModifiers()));
         assertEquals(1, constructors.length);
         assertTrue(Modifier.isPrivate(constructors[0].getModifiers()));
-        assertEquals(2, fields.length);
+        assertEquals(3, fields.length);
         assertEquals(
                 0,
                 Arrays.stream(fields)
@@ -38,18 +38,18 @@ final class P7ServerAuthorizationBoundaryTest {
                                 || Modifier.isProtected(field.getModifiers()))
                         .count());
         assertEquals(
-                1,
+                2,
                 Arrays.stream(methods)
                         .filter(method -> Modifier.isPublic(method.getModifiers()))
                         .count());
         assertEquals(
-                1,
+                2,
                 Arrays.stream(methods)
                         .filter(method -> Modifier.isPublic(method.getModifiers())
                                 || Modifier.isProtected(method.getModifiers()))
                         .count());
         assertEquals(
-                Set.of("dispatch", "install"),
+                Set.of("dispatch", "install", "loginReadyPort"),
                 Arrays.stream(methods)
                         .filter(method -> !method.isSynthetic())
                         .map(Method::getName)
@@ -72,6 +72,35 @@ final class P7ServerAuthorizationBoundaryTest {
         assertTrue(Modifier.isPrivate(unavailable.getModifiers()));
         assertTrue(Modifier.isStatic(unavailable.getModifiers()));
         assertTrue(Modifier.isFinal(unavailable.getModifiers()));
+
+        var loginPort = boundary.getDeclaredField("LOGIN_READY_PORT");
+        assertSame(P7ServerAuthorizationBoundary.LoginReadyPort.class, loginPort.getType());
+        assertTrue(Modifier.isPrivate(loginPort.getModifiers()));
+        assertTrue(Modifier.isStatic(loginPort.getModifiers()));
+        assertTrue(Modifier.isFinal(loginPort.getModifiers()));
+        loginPort.setAccessible(true);
+        var singleton = loginPort.get(null);
+        assertTrue(singleton.getClass().isSynthetic());
+        assertEquals(0, singleton.getClass().getDeclaredFields().length,
+                "login-ready singleton must not capture capability or lifecycle state");
+        var acquireLoginPort = boundary.getDeclaredMethod(
+                "loginReadyPort", P6RuntimeExecutionCapability.class);
+        assertTrue(Modifier.isPublic(acquireLoginPort.getModifiers()));
+        assertTrue(Modifier.isStatic(acquireLoginPort.getModifiers()));
+        assertSame(P7ServerAuthorizationBoundary.LoginReadyPort.class,
+                acquireLoginPort.getReturnType());
+        assertEquals(1, Arrays.stream(methods)
+                .filter(method -> method.getName().equals("loginReadyPort")).count());
+        assertThrows(NullPointerException.class,
+                () -> P7ServerAuthorizationBoundary.loginReadyPort(null));
+        var loginOperation = P7ServerAuthorizationBoundary.LoginReadyPort.class
+                .getDeclaredMethod("onLoginReady", MinecraftServer.class, ServerPlayer.class);
+        assertTrue(Modifier.isPublic(loginOperation.getModifiers()));
+        assertTrue(Modifier.isAbstract(loginOperation.getModifiers()));
+        assertFalse(Modifier.isStatic(loginOperation.getModifiers()));
+        assertSame(void.class, loginOperation.getReturnType());
+        assertEquals(1, P7ServerAuthorizationBoundary.LoginReadyPort.class
+                .getDeclaredMethods().length);
 
         var installed = boundary.getDeclaredField("installedRootIngress");
         assertSame(
@@ -109,7 +138,8 @@ final class P7ServerAuthorizationBoundaryTest {
                         P7ServerAuthorizationBoundary.RootIngressPort.class,
                         P7ServerAuthorizationBoundary.AdvisoryTargetCheck.class,
                         P7ServerAuthorizationBoundary.AdmissionDisposition.class,
-                        P7ServerAuthorizationBoundary.TargetDisposition.class),
+                        P7ServerAuthorizationBoundary.TargetDisposition.class,
+                        P7ServerAuthorizationBoundary.LoginReadyPort.class),
                 Set.of(boundary.getDeclaredClasses()));
         assertTrue(Arrays.stream(boundary.getDeclaredClasses())
                 .allMatch(type -> Modifier.isPublic(type.getModifiers())));
@@ -176,6 +206,10 @@ final class P7ServerAuthorizationBoundaryTest {
         sentinelField.setAccessible(true);
         installedField.setAccessible(true);
         var productionPort = installedField.get(null);
+        var manaCapabilityField = P7NetworkComposition.class.getDeclaredField("manaCapability");
+        manaCapabilityField.setAccessible(true);
+        var productionCapability = manaCapabilityField.get(null);
+        manaCapabilityField.set(null, null);
         installedField.set(null, sentinelField.get(null));
         var targetCalls = new AtomicInteger();
         P7ServerAuthorizationBoundary.AdvisoryTargetCheck targetCheck = (server, actor) -> {
@@ -240,6 +274,7 @@ final class P7ServerAuthorizationBoundaryTest {
             assertEquals(0, targetCalls.get());
         } finally {
             installedField.set(null, productionPort);
+            manaCapabilityField.set(null, productionCapability);
         }
     }
 

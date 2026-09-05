@@ -361,7 +361,9 @@ main() {
         'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
-        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java'
+        'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java'
     forbid_fixed_in_file_list_except \
         "${SOURCE_FILE_LIST}" \
         'PayloadRegistrar' \
@@ -373,7 +375,10 @@ main() {
         'P4-D3-A reviewed login recovery event owner is missing'
     while IFS= read -r -d '' file; do
         if [[ "${file}" != \
-                'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' ]]; then
+                'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
+                && "${file}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
+                && "${file}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+                && "${file}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]]; then
             forbid_fixed "${file}" 'PlayerEvent' \
                 'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
         fi

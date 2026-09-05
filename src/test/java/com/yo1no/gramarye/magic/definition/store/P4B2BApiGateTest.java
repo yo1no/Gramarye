@@ -272,7 +272,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(main.contains("P4B2ProbeMain")),
                 () -> assertFalse(main.contains("P4B2MemoryGameTests")),
                 () -> assertFalse(main.contains("gramarye_p4_b2")),
-                () -> assertEquals(19, occurrences(main, "@GameTest(")));
+                () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), occurrences(main, "@GameTest(")));
     }
 
     @Test
@@ -336,7 +336,7 @@ class P4B2BApiGateTest {
         var configurationGate = read(PROJECT_ROOT.resolve(
                 "scripts/verify-p4-b2-b-configuration.sh"));
         var production = withoutCommentsAndLiterals(
-                sources(PROJECT_ROOT.resolve("src/main/java")));
+                com.yo1no.gramarye.P7GameTestInventory.productionSource());
         var storeService = withoutCommentsAndLiterals(read(PROJECT_ROOT.resolve(
                 "src/main/java/com/yo1no/gramarye/magic/definition/store/"
                         + "SkillDefinitionStoreService.java")));
@@ -394,7 +394,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(12, dependencyErrorCatchCount(production)),
+                () -> assertEquals(19, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -505,7 +505,8 @@ class P4B2BApiGateTest {
         var holderRaw = read(holderPath);
         var holder = withoutCommentsAndLiterals(holderRaw);
         var allProductionRaw = sources(MAIN_JAVA);
-        var allProduction = withoutCommentsAndLiterals(allProductionRaw);
+        var allProduction = withoutCommentsAndLiterals(
+                com.yo1no.gramarye.P7GameTestInventory.productionSource());
         var serviceWrapper = bodyFollowing(
                 service,
                 "public SkillSubsystemResult<Optional<SkillReference>> latestReference(");
@@ -557,7 +558,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(bodyFollowing(grouped, "long observedThreadId)")
                         .contains("0L")),
                 () -> assertEquals(0, catchTypeCount(allProduction, "Throwable")),
-                () -> assertEquals(19, occurrences(allProductionRaw, "@GameTest(")),
+                () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), occurrences(allProductionRaw, "@GameTest(")),
                 () -> assertFalse(Pattern.compile(
                                 "\\.\\s*claim\\s*\\([^;]*"
                                         + "ProductThreadPrecondition\\s*\\.\\s*Decision",
@@ -615,20 +616,38 @@ class P4B2BApiGateTest {
                 .toList();
         var storeCatches = errorCatchBlocks(service);
         var networkCatches = errorCatchBlocks(networkHandler);
+        var syncCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java"))));
+        var lifecycleCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java"))));
         var primary = new java.util.ArrayList<ErrorCatchBlock>(p5Primary);
         primary.addAll(storeCatches);
         primary.addAll(networkCatches);
+        primary.addAll(syncCatches);
         assertAll(
                 () -> assertEquals(10, p5Catches.size()),
                 () -> assertEquals(5, p5Primary.size()),
-                () -> assertEquals(7, primary.size()),
+                () -> assertEquals(8, primary.size()),
                 () -> assertEquals(5, secondary.size()),
                 () -> assertEquals(1, storeCatches.size()),
                 () -> assertEquals(1, networkCatches.size()),
+                () -> assertEquals(1, syncCatches.size()),
+                () -> assertEquals("primary", syncCatches.getFirst().binding()),
+                () -> assertTrue(syncCatches.getFirst().body().contains(
+                        "lifecycle.submissionFailed(server, actor, identity, primary);")),
+                () -> assertTrue(syncCatches.getFirst().body().contains("throw primary;")),
+                () -> assertEquals(6, lifecycleCatches.size()),
+                () -> assertEquals(5, lifecycleCatches.stream()
+                        .filter(block -> block.binding().equals("secondary")
+                                && block.body().trim().equals("suppress(primary, secondary);")).count()),
+                () -> assertEquals(1, lifecycleCatches.stream()
+                        .filter(block -> block.binding().equals("suppressionFailure")
+                                && block.body().isBlank()).count()),
                 () -> assertEquals("failure", storeCatches.getFirst().binding()),
                 () -> assertTrue(storeCatches.getFirst().body().contains("throw failure;")),
                 () -> assertEquals("failure", networkCatches.getFirst().binding()),
-                () -> assertTrue(networkCatches.getFirst().body().contains("permit.release();")),
+                () -> assertTrue(networkCatches.getFirst().body().contains(
+                        "permit.releaseAfterEnqueueFailure();")),
                 () -> assertTrue(networkCatches.getFirst().body().contains("throw failure;")),
                 () -> assertTrue(p5Primary.stream().allMatch(block ->
                         block.body().contains("throw primary;")
@@ -640,10 +659,11 @@ class P4B2BApiGateTest {
                                         "throw preserveErrorFault(slot, "
                                                 + block.binding() + ");"))),
                 () -> assertTrue(secondary.stream().allMatch(block -> block.body().isBlank())),
-                () -> assertEquals(primary.size() + secondary.size(),
+                () -> assertEquals(primary.size() + secondary.size() + lifecycleCatches.size(),
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(12, dependencyErrorCatchCount(allProduction)));
-        assertOrdered(networkCatches.getFirst().body(), "permit.release();", "throw failure;");
+                () -> assertEquals(19, dependencyErrorCatchCount(allProduction)));
+        assertOrdered(networkCatches.getFirst().body(),
+                "permit.releaseAfterEnqueueFailure();", "throw failure;");
         assertOrdered(
                 bodyFollowing(runtimeService, "Error preserveErrorFault("),
                 "enterFaultAfterError(",

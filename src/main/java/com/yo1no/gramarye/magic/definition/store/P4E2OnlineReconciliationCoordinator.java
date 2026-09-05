@@ -5,6 +5,7 @@ import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -19,6 +20,7 @@ final class P4E2OnlineReconciliationCoordinator
     private final SkillDefinitionStoreService storeService;
     private final PlayerSkillAttachmentService attachmentService;
     private final SkillRetentionRootAuditService rootAuditService;
+    private final P7ServerAuthorizationBoundary.LoginReadyPort loginReadyPort;
     private final P4E2QualificationFacade.StoreView qualificationStoreView;
     private final P4E2QualificationFacade.PlayerView qualificationPlayerView;
 
@@ -57,20 +59,23 @@ final class P4E2OnlineReconciliationCoordinator
     P4E2OnlineReconciliationCoordinator(
             SkillDefinitionStoreService storeService,
             PlayerSkillAttachmentService attachmentService,
-            SkillRetentionRootAuditService rootAuditService) {
-        this(storeService, attachmentService, rootAuditService, null, null);
+            SkillRetentionRootAuditService rootAuditService,
+            P7ServerAuthorizationBoundary.LoginReadyPort loginReadyPort) {
+        this(storeService, attachmentService, rootAuditService, loginReadyPort, null, null);
     }
 
     P4E2OnlineReconciliationCoordinator(
             SkillDefinitionStoreService storeService,
             PlayerSkillAttachmentService attachmentService,
             SkillRetentionRootAuditService rootAuditService,
+            P7ServerAuthorizationBoundary.LoginReadyPort loginReadyPort,
             P4E2QualificationFacade.StoreView qualificationStoreView,
             P4E2QualificationFacade.PlayerView qualificationPlayerView) {
         this.storeService = Objects.requireNonNull(storeService, "storeService");
         this.attachmentService = Objects.requireNonNull(
                 attachmentService, "attachmentService");
         this.rootAuditService = Objects.requireNonNull(rootAuditService, "rootAuditService");
+        this.loginReadyPort = Objects.requireNonNull(loginReadyPort, "loginReadyPort");
         if ((qualificationStoreView == null) != (qualificationPlayerView == null)) {
             throw new IllegalArgumentException(
                     "qualification views must be both present or both absent");
@@ -196,6 +201,23 @@ final class P4E2OnlineReconciliationCoordinator
                     summary.ownerMismatchCount(),
                     summary.acceptedGeneration().isPresent());
         }
+        if (isLoginReadyTerminal(result)) {
+            if (server.getPlayerList().getPlayer(playerId) != exactPlayer) {
+                throw new IllegalStateException("P7_LOGIN_READY_PLAYER_NOT_CURRENT");
+            }
+            loginReadyPort.onLoginReady(server, exactPlayer);
+        }
+    }
+
+    static boolean isLoginReadyTerminal(P4E2ReconciliationResult result) {
+        return switch (Objects.requireNonNull(result, "result")) {
+            case P4E2ReconciliationResult.NoChanges ignored -> true;
+            case P4E2ReconciliationResult.RecoveryChanged ignored -> true;
+            case P4E2ReconciliationResult.Changed ignored -> true;
+            case P4E2ReconciliationResult.Deferred ignored -> false;
+            case P4E2ReconciliationResult.Failed ignored -> false;
+            case P4E2ReconciliationResult.GenerationExhausted ignored -> false;
+        };
     }
 
     P4E2ReconciliationResult reconcile(

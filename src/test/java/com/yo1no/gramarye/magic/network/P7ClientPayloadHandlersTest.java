@@ -208,19 +208,30 @@ final class P7ClientPayloadHandlersTest {
         private SkillCooldownSnapshot lastCooldownSnapshot;
 
         @Override
-        public void onIntentAcknowledgement(IntentAcknowledgement acknowledgement) {
+        public long captureDispatchGeneration() {
+            return 1L;
+        }
+
+        @Override
+        public void onIntentAcknowledgement(
+                long dispatchGeneration, IntentAcknowledgement acknowledgement) {
+            assertEquals(1L, dispatchGeneration);
             acknowledgementCalls++;
             lastAcknowledgement = acknowledgement;
         }
 
         @Override
-        public void onPlayerManaSnapshot(PlayerManaSnapshot snapshot) {
+        public void onPlayerManaSnapshot(
+                long dispatchGeneration, PlayerManaSnapshot snapshot) {
+            assertEquals(1L, dispatchGeneration);
             manaCalls++;
             lastManaSnapshot = snapshot;
         }
 
         @Override
-        public void onSkillCooldownSnapshot(SkillCooldownSnapshot snapshot) {
+        public void onSkillCooldownSnapshot(
+                long dispatchGeneration, SkillCooldownSnapshot snapshot) {
+            assertEquals(1L, dispatchGeneration);
             cooldownCalls++;
             lastCooldownSnapshot = snapshot;
         }

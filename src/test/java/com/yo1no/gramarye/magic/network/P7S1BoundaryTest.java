@@ -511,7 +511,7 @@ final class P7S1BoundaryTest {
         var gameTestMarker = ANNOTATION_PREFIX + "Game" + "Test(";
 
         assertEquals(0, occurrences(p7Source, gameTestMarker));
-        assertEquals(19, occurrences(allProduction, gameTestMarker));
+        assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), occurrences(allProduction, gameTestMarker));
         assertFalse(PLATFORM_GAME_TEST_SURFACE.matcher(p7Source).find());
     }
 

@@ -41,6 +41,7 @@ MANA_GAME_TESTS="${MAIN_JAVA}/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycl
 RECOVERY_SERVICE="${SUBMISSION_ROOT}/SkillSubmissionRecoveryService.java"
 COORDINATOR="${STORE_ROOT}/P4E2OnlineReconciliationCoordinator.java"
 FACADE="${ROOT_PACKAGE}/P4E2QualificationFacade.java"
+S4_LOGIN_GAME_TESTS="${ROOT_PACKAGE}/P7S4LoginManaGameTests.java"
 GRAMARYE="${ROOT_PACKAGE}/Gramarye.java"
 TEST_ROOT="${REPOSITORY_ROOT}/src/test/java/com/yo1no/gramarye"
 P4C2_ADAPTER="${REPOSITORY_ROOT}/src/p4C2GameTest/java/com/yo1no/gramarye/P4E2QualificationFacadeTestAccess.java"
@@ -189,6 +190,7 @@ require_only_owner() {
     local count=0
     local status=0
     while IFS= read -r -d '' file; do
+        bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" && continue
         status=0
         count="$(LC_ALL=C grep -Fc -- "${needle}" "${file}")" || status=$?
         case "${status}" in
@@ -638,6 +640,7 @@ is_allowed_changed_path() {
     is_approved_p6_s4_r1_changed_path "$1" && return 0
     is_approved_p7_s1_changed_path "$1" && return 0
     is_approved_p7_s2_changed_path "$1" && return 0
+    bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1" && return 0
     is_approved_p7_s3_r1_changed_path "$1" && return 0
     case "$1" in
         scripts/verify-p4-c2-a-configuration.sh | \
@@ -820,6 +823,22 @@ find "${MAIN_JAVA}" -type f -name '*.java' -print0 > "${PRODUCTION_SOURCE_LIST}"
     || fail 'could not enumerate production Java sources'
 [[ -s "${PRODUCTION_SOURCE_LIST}" ]] || fail 'production Java inventory is empty'
 
+# §60/S4's exact packaged GameTest owns a local observation fixture, not a product facade.
+require_regular_file "${S4_LOGIN_GAME_TESTS}" \
+    'the exact S4 login observation GameTest must be present'
+require_fixed_count "${S4_LOGIN_GAME_TESTS}" '@GameTestHolder(Gramarye.MOD_ID)' 1 \
+    'the S4 login observation consumer must remain an exact GameTest holder'
+require_fixed_count "${S4_LOGIN_GAME_TESTS}" 'new P4E2QualificationFacade()' 1 \
+    'the S4 login GameTest must construct exactly one local observation fixture'
+for s4_observation_marker in \
+    'bus, attachments, port, facade.storeView(), facade.playerView());' \
+    'var observation = fixture.facade().arm(actor.getServer(),' \
+    'return fixture.facade().consume(observation);' \
+    'server.overworld().getDataStorage().set(SAVED_DATA_NAME, original);'; do
+    require_fixed_count "${S4_LOGIN_GAME_TESTS}" "${s4_observation_marker}" 1 \
+        "the S4 login fixture observation/restore role changed: ${s4_observation_marker}"
+done
+
 facade_owner_count=0
 while IFS= read -r -d '' source; do
     facade_status=0
@@ -827,6 +846,7 @@ while IFS= read -r -d '' source; do
     case "${facade_status}" in
         0)
             case "${source}" in
+                "${S4_LOGIN_GAME_TESTS}") continue ;;
                 "${FACADE}" | \
                 "${GRAMARYE}" | \
                 "${PLAYER_SERVICE}" | \
@@ -836,7 +856,7 @@ while IFS= read -r -d '' source; do
                 "${STORE_ROOT}/PlayerSkillAttachmentReconciliationCapability.java" | \
                 "${STORE_ROOT}/P4E2BoundPlayerSkillAttachmentReconciliationCapability.java" | \
                 "${RECOVERY_SERVICE}") ;;
-                *) fail "qualification facade escaped the exact eight-path production allowlist: ${source}" ;;
+                *) fail "qualification facade escaped the exact nine-path production allowlist: ${source}" ;;
             esac
             facade_owner_count=$((facade_owner_count + 1))
             ;;
@@ -1326,13 +1346,13 @@ for verifier_marker in \
 done
 total_game_test_count="$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '@GameTest(')"
 mana_game_test_count="$(LC_ALL=C grep -Fc -- '@GameTest(' "${MANA_GAME_TESTS}")"
-baseline_game_test_count=$((total_game_test_count - mana_game_test_count))
+baseline_game_test_count=$((total_game_test_count - mana_game_test_count - $(bash scripts/verify-p7-s4-source-contracts.sh --game-test-count) + 19))
 [[ "${baseline_game_test_count}" -eq 12 ]] \
     || fail 'historical P4 normal GameTest inventory must remain exactly 12'
 [[ "${mana_game_test_count}" -eq 7 ]] \
     || fail 'P6-S2 mana GameTest inventory must remain exactly 7'
-[[ "${total_game_test_count}" -eq 19 ]] \
-    || fail 'combined production GameTest inventory must remain exactly 19'
+[[ "${total_game_test_count}" -eq "$(bash scripts/verify-p7-s4-source-contracts.sh --game-test-count)" ]] \
+    || fail 'combined production GameTest inventory must match the exact current method/path set'
 
 git diff --quiet HEAD -- \
     gradle.properties settings.gradle gradle \

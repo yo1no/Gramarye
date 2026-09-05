@@ -1,9 +1,14 @@
 package com.yo1no.gramarye.magic.network;
 
 interface P7ClientMirrorDispatchPort {
-    void onIntentAcknowledgement(IntentAcknowledgement acknowledgement);
+    long captureDispatchGeneration();
 
-    void onPlayerManaSnapshot(PlayerManaSnapshot snapshot);
+    void onIntentAcknowledgement(
+            long dispatchGeneration, IntentAcknowledgement acknowledgement);
 
-    void onSkillCooldownSnapshot(SkillCooldownSnapshot snapshot);
+    void onPlayerManaSnapshot(
+            long dispatchGeneration, PlayerManaSnapshot snapshot);
+
+    void onSkillCooldownSnapshot(
+            long dispatchGeneration, SkillCooldownSnapshot snapshot);
 }

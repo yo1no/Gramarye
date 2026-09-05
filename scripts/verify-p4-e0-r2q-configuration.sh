@@ -460,6 +460,7 @@ is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p6_s4_r1_production_path "$1" && return 0
     is_approved_p7_s1_production_path "$1" && return 0
     is_approved_p7_s2_production_path "$1" && return 0
+    bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1" && return 0
     is_approved_p7_s3_r1_production_path "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \

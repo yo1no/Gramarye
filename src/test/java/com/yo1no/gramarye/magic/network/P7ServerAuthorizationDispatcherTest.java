@@ -105,10 +105,10 @@ final class P7ServerAuthorizationDispatcherTest {
         assertOrdered(
                 source,
                 "if (decision.disconnect())",
-                "sessionService.invalidateAfterRateLimit(server, identity)",
                 "P7AdmissionDispositionMapper.fromAdmissionSemantics(",
                 "resultSink.accept(result)",
-                "disconnectPort.disconnect(server, actor)");
+                "sessionService.invalidateAfterRateLimit(server, identity)",
+                "disconnectPort.disconnect(server, actor, identity)");
         assertFalse(source.contains("PacketDistributor"));
         assertFalse(source.contains("P6RuntimeExecution"));
     }
@@ -344,8 +344,8 @@ final class P7ServerAuthorizationDispatcherTest {
 
                         fixture.trace.expectEvents(
                                 "server", "sameThread", "session", "running", "player",
-                                "connected", "admission", "tick", "transition", "invalidate",
-                                "map:admission", "sink:disconnect", "disconnect");
+                                "connected", "admission", "tick", "transition",
+                                "map:admission", "sink:disconnect", "invalidate", "disconnect");
                         fixture.trace.expectCounts(1, 1, 0, 1, 1);
                         check(fixture.trace.invalidations == 1, "invalidation count");
                     }
@@ -576,7 +576,8 @@ final class P7ServerAuthorizationDispatcherTest {
                         this.trace = trace;
                     }
 
-                    void disconnect(MinecraftServer server, ServerPlayer actor) {
+                    void disconnect(MinecraftServer server, ServerPlayer actor,
+                            P7SessionIdentity identity) {
                         trace.disconnects++;
                         trace.add("disconnect");
                     }

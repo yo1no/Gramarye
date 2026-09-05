@@ -129,7 +129,8 @@ final class P7AuthenticatedPlayerCastIngressTest {
     void constructorRetainsTheSameThreeProductionServiceIdentities() throws Exception {
         var gameBus = BusBuilder.builder().build();
         var attachmentService = PlayerSkillAttachmentServiceTestSupport.createService();
-        var storeService = SkillDefinitionStoreService.registerOn(gameBus, attachmentService);
+        var storeService = SkillDefinitionStoreService.registerOn(
+                gameBus, attachmentService, (server, actor) -> {});
         var runtimeService = SkillRuntimeService.create(
                 gameBus, storeService, SkillSubmissionPolicyProvider.defaults());
         var ingress = new P7AuthenticatedPlayerCastIngress(
@@ -177,7 +178,7 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         + "                playerSkillAttachmentService,\n"
                         + "                skillDefinitionStoreService);")),
                 () -> assertTrue(source.contains("P7ServerAuthorizationBoundary.install(\n"
-                        + "                P6RuntimeExecutionCapability.forRuntimeAdapter(),\n"
+                        + "                p7Capability,\n"
                         + "                p7AuthenticatedPlayerCastIngress);")),
                 () -> assertOrdered(
                         ingressSource,
