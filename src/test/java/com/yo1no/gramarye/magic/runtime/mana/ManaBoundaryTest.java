@@ -505,9 +505,11 @@ final class ManaBoundaryTest {
                 () -> assertEquals(
                         Set.of(
                                 "src/main/java/com/yo1no/gramarye/Gramarye.java",
+                                "src/main/java/com/yo1no/gramarye/P5RuntimeProjector.java",
                                 "src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java",
                                 "src/main/java/com/yo1no/gramarye/SkillRuntimeService.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeHardLimitWorkloadTest.java",
+                                "src/test/java/com/yo1no/gramarye/P5RuntimeKernelTest.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java"),
                         exactS4P5Changes,
                         () -> "unexpected P5 source drift: " + output),

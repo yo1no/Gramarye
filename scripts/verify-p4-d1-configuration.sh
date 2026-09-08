@@ -180,14 +180,17 @@ verify_d2a_sources_and_owners() {
 
     [[ "$(grep -R -l -F --include='*.java' -- 'SkillQuota.Unlimited.INSTANCE' src/main/java | wc -l | tr -d ' ')" -eq 1 ]] \
         || fail 'submission Unlimited default must have one production owner'
-    [[ "$(grep -R -l -F --include='*.java' -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' src/main/java | wc -l | tr -d ' ')" -eq 1 ]] \
-        || fail 'submission validation default must have one production owner'
+    [[ "$(grep -R -l -F --include='*.java' -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' src/main/java | wc -l | tr -d ' ')" -eq 2 ]] \
+        || fail 'validation defaults must have the exact reviewed P4 and P8 production owners'
     grep -Fq -- 'SkillQuota.Unlimited.INSTANCE' \
         "${SUBMISSION_ROOT}/DefaultSkillSubmissionPolicyProvider.java" \
         || fail 'Unlimited default escaped the reviewed provider'
     grep -Fq -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' \
         "${SUBMISSION_ROOT}/DefaultSkillSubmissionPolicyProvider.java" \
         || fail 'validation default escaped the reviewed provider'
+    grep -Fq -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' \
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
+        || fail 'P8 Profile validation default escaped the reviewed catalog owner'
 
     grep -Fq -- 'prepareLatestTransitionToCurrent(' "${PLAYER_SERVICE}" \
         || fail 'P4-C prepare-to-current seam is missing'

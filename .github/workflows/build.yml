@@ -37,6 +37,9 @@ jobs:
       - name: Run GameTests
         run: ./gradlew runGameTestServer
 
+      - name: Run isolated P8-S2 reload GameTest
+        run: bash ./scripts/run-p8-s2-reload-gametest.sh
+
       - name: Run dedicated-server smoke test
         env:
           GRAMARYE_SERVER_SMOKE_TIMEOUT_SECONDS: '180'

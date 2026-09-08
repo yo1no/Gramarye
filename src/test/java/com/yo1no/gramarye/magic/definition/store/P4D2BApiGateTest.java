@@ -12,6 +12,7 @@ import com.yo1no.gramarye.magic.definition.submission.SkillDraftCreationService;
 import com.yo1no.gramarye.magic.definition.submission.SkillIdSource;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionCompositionOutcome;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
+import com.yo1no.gramarye.magic.definition.validation.ProfileAvailabilityView;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
@@ -60,7 +61,8 @@ final class P4D2BApiGateTest {
                 "production",
                 PlayerSkillAttachmentService.class,
                 SkillDefinitionStoreSubmissionPort.class,
-                SkillSubmissionPolicyProvider.class);
+                SkillSubmissionPolicyProvider.class,
+                ProfileAvailabilityView.class);
 
         assertTrue(Modifier.isPublic(type.getModifiers()));
         assertTrue(Modifier.isFinal(type.getModifiers()));
@@ -213,7 +215,9 @@ final class P4D2BApiGateTest {
                 relativeSourcesContaining("UUID.randomUUID()"));
         assertEquals(Set.of("DefaultSkillSubmissionPolicyProvider.java"),
                 relativeSourcesContaining("SkillQuota.Unlimited.INSTANCE"));
-        assertEquals(Set.of("DefaultSkillSubmissionPolicyProvider.java"),
+        assertEquals(Set.of(
+                        "DefaultSkillSubmissionPolicyProvider.java",
+                        "P8ServerPresentationService.java"),
                 relativeSourcesContaining(
                         "new ValidationContext(MagicPolicyLimits.DEFAULTS)"));
 

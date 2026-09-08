@@ -18,6 +18,7 @@ import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentServiceTestSupport;
 import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
+import com.yo1no.gramarye.magic.definition.validation.ProfileAvailabilityView;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1450,7 +1451,10 @@ final class P5RuntimeHardLimitWorkloadTest {
                 bus, attachments, (server, actor) -> {});
         var policy = SkillSubmissionPolicyProvider.defaults();
         return new ServiceFixture(
-                SkillRuntimeService.create(bus, store, policy), store, policy);
+                SkillRuntimeService.create(
+                        bus, store, policy, ProfileAvailabilityView.unknown()),
+                store,
+                policy);
     }
 
     private record ServiceFixture(
@@ -1460,7 +1464,11 @@ final class P5RuntimeHardLimitWorkloadTest {
         SkillRuntimeService with(
                 RuntimeReferenceResolver resolver, RuntimeExecutionPort port) {
             return new SkillRuntimeService(
-                    store, policy, new P5RuntimeProjector(), resolver, port);
+                    store,
+                    policy,
+                    new P5RuntimeProjector(ProfileAvailabilityView.unknown()),
+                    resolver,
+                    port);
         }
     }
 

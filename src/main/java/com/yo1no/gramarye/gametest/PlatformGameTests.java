@@ -14,6 +14,7 @@ import com.yo1no.gramarye.magic.definition.lookup.RegistryActionTypeLookup;
 import com.yo1no.gramarye.magic.definition.lookup.RegistryTriggerTypeLookup;
 import com.yo1no.gramarye.magic.definition.migration.DescriptorMigrationAudit;
 import com.yo1no.gramarye.magic.definition.trigger.UnknownTriggerDefinition;
+import com.yo1no.gramarye.magic.presentation.api.ProfileChannel;
 import net.minecraft.core.DefaultedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -51,6 +52,7 @@ public final class PlatformGameTests {
                 helper,
                 MagicRegistries.ACTION_TYPE_REGISTRY_KEY,
                 MagicRegistries.actionTypeRegistry());
+        assertCurrentProfileRegistryState(helper);
         helper.succeed();
     }
 
@@ -102,6 +104,46 @@ public final class PlatformGameTests {
         helper.assertTrue(registry.size() == 0, "P2-B currently has no production descriptor entries");
         helper.assertFalse(registry instanceof DefaultedRegistry<?>, "Descriptor registry must not have a default entry");
         helper.assertFalse(registry.doesSync(), "Descriptor registry must not sync numeric IDs");
+    }
+
+    private static void assertCurrentProfileRegistryState(GameTestHelper helper) {
+        var registry = BuiltInRegistries.REGISTRY
+                .getOptional(MagicRegistries.PROFILE_TYPE_REGISTRY_KEY.location())
+                .orElseThrow();
+        var profiles = MagicRegistries.profileTypeRegistry();
+        helper.assertTrue(
+                registry.key().equals(MagicRegistries.PROFILE_TYPE_REGISTRY_KEY),
+                "Profile registry has the wrong registry key");
+        helper.assertTrue(
+                registry == profiles,
+                "Profile lookup must expose the formally registered registry");
+        helper.assertFalse(
+                registry instanceof DefaultedRegistry<?>,
+                "Profile registry must not have a default entry");
+        helper.assertFalse(registry.doesSync(), "Profile registry must not sync numeric IDs");
+        helper.assertTrue(
+                profiles.getMaxId() == 63,
+                "Profile registry must enforce the authority-defined maximum ID");
+        helper.assertTrue(
+                profiles.size() >= 3 && profiles.size() <= 64,
+                "Profile registry must retain all built-ins within its extension capacity");
+
+        var requiredBuiltIns = java.util.Map.of(
+                registryLocation("sound"), ProfileChannel.SOUND,
+                registryLocation("particle"), ProfileChannel.PARTICLE,
+                registryLocation("trail"), ProfileChannel.TRAIL);
+        for (var entry : requiredBuiltIns.entrySet()) {
+            var type = profiles.getOptional(entry.getKey()).orElseThrow();
+            helper.assertTrue(
+                    type.channel() == entry.getValue(),
+                    "Built-in Profile type must retain its exact channel");
+            helper.assertTrue(
+                    type.currentConfigurationVersion() == 0,
+                    "Built-in Profile type must use configuration version zero");
+            helper.assertTrue(
+                    type.clientFactoryKey().id().equals(entry.getKey()),
+                    "Built-in type and factory-key IDs must match");
+        }
     }
 
     private static ResourceLocation registryLocation(String path) {

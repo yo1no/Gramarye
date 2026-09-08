@@ -235,7 +235,9 @@ final class P4D2ApiGateTest {
                 relativeSourcesContaining("UUID.randomUUID()"));
         assertEquals(Set.of("DefaultSkillSubmissionPolicyProvider.java"),
                 relativeSourcesContaining("SkillQuota.Unlimited.INSTANCE"));
-        assertEquals(Set.of("DefaultSkillSubmissionPolicyProvider.java"),
+        assertEquals(Set.of(
+                        "DefaultSkillSubmissionPolicyProvider.java",
+                        "P8ServerPresentationService.java"),
                 relativeSourcesContaining(
                         "new ValidationContext(MagicPolicyLimits.DEFAULTS)"));
         assertEquals(Set.of("SkillDefinitionStoreSubmissionPort.java"),

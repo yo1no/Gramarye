@@ -41,14 +41,15 @@ public final class SkillDefinitionSubmissionService {
     public static SkillDefinitionSubmissionService production(
             PlayerSkillAttachmentService attachments,
             SkillDefinitionStoreSubmissionPort storePort,
-            SkillSubmissionPolicyProvider policyProvider) {
+            SkillSubmissionPolicyProvider policyProvider,
+            ProfileAvailabilityView profiles) {
         var pipeline = new SkillSubmissionPreparationPipeline(
                 new SkillCandidateResolver(
                         new RegistryTriggerTypeLookup(),
                         new RegistryActionTypeLookup()),
                 new SkillValidationAnalyzer(
                         new NodeProjectionResolver(),
-                        ProfileAvailabilityView.unknown()),
+                        Objects.requireNonNull(profiles, "profiles")),
                 new SkillDefinitionProjector());
         return new SkillDefinitionSubmissionService(
                 attachments, storePort, policyProvider, pipeline);

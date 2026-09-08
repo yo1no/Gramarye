@@ -25,14 +25,14 @@ final class P5RuntimeProjector {
     private final SkillValidationAnalyzer validationAnalyzer;
     private final SkillDefinitionProjector definitionProjector;
 
-    P5RuntimeProjector() {
+    P5RuntimeProjector(ProfileAvailabilityView profiles) {
         this(
                 new SkillCandidateResolver(
                         new RegistryTriggerTypeLookup(),
                         new RegistryActionTypeLookup()),
                 new SkillValidationAnalyzer(
                         new NodeProjectionResolver(),
-                        ProfileAvailabilityView.unknown()),
+                        Objects.requireNonNull(profiles, "profiles")),
                 new SkillDefinitionProjector());
     }
 

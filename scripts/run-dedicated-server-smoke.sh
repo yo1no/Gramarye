@@ -3,7 +3,12 @@
 set -euo pipefail
 
 readonly READY_SIGNAL='For help, type "help"'
+readonly P8_INITIAL_CATALOG_SIGNAL='Gramarye P8 Profile catalog activated at generation 1'
+readonly P8_RELOADED_CATALOG_SIGNAL='Gramarye P8 Profile catalog activated at generation 2'
 readonly STOPPING_SIGNAL='Stopping server'
+readonly CLIENT_CLASS_LOAD_FAILURE='Attempted to load class net/minecraft/client'
+readonly CLIENT_DIST_FAILURE='Invalid dist DEDICATED_SERVER for net.minecraft.client'
+readonly RELOAD_TIMEOUT_SECONDS=60
 readonly SHUTDOWN_TIMEOUT_SECONDS=60
 
 timeout_seconds="${GRAMARYE_SERVER_SMOKE_TIMEOUT_SECONDS:-180}"
@@ -68,13 +73,19 @@ server_pid="$!"
 
 startup_deadline=$(( $(date +%s) + timeout_seconds ))
 ready=0
+initial_catalog=0
 while kill -0 "$server_pid" 2>/dev/null; do
     if grep -Fq "$READY_SIGNAL" "$server_log"; then
         ready=1
+    fi
+    if grep -Fq "$P8_INITIAL_CATALOG_SIGNAL" "$server_log"; then
+        initial_catalog=1
+    fi
+    if (( ready == 1 && initial_catalog == 1 )); then
         break
     fi
     if (( $(date +%s) >= startup_deadline )); then
-        echo "Dedicated server did not become ready within ${timeout_seconds}s." >&2
+        echo "Dedicated server did not become ready with an initial P8 catalog within ${timeout_seconds}s." >&2
         show_failure_log
         exit 1
     fi
@@ -83,6 +94,34 @@ done
 
 if (( ready == 0 )); then
     echo "Dedicated server exited before the ready signal." >&2
+    show_failure_log
+    exit 1
+fi
+
+if (( initial_catalog == 0 )); then
+    echo "Dedicated server exited before the initial P8 Profile catalog signal." >&2
+    show_failure_log
+    exit 1
+fi
+
+printf 'reload\n' >&3
+reload_deadline=$(( $(date +%s) + RELOAD_TIMEOUT_SECONDS ))
+reloaded=0
+while kill -0 "$server_pid" 2>/dev/null; do
+    if grep -Fq "$P8_RELOADED_CATALOG_SIGNAL" "$server_log"; then
+        reloaded=1
+        break
+    fi
+    if (( $(date +%s) >= reload_deadline )); then
+        echo "Dedicated server did not activate P8 catalog generation 2 within ${RELOAD_TIMEOUT_SECONDS}s." >&2
+        show_failure_log
+        exit 1
+    fi
+    sleep 1
+done
+
+if (( reloaded == 0 )); then
+    echo "Dedicated server exited before the P8 reload activation signal." >&2
     show_failure_log
     exit 1
 fi
@@ -111,10 +150,18 @@ if ! grep -Fq "$STOPPING_SIGNAL" "$server_log"; then
     exit 1
 fi
 
+for client_failure in "$CLIENT_CLASS_LOAD_FAILURE" "$CLIENT_DIST_FAILURE"; do
+    if grep -Fq "$client_failure" "$server_log"; then
+        echo "Dedicated server loaded client-only implementation: ${client_failure}" >&2
+        show_failure_log
+        exit 1
+    fi
+done
+
 if [[ -e "$primary_saved_data" || -L "$primary_saved_data" ]]; then
     echo "Absent Gramarye SavedData became dirty and created a primary .dat file." >&2
     show_failure_log
     exit 1
 fi
 
-echo "Dedicated server reached the ready signal, kept absent SavedData clean, and stopped cleanly."
+echo "Dedicated server activated initial and reloaded P8 catalogs, kept absent SavedData clean, and stopped cleanly."

@@ -469,9 +469,11 @@ verify_static_ownership_and_phase_bounds() {
         'UUID minting escaped the unique reviewed source'
     require_only_fixed_owner 'SkillQuota.Unlimited.INSTANCE' "${default_provider}" \
         'default quota escaped the unique reviewed provider'
-    require_only_fixed_owner \
-        'new ValidationContext(MagicPolicyLimits.DEFAULTS)' "${default_provider}" \
-        'default validation context escaped the unique reviewed provider'
+    require_exact_ere_owners \
+        'new ValidationContext\(MagicPolicyLimits\.DEFAULTS\)' 2 \
+        'default validation context escaped the exact reviewed P4 and P8 owners' \
+        "${default_provider}" \
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java'
 
     require_only_fixed_owner \
         'PlayerLoggedInEvent' \

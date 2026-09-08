@@ -12,6 +12,7 @@ import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentServiceTestSupport;
 import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
+import com.yo1no.gramarye.magic.definition.validation.ProfileAvailabilityView;
 import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
@@ -132,7 +133,10 @@ final class P7AuthenticatedPlayerCastIngressTest {
         var storeService = SkillDefinitionStoreService.registerOn(
                 gameBus, attachmentService, (server, actor) -> {});
         var runtimeService = SkillRuntimeService.create(
-                gameBus, storeService, SkillSubmissionPolicyProvider.defaults());
+                gameBus,
+                storeService,
+                SkillSubmissionPolicyProvider.defaults(),
+                ProfileAvailabilityView.unknown());
         var ingress = new P7AuthenticatedPlayerCastIngress(
                 runtimeService, attachmentService, storeService);
 

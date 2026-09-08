@@ -11,6 +11,7 @@ import com.yo1no.gramarye.magic.definition.store.ControlledSkillPin;
 import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
 import com.yo1no.gramarye.magic.definition.store.SkillSubsystemResult;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
+import com.yo1no.gramarye.magic.definition.validation.ProfileAvailabilityView;
 import com.yo1no.gramarye.magic.definition.validation.ValidatedSkillDefinition;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.util.Arrays;
@@ -62,12 +63,14 @@ final class SkillRuntimeService {
     static SkillRuntimeService create(
             IEventBus gameBus,
             SkillDefinitionStoreService storeService,
-            SkillSubmissionPolicyProvider policyProvider) {
+            SkillSubmissionPolicyProvider policyProvider,
+            ProfileAvailabilityView profiles) {
         Objects.requireNonNull(gameBus, "gameBus");
+        Objects.requireNonNull(profiles, "profiles");
         var service = new SkillRuntimeService(
                 storeService,
                 policyProvider,
-                new P5RuntimeProjector(),
+                new P5RuntimeProjector(profiles),
                 new P5LoadedReferenceResolver(),
                 new P6RuntimeExecutionPortAdapter());
         gameBus.addListener(EventPriority.LOWEST, service::handleRuntimePost);

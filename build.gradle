@@ -207,6 +207,8 @@ def p4E3ProbeSourceSet = sourceSets.create('p4E3Probe')
 def p4E3GameTestSourceSet = sourceSets.create('p4E3GameTest')
 def p4E0ResearchSourceSet = sourceSets.create('p4E0Research')
 def p4E0ResearchGameTestSourceSet = sourceSets.create('p4E0ResearchGameTest')
+// P8-S2's global-reload negative control is process-isolated and never packaged.
+def p8S2GameTestSourceSet = sourceSets.create('p8S2GameTest')
 def p4B2FixedHeapJvmArgs = [
         '-Xms512m',
         '-Xmx1024m',
@@ -500,6 +502,20 @@ def p4E0ResearchGameTestResources =
             'p4-e0-research/generated-gametest-resources'))
 }
 p4E0ResearchGameTestSourceSet.resources.srcDir(p4E0ResearchGameTestResources)
+def p8S2GameTestResources = tasks.register('generateP8S2GameTestResources', Sync) {
+    dependsOn('createMinecraftArtifacts')
+    from(zipTree(layout.buildDirectory.file(
+            "moddev/artifacts/neoforge-${neo_version}-client-extra-aka-minecraft-resources.jar"))) {
+        include 'data/minecraft/structure/bastion/blocks/air.nbt'
+        eachFile { details ->
+            details.path =
+                    'data/gramarye_p8_s2_reload/structure/p8_s2_reload_probe.nbt'
+        }
+        includeEmptyDirs = false
+    }
+    into(layout.buildDirectory.dir('generated/p8S2GameTestResources'))
+}
+p8S2GameTestSourceSet.resources.srcDir(p8S2GameTestResources)
 
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
@@ -519,6 +535,11 @@ def commonsCompressCoordinate =
 def p4E3GameDirectory = layout.buildDirectory.dir('p4-e3/fixed-heap-world')
 def p4E3CommandDirectory = layout.buildDirectory.dir('p4-e3/command-work')
 def p4E3ReportDirectory = layout.buildDirectory.dir('reports/p4-e3-fixed-heap')
+def p8S2ReloadGameDirectory =
+        layout.buildDirectory.dir('p8-s2-r1/reload-negative-world')
+def prepareP8S2ReloadGameTest = tasks.register('prepareP8S2ReloadGameTest', Delete) {
+    delete(p8S2ReloadGameDirectory)
+}
 
 neoForge {
     // Specify the version of NeoForge to use.
@@ -537,6 +558,7 @@ neoForge {
     addModdingDependenciesTo(p4E3GameTestSourceSet)
     addModdingDependenciesTo(p4E0ResearchSourceSet)
     addModdingDependenciesTo(p4E0ResearchGameTestSourceSet)
+    addModdingDependenciesTo(p8S2GameTestSourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -598,6 +620,12 @@ neoForge {
             sourceSet(p4E0ResearchSourceSet)
             sourceSet(p4E0ResearchGameTestSourceSet)
         }
+
+        // Actual P8-S2 reload failure runs in one throw-away dedicated GameTest process.
+        p8S2ReloadHarness {
+            sourceSet(sourceSets.main)
+            sourceSet(p8S2GameTestSourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
@@ -608,6 +636,7 @@ neoForge {
     def p4D3ProbeMod = mods.named('p4D3HeapProbe').get()
     def p4E3GameTestMod = mods.named('p4E3GameTestHarness').get()
     def p4E0ResearchMod = mods.named('p4E0ResearchHarness').get()
+    def p8S2GameTestMod = mods.named('p8S2ReloadHarness').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -1081,6 +1110,23 @@ neoForge {
             taskBefore(tasks.named(p4E0ResearchGameTestSourceSet.classesTaskName))
         }
 
+        p8S2ReloadGameTestServer {
+            type = 'gameTestServer'
+            sourceSet = p8S2GameTestSourceSet
+            gameDirectory = p8S2ReloadGameDirectory.get().asFile
+            systemProperty 'neoforge.enabledGameTestNamespaces',
+                    'gramarye_p8_s2_reload'
+            systemProperty 'gramarye.p8s2.gameDirectory',
+                    p8S2ReloadGameDirectory.get().asFile.absolutePath
+            jvmArguments.addAll(
+                    '-Xms512m',
+                    '-Xmx1024m',
+                    '-XX:+ExitOnOutOfMemoryError')
+            disableIdeRun()
+            taskBefore(prepareP8S2ReloadGameTest)
+            taskBefore(tasks.named(p8S2GameTestSourceSet.classesTaskName))
+        }
+
         p4E0R2QFormalCaseIndices.each { formalCaseIndex ->
                 def formalCaseToken = String.format(
                         java.util.Locale.ROOT, '%02d', formalCaseIndex)
@@ -1201,7 +1247,9 @@ neoForge {
                             || name == 'p4E0R2QRunnerDedicatedSmoke'
                             || name.startsWith('p4E0ResearchCombined')
                             || p4E0R2QConfiguredFormalRunNames.contains(name))
-                            ? p4E0ResearchMod : productionMod])
+                            ? p4E0ResearchMod
+                            : name == 'p8S2ReloadGameTestServer'
+                                    ? p8S2GameTestMod : productionMod])
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -1312,6 +1360,7 @@ dependencies {
     add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, p4D3ProbeSourceSet.output)
     add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, p4E0ResearchSourceSet.output)
     add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, commonsCompressCoordinate)
+    add(p8S2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
     testImplementation p4C2ProbeSourceSet.output
@@ -3371,6 +3420,9 @@ tasks.named(p4E3GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4E0ResearchSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p8S2GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4E0ResearchGameTestSourceSet.compileJavaTaskName, JavaCompile).configure {

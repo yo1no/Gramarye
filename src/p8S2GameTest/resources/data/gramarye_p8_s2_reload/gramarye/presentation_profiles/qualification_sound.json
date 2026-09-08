@@ -1,0 +1,10 @@
+{
+  "format": 0,
+  "type": "gramarye:sound",
+  "type_version": 0,
+  "configuration": {
+    "sound": "minecraft:block.note_block.chime",
+    "volume_milli": 625,
+    "pitch_milli": 1000
+  }
+}

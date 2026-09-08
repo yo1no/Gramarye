@@ -83,7 +83,7 @@ final class P5RuntimeKernelTest {
 
     @Test
     void runtimeProjectorUsesTypedUnavailabilityForReferenceMismatchAndRejection() {
-        var projector = new P5RuntimeProjector();
+        var projector = new P5RuntimeProjector(ProfileAvailabilityView.unknown());
         var context = new ValidationContext(MagicPolicyLimits.DEFAULTS);
         var rejectedDocument = new SkillDocument(
                 SkillDocument.CURRENT_SCHEMA_VERSION,

@@ -34,6 +34,7 @@ public final class Gramarye {
     private final SkillSubmissionRecoveryService skillSubmissionRecoveryService;
     private final P5ServerRuntimeConfig p5ServerRuntimeConfig;
     private final SkillRuntimeService skillRuntimeService;
+    private final P8ServerPresentationService p8ServerPresentationService;
 
     public Gramarye(IEventBus modBus, ModContainer exactContainer) {
         Objects.requireNonNull(modBus, "modBus");
@@ -45,6 +46,8 @@ public final class Gramarye {
         MagicRegistries.register(modBus);
         new DescriptorMigrationAudit().register(modBus);
         playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus);
+        p8ServerPresentationService = P8ServerPresentationService.create();
+        var profileAvailability = p8ServerPresentationService.profileAvailabilityView();
         var p7Capability = P6RuntimeExecutionCapability.forRuntimeAdapter();
         var p7LoginReadyPort = P7ServerAuthorizationBoundary.loginReadyPort(p7Capability);
         skillDefinitionStoreService = SkillDefinitionStoreService.registerOn(
@@ -60,7 +63,8 @@ public final class Gramarye {
         skillDefinitionSubmissionService = SkillDefinitionSubmissionService.production(
                 playerSkillAttachmentService,
                 skillDefinitionStoreService.submissionPort(),
-                skillSubmissionPolicyProvider);
+                skillSubmissionPolicyProvider,
+                profileAvailability);
         skillSubmissionRecoveryService = SkillSubmissionRecoveryService.create(
                 playerSkillAttachmentService,
                 skillDefinitionStoreService.submissionPort(),
@@ -71,7 +75,9 @@ public final class Gramarye {
         skillRuntimeService = SkillRuntimeService.create(
                 NeoForge.EVENT_BUS,
                 skillDefinitionStoreService,
-                skillSubmissionPolicyProvider);
+                skillSubmissionPolicyProvider,
+                profileAvailability);
+        p8ServerPresentationService.registerAfterP5(NeoForge.EVENT_BUS);
         var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(
                 skillRuntimeService,
                 playerSkillAttachmentService,
@@ -84,6 +90,7 @@ public final class Gramarye {
     }
 
     private void handleP5RuntimeStarted(ServerStartedEvent event) {
+        p8ServerPresentationService.handleServerStarted(event);
         var limits = p5ServerRuntimeConfig.snapshotForStarted();
         skillRuntimeService.handleRuntimeStarted(event, limits);
     }
