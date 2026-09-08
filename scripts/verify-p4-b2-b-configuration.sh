@@ -378,6 +378,7 @@ cleanup() {
 verify_search_helpers() {
     local missing_output=''
     local forbidden_output=''
+    local p8_route_output=''
     local tool_error_output=''
     local count_output=''
     local range_output=''
@@ -388,6 +389,7 @@ verify_search_helpers() {
     printf '%s\n' \
         'present contract' \
         'present contract' \
+        "name.startsWith('p8BroadHarness')" \
         'range start' \
         'range contract' \
         'range end' > "${HELPER_FIXTURE}"
@@ -445,6 +447,20 @@ verify_search_helpers() {
     if [[ "${status}" -ne 1 \
         || "${forbidden_output}" != 'EXPECTED_FORBIDDEN_CONFIGURATION' ]]; then
         fail 'P4-B2-B verifier self-check could not detect a forbidden pattern'
+    fi
+
+    status=0
+    p8_route_output="$(
+        {
+            forbid_ere \
+                "${HELPER_FIXTURE}" \
+                "name\\.startsWith\\('p8[^']*'\\)" \
+                'EXPECTED_BROAD_P8_ROUTE_REJECTION'
+        } 2>&1
+    )" || status=$?
+    if [[ "${status}" -ne 1 \
+        || "${p8_route_output}" != 'EXPECTED_BROAD_P8_ROUTE_REJECTION' ]]; then
+        fail 'P4-B2-B verifier self-check could not reject broad P8 loaded-mod routing'
     fi
 
     status=0
@@ -567,7 +583,9 @@ verify_b2_build_contracts() {
         "name == 'p4E0R2QRunnerDedicatedSmoke'" \
         "name.startsWith('p4E0ResearchCombined')" \
         "p4E0R2QConfiguredFormalRunNames.contains(name)" \
-        "? p4E0ResearchMod : productionMod" \
+        "? p4E0ResearchMod" \
+        ": name == 'p8S2ReloadGameTestServer'" \
+        "? p8S2GameTestMod : productionMod" \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)' \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)' \
         'add(p4B2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)' \
@@ -594,6 +612,10 @@ verify_b2_build_contracts() {
         build.gradle \
         "name.startsWith('p4E0R2Q')" \
         'P4-B2-B must not broadly admit the P4-E0-R2Q phase'
+    forbid_ere \
+        build.gradle \
+        "name\\.startsWith\\('p8[^']*'\\)" \
+        'P4-B2-B must keep P8 loaded-mod routing on exact run identities'
 
     require_ere_count \
         build.gradle \

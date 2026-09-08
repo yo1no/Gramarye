@@ -1070,7 +1070,9 @@ verify_build_contract() {
     for marker in \
         "name == 'p4E0ResearchDedicatedSmoke'" \
         "name == 'p4E0R2QDedicatedSmoke'" \
-        '? p4E0ResearchMod : productionMod'; do
+        '? p4E0ResearchMod' \
+        ": name == 'p8S2ReloadGameTestServer'" \
+        '? p8S2GameTestMod : productionMod'; do
         require_fixed scripts/verify-p4-b2-b-configuration.sh "${marker}" \
             "P4-E0-R1 exact B2 runtime allowlist is missing ${marker}"
     done
