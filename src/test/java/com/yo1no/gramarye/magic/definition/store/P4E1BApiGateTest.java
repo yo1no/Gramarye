@@ -104,7 +104,10 @@ final class P4E1BApiGateTest {
         assertFalse(Files.exists(PROJECT_ROOT.resolve("src/p4E1Probe")));
         assertFalse(Files.exists(PROJECT_ROOT.resolve("src/p4E1GameTest")));
         assertFalse(build.contains("p4E1FixedHeapGate"));
-        assertEquals(12, totalGameTestCount - manaGameTestCount - com.yo1no.gramarye.P7GameTestInventory.s4Count());
+        assertEquals(12, totalGameTestCount
+                - manaGameTestCount
+                - com.yo1no.gramarye.P7GameTestInventory.s4Count()
+                - com.yo1no.gramarye.P7GameTestInventory.p8Count());
         assertEquals(7, manaGameTestCount);
         assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount);
     }

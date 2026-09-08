@@ -20,6 +20,7 @@ import com.yo1no.gramarye.magic.presentation.api.ProfileChannel;
 import com.yo1no.gramarye.magic.presentation.api.ProfileConfiguration;
 import com.yo1no.gramarye.magic.presentation.api.ProfileCost;
 import com.yo1no.gramarye.magic.presentation.api.ProfileType;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
 import com.yo1no.gramarye.magic.validation.ValidationContext;
 import java.io.IOException;
 import java.io.StringReader;
@@ -28,6 +29,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
@@ -37,16 +39,22 @@ import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.TreeMap;
+import java.util.UUID;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.ReloadableServerResources;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
@@ -54,6 +62,7 @@ import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /** Root-owned P8 server catalog, reload, generation, and availability authority. */
 final class P8ServerPresentationService {
@@ -82,15 +91,32 @@ final class P8ServerPresentationService {
                     + "\"lifetime_ticks\":16}";
 
     private final ProfileAvailabilityView availabilityView = this::availability;
+    private final P8PresentationTransport transport;
 
     private volatile CatalogSnapshot activeSnapshot;
     private MinecraftServer activeServer;
     private PendingCandidate pendingCandidate;
     private ReloadMarker currentReloadMarker;
     private long catalogGenerationHighWater;
+    private PresentationSequence presentationSequence = PresentationSequence.initial();
+    private long lastDrainedRuntimeTick;
+    private long lastDrainServerTick = Long.MIN_VALUE;
+    private final EnumSet<P8ServerRuntimeDiagnosticCode> runtimeDiagnosticCodes =
+            EnumSet.noneOf(P8ServerRuntimeDiagnosticCode.class);
+    private long runtimeSuppressedDiagnosticCount;
+    private P8TickState tickState = P8TickState.empty();
+    private long tickStateServerTick = Long.MIN_VALUE;
+    private boolean offerInProgress;
+    private boolean drainInProgress;
     private boolean registered;
 
-    private P8ServerPresentationService() {}
+    private P8ServerPresentationService() {
+        this(UnavailableP8PresentationTransport.INSTANCE);
+    }
+
+    P8ServerPresentationService(P8PresentationTransport transport) {
+        this.transport = Objects.requireNonNull(transport, "transport");
+    }
 
     static P8ServerPresentationService create() {
         return new P8ServerPresentationService();
@@ -105,6 +131,399 @@ final class P8ServerPresentationService {
         return captured == null
                 ? Optional.empty()
                 : Optional.of(new AppearanceResolutionSnapshot(captured));
+    }
+
+    P8PresentationOfferOutcome offerApplied(
+            RuntimeEvent event,
+            RuntimeExecutionContext context,
+            P6RuntimeExecutionBridge.AppliedFact fact) {
+        Objects.requireNonNull(event, "event");
+        Objects.requireNonNull(context, "context");
+        Objects.requireNonNull(fact, "fact");
+        MinecraftServer server = context.server();
+        if (activeServer != server
+                || !server.isSameThread()
+                || !server.isRunning()
+                || server.isStopped()
+                || !sameExecutionIdentity(event, context)) {
+            return P8PresentationOfferOutcome.DROPPED;
+        }
+        if (offerInProgress || drainInProgress) {
+            throw new IllegalStateException("P8 applied-fact offer is reentrant");
+        }
+        long offeredRuntimeTick = context.currentRuntimeTick();
+        if (offeredRuntimeTick < lastDrainedRuntimeTick
+                || tickState.runtimeTick() > offeredRuntimeTick) {
+            throw new IllegalArgumentException("presentation tick regressed");
+        }
+        if (offeredRuntimeTick == lastDrainedRuntimeTick
+                || lastDrainServerTick == server.getTickCount()) {
+            return P8PresentationOfferOutcome.DROPPED;
+        }
+
+        Optional<AppearanceResolutionSnapshot> captured =
+                captureAppearanceResolutionSnapshot();
+        if (captured.isEmpty()) {
+            return P8PresentationOfferOutcome.DROPPED;
+        }
+
+        offerInProgress = true;
+        P8TickState.P8TickScratch scratch = null;
+        try {
+            scratch = tickState.scratch(context.currentRuntimeTick());
+            Optional<PresentationEventKind> kind = presentationKind(event);
+            if (kind.isEmpty()) {
+                return P8PresentationOfferOutcome.DROPPED;
+            }
+            Optional<P8EventMaterial> material = eventMaterial(kind.orElseThrow(), context);
+            if (material.isEmpty()) {
+                return P8PresentationOfferOutcome.DROPPED;
+            }
+
+            AppearanceResolutionSnapshot snapshot = captured.orElseThrow();
+            AppearanceResolution resolution = AppearanceSemantics.resolve(
+                    context.definition().appearance(),
+                    context.node().appearanceOverride(),
+                    Optional.empty(),
+                    context.node().action().descriptor().capabilities().appearanceParameters(),
+                    snapshot.profiles());
+            verifyStoredProfileCosts(resolution.appearance(), snapshot.profiles());
+
+            var eligible = fact.appliedSteps().size();
+            var surviving = 0;
+            var unchangedDistinct = 0;
+            for (P6RuntimeExecutionBridge.AppliedStep step : fact.appliedSteps()) {
+                var sequence = allocatePresentationSequence();
+                if (sequence.isEmpty()) {
+                    continue;
+                }
+                var currentMaterial = material.orElseThrow();
+                PresentationEventCreation creation = PresentationEvent.createServer(
+                        snapshot.catalogGeneration(),
+                        currentMaterial.kind().wireCode(),
+                        currentMaterial.sourceEntityId(),
+                        currentMaterial.targetEntityId(),
+                        currentMaterial.dimension(),
+                        currentMaterial.x(),
+                        currentMaterial.y(),
+                        currentMaterial.z(),
+                        currentMaterial.directionX(),
+                        currentMaterial.directionY(),
+                        currentMaterial.directionZ(),
+                        resolution.appearance(),
+                        sequence.orElseThrow());
+                if (!(creation instanceof AcceptedPresentationEvent accepted)) {
+                    continue;
+                }
+                PresentationEvent presentation = accepted.event();
+                if (!scratch.admitLogical(
+                        event.skillInstanceId(), currentMaterial.sourcePlayerId())) {
+                    continue;
+                }
+
+                Optional<P8RecipientSelection> selected = P8RecipientSelector.select(
+                        server,
+                        currentMaterial,
+                        presentation,
+                        Optional.ofNullable(resolvedTargetEntity(context)),
+                        Optional.ofNullable(resolvedOriginEntity(context))
+                                .filter(ServerPlayer.class::isInstance)
+                                .map(ServerPlayer.class::cast),
+                        transport);
+                if (selected.isEmpty()) {
+                    continue;
+                }
+                P8RecipientSelection selection = selected.orElseThrow();
+                if (!scratch.chargeRecipientEvaluations(selection.evaluations())
+                        || selection.recipients().isEmpty()) {
+                    continue;
+                }
+
+                PresentationCoalescing.Value coalescing = PresentationCoalescing.Value.create(
+                        coalescingIdentity(
+                                context.currentRuntimeTick(),
+                                event.eventId().value(),
+                                step.stepIndex(),
+                                presentation,
+                                selection.recipients()),
+                        presentation.sequence());
+                var buffered = new P8BufferedPresentation(
+                        context.currentRuntimeTick(),
+                        event.eventId().value(),
+                        step.stepIndex(),
+                        presentation,
+                        coalescing,
+                        selection.recipients(),
+                        currentMaterial.sourcePlayerId(),
+                        currentMaterial.targetPlayerId(),
+                        currentMaterial.targetEntityUuid());
+                PresentationDegradation.Decision admission = scratch.admitBuffered(buffered);
+                switch (admission.outcome()) {
+                    case UNCHANGED -> {
+                        surviving++;
+                        unchangedDistinct++;
+                    }
+                    case COALESCED -> surviving++;
+                    case DROPPED -> {
+                        // Normal presentation capacity exhaustion is a closed drop.
+                    }
+                    case DEGRADED -> throw new IllegalStateException(
+                            "server event-body admission cannot apply client degradation");
+                }
+            }
+
+            tickState = scratch.freeze();
+            tickStateServerTick = server.getTickCount();
+            if (surviving == 0) {
+                return P8PresentationOfferOutcome.DROPPED;
+            }
+            return unchangedDistinct == eligible
+                    ? P8PresentationOfferOutcome.ACCEPTED
+                    : P8PresentationOfferOutcome.DEGRADED;
+        } finally {
+            scratch = null;
+            offerInProgress = false;
+        }
+    }
+
+    void recordObserverRuntimeException() {
+        recordRuntimeDiagnostic(P8ServerRuntimeDiagnosticCode.OBSERVER_RUNTIME_EXCEPTION);
+    }
+
+    private static boolean sameExecutionIdentity(
+            RuntimeEvent event, RuntimeExecutionContext context) {
+        return event.nodeIndex() == context.node().nodeIndex()
+                && event.skillReference().equals(context.definition().reference())
+                && event.cancellationToken().serverSlotToken()
+                        .equals(context.serverSlotToken());
+    }
+
+    private static Optional<PresentationEventKind> presentationKind(RuntimeEvent event) {
+        ResourceLocation trigger = event.triggerCause().eventKind().key();
+        if (trigger.equals(id("active_cast"))) {
+            return Optional.of(PresentationEventKind.CAST_RELEASE);
+        }
+        if (trigger.equals(id("p8_controlled_hit"))) {
+            return Optional.of(PresentationEventKind.HIT);
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<P8EventMaterial> eventMaterial(
+            PresentationEventKind kind, RuntimeExecutionContext context) {
+        Entity originEntity = resolvedOriginEntity(context);
+        Entity targetEntity = resolvedTargetEntity(context);
+        Vec3 position;
+        Vec3 direction;
+        ResourceLocation dimension;
+
+        if (kind == PresentationEventKind.CAST_RELEASE) {
+            if (originEntity == null || !(originEntity.level() instanceof ServerLevel originLevel)) {
+                return Optional.empty();
+            }
+            position = originEntity.position();
+            dimension = originLevel.dimension().location();
+            Vec3 targetPosition = resolvedTargetPosition(context);
+            if (targetPosition != null && sameTargetDimension(context, originLevel)) {
+                if (!finite(targetPosition)) {
+                    return Optional.empty();
+                }
+                Vec3 targetDirection = targetPosition.subtract(position);
+                if (targetDirection.lengthSqr() == 0.0D) {
+                    direction = originEntity.getLookAngle();
+                } else if (PresentationDirection.normalized(
+                                targetDirection.x, targetDirection.y, targetDirection.z)
+                        .isPresent()) {
+                    direction = targetDirection;
+                } else {
+                    return Optional.empty();
+                }
+            } else {
+                direction = originEntity.getLookAngle();
+            }
+        } else {
+            if (targetEntity == null
+                    || !(targetEntity.level() instanceof ServerLevel targetLevel)) {
+                return Optional.empty();
+            }
+            Vec3 originPosition = resolvedOriginPosition(context);
+            if (originPosition == null || !sameOriginDimension(context, targetLevel)) {
+                return Optional.empty();
+            }
+            position = targetEntity.position();
+            direction = position.subtract(originPosition);
+            dimension = targetLevel.dimension().location();
+        }
+
+        if (!finite(position) || !finite(direction)
+                || !PresentationPosition.isValid(position.x, position.y, position.z)
+                || PresentationDirection.normalized(direction.x, direction.y, direction.z)
+                        .isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new P8EventMaterial(
+                kind,
+                dimension,
+                position.x,
+                position.y,
+                position.z,
+                direction.x,
+                direction.y,
+                direction.z,
+                entityId(originEntity),
+                entityId(targetEntity),
+                playerId(originEntity),
+                playerId(targetEntity),
+                targetEntity == null
+                        ? Optional.empty()
+                        : Optional.of(targetEntity.getUUID())));
+    }
+
+    private static Entity resolvedOriginEntity(RuntimeExecutionContext context) {
+        return switch (context.resolvedReferences().origin()) {
+            case ResolvedPlayerOrigin value -> value.player();
+            case ResolvedEntityOrigin value -> value.entity();
+            case ResolvedServerOrigin ignored -> null;
+            case ResolvedBlockOrigin ignored -> null;
+        };
+    }
+
+    private static Entity resolvedTargetEntity(RuntimeExecutionContext context) {
+        return switch (context.resolvedReferences().target()) {
+            case ResolvedPlayerTarget value -> value.player();
+            case ResolvedEntityTarget value -> value.entity();
+            case NoResolvedRuntimeTarget ignored -> null;
+            case ResolvedBlockTarget ignored -> null;
+        };
+    }
+
+    private static Vec3 resolvedOriginPosition(RuntimeExecutionContext context) {
+        return switch (context.resolvedReferences().origin()) {
+            case ResolvedPlayerOrigin value -> value.player().position();
+            case ResolvedEntityOrigin value -> value.entity().position();
+            case ResolvedBlockOrigin value -> Vec3.atCenterOf(value.position());
+            case ResolvedServerOrigin ignored -> null;
+        };
+    }
+
+    private static Vec3 resolvedTargetPosition(RuntimeExecutionContext context) {
+        return switch (context.resolvedReferences().target()) {
+            case ResolvedPlayerTarget value -> value.player().position();
+            case ResolvedEntityTarget value -> value.entity().position();
+            case ResolvedBlockTarget value -> Vec3.atCenterOf(value.position());
+            case NoResolvedRuntimeTarget ignored -> null;
+        };
+    }
+
+    private static boolean sameOriginDimension(
+            RuntimeExecutionContext context, ServerLevel targetLevel) {
+        return switch (context.resolvedReferences().origin()) {
+            case ResolvedPlayerOrigin value -> value.player().serverLevel() == targetLevel;
+            case ResolvedEntityOrigin value -> value.entity().level() == targetLevel;
+            case ResolvedBlockOrigin value -> value.level() == targetLevel;
+            case ResolvedServerOrigin ignored -> false;
+        };
+    }
+
+    private static boolean sameTargetDimension(
+            RuntimeExecutionContext context, ServerLevel originLevel) {
+        return switch (context.resolvedReferences().target()) {
+            case ResolvedPlayerTarget value -> value.player().serverLevel() == originLevel;
+            case ResolvedEntityTarget value -> value.entity().level() == originLevel;
+            case ResolvedBlockTarget value -> value.level() == originLevel;
+            case NoResolvedRuntimeTarget ignored -> false;
+        };
+    }
+
+    private static OptionalInt entityId(Entity entity) {
+        return entity == null ? OptionalInt.empty() : OptionalInt.of(entity.getId());
+    }
+
+    private static Optional<UUID> playerId(Entity entity) {
+        return entity instanceof ServerPlayer player
+                ? Optional.of(player.getUUID())
+                : Optional.empty();
+    }
+
+    private static boolean finite(Vec3 value) {
+        return value != null
+                && Double.isFinite(value.x)
+                && Double.isFinite(value.y)
+                && Double.isFinite(value.z);
+    }
+
+    private OptionalLong allocatePresentationSequence() {
+        PresentationSequence.Allocation allocation = presentationSequence.allocate();
+        presentationSequence = allocation.nextState();
+        return allocation.sequence();
+    }
+
+    private static void verifyStoredProfileCosts(
+            EffectiveAppearance appearance, PresentationProfileView profiles) {
+        long particleStarts = 0L;
+        long soundStarts = 0L;
+        long trailStarts = 0L;
+        long trailSegments = 0L;
+        long lifetimeTicks = 0L;
+        for (ResolvedProfile resolved : List.of(
+                appearance.soundProfile(),
+                appearance.particleProfile(),
+                appearance.trailProfile())) {
+            if (resolved.id().isEmpty()) {
+                continue;
+            }
+            PresentationProfileDescriptor descriptor = Objects.requireNonNull(
+                            profiles.find(resolved.id().orElseThrow()),
+                            "Profile lookup result")
+                    .orElseThrow(() -> new IllegalStateException(
+                            "resolved Profile disappeared from its captured snapshot"));
+            ProfileCost cost = descriptor.estimatedCost();
+            particleStarts = Math.addExact(particleStarts, cost.particleStarts());
+            soundStarts = Math.addExact(soundStarts, cost.soundStarts());
+            trailStarts = Math.addExact(trailStarts, cost.trailStarts());
+            trailSegments = Math.addExact(trailSegments, cost.trailSegments());
+            lifetimeTicks = Math.addExact(lifetimeTicks, cost.lifetimeTicks());
+        }
+        if (particleStarts < 0L
+                || soundStarts < 0L
+                || trailStarts < 0L
+                || trailSegments < 0L
+                || lifetimeTicks < 0L) {
+            throw new IllegalStateException("captured Profile cost is invalid");
+        }
+    }
+
+    private static PresentationCoalescing.Identity coalescingIdentity(
+            long authoritativeTick,
+            long sourceEventId,
+            int appliedStepIndex,
+            PresentationEvent event,
+            List<P8SelectedRecipient> recipients) {
+        var direction = event.direction();
+        var appearance = event.appearance();
+        return new PresentationCoalescing.Identity(
+                authoritativeTick,
+                sourceEventId,
+                appliedStepIndex,
+                event.catalogGeneration(),
+                event.kind().wireCode(),
+                event.sourceSummary().sourceEntityId(),
+                event.sourceSummary().targetEntityId(),
+                event.dimension(),
+                event.position().x(),
+                event.position().y(),
+                event.position().z(),
+                direction.xQ15(),
+                direction.yQ15(),
+                direction.zQ15(),
+                appearance.primaryArgb(),
+                appearance.secondaryArgb(),
+                appearance.soundProfileId(),
+                appearance.particleProfileId(),
+                appearance.trailProfileId(),
+                new TreeMap<>(appearance.parameters()),
+                appearance.intensityMilli(),
+                recipients.stream().map(value -> value.identity().playerId()).toList());
     }
 
     static ReloadIdentity newReloadIdentityForTesting() {
@@ -164,7 +583,46 @@ final class P8ServerPresentationService {
             currentReloadMarker = null;
             activeServer = null;
             catalogGenerationHighWater = 0L;
+            resetPresentationEpoch();
         }
+    }
+
+    void startForTesting(MinecraftServer server, PreparedCatalog prepared) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(prepared, "prepared");
+        requireServerThread(server);
+        synchronized (this) {
+            if (activeServer != null || activeSnapshot != null) {
+                throw new IllegalStateException("P8 test server lifecycle is already active");
+            }
+            resetPresentationEpoch();
+            activeServer = server;
+            activeSnapshot = new CatalogSnapshot(1L, prepared);
+            catalogGenerationHighWater = 1L;
+            runtimeSuppressedDiagnosticCount = prepared.suppressedDiagnostics;
+        }
+    }
+
+    List<PresentationEvent> bufferedEventsForTesting() {
+        return tickState.buffer().stream()
+                .map(P8BufferedPresentation::event)
+                .toList();
+    }
+
+    List<P8BufferedPresentation> bufferedPresentationsForTesting() {
+        return tickState.buffer();
+    }
+
+    long presentationSequenceHighWaterForTesting() {
+        return presentationSequence.allocatedHighWater();
+    }
+
+    void setPresentationSequenceNextForTesting(long nextValue) {
+        presentationSequence = PresentationSequence.expecting(nextValue);
+    }
+
+    boolean hasRuntimeDiagnosticForTesting(P8ServerRuntimeDiagnosticCode code) {
+        return runtimeDiagnosticCodes.contains(Objects.requireNonNull(code, "code"));
     }
 
     void setCatalogGenerationHighWaterForTesting(long generation) {
@@ -206,8 +664,7 @@ final class P8ServerPresentationService {
     }
 
     long activeSuppressedDiagnosticCountForTesting() {
-        var snapshot = activeSnapshot;
-        return snapshot == null ? 0L : snapshot.suppressedDiagnostics;
+        return activeSnapshot == null ? 0L : runtimeSuppressedDiagnosticCount;
     }
 
     int activeCatalogBodyBytesForTesting() {
@@ -273,6 +730,7 @@ final class P8ServerPresentationService {
         }
         gameBus.addListener(EventPriority.LOWEST, this::addReloadListener);
         gameBus.addListener(EventPriority.LOWEST, this::handleDatapackSync);
+        gameBus.addListener(EventPriority.LOWEST, this::handlePresentationPost);
         gameBus.addListener(EventPriority.LOWEST, this::handleServerStopping);
         gameBus.addListener(EventPriority.LOWEST, this::handleServerStopped);
     }
@@ -292,6 +750,7 @@ final class P8ServerPresentationService {
             activeServer = server;
             activeSnapshot = null;
             catalogGenerationHighWater = 0L;
+            resetPresentationEpoch();
             if (!activateMatchingCandidate(new ReloadIdentity(
                     server.getServerResources().managers()))) {
                 activeServer = null;
@@ -299,6 +758,7 @@ final class P8ServerPresentationService {
                 pendingCandidate = null;
                 currentReloadMarker = null;
                 catalogGenerationHighWater = 0L;
+                resetPresentationEpoch();
                 throw new IllegalStateException("P8 initial Profile catalog is unavailable");
             }
         }
@@ -329,6 +789,135 @@ final class P8ServerPresentationService {
             activateMatchingCandidate(new ReloadIdentity(
                     server.getServerResources().managers()));
         }
+    }
+
+    private void handlePresentationPost(ServerTickEvent.Post event) {
+        Objects.requireNonNull(event, "event");
+        drainPresentation(event.getServer());
+    }
+
+    void drainPresentationForTesting(MinecraftServer server) {
+        drainPresentation(server);
+    }
+
+    private void drainPresentation(MinecraftServer server) {
+        Objects.requireNonNull(server, "server");
+        if (activeServer != server) {
+            return;
+        }
+        requireServerThread(server);
+        if (offerInProgress || drainInProgress) {
+            throw new IllegalStateException("P8 presentation drain is reentrant");
+        }
+        long serverTick = server.getTickCount();
+        if (lastDrainServerTick == serverTick) {
+            throw new IllegalStateException("P8 presentation drain repeated in one server tick");
+        }
+
+        drainInProgress = true;
+        try {
+            P8TickState draining = tickState;
+            long drainingServerTick = tickStateServerTick;
+            tickState = P8TickState.empty();
+            tickStateServerTick = Long.MIN_VALUE;
+            advanceDrainedRuntimeTick(draining);
+            if (!server.isRunning() || server.isStopped()) {
+                return;
+            }
+            CatalogSnapshot active = activeSnapshot;
+            if (active == null
+                    || drainingServerTick != serverTick
+                    || draining.buffer().isEmpty()) {
+                return;
+            }
+
+            var deliveries = new ArrayList<P8Delivery>();
+            for (P8BufferedPresentation buffered : draining.buffer()) {
+                if (buffered.event().catalogGeneration() != active.generation) {
+                    continue;
+                }
+                for (P8SelectedRecipient recipient : buffered.recipients()) {
+                    var ordering = new PresentationOrdering.DeliveryCandidate(
+                            recipient.category(),
+                            recipient.squaredDistance(),
+                            recipient.identity().playerId(),
+                            buffered.event().sequence());
+                    deliveries.add(new P8Delivery(
+                            ordering, recipient.identity(), buffered));
+                }
+            }
+            if (deliveries.size()
+                    > PresentationLimits.MAX_CANDIDATE_DELIVERIES_PER_TICK) {
+                throw new IllegalStateException("P8 candidate-delivery bound was bypassed");
+            }
+
+            var eligible = new ArrayList<P8Delivery>(deliveries.size());
+            for (P8Delivery delivery : deliveries) {
+                P8SelectedRecipient selected = selectedRecipient(delivery);
+                if (!P8RecipientSelector.remainsEligible(
+                        server, delivery.buffered(), selected, transport)) {
+                    continue;
+                }
+                eligible.add(delivery);
+            }
+
+            var admitted = new ArrayList<>(P8DeliveryAdmission.admit(eligible));
+            admitted.sort((left, right) -> {
+                var comparison = compareUnsignedUuid(
+                        left.identity().playerId(), right.identity().playerId());
+                return comparison != 0
+                        ? comparison
+                        : Long.compare(
+                                left.buffered().event().sequence(),
+                                right.buffered().event().sequence());
+            });
+            for (P8Delivery delivery : admitted) {
+                try {
+                    P8PresentationSubmissionResult result = Objects.requireNonNull(
+                            transport.submit(
+                                    delivery.identity(), delivery.buffered().event()),
+                            "P8 transport submission result");
+                    if (result == P8PresentationSubmissionResult.UNAVAILABLE) {
+                        continue;
+                    }
+                } catch (RuntimeException ignored) {
+                    recordRuntimeDiagnostic(
+                            P8ServerRuntimeDiagnosticCode.EVENT_TRANSPORT_RUNTIME_EXCEPTION);
+                }
+            }
+        } finally {
+            lastDrainServerTick = serverTick;
+            drainInProgress = false;
+        }
+    }
+
+    private void advanceDrainedRuntimeTick(P8TickState draining) {
+        if (draining.runtimeTick() >= 0) {
+            if (draining.runtimeTick() <= lastDrainedRuntimeTick) {
+                throw new IllegalStateException("P8 presentation drain tick regressed");
+            }
+            lastDrainedRuntimeTick = draining.runtimeTick();
+        } else if (lastDrainedRuntimeTick < Long.MAX_VALUE) {
+            lastDrainedRuntimeTick = Math.incrementExact(lastDrainedRuntimeTick);
+        }
+    }
+
+    private static P8SelectedRecipient selectedRecipient(P8Delivery delivery) {
+        for (P8SelectedRecipient selected : delivery.buffered().recipients()) {
+            if (selected.identity().equals(delivery.identity())) {
+                return selected;
+            }
+        }
+        throw new IllegalStateException("P8 buffered recipient disappeared");
+    }
+
+    private static int compareUnsignedUuid(UUID left, UUID right) {
+        var comparison = Long.compareUnsigned(
+                left.getMostSignificantBits(), right.getMostSignificantBits());
+        return comparison != 0
+                ? comparison
+                : Long.compareUnsigned(
+                        left.getLeastSignificantBits(), right.getLeastSignificantBits());
     }
 
     void handleServerStopping(ServerStoppingEvent event) {
@@ -386,8 +975,11 @@ final class P8ServerPresentationService {
         }
         var nextGeneration = catalogGenerationHighWater + 1L;
         var nextSnapshot = new CatalogSnapshot(nextGeneration, pending.prepared);
+        tickState = tickState.clearBufferPreservingLogicalWork();
         activeSnapshot = nextSnapshot;
         catalogGenerationHighWater = nextGeneration;
+        runtimeDiagnosticCodes.clear();
+        runtimeSuppressedDiagnosticCount = nextSnapshot.suppressedDiagnostics;
         releasePending(pending);
         Gramarye.LOGGER.info(
                 "Gramarye P8 Profile catalog activated at generation {}", nextGeneration);
@@ -415,7 +1007,40 @@ final class P8ServerPresentationService {
             currentReloadMarker = null;
             activeServer = null;
             catalogGenerationHighWater = 0L;
+            resetPresentationEpoch();
         }
+    }
+
+    private void resetPresentationEpoch() {
+        presentationSequence = PresentationSequence.initial();
+        lastDrainedRuntimeTick = 0L;
+        lastDrainServerTick = Long.MIN_VALUE;
+        runtimeDiagnosticCodes.clear();
+        runtimeSuppressedDiagnosticCount = 0L;
+        tickState = P8TickState.empty();
+        tickStateServerTick = Long.MIN_VALUE;
+        offerInProgress = false;
+        drainInProgress = false;
+    }
+
+    private void recordRuntimeDiagnostic(P8ServerRuntimeDiagnosticCode code) {
+        Objects.requireNonNull(code, "code");
+        if (runtimeDiagnosticCodes.contains(code)) {
+            return;
+        }
+        CatalogSnapshot snapshot = activeSnapshot;
+        int retainedCatalogKeys = snapshot == null ? 0 : snapshot.diagnostics.size();
+        if (retainedCatalogKeys + runtimeDiagnosticCodes.size()
+                >= PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS) {
+            runtimeSuppressedDiagnosticCount =
+                    saturatingIncrement(runtimeSuppressedDiagnosticCount);
+            return;
+        }
+        runtimeDiagnosticCodes.add(code);
+    }
+
+    private static long saturatingIncrement(long value) {
+        return value == Long.MAX_VALUE ? Long.MAX_VALUE : value + 1L;
     }
 
     private static void requireServerThread(MinecraftServer server) {

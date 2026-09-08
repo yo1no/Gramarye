@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.store.ControlledSkillPin;
 import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -86,7 +87,15 @@ final class P5RuntimeStaticGateTest {
                         "modBus.addListener(this::handleRuntimeConfigUnloading);")),
                 () -> assertEquals(1, occurrences(
                         gramarye,
-                        "skillRuntimeService.handleRuntimeStarted(event, limits);")));
+                        "skillRuntimeService.handleRuntimeStarted(event, limits);")),
+                () -> assertTrue(gramarye.indexOf(
+                                "skillRuntimeService = SkillRuntimeService.create(")
+                        < gramarye.indexOf(
+                                "p8ServerPresentationService.registerAfterP5(")),
+                () -> assertTrue(gramarye.indexOf(
+                                "p8ServerPresentationService.handleServerStarted(event);")
+                        < gramarye.indexOf(
+                                "skillRuntimeService.handleRuntimeStarted(event, limits);")));
 
         var fields = Arrays.asList(Gramarye.class.getDeclaredFields());
         assertAll(
@@ -366,7 +375,7 @@ final class P5RuntimeStaticGateTest {
     }
 
     @Test
-    void rootAdmissionHasOneTokenSafeCallerAndMandatoryOverrideIsExact()
+    void rootAdmissionHasOneTokenSafeCallerAndMandatoryOverridesAreExact()
             throws Exception {
         var callsites = 0;
         try (var paths = Files.walk(PROJECT_ROOT.resolve("src/main/java"))) {
@@ -436,6 +445,62 @@ final class P5RuntimeStaticGateTest {
                                 || Modifier.isProtected(field.getModifiers()))
                         .count()),
                 () -> assertEquals(0, Arrays.stream(owner.getDeclaredMethods())
+                        .filter(method -> Modifier.isPublic(method.getModifiers())
+                                && Modifier.isStatic(method.getModifiers()))
+                        .count()));
+
+        var handoffOwner = P8AppliedFactHandoff.class;
+        var observerOverride = handoffOwner.getDeclaredMethod(
+                "observe", P6RuntimeExecutionBridge.AppliedFact.class);
+        var handoffConstructor = handoffOwner.getDeclaredConstructor(
+                P8ServerPresentationService.class,
+                RuntimeEvent.class,
+                RuntimeExecutionContext.class);
+        var handoffFields = Arrays.stream(handoffOwner.getDeclaredFields())
+                .filter(field -> !field.isSynthetic())
+                .toList();
+        var handoffPublicProtectedMethods = Arrays.stream(handoffOwner.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers())
+                        || Modifier.isProtected(method.getModifiers()))
+                .toList();
+        assertAll(
+                () -> assertTrue(Modifier.isFinal(handoffOwner.getModifiers())),
+                () -> assertFalse(Modifier.isPublic(handoffOwner.getModifiers())),
+                () -> assertFalse(Modifier.isProtected(handoffOwner.getModifiers())),
+                () -> assertEquals(
+                        List.of(P6RuntimeExecutionBridge.AppliedFactObserver.class),
+                        List.of(handoffOwner.getInterfaces())),
+                () -> assertEquals(
+                        List.of(observerOverride), handoffPublicProtectedMethods),
+                () -> assertTrue(Modifier.isPublic(observerOverride.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(observerOverride.getModifiers())),
+                () -> assertFalse(observerOverride.isBridge()),
+                () -> assertFalse(observerOverride.isSynthetic()),
+                () -> assertEquals(void.class, observerOverride.getReturnType()),
+                () -> assertEquals(0, observerOverride.getExceptionTypes().length),
+                () -> assertEquals(1, handoffOwner.getDeclaredConstructors().length),
+                () -> assertFalse(Modifier.isPublic(handoffConstructor.getModifiers())),
+                () -> assertFalse(Modifier.isProtected(handoffConstructor.getModifiers())),
+                () -> assertFalse(Modifier.isPrivate(handoffConstructor.getModifiers())),
+                () -> assertEquals(0, handoffConstructor.getExceptionTypes().length),
+                () -> assertEquals(3, handoffFields.size()),
+                () -> assertEquals(
+                        Set.of("service", "event", "context"),
+                        handoffFields.stream()
+                                .map(java.lang.reflect.Field::getName)
+                                .collect(java.util.stream.Collectors.toUnmodifiableSet())),
+                () -> assertEquals(
+                        Set.of(
+                                P8ServerPresentationService.class,
+                                RuntimeEvent.class,
+                                RuntimeExecutionContext.class),
+                        handoffFields.stream()
+                                .map(java.lang.reflect.Field::getType)
+                                .collect(java.util.stream.Collectors.toUnmodifiableSet())),
+                () -> assertTrue(handoffFields.stream().allMatch(field ->
+                        Modifier.isPrivate(field.getModifiers())
+                                && Modifier.isFinal(field.getModifiers()))),
+                () -> assertEquals(0, Arrays.stream(handoffOwner.getDeclaredMethods())
                         .filter(method -> Modifier.isPublic(method.getModifiers())
                                 && Modifier.isStatic(method.getModifiers()))
                         .count()));

@@ -386,7 +386,10 @@ class P4C2AApiGateTest {
                                 "dimensionTravelKeepsSingleManaTruth",
                                 "duplicatePersistentManaTruthIsAbsent"),
                         manaMethodNames),
-                () -> assertEquals(12, totalCount - manaCount - com.yo1no.gramarye.P7GameTestInventory.s4Count()),
+                () -> assertEquals(12, totalCount
+                        - manaCount
+                        - com.yo1no.gramarye.P7GameTestInventory.s4Count()
+                        - com.yo1no.gramarye.P7GameTestInventory.p8Count()),
                 () -> assertEquals(7, manaCount),
                 () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalCount));
     }
@@ -599,6 +602,7 @@ class P4C2AApiGateTest {
     private static Set<String> relativeFilesContaining(List<Path> sources, String fragment) {
         return sources.stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(P4C2AApiGateTest::relative)
                 .collect(Collectors.toSet());

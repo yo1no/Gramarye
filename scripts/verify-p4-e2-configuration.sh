@@ -190,7 +190,10 @@ require_only_owner() {
     local count=0
     local status=0
     while IFS= read -r -d '' file; do
-        bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" && continue
+        if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}"; then
+            continue
+        fi
         status=0
         count="$(LC_ALL=C grep -Fc -- "${needle}" "${file}")" || status=$?
         case "${status}" in
@@ -633,6 +636,36 @@ is_approved_p7_s3_r1_changed_path() {
     esac
 }
 
+is_approved_p8_s3_product_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8AppliedFactHandoff.java | \
+        src/main/java/com/yo1no/gramarye/P8PresentationRuntime.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java | \
+        src/main/java/com/yo1no/gramarye/PresentationLimits.java | \
+        src/main/java/com/yo1no/gramarye/PresentationOrdering.java | \
+        src/main/java/com/yo1no/gramarye/PresentationSequence.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p8_s3_test_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
+        src/test/java/com/yo1no/gramarye/P8PresentationRuntimeTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ProfileCatalogTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S2BoundaryTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_allowed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
@@ -642,6 +675,8 @@ is_allowed_changed_path() {
     is_approved_p7_s2_changed_path "$1" && return 0
     bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1" && return 0
     is_approved_p7_s3_r1_changed_path "$1" && return 0
+    is_approved_p8_s3_product_changed_path "$1" && return 0
+    is_approved_p8_s3_test_changed_path "$1" && return 0
     case "$1" in
         scripts/verify-p4-c2-a-configuration.sh | \
         scripts/verify-p4-c2-b-configuration.sh | \
@@ -780,6 +815,12 @@ self_regression() {
     is_allowed_changed_path \
         'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java' \
         || fail 'self-test rejected an exact P4-E2 Gate path'
+    is_allowed_changed_path \
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
+        || fail 'self-test rejected an exact P8-S3 production path'
+    is_allowed_changed_path \
+        'src/test/java/com/yo1no/gramarye/P8PresentationRuntimeTest.java' \
+        || fail 'self-test rejected an exact P8-S3 test path'
     for approved in \
         'build.gradle' \
         '.github/workflows/build.yml' \
@@ -796,6 +837,8 @@ self_regression() {
         'src/main/java/com/yo1no/gramarye/magic/definition/store/AuditUnexpected.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/ReconciliationUnexpected.java' \
         'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2UnexpectedTest.java' \
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationServiceExtra.java' \
+        'src/test/java/com/yo1no/gramarye/P8PresentationRuntimeTestExtra.java' \
         'build.gradle.extra' \
         'src/p4E3Probe/java/com/yo1no/gramarye/magic/definition/store/P4E3Unexpected.java' \
         '.github/workflows/p4-e2.yml'; do

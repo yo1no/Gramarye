@@ -36,8 +36,8 @@ is_s4_path() {
 }
 
 verify_game_tests() {
-    local expected actual annotation_count
-    expected="$(printf '%s\n' \
+    local expected_non_p8 actual actual_non_p8 p8_actual annotation_count
+    expected_non_p8="$(printf '%s\n' \
         'P7S4LoginManaGameTests.java:manaObservationPreservesAvailableAndMalformedAttachmentTruth' \
         'P7S4LoginManaGameTests.java:loginPortRejectsNoncurrentPlayerBeforeSessionOpen' \
         'P7S4LoginManaGameTests.java:e2NormalAndChangedTerminalsHandoffOnceAndQuarantineNeverHandoffs' \
@@ -65,6 +65,10 @@ verify_game_tests() {
         'magic/runtime/mana/ManaLifecycleGameTests.java:nonDeathCloneCopiesExactManaState' \
         'magic/runtime/mana/ManaLifecycleGameTests.java:validAttachmentSerializesAndLoadsExactly' \
         | LC_ALL=C sort)"
+    [[ "$(printf '%s\n' "${expected_non_p8}" | wc -l | tr -d ' ')" -eq 26 ]] || {
+        printf '%s\n' 'Non-P8 GameTest inventory must remain exact 26' >&2
+        return 1
+    }
     actual="$(find src/main/java/com/yo1no/gramarye -type f -name '*.java' \
         -exec awk '
             FNR == 1 { pending = 0 }
@@ -79,8 +83,16 @@ verify_game_tests() {
                 pending = 0
             }
         ' {} + | LC_ALL=C sort)"
-    [[ "${actual}" == "${expected}" ]] || {
-        printf '%s\n' 'P7-S4 GameTest source path/method inventory mismatch' >&2
+    actual_non_p8="$(printf '%s\n' "${actual}" \
+        | awk -F: '$1 != "P8S3PresentationGameTests.java"')"
+    p8_actual="$(printf '%s\n' "${actual}" \
+        | awk -F: '$1 == "P8S3PresentationGameTests.java"')"
+    [[ "${actual_non_p8}" == "${expected_non_p8}" ]] || {
+        printf '%s\n' 'Non-P8 GameTest source path/method inventory mismatch' >&2
+        return 1
+    }
+    [[ -n "${p8_actual}" ]] || {
+        printf '%s\n' 'Exact P8-S3 GameTest holder is empty or missing' >&2
         return 1
     }
     annotation_count="$(find src/main/java/com/yo1no/gramarye -type f -name '*.java' \
@@ -102,7 +114,15 @@ case "${1:-}" in
             src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java) exit 0 ;;
             *) exit 1 ;;
         esac ;;
+    --is-p8-harness)
+        [[ "$#" -eq 2 ]]
+        repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+        source_path="${2#"${repository_root}/"}"
+        case "${source_path}" in
+            src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java) exit 0 ;;
+            *) exit 1 ;;
+        esac ;;
     --is-s4-path) [[ "$#" -eq 2 ]] && is_s4_path "$2" ;;
     --game-test-count) [[ "$#" -eq 1 ]] && verify_game_tests ;;
-    *) printf '%s\n' 'Expected --is-s4-path PATH, --is-s4-harness PATH, or --game-test-count' >&2; exit 2 ;;
+    *) printf '%s\n' 'Expected --is-s4-path PATH, --is-s4-harness PATH, --is-p8-harness PATH, or --game-test-count' >&2; exit 2 ;;
 esac

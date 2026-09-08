@@ -347,7 +347,10 @@ final class P4D3AApiGateTest {
                 () -> assertTrue(holderAnnotation != null
                         && holderAnnotation.value().equals(Gramarye.MOD_ID)),
                 () -> assertEquals(3, occurrences(read(RECOVERY_GAME_TESTS), "@GameTest(")),
-                () -> assertEquals(12, totalGameTestCount - manaGameTestCount - com.yo1no.gramarye.P7GameTestInventory.s4Count()),
+                () -> assertEquals(12, totalGameTestCount
+                        - manaGameTestCount
+                        - com.yo1no.gramarye.P7GameTestInventory.s4Count()
+                        - com.yo1no.gramarye.P7GameTestInventory.p8Count()),
                 () -> assertEquals(7, manaGameTestCount),
                 () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount));
     }
@@ -530,6 +533,7 @@ final class P4D3AApiGateTest {
     private static Set<String> relativeSourcesContaining(String fragment) throws Exception {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
@@ -539,6 +543,7 @@ final class P4D3AApiGateTest {
             throws Exception {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(MAIN_JAVA::relativize)
                 .map(path -> path.toString().replace('\\', '/'))
@@ -548,6 +553,7 @@ final class P4D3AApiGateTest {
     private static Set<String> relativeSourcesInvoking(String methodName) throws Exception {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                 .filter(path -> containsInvocation(
                         withoutCommentsAndLiterals(read(path)), methodName))
                 .map(path -> path.getFileName().toString())

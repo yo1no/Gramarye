@@ -181,7 +181,7 @@ final class PresentationOrdering {
     private static void requireDistance(double squaredDistance) {
         if (!Double.isFinite(squaredDistance)
                 || squaredDistance < 0.0D
-                || squaredDistance > 4_096.0D) {
+                || squaredDistance > PresentationLimits.MAX_RECIPIENT_DISTANCE_SQUARED) {
             throw new IllegalArgumentException("squared distance is outside the P8 range");
         }
     }

@@ -19,6 +19,7 @@ import com.yo1no.gramarye.magic.presentation.api.ProfileConfiguration;
 import com.yo1no.gramarye.magic.presentation.api.ProfileCost;
 import com.yo1no.gramarye.magic.presentation.api.ProfileType;
 import com.yo1no.gramarye.magic.presentation.api.ProfileTypeCapabilities;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
 import java.io.IOException;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Member;
@@ -63,6 +64,14 @@ final class P8S2BoundaryTest {
             ROOT_PACKAGE.resolve("P5RuntimeProjector.java");
     private static final Path RUNTIME_SOURCE =
             ROOT_PACKAGE.resolve("SkillRuntimeService.java");
+    private static final Path P6_BRIDGE_SOURCE = ROOT_PACKAGE.resolve(
+            "magic/runtime/mana/P6RuntimeExecutionBridge.java");
+    private static final Path P6_ADAPTER_SOURCE =
+            ROOT_PACKAGE.resolve("P6RuntimeExecutionPortAdapter.java");
+    private static final Path HANDOFF_SOURCE =
+            ROOT_PACKAGE.resolve("P8AppliedFactHandoff.java");
+    private static final Path PRESENTATION_RUNTIME_SOURCE =
+            ROOT_PACKAGE.resolve("P8PresentationRuntime.java");
     private static final Path SUBMISSION_SOURCE = ROOT_PACKAGE.resolve(
             "magic/definition/submission/SkillDefinitionSubmissionService.java");
     private static final Path ARCHITECTURE_SOURCE = PROJECT_ROOT.resolve(
@@ -121,6 +130,25 @@ final class P8S2BoundaryTest {
                     "ParticleProfileType",
                     "TrailProfileType",
                     "BuiltInProfileValidation"));
+    private static final Map<Path, Set<String>> NEW_S3_SOURCE_ROLES = Map.of(
+            HANDOFF_SOURCE,
+            Set.of("P8AppliedFactHandoff"),
+            PRESENTATION_RUNTIME_SOURCE,
+            Set.of(
+                    "P8PresentationOfferOutcome",
+                    "P8PresentationSubmissionResult",
+                    "P8ServerRuntimeDiagnosticCode",
+                    "P8PresentationTransport",
+                    "UnavailableP8PresentationTransport",
+                    "P8RecipientIdentity",
+                    "P8SelectedRecipient",
+                    "P8RecipientSelection",
+                    "P8EventMaterial",
+                    "P8BufferedPresentation",
+                    "P8Delivery",
+                    "P8DeliveryAdmission",
+                    "P8RecipientSelector",
+                    "P8TickState"));
     private static final Map<String, Set<String>> RELOCATED_SEMANTIC_SOURCES = Map.ofEntries(
             Map.entry("AppearanceEventPatch.java", Set.of("AppearanceEventPatch")),
             Map.entry(
@@ -532,6 +560,69 @@ final class P8S2BoundaryTest {
     }
 
     @Test
+    void appliedFactObserverAndS3RuntimeExtensionUseTheExactAuthorizedOwners()
+            throws Exception {
+        var bridge = read(P6_BRIDGE_SOURCE);
+        var adapter = read(P6_ADAPTER_SOURCE);
+        var handoff = read(HANDOFF_SOURCE);
+        var service = read(SERVICE_SOURCE);
+        var offer = P8ServerPresentationService.class.getDeclaredMethod(
+                "offerApplied",
+                RuntimeEvent.class,
+                RuntimeExecutionContext.class,
+                P6RuntimeExecutionBridge.AppliedFact.class);
+        var transportMethods = Arrays.stream(P8PresentationTransport.class.getDeclaredMethods())
+                .filter(method -> !method.isSynthetic() && !method.isBridge())
+                .toList();
+
+        assertAll(
+                () -> assertEquals(2, NEW_S3_SOURCE_ROLES.size()),
+                () -> assertEquals(1, occurrences(
+                        bridge, "public interface AppliedFactObserver")),
+                () -> assertEquals(1, occurrences(bridge, "public record AppliedFact(")),
+                () -> assertEquals(1, occurrences(bridge, "public record AppliedStep(")),
+                () -> assertEquals(1, occurrences(bridge, "public enum AppliedStepKind")),
+                () -> assertEquals(1, occurrences(bridge, "public enum AppliedTerminal")),
+                () -> assertEquals(2, matches(
+                        Pattern.compile("AppliedFactObserver\\s+observer\\s*\\)"), bridge)),
+                () -> assertEquals(1, occurrences(
+                        adapter,
+                        "new P8AppliedFactHandoff(presentationService, event, context)")),
+                () -> assertEquals(1, occurrences(
+                        handoff,
+                        "implements P6RuntimeExecutionBridge.AppliedFactObserver")),
+                () -> assertEquals(1, occurrences(
+                        handoff, "service.offerApplied(event, context, fact);")),
+                () -> assertEquals(1, occurrences(
+                        handoff, "catch (RuntimeException ignored)")),
+                () -> assertFalse(Pattern.compile("catch\\s*\\(\\s*Error\\b")
+                        .matcher(handoff).find()),
+                () -> assertEquals(1, occurrences(
+                        service, "P8PresentationOfferOutcome offerApplied(")),
+                () -> assertEquals(
+                        List.of("ACCEPTED", "DEGRADED", "DROPPED"),
+                        Arrays.stream(P8PresentationOfferOutcome.values())
+                                .map(Enum::name)
+                                .toList()),
+                () -> assertFalse(Modifier.isPublic(
+                        P8PresentationOfferOutcome.class.getModifiers())),
+                () -> assertEquals(P8PresentationOfferOutcome.class, offer.getReturnType()),
+                () -> assertFalse(Modifier.isPublic(offer.getModifiers())),
+                () -> assertFalse(Modifier.isProtected(offer.getModifiers())),
+                () -> assertEquals(0, offer.getExceptionTypes().length),
+                () -> assertFalse(Modifier.isPublic(
+                        P8PresentationTransport.class.getModifiers())),
+                () -> assertEquals(3, transportMethods.size()),
+                () -> assertEquals(
+                        Set.of("captureReadyIdentity", "isCurrent", "submit"),
+                        transportMethods.stream()
+                                .map(java.lang.reflect.Method::getName)
+                                .collect(Collectors.toUnmodifiableSet())),
+                () -> assertFalse(read(PRESENTATION_RUNTIME_SOURCE).contains(
+                        "P8PayloadRegistrationBridge")));
+    }
+
+    @Test
     void productionAvailabilityUsesOneRootViewAcrossTheExactConsumers() throws Exception {
         var production = SkillDefinitionSubmissionService.class.getDeclaredMethod(
                 "production",
@@ -544,7 +635,9 @@ final class P8S2BoundaryTest {
                 IEventBus.class,
                 SkillDefinitionStoreService.class,
                 SkillSubmissionPolicyProvider.class,
-                ProfileAvailabilityView.class);
+                ProfileAvailabilityView.class,
+                P6RuntimeExecutionCapability.class,
+                P8ServerPresentationService.class);
         var projector = P5RuntimeProjector.class.getDeclaredConstructor(
                 ProfileAvailabilityView.class);
         var root = read(GRAMARYE_SOURCE);
@@ -564,7 +657,12 @@ final class P8S2BoundaryTest {
         var runtimeWiring = Pattern.compile(
                 "skillRuntimeService\\s*=\\s*SkillRuntimeService\\.create\\(\\s*"
                         + "NeoForge\\.EVENT_BUS,\\s*skillDefinitionStoreService,\\s*"
-                        + "skillSubmissionPolicyProvider,\\s*profileAvailability\\s*\\);",
+                        + "skillSubmissionPolicyProvider,\\s*profileAvailability,\\s*"
+                        + "runtimeCapability,\\s*p8ServerPresentationService\\s*\\);",
+                Pattern.DOTALL);
+        var capabilityWiring = Pattern.compile(
+                "var\\s+runtimeCapability\\s*=\\s*"
+                        + "P6RuntimeExecutionCapability\\.forRuntimeAdapter\\(\\);",
                 Pattern.DOTALL);
 
         assertAll(
@@ -585,7 +683,16 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(1, matches(viewDeclaration, root)),
                 () -> assertEquals(1, matches(submissionWiring, root)),
                 () -> assertEquals(1, matches(runtimeWiring, root)),
+                () -> assertEquals(1, matches(capabilityWiring, root)),
+                () -> assertEquals(1, occurrences(
+                        root,
+                        "P7ServerAuthorizationBoundary.loginReadyPort(runtimeCapability)")),
+                () -> assertEquals(1, occurrences(
+                        root,
+                        "P7ServerAuthorizationBoundary.install(\n"
+                                + "                runtimeCapability,")),
                 () -> assertEquals(3, matches(Pattern.compile("\\bprofileAvailability\\b"), root)),
+                () -> assertEquals(4, matches(Pattern.compile("\\bruntimeCapability\\b"), root)),
                 () -> assertFalse(read(PROJECTOR_SOURCE).contains(
                         "ProfileAvailabilityView.unknown()")),
                 () -> assertFalse(read(RUNTIME_SOURCE).contains(
@@ -595,7 +702,7 @@ final class P8S2BoundaryTest {
     }
 
     @Test
-    void exactNewS2SourcesHaveNoBypassOrLiveObjectRetention() {
+    void exactS2AndAuthorizedS3SourcesHaveNoBypassOrLongLivedObjectRetention() {
         NEW_S2_SOURCE_ROLES.forEach((sourcePath, expectedTopLevelTypes) -> {
             assertTrue(Files.isRegularFile(sourcePath), sourcePath.toString());
             var source = read(sourcePath);
@@ -603,13 +710,45 @@ final class P8S2BoundaryTest {
                     .map(result -> result.group(1))
                     .collect(Collectors.toUnmodifiableSet());
             assertEquals(expectedTopLevelTypes, actualTopLevelTypes, sourcePath.toString());
-            forbiddenSourcePatterns().forEach((role, pattern) -> assertFalse(
+            commonForbiddenSourcePatterns().forEach((role, pattern) -> assertFalse(
+                    pattern.matcher(source).find(),
+                    sourcePath + " contains " + role));
+            if (!sourcePath.equals(SERVICE_SOURCE)) {
+                s2OnlyForbiddenSourcePatterns().forEach((role, pattern) -> assertFalse(
+                        pattern.matcher(source).find(),
+                        sourcePath + " contains " + role));
+            }
+        });
+        NEW_S3_SOURCE_ROLES.forEach((sourcePath, expectedTopLevelTypes) -> {
+            assertTrue(Files.isRegularFile(sourcePath), sourcePath.toString());
+            var source = read(sourcePath);
+            var actualTopLevelTypes = TOP_LEVEL_TYPE.matcher(source).results()
+                    .map(result -> result.group(1))
+                    .collect(Collectors.toUnmodifiableSet());
+            assertEquals(expectedTopLevelTypes, actualTopLevelTypes, sourcePath.toString());
+            commonForbiddenSourcePatterns().forEach((role, pattern) -> assertFalse(
                     pattern.matcher(source).find(),
                     sourcePath + " contains " + role));
         });
 
         var inspectedTypes = new LinkedHashSet<Class<?>>();
         addTypeTree(P8ServerPresentationService.class, inspectedTypes);
+        List.of(
+                        P8PresentationOfferOutcome.class,
+                        P8PresentationSubmissionResult.class,
+                        P8ServerRuntimeDiagnosticCode.class,
+                        P8PresentationTransport.class,
+                        UnavailableP8PresentationTransport.class,
+                        P8RecipientIdentity.class,
+                        P8SelectedRecipient.class,
+                        P8RecipientSelection.class,
+                        P8EventMaterial.class,
+                        P8BufferedPresentation.class,
+                        P8Delivery.class,
+                        P8DeliveryAdmission.class,
+                        P8RecipientSelector.class,
+                        P8TickState.class)
+                .forEach(type -> addTypeTree(type, inspectedTypes));
         BUILT_IN_TOP_LEVEL_TYPES.forEach(type -> addTypeTree(type, inspectedTypes));
 
         var rawGenericUses = new ArrayList<String>();
@@ -650,7 +789,7 @@ final class P8S2BoundaryTest {
                         sha256(P7_LOGIN_ISOLATION_SOURCE)));
     }
 
-    private static Map<String, Pattern> forbiddenSourcePatterns() {
+    private static Map<String, Pattern> commonForbiddenSourcePatterns() {
         return Map.ofEntries(
                 Map.entry("unchecked suppression", Pattern.compile("@SuppressWarnings")),
                 Map.entry(
@@ -663,16 +802,6 @@ final class P8S2BoundaryTest {
                         "client package dependency",
                         Pattern.compile(
                                 "net\\.minecraft\\.client|com\\.yo1no\\.gramarye\\.client")),
-                Map.entry(
-                        "P6 observer installation",
-                        Pattern.compile(
-                                "\\bP6[A-Za-z0-9_$]*\\b|\\bAppliedFact[A-Za-z0-9_$]*\\b")),
-                Map.entry(
-                        "P8-S3 offer or observer scope",
-                        Pattern.compile(
-                                "\\bP8AppliedFactHandoff\\b|\\bP8PresentationOfferOutcome\\b|"
-                                        + "\\bofferApplied\\s*\\(|\\bRuntimeEvent\\b|"
-                                        + "\\bRuntimeExecutionContext\\b")),
                 Map.entry(
                         "P9 gameplay mutation scope",
                         Pattern.compile(
@@ -691,6 +820,18 @@ final class P8S2BoundaryTest {
                         Pattern.compile(
                                 "java\\.util\\.concurrent|new\\s+Thread\\s*\\(|"
                                         + "ExecutorService|ScheduledExecutor|\\bTimer\\b")));
+    }
+
+    private static Map<String, Pattern> s2OnlyForbiddenSourcePatterns() {
+        return Map.of(
+                "P6 observer installation",
+                Pattern.compile(
+                        "\\bP6[A-Za-z0-9_$]*\\b|\\bAppliedFact[A-Za-z0-9_$]*\\b"),
+                "P8-S3 offer or observer scope",
+                Pattern.compile(
+                        "\\bP8AppliedFactHandoff\\b|\\bP8PresentationOfferOutcome\\b|"
+                                + "\\bofferApplied\\s*\\(|\\bRuntimeEvent\\b|"
+                                + "\\bRuntimeExecutionContext\\b"));
     }
 
     private static void inspectRawGenericSignatures(

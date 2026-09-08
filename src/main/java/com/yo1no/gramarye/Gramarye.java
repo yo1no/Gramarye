@@ -48,8 +48,8 @@ public final class Gramarye {
         playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus);
         p8ServerPresentationService = P8ServerPresentationService.create();
         var profileAvailability = p8ServerPresentationService.profileAvailabilityView();
-        var p7Capability = P6RuntimeExecutionCapability.forRuntimeAdapter();
-        var p7LoginReadyPort = P7ServerAuthorizationBoundary.loginReadyPort(p7Capability);
+        var runtimeCapability = P6RuntimeExecutionCapability.forRuntimeAdapter();
+        var p7LoginReadyPort = P7ServerAuthorizationBoundary.loginReadyPort(runtimeCapability);
         skillDefinitionStoreService = SkillDefinitionStoreService.registerOn(
                 NeoForge.EVENT_BUS,
                 playerSkillAttachmentService,
@@ -76,14 +76,16 @@ public final class Gramarye {
                 NeoForge.EVENT_BUS,
                 skillDefinitionStoreService,
                 skillSubmissionPolicyProvider,
-                profileAvailability);
+                profileAvailability,
+                runtimeCapability,
+                p8ServerPresentationService);
         p8ServerPresentationService.registerAfterP5(NeoForge.EVENT_BUS);
         var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(
                 skillRuntimeService,
                 playerSkillAttachmentService,
                 skillDefinitionStoreService);
         P7ServerAuthorizationBoundary.install(
-                p7Capability,
+                runtimeCapability,
                 p7AuthenticatedPlayerCastIngress);
         NeoForge.EVENT_BUS.addListener(this::handleP5RuntimeStarted);
         exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);

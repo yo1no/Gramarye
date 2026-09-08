@@ -1195,7 +1195,9 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p7_sync}" \
                 || "${source}" == "${p7_lifecycle}" \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java' \
-                || "${source}" == 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]]; then
+                || "${source}" == 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]] \
+                || bash scripts/verify-p7-s4-source-contracts.sh \
+                    --is-p8-harness "${source}"; then
             continue
         fi
         forbid_ere \

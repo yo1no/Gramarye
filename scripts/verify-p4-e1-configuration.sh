@@ -451,6 +451,36 @@ is_approved_p7_s3_r1_changed_path() {
     esac
 }
 
+is_approved_p8_s3_product_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8AppliedFactHandoff.java | \
+        src/main/java/com/yo1no/gramarye/P8PresentationRuntime.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java | \
+        src/main/java/com/yo1no/gramarye/PresentationLimits.java | \
+        src/main/java/com/yo1no/gramarye/PresentationOrdering.java | \
+        src/main/java/com/yo1no/gramarye/PresentationSequence.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p8_s3_test_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
+        src/test/java/com/yo1no/gramarye/P8PresentationRuntimeTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ProfileCatalogTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S2BoundaryTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_allowed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
@@ -460,6 +490,8 @@ is_allowed_changed_path() {
     is_approved_p7_s2_changed_path "$1" && return 0
     bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1" && return 0
     is_approved_p7_s3_r1_changed_path "$1" && return 0
+    is_approved_p8_s3_product_changed_path "$1" && return 0
+    is_approved_p8_s3_test_changed_path "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \
@@ -678,6 +710,12 @@ self_regression() {
     is_allowed_changed_path \
         'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java' \
         || fail "self-test rejected the exact B2-B API Gate path"
+    is_allowed_changed_path \
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
+        || fail "self-test rejected an exact P8-S3 production path"
+    is_allowed_changed_path \
+        'src/test/java/com/yo1no/gramarye/P8PresentationRuntimeTest.java' \
+        || fail "self-test rejected an exact P8-S3 test path"
     for approved in \
             'build.gradle' \
             '.github/workflows/build.yml' \
@@ -710,6 +748,14 @@ self_regression() {
     if is_allowed_changed_path \
             'src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTestExtra.java'; then
         fail "self-test accepted a prefix-near B2-B API Gate path"
+    fi
+    if is_allowed_changed_path \
+            'src/main/java/com/yo1no/gramarye/P8ServerPresentationServiceExtra.java'; then
+        fail "self-test accepted a prefix-near P8-S3 production path"
+    fi
+    if is_allowed_changed_path \
+            'src/test/java/com/yo1no/gramarye/P8PresentationRuntimeTestExtra.java'; then
+        fail "self-test accepted a prefix-near P8-S3 test path"
     fi
     if is_allowed_changed_path \
             'src/main/java/com/yo1no/gramarye/magic/definition/store/PlayerSkillAttachmentAdmissionSourceExtra.java'; then

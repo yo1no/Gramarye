@@ -11,8 +11,12 @@ import java.util.regex.Pattern;
 /** Exact current source inventory consumed by historical GameTest regression assertions. */
 public final class P7GameTestInventory {
     private static final String MAIN = "src/main/java/com/yo1no/gramarye/";
+    private static final String P8_HARNESS = "P8S3PresentationGameTests.java";
+    private static final int NON_P8_COUNT = 26;
     private static final Pattern TEST = Pattern.compile(
-            "@GameTest\\s*\\([^)]*\\)\\s+public\\s+static\\s+void\\s+(\\w+)\\s*\\(",
+            "@GameTest\\s*\\([^)]*\\)\\s*"
+                    + "(?:@[A-Za-z_$][A-Za-z0-9_$.]*(?:\\s*\\([^)]*\\))?\\s*)*"
+                    + "public\\s+static\\s+void\\s+(\\w+)\\s*\\(",
             Pattern.DOTALL);
     private static final Map<String, Set<String>> HISTORICAL = Map.of(
             "gametest/PlatformGameTests.java", Set.of(
@@ -56,11 +60,15 @@ public final class P7GameTestInventory {
 
     public static int totalCount() {
         verify();
-        return 19 + s4Count();
+        return NON_P8_COUNT + p8Count();
     }
 
     public static int s4Count() {
         return S4.values().stream().mapToInt(Set::size).sum();
+    }
+
+    public static int p8Count() {
+        return p8Methods().size();
     }
 
     public static boolean isS4Harness(Path path) {
@@ -72,12 +80,18 @@ public final class P7GameTestInventory {
                 || normalized.equals(root.resolve("magic/network/P7S4NetworkGameTests.java"));
     }
 
+    public static boolean isP8Harness(Path path) {
+        var normalized = path.toAbsolutePath().normalize();
+        return normalized.equals(projectRoot().resolve(MAIN).resolve(P8_HARNESS));
+    }
+
     public static String productionSource() {
         try (var paths = Files.walk(projectRoot().resolve(MAIN))) {
             var source = new StringBuilder();
             for (var path : paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
-                    .filter(path -> !isS4Harness(path)).toList()) {
+                    .filter(path -> !isS4Harness(path))
+                    .filter(path -> !isP8Harness(path)).toList()) {
                 source.append(Files.readString(path)).append('\n');
             }
             return source.toString();
@@ -98,8 +112,14 @@ public final class P7GameTestInventory {
 
     public static void verify() {
         var root = projectRoot().resolve(MAIN);
+        var nonP8Count = HISTORICAL.values().stream().mapToInt(Set::size).sum()
+                + s4Count();
+        if (nonP8Count != NON_P8_COUNT) {
+            throw new AssertionError("non-P8 GameTest inventory must remain exact 26");
+        }
         var expected = new java.util.HashMap<>(HISTORICAL);
         expected.putAll(S4);
+        expected.put(P8_HARNESS, p8Methods());
         var actual = new java.util.HashMap<String, Set<String>>();
         try (var paths = Files.walk(root)) {
             for (var path : paths.filter(Files::isRegularFile)
@@ -126,6 +146,31 @@ public final class P7GameTestInventory {
         }
         if (!actual.equals(expected)) {
             throw new AssertionError("GameTest source path/method inventory differs: " + actual);
+        }
+    }
+
+    private static Set<String> p8Methods() {
+        var source = projectRoot().resolve(MAIN).resolve(P8_HARNESS);
+        if (!Files.isRegularFile(source)) {
+            throw new AssertionError("P8 GameTest holder unavailable: " + source);
+        }
+        try {
+            var text = Files.readString(source);
+            var methods = new HashSet<String>();
+            var matcher = TEST.matcher(text);
+            while (matcher.find()) {
+                if (!methods.add(matcher.group(1))) {
+                    throw new AssertionError("duplicate GameTest method: " + source);
+                }
+            }
+            var markers = Pattern.compile("@GameTest\\s*\\(")
+                    .matcher(text).results().count();
+            if (markers != methods.size() || methods.isEmpty()) {
+                throw new AssertionError("unsupported or empty P8 GameTest holder: " + source);
+            }
+            return Set.copyOf(methods);
+        } catch (IOException failure) {
+            throw new AssertionError("P8 GameTest source unavailable", failure);
         }
     }
 

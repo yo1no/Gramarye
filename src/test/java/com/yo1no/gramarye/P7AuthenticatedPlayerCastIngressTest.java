@@ -132,11 +132,14 @@ final class P7AuthenticatedPlayerCastIngressTest {
         var attachmentService = PlayerSkillAttachmentServiceTestSupport.createService();
         var storeService = SkillDefinitionStoreService.registerOn(
                 gameBus, attachmentService, (server, actor) -> {});
+        var presentationService = P8ServerPresentationService.create();
         var runtimeService = SkillRuntimeService.create(
                 gameBus,
                 storeService,
                 SkillSubmissionPolicyProvider.defaults(),
-                ProfileAvailabilityView.unknown());
+                ProfileAvailabilityView.unknown(),
+                P6RuntimeExecutionCapability.forRuntimeAdapter(),
+                presentationService);
         var ingress = new P7AuthenticatedPlayerCastIngress(
                 runtimeService, attachmentService, storeService);
 
@@ -182,7 +185,7 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         + "                playerSkillAttachmentService,\n"
                         + "                skillDefinitionStoreService);")),
                 () -> assertTrue(source.contains("P7ServerAuthorizationBoundary.install(\n"
-                        + "                p7Capability,\n"
+                        + "                runtimeCapability,\n"
                         + "                p7AuthenticatedPlayerCastIngress);")),
                 () -> assertOrdered(
                         ingressSource,

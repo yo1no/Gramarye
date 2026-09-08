@@ -453,6 +453,22 @@ is_approved_p7_s3_r1_production_path() {
     esac
 }
 
+is_approved_p8_s3_product_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8AppliedFactHandoff.java | \
+        src/main/java/com/yo1no/gramarye/P8PresentationRuntime.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java | \
+        src/main/java/com/yo1no/gramarye/PresentationLimits.java | \
+        src/main/java/com/yo1no/gramarye/PresentationOrdering.java | \
+        src/main/java/com/yo1no/gramarye/PresentationSequence.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
@@ -462,6 +478,8 @@ is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p7_s2_production_path "$1" && return 0
     bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1" && return 0
     is_approved_p7_s3_r1_production_path "$1" && return 0
+    is_approved_p8_s3_product_path "$1" && return 0
+    bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \

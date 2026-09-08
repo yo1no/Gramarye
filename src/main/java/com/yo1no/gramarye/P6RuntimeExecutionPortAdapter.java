@@ -12,21 +12,28 @@ import net.minecraft.server.level.ServerPlayer;
 
 final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
     private final P6RuntimeExecutionCapability capability;
+    private final P8ServerPresentationService presentationService;
     private final P6ExecutionBridgeInvoker bridgeInvoker;
     private final P6RuntimeExecutionInputMapper inputMapper;
 
-    P6RuntimeExecutionPortAdapter() {
+    P6RuntimeExecutionPortAdapter(
+            P6RuntimeExecutionCapability capability,
+            P8ServerPresentationService presentationService) {
         this(
-                P6RuntimeExecutionCapability.forRuntimeAdapter(),
+                capability,
+                presentationService,
                 P6RuntimeExecutionBridge::execute,
                 ProductionP6RuntimeExecutionInputMapper.INSTANCE);
     }
 
     P6RuntimeExecutionPortAdapter(
             P6RuntimeExecutionCapability capability,
+            P8ServerPresentationService presentationService,
             P6ExecutionBridgeInvoker bridgeInvoker,
             P6RuntimeExecutionInputMapper inputMapper) {
         this.capability = Objects.requireNonNull(capability, "capability");
+        this.presentationService =
+                Objects.requireNonNull(presentationService, "presentationService");
         this.bridgeInvoker = Objects.requireNonNull(bridgeInvoker, "bridgeInvoker");
         this.inputMapper = Objects.requireNonNull(inputMapper, "inputMapper");
     }
@@ -39,19 +46,21 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
         if (input.isEmpty()) {
             return completedEmpty();
         }
-        return executeMapped(
-                event.eventId().value(), context.executionGuard(), input.orElseThrow());
+        return executeMapped(event, context, input.orElseThrow());
     }
 
     RuntimeExecutionBatch executeMapped(
-            long publishedEventId,
-            RuntimeExecutionGuard executionGuard,
+            RuntimeEvent event,
+            RuntimeExecutionContext context,
             P6RuntimeExecutionInput input) {
-        Objects.requireNonNull(executionGuard, "executionGuard");
+        Objects.requireNonNull(event, "event");
+        Objects.requireNonNull(context, "context");
         Objects.requireNonNull(input, "input");
         P6RuntimeExecutionIdentity identity =
-                P6RuntimeExecutionIdentity.fromPublishedEventId(publishedEventId);
-        GuardPort guard = (point, stepIndex) -> mapGuardDecision(executionGuard.check());
+                P6RuntimeExecutionIdentity.fromPublishedEventId(event.eventId().value());
+        GuardPort guard = (point, stepIndex) ->
+                mapGuardDecision(context.executionGuard().check());
+        var observer = new P8AppliedFactHandoff(presentationService, event, context);
         bridgeInvoker.execute(
                 capability,
                 input.actor(),
@@ -61,7 +70,8 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
                 input.targetId(),
                 input.magnitude(),
                 input.manaCost(),
-                guard);
+                guard,
+                observer);
         return completedEmpty();
     }
 
@@ -93,7 +103,8 @@ interface P6ExecutionBridgeInvoker {
             UUID targetId,
             long magnitude,
             long manaCost,
-            GuardPort guard);
+            GuardPort guard,
+            P6RuntimeExecutionBridge.AppliedFactObserver observer);
 }
 
 @FunctionalInterface

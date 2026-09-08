@@ -45,6 +45,7 @@ final class P7S3BoundaryTest {
             names = paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                     .flatMap(path -> publicP7.matcher(read(path)).results())
                     .map(match -> match.group(1))
                     .collect(Collectors.toUnmodifiableSet());

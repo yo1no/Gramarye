@@ -769,6 +769,36 @@ is_approved_p7_s3_r1_changed_path() {
     esac
 }
 
+is_approved_p8_s3_product_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8AppliedFactHandoff.java | \
+        src/main/java/com/yo1no/gramarye/P8PresentationRuntime.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java | \
+        src/main/java/com/yo1no/gramarye/PresentationLimits.java | \
+        src/main/java/com/yo1no/gramarye/PresentationOrdering.java | \
+        src/main/java/com/yo1no/gramarye/PresentationSequence.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p8_s3_test_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
+        src/test/java/com/yo1no/gramarye/P8PresentationRuntimeTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ProfileCatalogTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S2BoundaryTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_allowed_changed_path() {
     is_exact_p4e3_path "$1" \
         || is_approved_p6_s2_r3_changed_path "$1" \
@@ -777,7 +807,9 @@ is_allowed_changed_path() {
         || is_approved_p7_s1_changed_path "$1" \
         || is_approved_p7_s2_changed_path "$1" \
         || is_approved_p7_s3_r1_changed_path "$1" \
-        || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1"
+        || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1" \
+        || is_approved_p8_s3_product_changed_path "$1" \
+        || is_approved_p8_s3_test_changed_path "$1"
 }
 
 is_exact_probe_path() {

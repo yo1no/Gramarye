@@ -456,6 +456,7 @@ final class P7S2BoundaryTest {
             combinedP6P7PublicTypes = paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                     .flatMap(path -> PUBLIC_P6_P7_TOP_LEVEL.matcher(read(path)).results())
                     .map(result -> result.group(1))
                     .collect(Collectors.toUnmodifiableSet());

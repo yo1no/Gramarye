@@ -46,7 +46,8 @@ final class P6RuntimeExecutionBridgeTest {
                 UUID.class,
                 long.class,
                 long.class,
-                P6RuntimeExecutionBridge.GuardPort.class);
+                P6RuntimeExecutionBridge.GuardPort.class,
+                P6RuntimeExecutionBridge.AppliedFactObserver.class);
         Set<String> nested = Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredClasses())
                 .filter(type -> Modifier.isPublic(type.getModifiers()))
                 .map(Class::getSimpleName)
@@ -57,12 +58,35 @@ final class P6RuntimeExecutionBridgeTest {
         assertEquals(void.class, execute.getReturnType());
         assertTrue(Modifier.isPublic(execute.getModifiers()));
         assertTrue(Modifier.isStatic(execute.getModifiers()));
-        assertEquals(Set.of("GuardPort", "GuardPoint", "GuardDecision"), nested);
+        assertEquals(
+                Set.of(
+                        "GuardPort",
+                        "GuardPoint",
+                        "GuardDecision",
+                        "AppliedFactObserver",
+                        "AppliedFact",
+                        "AppliedStep",
+                        "AppliedStepKind",
+                        "AppliedTerminal"),
+                nested);
         assertEquals(1, Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredMethods())
                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                 .count());
         assertEquals(1, P6RuntimeExecutionBridge.GuardPort.class
                 .getDeclaredMethods().length);
+        assertEquals(1, P6RuntimeExecutionBridge.AppliedFactObserver.class
+                .getDeclaredMethods().length);
+        assertTrue(Modifier.isPublic(P6RuntimeExecutionBridge.AppliedFact.class
+                .getDeclaredConstructor(
+                        P6RuntimeExecutionBridge.AppliedTerminal.class,
+                        int.class,
+                        List.class)
+                .getModifiers()));
+        assertTrue(Modifier.isPublic(P6RuntimeExecutionBridge.AppliedStep.class
+                .getDeclaredConstructor(
+                        int.class,
+                        P6RuntimeExecutionBridge.AppliedStepKind.class)
+                .getModifiers()));
         assertTrue(P6RuntimeExecutionBridge.class.getDeclaredConstructors().length == 1
                 && Modifier.isPrivate(P6RuntimeExecutionBridge.class
                         .getDeclaredConstructors()[0].getModifiers()));
@@ -85,7 +109,8 @@ final class P6RuntimeExecutionBridgeTest {
                         (point, index) -> {
                             guardCalls.incrementAndGet();
                             throw new AssertionError("guard must not be called");
-                        }));
+                        },
+                        null));
 
         assertEquals(P6ExecutionInvariantCode.INVALID_TRANSACTION_RESULT, failure.code());
         assertEquals(0, guardCalls.get());
@@ -187,6 +212,236 @@ final class P6RuntimeExecutionBridgeTest {
     }
 
     @Test
+    void appliedFactVocabularyCopiesStepsAndEnforcesClosedInvariants() {
+        var mutableSteps = new ArrayList<>(List.of(
+                new P6RuntimeExecutionBridge.AppliedStep(
+                        0, P6RuntimeExecutionBridge.AppliedStepKind.APPLIED),
+                new P6RuntimeExecutionBridge.AppliedStep(
+                        1, P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)));
+        var succeeded = new P6RuntimeExecutionBridge.AppliedFact(
+                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                2,
+                mutableSteps);
+        mutableSteps.clear();
+        var partial = new P6RuntimeExecutionBridge.AppliedFact(
+                P6RuntimeExecutionBridge.AppliedTerminal.PARTIALLY_SUCCEEDED,
+                2,
+                List.of(
+                        new P6RuntimeExecutionBridge.AppliedStep(
+                                0, P6RuntimeExecutionBridge.AppliedStepKind.APPLIED),
+                        new P6RuntimeExecutionBridge.AppliedStep(
+                                1,
+                                P6RuntimeExecutionBridge.AppliedStepKind
+                                        .APPLIED_WITH_FAILURE)));
+        var maximumSteps = new ArrayList<P6RuntimeExecutionBridge.AppliedStep>();
+        for (int index = 0; index < P6EffectBounds.MAX_COMMIT_STEPS_PER_PLAN; index++) {
+            maximumSteps.add(new P6RuntimeExecutionBridge.AppliedStep(
+                    index, P6RuntimeExecutionBridge.AppliedStepKind.APPLIED));
+        }
+        var maximum = new P6RuntimeExecutionBridge.AppliedFact(
+                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                P6EffectBounds.MAX_PRIMARY_WORLD_MUTATIONS_PER_EXECUTION,
+                maximumSteps);
+        var tooManySteps = new ArrayList<>(maximumSteps);
+        tooManySteps.add(maximumSteps.getLast());
+
+        assertAll(
+                () -> assertEquals(2, succeeded.appliedSteps().size()),
+                () -> assertThrows(
+                        UnsupportedOperationException.class,
+                        () -> succeeded.appliedSteps().clear()),
+                () -> assertEquals(
+                        P6RuntimeExecutionBridge.AppliedStepKind.APPLIED_WITH_FAILURE,
+                        partial.appliedSteps().getLast().kind()),
+                () -> assertEquals(
+                        P6EffectBounds.MAX_COMMIT_STEPS_PER_PLAN,
+                        maximum.appliedSteps().size()),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedStep(0, null)),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedStep(
+                                -1, P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedStep(
+                                P6EffectBounds.MAX_COMMIT_STEPS_PER_PLAN,
+                                P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(null, 1, List.of(
+                                new P6RuntimeExecutionBridge.AppliedStep(
+                                        0,
+                                        P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)))),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                1,
+                                null)),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                1,
+                                Arrays.asList((P6RuntimeExecutionBridge.AppliedStep) null))),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                1,
+                                List.of())),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                0,
+                                List.of(new P6RuntimeExecutionBridge.AppliedStep(
+                                        0,
+                                        P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)))),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                P6EffectBounds.MAX_PRIMARY_WORLD_MUTATIONS_PER_EXECUTION,
+                                tooManySteps)),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                1,
+                                List.of(
+                                        new P6RuntimeExecutionBridge.AppliedStep(
+                                                0,
+                                                P6RuntimeExecutionBridge.AppliedStepKind.APPLIED),
+                                        new P6RuntimeExecutionBridge.AppliedStep(
+                                                1,
+                                                P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)))),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                P6EffectBounds.MAX_PRIMARY_WORLD_MUTATIONS_PER_EXECUTION + 1,
+                                List.of(new P6RuntimeExecutionBridge.AppliedStep(
+                                        0,
+                                        P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)))),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                1,
+                                List.of(new P6RuntimeExecutionBridge.AppliedStep(
+                                        1,
+                                        P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)))),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                1,
+                                List.of(new P6RuntimeExecutionBridge.AppliedStep(
+                                        0,
+                                        P6RuntimeExecutionBridge.AppliedStepKind
+                                                .APPLIED_WITH_FAILURE)))),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.PARTIALLY_SUCCEEDED,
+                                2,
+                                List.of(
+                                        new P6RuntimeExecutionBridge.AppliedStep(
+                                                0,
+                                                P6RuntimeExecutionBridge.AppliedStepKind
+                                                        .APPLIED_WITH_FAILURE),
+                                        new P6RuntimeExecutionBridge.AppliedStep(
+                                                1,
+                                                P6RuntimeExecutionBridge.AppliedStepKind
+                                                        .APPLIED)))));
+    }
+
+    @Test
+    void resultProjectionUsesOnlyAppliedTraceEntriesAndClosedTerminals() {
+        var succeeded = effectResult(
+                EffectTerminalStatus.SUCCEEDED,
+                Optional.empty(),
+                Optional.empty(),
+                -1,
+                2,
+                2,
+                3,
+                EffectTraceStage.STEP_APPLIED,
+                EffectTraceStage.STEP_APPLIED,
+                EffectTraceStage.TERMINAL_SUCCEEDED);
+        var partialWithFailure = effectResult(
+                EffectTerminalStatus.PARTIALLY_SUCCEEDED,
+                Optional.empty(),
+                Optional.of(EffectFailureReason.PRIMARY_STEP_APPLIED_WITH_FAILURE),
+                1,
+                2,
+                2,
+                2,
+                EffectTraceStage.STEP_APPLIED,
+                EffectTraceStage.STEP_APPLIED_WITH_FAILURE,
+                EffectTraceStage.TERMINAL_PARTIAL);
+        var partialWithoutFinalMutation = effectResult(
+                EffectTerminalStatus.PARTIALLY_SUCCEEDED,
+                Optional.empty(),
+                Optional.of(EffectFailureReason.PRIMARY_STEP_NOT_APPLIED),
+                1,
+                2,
+                2,
+                1,
+                EffectTraceStage.STEP_APPLIED,
+                EffectTraceStage.STEP_NOT_APPLIED,
+                EffectTraceStage.TERMINAL_PARTIAL);
+
+        assertAll(
+                () -> assertEquals(
+                        Optional.of(new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                3,
+                                List.of(
+                                        new P6RuntimeExecutionBridge.AppliedStep(
+                                                0,
+                                                P6RuntimeExecutionBridge.AppliedStepKind.APPLIED),
+                                        new P6RuntimeExecutionBridge.AppliedStep(
+                                                1,
+                                                P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)))),
+                        P6RuntimeExecutionBridge.appliedFact(succeeded)),
+                () -> assertEquals(
+                        Optional.of(new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.PARTIALLY_SUCCEEDED,
+                                2,
+                                List.of(
+                                        new P6RuntimeExecutionBridge.AppliedStep(
+                                                0,
+                                                P6RuntimeExecutionBridge.AppliedStepKind.APPLIED),
+                                        new P6RuntimeExecutionBridge.AppliedStep(
+                                                1,
+                                                P6RuntimeExecutionBridge.AppliedStepKind
+                                                        .APPLIED_WITH_FAILURE)))),
+                        P6RuntimeExecutionBridge.appliedFact(partialWithFailure)),
+                () -> assertEquals(
+                        Optional.of(new P6RuntimeExecutionBridge.AppliedFact(
+                                P6RuntimeExecutionBridge.AppliedTerminal.PARTIALLY_SUCCEEDED,
+                                1,
+                                List.of(new P6RuntimeExecutionBridge.AppliedStep(
+                                        0,
+                                        P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)))),
+                        P6RuntimeExecutionBridge.appliedFact(partialWithoutFinalMutation)),
+                () -> assertTrue(P6RuntimeExecutionBridge.appliedFact(rejectedResult()).isEmpty()),
+                () -> assertTrue(P6RuntimeExecutionBridge.appliedFact(failedResult()).isEmpty()),
+                () -> assertTrue(
+                        P6RuntimeExecutionBridge.appliedFact(compensatedResult()).isEmpty()),
+                () -> assertTrue(P6RuntimeExecutionBridge
+                        .appliedFact(compensationFailedResult())
+                        .isEmpty()),
+                () -> assertThrows(
+                        P6ExecutionInvariantException.class,
+                        () -> P6RuntimeExecutionBridge.appliedFact(null)));
+    }
+
+    @Test
     void emptyRegistryReturnsNormallyWithoutAccountGuardResolverOrPortAccess() {
         var resolver = new ActionTransactionTestFixtures.TransactionRecordingResolver(
                 (request, capacity) -> { throw new AssertionError("resolver called"); });
@@ -216,7 +471,8 @@ final class P6RuntimeExecutionBridgeTest {
                         portCalls.incrementAndGet();
                         throw new AssertionError("port called");
                     }
-                }));
+                },
+                fact -> { throw new AssertionError("observer called"); }));
         assertEquals(0, resolver.calls());
         assertEquals(0, account.totalAccesses());
         assertEquals(0, guardCalls.get());
@@ -224,15 +480,66 @@ final class P6RuntimeExecutionBridgeTest {
     }
 
     @Test
+    void nullObserverFailsBeforeEngineAccountGuardResolverOrPortWork() {
+        var resolver = new ActionTransactionTestFixtures.TransactionRecordingResolver(
+                ActionTransactionTestFixtures.resolverFor(
+                        ActionTransactionTestFixtures.plan(1)));
+        var account = new ActionTransactionTestFixtures.RecordingManaAccount(100);
+        var guard = ActionTransactionTestFixtures.TransactionRecordingGuard.allowing();
+        var port = new ActionTransactionTestFixtures.TransactionRecordingPort(
+                true, List.of(EffectStepOutcome.applied(1)));
+        var engine = ActionTransactionTestFixtures.engine(resolver);
+
+        P6ExecutionInvariantException failure = assertThrows(
+                P6ExecutionInvariantException.class,
+                () -> P6RuntimeExecutionBridge.executeCore(
+                        invocation(10), account, guard, engine, port, null));
+
+        assertAll(
+                () -> assertEquals(
+                        P6ExecutionInvariantCode.INVALID_TRANSACTION_RESULT,
+                        failure.code()),
+                () -> assertEquals(0, resolver.calls()),
+                () -> assertEquals(0, account.totalAccesses()),
+                () -> assertEquals(List.of(), guard.checks()),
+                () -> assertEquals(0, port.availabilityChecks()),
+                () -> assertEquals(List.of(), port.committedIndexes()));
+    }
+
+    @Test
     void fiveNormalTerminalStatusesReturnNormallyThroughCore() {
-        assertCoreReturnsNormally(0, ActionTransactionTestFixtures.plan(1),
-                List.of(EffectStepOutcome.applied(1)));
-        assertCoreReturnsNormally(0, ActionTransactionTestFixtures.plan(1),
-                List.of(EffectStepOutcome.notApplied()));
-        assertCoreReturnsNormally(10, ActionTransactionTestFixtures.plan(2),
-                List.of(EffectStepOutcome.applied(1), EffectStepOutcome.notApplied()));
-        assertCoreReturnsNormally(10, ActionTransactionTestFixtures.plan(1),
-                List.of(EffectStepOutcome.notApplied()));
+        assertEquals(
+                List.of(new P6RuntimeExecutionBridge.AppliedFact(
+                        P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                        1,
+                        List.of(new P6RuntimeExecutionBridge.AppliedStep(
+                                0, P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)))),
+                coreFacts(
+                        0,
+                        ActionTransactionTestFixtures.plan(1),
+                        List.of(EffectStepOutcome.applied(1))));
+        assertTrue(coreFacts(
+                        0,
+                        ActionTransactionTestFixtures.plan(1),
+                        List.of(EffectStepOutcome.notApplied()))
+                .isEmpty());
+        assertEquals(
+                List.of(new P6RuntimeExecutionBridge.AppliedFact(
+                        P6RuntimeExecutionBridge.AppliedTerminal.PARTIALLY_SUCCEEDED,
+                        1,
+                        List.of(new P6RuntimeExecutionBridge.AppliedStep(
+                                0, P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)))),
+                coreFacts(
+                        10,
+                        ActionTransactionTestFixtures.plan(2),
+                        List.of(
+                                EffectStepOutcome.applied(1),
+                                EffectStepOutcome.notApplied())));
+        assertTrue(coreFacts(
+                        10,
+                        ActionTransactionTestFixtures.plan(1),
+                        List.of(EffectStepOutcome.notApplied()))
+                .isEmpty());
 
         var unavailable = new ActionTransactionTestFixtures.TransactionRecordingPort(
                 false, List.of());
@@ -243,7 +550,82 @@ final class P6RuntimeExecutionBridgeTest {
                 ActionTransactionTestFixtures.engine(
                         ActionTransactionTestFixtures.resolverFor(
                                 ActionTransactionTestFixtures.plan(1))),
-                unavailable));
+                        unavailable,
+                        fact -> { throw new AssertionError("observer called"); }));
+    }
+
+    @Test
+    void actualEngineMapsAppliedWithFailureAsTheFinalPartialFactStep() {
+        assertEquals(
+                List.of(new P6RuntimeExecutionBridge.AppliedFact(
+                        P6RuntimeExecutionBridge.AppliedTerminal.PARTIALLY_SUCCEEDED,
+                        2,
+                        List.of(
+                                new P6RuntimeExecutionBridge.AppliedStep(
+                                        0,
+                                        P6RuntimeExecutionBridge.AppliedStepKind.APPLIED),
+                                new P6RuntimeExecutionBridge.AppliedStep(
+                                        1,
+                                        P6RuntimeExecutionBridge.AppliedStepKind
+                                                .APPLIED_WITH_FAILURE)))),
+                coreFacts(
+                        10,
+                        ActionTransactionTestFixtures.plan(2),
+                        List.of(
+                                EffectStepOutcome.applied(1),
+                                EffectStepOutcome.appliedWithFailure(1))));
+    }
+
+    @Test
+    void observerUncheckedThrowablesPropagateAsSameObjectAfterSuccessfulCommit() {
+        RuntimeException runtime = new IllegalStateException("observer-runtime");
+        var runtimeAccount = new ActionTransactionTestFixtures.RecordingManaAccount(100);
+        var runtimePort = new ActionTransactionTestFixtures.TransactionRecordingPort(
+                true, List.of(EffectStepOutcome.applied(1)));
+        RuntimeException caughtRuntime = assertThrows(
+                RuntimeException.class,
+                () -> P6RuntimeExecutionBridge.executeCore(
+                        invocation(10),
+                        runtimeAccount,
+                        ActionTransactionTestFixtures.TransactionRecordingGuard.allowing(),
+                        ActionTransactionTestFixtures.engine(
+                                ActionTransactionTestFixtures.resolverFor(
+                                        ActionTransactionTestFixtures.plan(1))),
+                        runtimePort,
+                        fact -> {
+                            assertEquals(
+                                    P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                    fact.terminal());
+                            assertEquals(90, runtimeAccount.currentBalance());
+                            assertEquals(List.of(0), runtimePort.committedIndexes());
+                            throw runtime;
+                        }));
+
+        Error error = new LinkageError("observer-error");
+        var errorAccount = new ActionTransactionTestFixtures.RecordingManaAccount(100);
+        var errorPort = new ActionTransactionTestFixtures.TransactionRecordingPort(
+                true, List.of(EffectStepOutcome.applied(1)));
+        Error caughtError = assertThrows(
+                Error.class,
+                () -> P6RuntimeExecutionBridge.executeCore(
+                        invocation(10),
+                        errorAccount,
+                        ActionTransactionTestFixtures.TransactionRecordingGuard.allowing(),
+                        ActionTransactionTestFixtures.engine(
+                                ActionTransactionTestFixtures.resolverFor(
+                                        ActionTransactionTestFixtures.plan(1))),
+                        errorPort,
+                        fact -> {
+                            assertEquals(
+                                    P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
+                                    fact.terminal());
+                            assertEquals(90, errorAccount.currentBalance());
+                            assertEquals(List.of(0), errorPort.committedIndexes());
+                            throw error;
+                        }));
+
+        assertSame(runtime, caughtRuntime);
+        assertSame(error, caughtError);
     }
 
     @Test
@@ -271,7 +653,8 @@ final class P6RuntimeExecutionBridgeTest {
                         ActionTransactionTestFixtures.engine(
                                 ActionTransactionTestFixtures.resolverFor(
                                         ActionTransactionTestFixtures.plan(1))),
-                        port));
+                        port,
+                        fact -> { throw new AssertionError("observer called"); }));
         assertEquals(P6ExecutionInvariantCode.INVALID_TRANSACTION_RESULT, failure.code());
         assertEquals(1, account.balanceWrites());
         assertEquals(90, account.currentBalance());
@@ -292,7 +675,12 @@ final class P6RuntimeExecutionBridgeTest {
         DamageActionInvocation coreInvocation = invocation(10);
         var coreAccount = new ActionTransactionTestFixtures.RecordingManaAccount(100);
         assertDoesNotThrow(() -> P6RuntimeExecutionBridge.executeCore(
-                coreInvocation, coreAccount, coreGuard, engine, commitPort));
+                coreInvocation,
+                coreAccount,
+                coreGuard,
+                engine,
+                commitPort,
+                fact -> {}));
 
         CountingAllowingGuardPort guardPort = new CountingAllowingGuardPort();
         EffectExecutionGuard guard = P6RuntimeExecutionBridge.adaptGuard(guardPort);
@@ -463,7 +851,12 @@ final class P6RuntimeExecutionBridgeTest {
         ProbeRuntimeException caught = assertThrows(
                 ProbeRuntimeException.class,
                 () -> P6RuntimeExecutionBridge.executeCore(
-                        invocation, account, guard, engine, commitPort));
+                        invocation,
+                        account,
+                        guard,
+                        engine,
+                        commitPort,
+                        fact -> { throw new AssertionError("observer called"); }));
 
         IdentityHashMap<Object, Boolean> reachable =
                 P6TemporalReachabilityAssertions.snapshot(
@@ -842,16 +1235,93 @@ final class P6RuntimeExecutionBridgeTest {
                         key, requestId, sourceEventId, targetId, magnitude, manaCost));
     }
 
-    private static void assertCoreReturnsNormally(
+    private static List<P6RuntimeExecutionBridge.AppliedFact> coreFacts(
             long manaCost,
             EffectCommitPlan plan,
             List<EffectStepOutcome> outcomes) {
+        var facts = new ArrayList<P6RuntimeExecutionBridge.AppliedFact>();
         assertDoesNotThrow(() -> P6RuntimeExecutionBridge.executeCore(
                 invocation(manaCost),
                 new ActionTransactionTestFixtures.RecordingManaAccount(100),
                 ActionTransactionTestFixtures.TransactionRecordingGuard.allowing(),
                 ActionTransactionTestFixtures.engine(
                         ActionTransactionTestFixtures.resolverFor(plan)),
-                new ActionTransactionTestFixtures.TransactionRecordingPort(true, outcomes)));
+                new ActionTransactionTestFixtures.TransactionRecordingPort(true, outcomes),
+                facts::add));
+        return List.copyOf(facts);
+    }
+
+    private static EffectExecutionResult effectResult(
+            EffectTerminalStatus status,
+            Optional<EffectRejectReason> rejectReason,
+            Optional<EffectFailureReason> failureReason,
+            int failureStepIndex,
+            int planned,
+            int executed,
+            int mutations,
+            EffectTraceStage... stages) {
+        return EffectTestFixtures.result(
+                status,
+                rejectReason,
+                failureReason,
+                failureStepIndex,
+                planned,
+                executed,
+                mutations,
+                stages);
+    }
+
+    private static EffectExecutionResult rejectedResult() {
+        return effectResult(
+                EffectTerminalStatus.REJECTED,
+                Optional.of(EffectRejectReason.INVALID_REQUEST),
+                Optional.empty(),
+                -1,
+                0,
+                0,
+                0,
+                EffectTraceStage.TERMINAL_REJECTED);
+    }
+
+    private static EffectExecutionResult failedResult() {
+        return effectResult(
+                EffectTerminalStatus.FAILED,
+                Optional.empty(),
+                Optional.of(EffectFailureReason.PRIMARY_STEP_NOT_APPLIED),
+                0,
+                1,
+                1,
+                0,
+                EffectTraceStage.STEP_NOT_APPLIED,
+                EffectTraceStage.TERMINAL_FAILED);
+    }
+
+    private static EffectExecutionResult compensatedResult() {
+        return effectResult(
+                EffectTerminalStatus.COMPENSATED,
+                Optional.empty(),
+                Optional.of(EffectFailureReason.PRIMARY_STEP_NOT_APPLIED),
+                0,
+                1,
+                1,
+                0,
+                EffectTraceStage.MANA_DEBITED,
+                EffectTraceStage.STEP_NOT_APPLIED,
+                EffectTraceStage.REFUND_APPLIED,
+                EffectTraceStage.TERMINAL_COMPENSATED);
+    }
+
+    private static EffectExecutionResult compensationFailedResult() {
+        return effectResult(
+                EffectTerminalStatus.COMPENSATION_FAILED,
+                Optional.empty(),
+                Optional.of(EffectFailureReason.COMPENSATION_REFUND_FAILED),
+                -1,
+                1,
+                0,
+                0,
+                EffectTraceStage.MANA_DEBITED,
+                EffectTraceStage.REFUND_FAILED,
+                EffectTraceStage.TERMINAL_COMPENSATION_FAILED);
     }
 }

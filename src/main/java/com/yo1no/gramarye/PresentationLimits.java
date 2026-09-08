@@ -16,6 +16,7 @@ final class PresentationLimits {
     static final int MAX_EVENT_BODY_BYTES = 1_024;
     static final int EVENT_PACKET_OVERHEAD_BYTES = 29;
     static final int MAX_SELECTED_RECIPIENTS = 32;
+    static final double MAX_RECIPIENT_DISTANCE_SQUARED = 4_096.0D;
 
     static final long MIN_SEQUENCE = 1L;
     static final long MAX_SEQUENCE = Long.MAX_VALUE;

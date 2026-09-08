@@ -25,7 +25,8 @@ final class P6RuntimeExecutionCapabilityTest {
             "\\bP6RuntimeExecutionCapability\\s*\\.\\s*forRuntimeAdapter\\s*\\(");
 
     @Test
-    void runtimeAdapterAndRootBootstrapAreTheExactCapabilityAcquirers() throws Exception {
+    void rootBootstrapIsTheOnlyProductionCapabilityAcquirerAndDoesSoExactlyOnce()
+            throws Exception {
         var accessor = P6RuntimeExecutionCapability.class.getDeclaredMethod(
                 "forRuntimeAdapter");
         var callers = new HashSet<String>();
@@ -35,6 +36,8 @@ final class P6RuntimeExecutionCapabilityTest {
                     .filter(candidate -> candidate.toString().endsWith(".java"))
                     .filter(candidate -> !candidate.equals(MAIN_JAVA.resolve(
                             "com/yo1no/gramarye/P7S4LoginManaGameTests.java")))
+                    .filter(candidate -> !candidate.equals(MAIN_JAVA.resolve(
+                            "com/yo1no/gramarye/P8S3PresentationGameTests.java")))
                     .toList()) {
                 var matches = CAPABILITY_ACQUISITION.matcher(Files.readString(path))
                         .results()
@@ -58,11 +61,9 @@ final class P6RuntimeExecutionCapabilityTest {
                 () -> assertEquals(
                         P6RuntimeExecutionCapability.class, accessor.getReturnType()),
                 () -> assertEquals(
-                        Set.of(
-                                "com/yo1no/gramarye/Gramarye.java",
-                                "com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java"),
+                        Set.of("com/yo1no/gramarye/Gramarye.java"),
                         callers),
-                () -> assertEquals(2, exactCallCount));
+                () -> assertEquals(1, exactCallCount));
     }
 
     @Test
@@ -106,7 +107,8 @@ final class P6RuntimeExecutionCapabilityTest {
                         (point, stepIndex) -> {
                             guardCalls.incrementAndGet();
                             return GuardDecision.ALLOWED;
-                        }));
+                        },
+                        null));
 
         assertAll(
                 () -> assertEquals(
@@ -132,7 +134,8 @@ final class P6RuntimeExecutionCapabilityTest {
                         (point, stepIndex) -> {
                             guardCalls.incrementAndGet();
                             return GuardDecision.ALLOWED;
-                        }));
+                        },
+                        null));
 
         assertAll(
                 () -> assertEquals(

@@ -3,6 +3,7 @@ package com.yo1no.gramarye;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -427,6 +428,15 @@ final class P8ProfileCatalogTest {
                 () -> assertEquals(500, service.activeCatalogBodyBytesForTesting()),
                 () -> assertTrue(service.activeCatalogBodyBytesForTesting()
                         <= PresentationLimits.MAX_PROFILE_CATALOG_BODY_BYTES));
+
+        service.recordObserverRuntimeException();
+
+        assertAll(
+                () -> assertEquals(256, service.activeDiagnosticCountForTesting()),
+                () -> assertEquals(2L,
+                        service.activeSuppressedDiagnosticCountForTesting()),
+                () -> assertFalse(service.hasRuntimeDiagnosticForTesting(
+                        P8ServerRuntimeDiagnosticCode.OBSERVER_RUNTIME_EXCEPTION)));
     }
 
     @Test

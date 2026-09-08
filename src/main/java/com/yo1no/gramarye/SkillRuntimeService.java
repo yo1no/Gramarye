@@ -64,15 +64,19 @@ final class SkillRuntimeService {
             IEventBus gameBus,
             SkillDefinitionStoreService storeService,
             SkillSubmissionPolicyProvider policyProvider,
-            ProfileAvailabilityView profiles) {
+            ProfileAvailabilityView profiles,
+            P6RuntimeExecutionCapability capability,
+            P8ServerPresentationService presentationService) {
         Objects.requireNonNull(gameBus, "gameBus");
         Objects.requireNonNull(profiles, "profiles");
+        Objects.requireNonNull(capability, "capability");
+        Objects.requireNonNull(presentationService, "presentationService");
         var service = new SkillRuntimeService(
                 storeService,
                 policyProvider,
                 new P5RuntimeProjector(profiles),
                 new P5LoadedReferenceResolver(),
-                new P6RuntimeExecutionPortAdapter());
+                new P6RuntimeExecutionPortAdapter(capability, presentationService));
         gameBus.addListener(EventPriority.LOWEST, service::handleRuntimePost);
         gameBus.addListener(service::handleRuntimeStopping);
         gameBus.addListener(service::handleRuntimeStopped);

@@ -89,6 +89,10 @@ final class PresentationSequence {
         return exhausted;
     }
 
+    long allocatedHighWater() {
+        return exhausted ? PresentationLimits.MAX_SEQUENCE : nextValue - 1L;
+    }
+
     Allocation allocate() {
         if (exhausted) {
             return new Allocation(Outcome.EXHAUSTED, OptionalLong.empty(), OptionalLong.empty(), this);

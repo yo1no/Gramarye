@@ -77,7 +77,8 @@ final class P6S4BoundaryTest {
                 java.util.UUID.class,
                 long.class,
                 long.class,
-                P6RuntimeExecutionBridge.GuardPort.class);
+                P6RuntimeExecutionBridge.GuardPort.class,
+                P6RuntimeExecutionBridge.AppliedFactObserver.class);
         var nested = Arrays.stream(bridge.getDeclaredClasses())
                 .map(Class::getSimpleName)
                 .collect(Collectors.toUnmodifiableSet());
@@ -101,7 +102,17 @@ final class P6S4BoundaryTest {
                 () -> assertTrue(Modifier.isStatic(execute.getModifiers())),
                 () -> assertEquals(void.class, execute.getReturnType()),
                 () -> assertEquals(0, execute.getExceptionTypes().length),
-                () -> assertEquals(Set.of("GuardPort", "GuardPoint", "GuardDecision"), nested),
+                () -> assertEquals(
+                        Set.of(
+                                "GuardPort",
+                                "GuardPoint",
+                                "GuardDecision",
+                                "AppliedFactObserver",
+                                "AppliedFact",
+                                "AppliedStep",
+                                "AppliedStepKind",
+                                "AppliedTerminal"),
+                        nested),
                 () -> assertEquals(1, guardMethod.length),
                 () -> assertEquals(
                         P6RuntimeExecutionBridge.GuardDecision.class,
@@ -112,7 +123,8 @@ final class P6S4BoundaryTest {
     }
 
     @Test
-    void productionCompositionSelectsOneStatelessS4AdapterExactlyOnce() throws Exception {
+    void productionCompositionSelectsOneCapabilityAndServiceBoundAdapterExactlyOnce()
+            throws Exception {
         var service = read(SERVICE_SOURCE);
         var adapter = read(ADAPTER_SOURCE);
         var executionPort = SkillRuntimeService.class.getDeclaredField("executionPort");
@@ -138,12 +150,19 @@ final class P6S4BoundaryTest {
                 () -> assertTrue(Modifier.isPrivate(executionPort.getModifiers())),
                 () -> assertTrue(Modifier.isFinal(executionPort.getModifiers())),
                 () -> assertEquals(1, occurrences(
-                        service, "new P6RuntimeExecutionPortAdapter()")),
+                        service,
+                        "new P6RuntimeExecutionPortAdapter(capability, presentationService)")),
+                () -> assertEquals(0, Arrays.stream(
+                                P6RuntimeExecutionPortAdapter.class.getDeclaredConstructors())
+                        .filter(constructor -> constructor.getParameterCount() == 0)
+                        .count()),
                 () -> assertEquals(0, occurrences(
                         service, "UnavailableRuntimeExecutionPort.INSTANCE")),
                 () -> assertEquals(1, occurrences(
                         adapter, "P6RuntimeExecutionBridge::execute")),
                 () -> assertEquals(1, occurrences(adapter, "bridgeInvoker.execute(")),
+                () -> assertEquals(1, occurrences(
+                        adapter, "new P8AppliedFactHandoff(presentationService, event, context)")),
                 () -> assertFalse(adapter.contains("catch (")));
     }
 

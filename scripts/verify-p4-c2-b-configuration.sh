@@ -439,6 +439,22 @@ is_approved_p7_s3_r1_production_path() {
     esac
 }
 
+is_approved_p8_s3_product_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8AppliedFactHandoff.java | \
+        src/main/java/com/yo1no/gramarye/P8PresentationRuntime.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java | \
+        src/main/java/com/yo1no/gramarye/PresentationLimits.java | \
+        src/main/java/com/yo1no/gramarye/PresentationOrdering.java | \
+        src/main/java/com/yo1no/gramarye/PresentationSequence.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 verify_production_freeze() {
     local changed=''
     local path=''
@@ -462,6 +478,8 @@ verify_production_freeze() {
             || is_approved_p7_s2_production_path "${path}" \
             || is_approved_p7_s3_r1_production_path "${path}" \
             || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${path}" \
+            || is_approved_p8_s3_product_path "${path}" \
+            || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${path}" \
             || fail "production Java changed outside exact current P4-D3-A allowlist: ${path}"
     done <<< "${changed}"
     status=0
@@ -479,6 +497,8 @@ verify_production_freeze() {
             || is_approved_p7_s2_production_path "${path}" \
             || is_approved_p7_s3_r1_production_path "${path}" \
             || bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${path}" \
+            || is_approved_p8_s3_product_path "${path}" \
+            || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${path}" \
             || fail "untracked production path escaped exact current P4-D3-A allowlist: ${path}"
     done <<< "${untracked}"
 }

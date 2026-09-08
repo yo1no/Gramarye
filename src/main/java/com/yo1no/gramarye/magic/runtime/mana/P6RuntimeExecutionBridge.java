@@ -1,7 +1,9 @@
 package com.yo1no.gramarye.magic.runtime.mana;
 
 import com.yo1no.gramarye.P6RuntimeExecutionCapability;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -30,14 +32,16 @@ public final class P6RuntimeExecutionBridge {
             UUID targetId,
             long magnitude,
             long manaCost,
-            GuardPort guard) {
+            GuardPort guard,
+            AppliedFactObserver observer) {
         if (capability == null) {
             throw invariant();
         }
         if (actor == null
                 || actionTypeKey == null
                 || targetId == null
-                || guard == null) {
+                || guard == null
+                || observer == null) {
             throw invariant();
         }
 
@@ -55,7 +59,8 @@ public final class P6RuntimeExecutionBridge {
                 account,
                 executionGuard,
                 PRODUCTION_ENGINE,
-                PRODUCTION_DAMAGE_PORT);
+                PRODUCTION_DAMAGE_PORT,
+                observer);
     }
 
     static DamageActionInvocation invocation(
@@ -116,15 +121,49 @@ public final class P6RuntimeExecutionBridge {
             ManaAccountAccess account,
             EffectExecutionGuard guard,
             ActionDamageTransactionEngine engine,
-            DamageEffectCommitPort commitPort) {
+            DamageEffectCommitPort commitPort,
+            AppliedFactObserver observer) {
         if (invocation == null
                 || account == null
                 || guard == null
                 || engine == null
-                || commitPort == null) {
+                || commitPort == null
+                || observer == null) {
             throw invariant();
         }
-        handleResult(engine.execute(invocation, account, 0, guard, commitPort));
+        ActionDamageTransactionResult result =
+                engine.execute(invocation, account, 0, guard, commitPort);
+        handleResult(result);
+        appliedFact(result.effectResult()).ifPresent(observer::observe);
+    }
+
+    static Optional<AppliedFact> appliedFact(EffectExecutionResult result) {
+        if (result == null) {
+            throw invariant();
+        }
+        AppliedTerminal terminal = switch (result.status()) {
+            case SUCCEEDED -> AppliedTerminal.SUCCEEDED;
+            case PARTIALLY_SUCCEEDED -> AppliedTerminal.PARTIALLY_SUCCEEDED;
+            case REJECTED, FAILED, COMPENSATED, COMPENSATION_FAILED -> null;
+        };
+        if (terminal == null || result.primaryMutationCount() == 0) {
+            return Optional.empty();
+        }
+
+        var copied = new ArrayList<AppliedStep>(
+                P6EffectBounds.MAX_COMMIT_STEPS_PER_PLAN);
+        for (EffectTraceEntry entry : result.trace().entries()) {
+            AppliedStepKind kind = switch (entry.stage()) {
+                case STEP_APPLIED -> AppliedStepKind.APPLIED;
+                case STEP_APPLIED_WITH_FAILURE -> AppliedStepKind.APPLIED_WITH_FAILURE;
+                default -> null;
+            };
+            if (kind != null) {
+                copied.add(new AppliedStep(entry.stepIndex(), kind));
+            }
+        }
+        return Optional.of(new AppliedFact(
+                terminal, result.primaryMutationCount(), copied));
     }
 
     static void handleResult(ActionDamageTransactionResult result) {
@@ -163,6 +202,75 @@ public final class P6RuntimeExecutionBridge {
         ALLOWED,
         CANCELLED,
         DEADLINE_EXCEEDED
+    }
+
+    @FunctionalInterface
+    public interface AppliedFactObserver {
+        void observe(AppliedFact fact);
+    }
+
+    public record AppliedFact(
+            AppliedTerminal terminal,
+            int primaryMutationCount,
+            List<AppliedStep> appliedSteps) {
+        public AppliedFact {
+            if (terminal == null || appliedSteps == null) {
+                throw invariant();
+            }
+            for (AppliedStep step : appliedSteps) {
+                if (step == null) {
+                    throw invariant();
+                }
+            }
+            appliedSteps = List.copyOf(appliedSteps);
+            if (appliedSteps.isEmpty()
+                    || appliedSteps.size() > P6EffectBounds.MAX_COMMIT_STEPS_PER_PLAN
+                    || primaryMutationCount < 1
+                    || primaryMutationCount
+                            > P6EffectBounds.MAX_PRIMARY_WORLD_MUTATIONS_PER_EXECUTION
+                    || primaryMutationCount < appliedSteps.size()) {
+                throw invariant();
+            }
+            var appliedWithFailureCount = 0;
+            for (var index = 0; index < appliedSteps.size(); index++) {
+                AppliedStep step = appliedSteps.get(index);
+                if (step.stepIndex() != index) {
+                    throw invariant();
+                }
+                if (step.kind() == AppliedStepKind.APPLIED_WITH_FAILURE) {
+                    appliedWithFailureCount++;
+                    if (terminal != AppliedTerminal.PARTIALLY_SUCCEEDED
+                            || index != appliedSteps.size() - 1) {
+                        throw invariant();
+                    }
+                }
+            }
+            if (appliedWithFailureCount > 1
+                    || terminal == AppliedTerminal.SUCCEEDED
+                            && appliedWithFailureCount != 0) {
+                throw invariant();
+            }
+        }
+    }
+
+    public record AppliedStep(int stepIndex, AppliedStepKind kind) {
+        public AppliedStep {
+            if (kind == null
+                    || stepIndex < 0
+                    || stepIndex >= P6EffectBounds.MAX_COMMIT_STEPS_PER_PLAN) {
+                throw invariant();
+            }
+        }
+    }
+
+    public enum AppliedStepKind {
+        APPLIED,
+        APPLIED_WITH_FAILURE
+    }
+
+    public enum AppliedTerminal {
+        SUCCEEDED,
+        PARTIALLY_SUCCEEDED
     }
 }
 

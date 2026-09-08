@@ -152,7 +152,10 @@ final class ManaBoundaryTest {
         var manaGameTests = code(MANA_MAIN.resolve("ManaLifecycleGameTests.java"));
         var totalGameTests = occurrences(allMain, "@GameTest(");
         var manaGameTestCount = occurrences(manaGameTests, "@GameTest(");
-        var baselineGameTests = totalGameTests - manaGameTestCount - com.yo1no.gramarye.P7GameTestInventory.s4Count();
+        var baselineGameTests = totalGameTests
+                - manaGameTestCount
+                - com.yo1no.gramarye.P7GameTestInventory.s4Count()
+                - com.yo1no.gramarye.P7GameTestInventory.p8Count();
 
         assertAll(
                 () -> assertEquals(

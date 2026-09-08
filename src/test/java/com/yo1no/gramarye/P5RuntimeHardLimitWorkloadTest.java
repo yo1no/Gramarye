@@ -1450,9 +1450,15 @@ final class P5RuntimeHardLimitWorkloadTest {
         var store = SkillDefinitionStoreService.registerOn(
                 bus, attachments, (server, actor) -> {});
         var policy = SkillSubmissionPolicyProvider.defaults();
+        var presentationService = P8ServerPresentationService.create();
         return new ServiceFixture(
                 SkillRuntimeService.create(
-                        bus, store, policy, ProfileAvailabilityView.unknown()),
+                        bus,
+                        store,
+                        policy,
+                        ProfileAvailabilityView.unknown(),
+                        P6RuntimeExecutionCapability.forRuntimeAdapter(),
+                        presentationService),
                 store,
                 policy);
     }
