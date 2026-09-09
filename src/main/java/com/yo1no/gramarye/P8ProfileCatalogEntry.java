@@ -2,6 +2,8 @@ package com.yo1no.gramarye;
 
 import com.yo1no.gramarye.magic.presentation.api.ProfileChannel;
 import com.yo1no.gramarye.magic.presentation.api.ProfileConfiguration;
+import com.yo1no.gramarye.magic.presentation.api.ProfileCost;
+import com.yo1no.gramarye.magic.presentation.api.ProfileType;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.Optional;
@@ -16,6 +18,7 @@ final class P8ProfileCatalogEntry {
     private final int configurationVersion;
     private final Optional<String> canonicalConfigurationJson;
     private final Optional<ProfileConfiguration> decodedConfiguration;
+    private final Optional<P8DecodedProfileConfiguration<?>> decodedProfile;
     private final int envelopeBytes;
     private final int wireBodyBytes;
 
@@ -34,6 +37,7 @@ final class P8ProfileCatalogEntry {
                 configurationVersion,
                 Optional.of(Objects.requireNonNull(
                         canonicalConfigurationJson, "canonicalConfigurationJson")),
+                Optional.empty(),
                 Optional.empty(),
                 0,
                 false);
@@ -57,6 +61,7 @@ final class P8ProfileCatalogEntry {
                         canonicalConfigurationJson, "canonicalConfigurationJson")),
                 Optional.of(Objects.requireNonNull(
                         decodedConfiguration, "decodedConfiguration")),
+                Optional.empty(),
                 0,
                 false);
     }
@@ -69,7 +74,7 @@ final class P8ProfileCatalogEntry {
             int configurationVersion,
             int envelopeBytes,
             Optional<String> canonicalConfigurationJson,
-            Optional<ProfileConfiguration> decodedConfiguration) {
+            Optional<P8DecodedProfileConfiguration<?>> decodedProfile) {
         return new P8ProfileCatalogEntry(
                 profileId,
                 typeId,
@@ -77,7 +82,9 @@ final class P8ProfileCatalogEntry {
                 clientFactoryId,
                 configurationVersion,
                 canonicalConfigurationJson,
-                decodedConfiguration,
+                Objects.requireNonNull(decodedProfile, "decodedProfile")
+                        .map(value -> value.configuration()),
+                decodedProfile,
                 envelopeBytes,
                 true);
     }
@@ -90,6 +97,7 @@ final class P8ProfileCatalogEntry {
             int configurationVersion,
             Optional<String> canonicalConfigurationJson,
             Optional<ProfileConfiguration> decodedConfiguration,
+            Optional<P8DecodedProfileConfiguration<?>> decodedProfile,
             int incomingEnvelopeBytes,
             boolean canonicalJsonAlreadyChecked) {
         this.profileId = requireId(profileId, "profileId");
@@ -111,6 +119,14 @@ final class P8ProfileCatalogEntry {
         });
         this.decodedConfiguration = Objects.requireNonNull(
                 decodedConfiguration, "decodedConfiguration");
+        this.decodedProfile = Objects.requireNonNull(decodedProfile, "decodedProfile");
+        if (this.decodedProfile.isPresent()
+                && (this.decodedConfiguration.isEmpty()
+                        || this.decodedProfile.orElseThrow().configuration()
+                                != this.decodedConfiguration.orElseThrow())) {
+            throw new IllegalArgumentException(
+                    "typed and erased decoded configurations must share identity");
+        }
         if (this.canonicalConfigurationJson.isEmpty()
                 && this.decodedConfiguration.isPresent()) {
             throw new IllegalArgumentException(
@@ -169,6 +185,10 @@ final class P8ProfileCatalogEntry {
         return decodedConfiguration;
     }
 
+    Optional<P8DecodedProfileConfiguration<?>> decodedProfile() {
+        return decodedProfile;
+    }
+
     int envelopeBytes() {
         return envelopeBytes;
     }
@@ -187,7 +207,8 @@ final class P8ProfileCatalogEntry {
                         && channel == that.channel
                         && clientFactoryId.equals(that.clientFactoryId)
                         && canonicalConfigurationJson.equals(that.canonicalConfigurationJson)
-                        && decodedConfiguration.equals(that.decodedConfiguration);
+                        && decodedConfiguration.equals(that.decodedConfiguration)
+                        && decodedProfile.equals(that.decodedProfile);
     }
 
     @Override
@@ -199,7 +220,8 @@ final class P8ProfileCatalogEntry {
                 clientFactoryId,
                 configurationVersion,
                 canonicalConfigurationJson,
-                decodedConfiguration);
+                decodedConfiguration,
+                decodedProfile);
     }
 
     private static ResourceLocation requireId(ResourceLocation id, String name) {
@@ -209,5 +231,31 @@ final class P8ProfileCatalogEntry {
             throw new IllegalArgumentException(name + " exceeds the P8 UTF-8 bound");
         }
         return id;
+    }
+}
+
+/** Client-decode-only generic witness retained without erasing the validated value. */
+final class P8DecodedProfileConfiguration<C extends ProfileConfiguration> {
+    private final ProfileType<C> type;
+    private final C configuration;
+    private final ProfileCost estimatedCost;
+
+    P8DecodedProfileConfiguration(
+            ProfileType<C> type, C configuration, ProfileCost estimatedCost) {
+        this.type = Objects.requireNonNull(type, "type");
+        this.configuration = Objects.requireNonNull(configuration, "configuration");
+        this.estimatedCost = Objects.requireNonNull(estimatedCost, "estimatedCost");
+    }
+
+    ProfileType<C> type() {
+        return type;
+    }
+
+    C configuration() {
+        return configuration;
+    }
+
+    ProfileCost estimatedCost() {
+        return estimatedCost;
     }
 }

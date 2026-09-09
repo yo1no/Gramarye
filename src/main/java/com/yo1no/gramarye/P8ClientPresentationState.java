@@ -19,9 +19,12 @@ import net.minecraft.resources.ResourceLocation;
  */
 final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     private final BooleanSupplier clientThreadCheck;
+    private final P8ClientPresentationExecutionPort execution;
     private final Map<EventReservation, EventReservationOwner> eventReservations =
-            new IdentityHashMap<>();
-    private final ArrayDeque<PendingEvent> pendingEvents = new ArrayDeque<>();
+            new IdentityHashMap<>(
+                    Math.toIntExact(PresentationLimits.MAX_CLIENT_PENDING_EVENTS));
+    private final ArrayDeque<PendingEvent> pendingEvents = new ArrayDeque<>(
+            Math.toIntExact(PresentationLimits.MAX_CLIENT_PENDING_EVENTS));
 
     private long connectionCounter;
     private long connectionGeneration;
@@ -39,6 +42,10 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     private InstalledCatalog installedCatalog;
     private long lastAcceptedSequence;
     private CatalogMailboxValue catalogMailbox;
+    private CatalogBindAttempt catalogBindAttempt;
+    private ResourceApplyAttempt resourceApplyAttempt;
+    private ConnectionTransitionAttempt connectionTransitionAttempt;
+    private WorldTransitionAttempt worldTransitionAttempt;
 
     private long reservedEventCount;
     private long reservedEventBodyBytes;
@@ -46,8 +53,15 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     private long unavailableHandoffCount;
 
     P8ClientPresentationState(BooleanSupplier clientThreadCheck) {
+        this(clientThreadCheck, UnavailableP8ClientPresentationExecution.INSTANCE);
+    }
+
+    P8ClientPresentationState(
+            BooleanSupplier clientThreadCheck,
+            P8ClientPresentationExecutionPort execution) {
         this.clientThreadCheck = Objects.requireNonNull(
                 clientThreadCheck, "clientThreadCheck");
+        this.execution = Objects.requireNonNull(execution, "execution");
     }
 
     @Override
@@ -70,6 +84,14 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         var packetCharge = Math.addExact(
                 (long) payload.bodySize(),
                 PresentationLimits.PROFILE_CATALOG_PACKET_OVERHEAD_BYTES);
+        if (catalogBindAttempt != null) {
+            if (catalogBindAttempt.connectionGeneration() != capturedConnection) {
+                releaseCatalogBindAttemptLocked(catalogBindAttempt);
+            } else if (incomingGeneration
+                    <= catalogBindAttempt.catalog().catalogGeneration()) {
+                return Optional.empty();
+            }
+        }
         if (catalogMailbox != null) {
             if (catalogMailbox.connectionGeneration() != capturedConnection) {
                 releaseCatalogMailboxLocked();
@@ -99,11 +121,13 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             return Optional.empty();
         }
         var drainIdentity = new CatalogDrainIdentity();
-        catalogMailbox = new CatalogMailboxValue(
+        var replacement = new CatalogMailboxValue(
                 drainIdentity, capturedConnection, payload, packetCharge);
-        combinedQueuedCharge += packetCharge;
-        return Optional.of(new CatalogDrainTask(
+        var task = Optional.<P8ClientDispatchTask>of(new CatalogDrainTask(
                 this, drainIdentity, capturedConnection));
+        catalogMailbox = replacement;
+        combinedQueuedCharge += packetCharge;
+        return task;
     }
 
     @Override
@@ -135,31 +159,58 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 payload.catalogGeneration(),
                 bodyBytes,
                 packetCharge);
+        var task = Optional.<P8ClientDispatchTask>of(
+                new EventMainTask(this, payload, reservation));
         eventReservations.put(reservation, EventReservationOwner.NETWORK_TASK);
         reservedEventCount++;
         reservedEventBodyBytes += bodyBytes;
         combinedQueuedCharge += packetCharge;
-        return Optional.of(new EventMainTask(this, payload, reservation));
+        return task;
     }
 
     void onConnectionOpened() {
         requireClientThread();
+        final ConnectionTransitionAttempt attempt;
         synchronized (this) {
             clearConnectionScopedStateLocked();
             worldCounter = 0L;
-            if (connectionCounter == Long.MAX_VALUE) {
+            var canOpen = connectionCounter != Long.MAX_VALUE;
+            if (!canOpen) {
                 connected = false;
                 connectionGeneration = connectionCounter;
-                return;
+            } else {
+                connectionCounter++;
+                connectionGeneration = connectionCounter;
+                connected = false;
             }
-            connectionCounter++;
-            connectionGeneration = connectionCounter;
-            connected = true;
+            attempt = new ConnectionTransitionAttempt(
+                    connectionGeneration, canOpen);
+            connectionTransitionAttempt = attempt;
         }
+
+        RuntimeException cleanupRuntimeFailure = null;
+        Error cleanupError = null;
+        try {
+            execution.clearAll();
+        } catch (RuntimeException failure) {
+            cleanupRuntimeFailure = failure;
+        } catch (Error failure) {
+            cleanupError = failure;
+        }
+        synchronized (this) {
+            if (connectionTransitionAttempt == attempt) {
+                connectionTransitionAttempt = null;
+                if (connectionGeneration == attempt.connectionGeneration()) {
+                    connected = attempt.connectedAfterCleanup();
+                }
+            }
+        }
+        rethrowCleanupFailure(cleanupRuntimeFailure, cleanupError);
     }
 
     void onLoggedOut() {
         requireClientThread();
+        final ConnectionTransitionAttempt attempt;
         synchronized (this) {
             clearConnectionScopedStateLocked();
             if (connectionCounter != Long.MAX_VALUE) {
@@ -168,103 +219,273 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             connectionGeneration = connectionCounter;
             connected = false;
             worldCounter = 0L;
+            attempt = new ConnectionTransitionAttempt(connectionGeneration, false);
+            connectionTransitionAttempt = attempt;
         }
+
+        RuntimeException cleanupRuntimeFailure = null;
+        Error cleanupError = null;
+        try {
+            execution.clearAll();
+        } catch (RuntimeException failure) {
+            cleanupRuntimeFailure = failure;
+        } catch (Error failure) {
+            cleanupError = failure;
+        }
+        synchronized (this) {
+            if (connectionTransitionAttempt == attempt) {
+                connectionTransitionAttempt = null;
+            }
+        }
+        rethrowCleanupFailure(cleanupRuntimeFailure, cleanupError);
     }
 
     void onWorldLoaded() {
         requireClientThread();
+        final WorldTransitionAttempt attempt;
         synchronized (this) {
             if (!connected) {
                 return;
             }
             clearAllEventWorkLocked();
-            if (worldCounter == Long.MAX_VALUE) {
+            var canLoad = worldCounter != Long.MAX_VALUE;
+            if (!canLoad) {
                 worldReady = false;
                 worldGeneration = worldCounter;
-                return;
+            } else {
+                worldCounter++;
+                worldGeneration = worldCounter;
+                worldReady = false;
             }
-            worldCounter++;
-            worldGeneration = worldCounter;
-            worldReady = true;
+            attempt = new WorldTransitionAttempt(
+                    connectionGeneration,
+                    worldGeneration,
+                    canLoad);
+            worldTransitionAttempt = attempt;
         }
+
+        RuntimeException cleanupRuntimeFailure = null;
+        Error cleanupError = null;
+        try {
+            execution.clearActive();
+        } catch (RuntimeException failure) {
+            cleanupRuntimeFailure = failure;
+        } catch (Error failure) {
+            cleanupError = failure;
+        }
+        synchronized (this) {
+            completeWorldTransitionLocked(attempt);
+        }
+        rethrowCleanupFailure(cleanupRuntimeFailure, cleanupError);
     }
 
     void onWorldUnloaded(boolean hasCurrentWorld) {
         requireClientThread();
+        final WorldTransitionAttempt attempt;
         synchronized (this) {
             if (!connected) {
                 return;
             }
             clearAllEventWorkLocked();
-            if (worldCounter != Long.MAX_VALUE) {
+            var canAdvance = worldCounter != Long.MAX_VALUE;
+            if (canAdvance) {
                 worldCounter++;
+                worldGeneration = worldCounter;
+                worldReady = false;
             } else {
                 worldGeneration = worldCounter;
                 worldReady = false;
-                return;
             }
-            worldGeneration = worldCounter;
-            worldReady = hasCurrentWorld;
+            attempt = new WorldTransitionAttempt(
+                    connectionGeneration,
+                    worldGeneration,
+                    canAdvance && hasCurrentWorld);
+            worldTransitionAttempt = attempt;
         }
+
+        RuntimeException cleanupRuntimeFailure = null;
+        Error cleanupError = null;
+        try {
+            execution.clearActive();
+        } catch (RuntimeException failure) {
+            cleanupRuntimeFailure = failure;
+        } catch (Error failure) {
+            cleanupError = failure;
+        }
+        synchronized (this) {
+            completeWorldTransitionLocked(attempt);
+        }
+        rethrowCleanupFailure(cleanupRuntimeFailure, cleanupError);
     }
 
     void onResourceIndexApplied(P8ClientResourceIndex replacement) {
         requireClientThread();
         Objects.requireNonNull(replacement, "replacement");
+        final ResourceApplyAttempt attempt;
         synchronized (this) {
-            clearAllEventWorkLocked();
-            resourceReady = false;
-            resourceIndex = P8ClientResourceIndex.empty();
-            if (resourceCounter == Long.MAX_VALUE) {
-                resourceGeneration = resourceCounter;
-                if (installedCatalog != null) {
-                    installedCatalog = new InstalledCatalog(
-                            installedCatalog.snapshot(), 0L);
+            var exhausted = resourceCounter == Long.MAX_VALUE;
+            var nextResourceGeneration = exhausted
+                    ? resourceCounter
+                    : resourceCounter + 1L;
+            var replacementCatalog = installedCatalog == null
+                    ? null
+                    : new InstalledCatalog(
+                            installedCatalog.snapshot(),
+                            exhausted ? 0L : nextResourceGeneration);
+            attempt = new ResourceApplyAttempt(
+                    resourceCounter,
+                    resourceGeneration,
+                    resourceReady,
+                    resourceIndex,
+                    connectionGeneration,
+                    connected,
+                    worldGeneration,
+                    worldReady,
+                    installedCatalog,
+                    replacementCatalog,
+                    replacement,
+                    nextResourceGeneration,
+                    exhausted);
+            resourceApplyAttempt = attempt;
+        }
+
+        P8ClientPreparedCatalog preparedCatalog = null;
+        try {
+            if (!attempt.exhausted() && attempt.installedCatalog() != null) {
+                preparedCatalog = Objects.requireNonNull(
+                        execution.prepareCatalog(
+                        attempt.installedCatalog().snapshot(),
+                        attempt.replacementIndex(),
+                        attempt.connectionGeneration(),
+                        attempt.worldGeneration(),
+                        attempt.nextResourceGeneration()),
+                        "prepared catalog");
+            }
+        } catch (RuntimeException | Error failure) {
+            cleanupFailedResourceApply(attempt);
+            if (failure instanceof Error) {
+                cleanupExecutionAfterPreparationError();
+            }
+            throw failure;
+        }
+        synchronized (this) {
+            if (!matchesResourceApplyAttemptLocked(attempt)) {
+                if (resourceApplyAttempt == attempt) {
+                    resourceApplyAttempt = null;
                 }
                 return;
             }
-            resourceCounter++;
-            resourceGeneration = resourceCounter;
-            resourceIndex = replacement;
-            resourceReady = true;
-            if (installedCatalog != null) {
-                installedCatalog = new InstalledCatalog(
-                        installedCatalog.snapshot(), resourceGeneration);
+        }
+        try {
+            execution.clearActive();
+        } catch (RuntimeException | Error failure) {
+            cleanupFailedResourceApply(attempt);
+            throw failure;
+        }
+
+        synchronized (this) {
+            if (!matchesResourceApplyAttemptLocked(attempt)) {
+                if (resourceApplyAttempt == attempt) {
+                    resourceApplyAttempt = null;
+                }
+                return;
+            }
+            resourceApplyAttempt = null;
+            clearAllEventWorkLocked();
+            if (preparedCatalog != null) {
+                execution.publishCatalog(preparedCatalog);
+            }
+            resourceCounter = attempt.nextResourceGeneration();
+            resourceGeneration = attempt.nextResourceGeneration();
+            resourceIndex = attempt.exhausted()
+                    ? P8ClientResourceIndex.empty()
+                    : attempt.replacementIndex();
+            resourceReady = !attempt.exhausted();
+            if (attempt.replacementCatalog() != null) {
+                installedCatalog = attempt.replacementCatalog();
             }
         }
     }
 
     int onClientPostTick() {
         requireClientThread();
+        final long currentConnection;
+        final long currentWorld;
+        final long currentResource;
+        final long currentCatalog;
         synchronized (this) {
-            var applications = 0;
-            while (applications < PresentationLimits.MAX_CLIENT_EVENT_APPLICATIONS_PER_TICK) {
-                var pending = pendingEvents.pollFirst();
-                if (pending == null) {
+            currentConnection = connectionGeneration;
+            currentWorld = worldGeneration;
+            currentResource = resourceGeneration;
+            currentCatalog = installedCatalog == null
+                    ? 0L
+                    : installedCatalog.snapshot().catalogGeneration();
+        }
+        try {
+            execution.onClientTick(
+                    currentConnection, currentWorld, currentResource, currentCatalog);
+        } catch (RuntimeException | Error failure) {
+            synchronized (this) {
+                clearAllEventWorkLocked();
+            }
+            throw failure;
+        }
+
+        var applications = 0;
+        while (applications < PresentationLimits.MAX_CLIENT_EVENT_APPLICATIONS_PER_TICK) {
+            final PendingEvent pending;
+            final P8ProfileCatalogSnapshot catalog;
+            final P8ClientResourceIndex resources;
+            final boolean eligible;
+            synchronized (this) {
+                var polled = pendingEvents.pollFirst();
+                if (polled == null) {
                     break;
                 }
                 applications++;
-                try {
-                    if (eventReservations.get(pending.reservation())
-                                    == EventReservationOwner.PENDING
-                            && matchesCurrentEventGenerationLocked(
-                                    pending.payload(), pending.reservation())) {
-                        var result = P8ClientPresentationHandoff.offerUnavailable(
-                                pending.payload(),
-                                installedCatalog.snapshot(),
-                                resourceIndex);
-                        if (result == P8ClientPresentationHandoffResult.S5_UNAVAILABLE) {
-                            unavailableHandoffCount = saturatingIncrement(
-                                    unavailableHandoffCount);
-                        }
+                P8ClientPresentationState.PendingEvent selectedPending = polled;
+                eligible = eventReservations.get(selectedPending.reservation())
+                                == EventReservationOwner.PENDING
+                        && matchesCurrentEventGenerationLocked(
+                                selectedPending.payload(), selectedPending.reservation());
+                if (!eligible) {
+                    releaseEventReservationLocked(
+                            selectedPending.reservation(), EventReservationOwner.PENDING);
+                }
+                catalog = eligible ? installedCatalog.snapshot() : null;
+                resources = eligible ? resourceIndex : null;
+                pending = selectedPending;
+            }
+            if (!eligible) {
+                continue;
+            }
+            try {
+                var result = execution.present(
+                        pending.payload(),
+                        catalog,
+                        resources,
+                        pending.reservation().connectionGeneration(),
+                        pending.reservation().worldGeneration(),
+                        pending.reservation().resourceGeneration());
+                if (result == P8ClientPresentationHandoffResult.UNAVAILABLE) {
+                    synchronized (this) {
+                        unavailableHandoffCount = saturatingIncrement(
+                                unavailableHandoffCount);
                     }
-                } finally {
+                }
+            } catch (RuntimeException | Error failure) {
+                synchronized (this) {
+                    clearAllEventWorkLocked();
+                }
+                throw failure;
+            } finally {
+                synchronized (this) {
                     releaseEventReservationLocked(
                             pending.reservation(), EventReservationOwner.PENDING);
                 }
             }
-            return applications;
         }
+        return applications;
     }
 
     synchronized boolean connected() {
@@ -362,6 +583,7 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             throw failure;
         }
 
+        final CatalogBindAttempt attempt;
         synchronized (this) {
             var value = catalogMailbox;
             if (value == null || value.drainIdentity() != drainIdentity) {
@@ -373,20 +595,84 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                         || capturedConnection < 1L
                         || capturedConnection != connectionGeneration
                         || value.connectionGeneration() != capturedConnection) {
+                    releaseCatalogChargeLocked(value);
                     return;
                 }
                 var incoming = value.payload().snapshot();
                 if (installedCatalog != null
                         && incoming.catalogGeneration()
                                 <= installedCatalog.snapshot().catalogGeneration()) {
+                    releaseCatalogChargeLocked(value);
                     return;
                 }
 
-                clearEventWorkFromOtherCatalogsLocked(incoming.catalogGeneration());
-                installedCatalog = new InstalledCatalog(
-                        incoming, resourceReady ? resourceGeneration : 0L);
-            } finally {
+                var evaluatedResourceGeneration = resourceReady
+                        ? resourceGeneration
+                        : 0L;
+                attempt = new CatalogBindAttempt(
+                        value,
+                        incoming,
+                        resourceIndex,
+                        connectionGeneration,
+                        connected,
+                        worldGeneration,
+                        worldReady,
+                        resourceGeneration,
+                        resourceReady,
+                        installedCatalog,
+                        new InstalledCatalog(incoming, evaluatedResourceGeneration));
+                catalogBindAttempt = attempt;
+            } catch (RuntimeException | Error failure) {
                 releaseCatalogChargeLocked(value);
+                throw failure;
+            }
+        }
+
+        final P8ClientPreparedCatalog preparedCatalog;
+        try {
+            preparedCatalog = Objects.requireNonNull(
+                    execution.prepareCatalog(
+                    attempt.catalog(),
+                    attempt.resourceIndex(),
+                    attempt.connectionGeneration(),
+                    attempt.worldGeneration(),
+                    attempt.replacementCatalog().resourceGeneration()),
+                    "prepared catalog");
+        } catch (RuntimeException | Error failure) {
+            cleanupFailedCatalogBind(attempt);
+            if (failure instanceof Error) {
+                cleanupExecutionAfterPreparationError();
+            }
+            throw failure;
+        }
+
+        synchronized (this) {
+            if (!matchesCatalogBindAttemptLocked(attempt)) {
+                releaseCatalogBindAttemptLocked(attempt);
+                return;
+            }
+        }
+
+        try {
+            execution.clearActiveForCatalogReplacement();
+        } catch (RuntimeException | Error failure) {
+            cleanupFailedCatalogBind(attempt);
+            throw failure;
+        }
+
+        synchronized (this) {
+            if (!matchesCatalogBindAttemptLocked(attempt)) {
+                releaseCatalogBindAttemptLocked(attempt);
+                return;
+            }
+            catalogBindAttempt = null;
+            try {
+                clearEventWorkFromOtherCatalogsLocked(
+                        attempt.catalog().catalogGeneration());
+                execution.publishCatalog(preparedCatalog);
+                installedCatalog = attempt.replacementCatalog();
+            } finally {
+                releaseCatalogChargeLocked(attempt.mailboxValue());
             }
         }
     }
@@ -424,6 +710,7 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                     return;
                 }
 
+                var pending = new PendingEvent(payload, reservation);
                 // Order is consumed before S5 availability or pending admission.
                 lastAcceptedSequence = payload.sequence();
                 if (pendingEvents.size() >= PresentationLimits.MAX_CLIENT_PENDING_EVENTS) {
@@ -432,7 +719,7 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                     completed = true;
                     return;
                 }
-                pendingEvents.addLast(new PendingEvent(payload, reservation));
+                pendingEvents.addLast(pending);
                 eventReservations.put(reservation, EventReservationOwner.PENDING);
                 completed = true;
             }
@@ -467,6 +754,10 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     private void clearConnectionScopedStateLocked() {
         releaseCatalogMailboxLocked();
+        releaseCatalogBindAttemptLocked(catalogBindAttempt);
+        resourceApplyAttempt = null;
+        connectionTransitionAttempt = null;
+        worldTransitionAttempt = null;
         clearAllEventWorkLocked();
         installedCatalog = null;
         lastAcceptedSequence = 0L;
@@ -475,21 +766,43 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         worldReady = false;
     }
 
+    private void completeWorldTransitionLocked(WorldTransitionAttempt attempt) {
+        if (worldTransitionAttempt != attempt) {
+            return;
+        }
+        worldTransitionAttempt = null;
+        if (connected
+                && connectionGeneration == attempt.connectionGeneration()
+                && worldGeneration == attempt.worldGeneration()) {
+            worldReady = attempt.worldReadyAfterCleanup();
+        }
+    }
+
     private void clearAllEventWorkLocked() {
         pendingEvents.clear();
-        var reservations = new ArrayList<>(eventReservations.keySet());
-        for (var reservation : reservations) {
-            releaseEventReservationLocked(reservation, null);
-        }
+        var eventCharge = Math.addExact(
+                reservedEventBodyBytes,
+                Math.multiplyExact(
+                        reservedEventCount,
+                        (long) PresentationLimits.EVENT_PACKET_OVERHEAD_BYTES));
+        eventReservations.clear();
+        reservedEventCount = 0L;
+        reservedEventBodyBytes = 0L;
+        combinedQueuedCharge = Math.max(0L, combinedQueuedCharge - eventCharge);
     }
 
     private void clearEventWorkFromOtherCatalogsLocked(long retainedCatalogGeneration) {
         pendingEvents.removeIf(pending ->
                 pending.reservation().catalogGeneration() != retainedCatalogGeneration);
-        var reservations = new ArrayList<>(eventReservations.keySet());
-        for (var reservation : reservations) {
+        var iterator = eventReservations.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            var reservation = entry.getKey();
             if (reservation.catalogGeneration() != retainedCatalogGeneration) {
-                releaseEventReservationLocked(reservation, null);
+                iterator.remove();
+                reservedEventCount--;
+                reservedEventBodyBytes -= reservation.bodyBytes();
+                combinedQueuedCharge -= reservation.packetCharge();
             }
         }
     }
@@ -516,6 +829,88 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         releaseCatalogChargeLocked(released);
     }
 
+    private boolean matchesCatalogBindAttemptLocked(CatalogBindAttempt attempt) {
+        return catalogBindAttempt == attempt
+                && connected
+                && attempt.connected()
+                && connectionGeneration == attempt.connectionGeneration()
+                && worldGeneration == attempt.worldGeneration()
+                && worldReady == attempt.worldReady()
+                && resourceGeneration == attempt.resourceGeneration()
+                && resourceReady == attempt.resourceReady()
+                && resourceIndex == attempt.resourceIndex()
+                && installedCatalog == attempt.installedCatalog();
+    }
+
+    private void releaseCatalogBindAttemptLocked(CatalogBindAttempt attempt) {
+        if (attempt == null || catalogBindAttempt != attempt) {
+            return;
+        }
+        catalogBindAttempt = null;
+        releaseCatalogChargeLocked(attempt.mailboxValue());
+    }
+
+    private boolean matchesResourceApplyAttemptLocked(ResourceApplyAttempt attempt) {
+        return resourceApplyAttempt == attempt
+                && resourceCounter == attempt.resourceCounter()
+                && resourceGeneration == attempt.resourceGeneration()
+                && resourceReady == attempt.resourceReady()
+                && resourceIndex == attempt.resourceIndex()
+                && connectionGeneration == attempt.connectionGeneration()
+                && connected == attempt.connected()
+                && worldGeneration == attempt.worldGeneration()
+                && worldReady == attempt.worldReady()
+                && installedCatalog == attempt.installedCatalog();
+    }
+
+    private void cleanupFailedCatalogBind(CatalogBindAttempt attempt) {
+        try {
+            synchronized (this) {
+                if (catalogBindAttempt != attempt) {
+                    return;
+                }
+                try {
+                    clearAllEventWorkLocked();
+                } finally {
+                    releaseCatalogBindAttemptLocked(attempt);
+                }
+            }
+        } catch (RuntimeException | Error ignored) {
+            // The exact bind failure remains primary.
+        }
+    }
+
+    private void cleanupFailedResourceApply(ResourceApplyAttempt attempt) {
+        try {
+            synchronized (this) {
+                if (resourceApplyAttempt != attempt) {
+                    return;
+                }
+                resourceApplyAttempt = null;
+                clearAllEventWorkLocked();
+                if (attempt.exhausted()) {
+                    resourceCounter = attempt.nextResourceGeneration();
+                    resourceGeneration = attempt.nextResourceGeneration();
+                    resourceIndex = P8ClientResourceIndex.empty();
+                    resourceReady = false;
+                    if (attempt.replacementCatalog() != null) {
+                        installedCatalog = attempt.replacementCatalog();
+                    }
+                }
+            }
+        } catch (RuntimeException | Error ignored) {
+            // The exact execution failure remains primary.
+        }
+    }
+
+    private void cleanupExecutionAfterPreparationError() {
+        try {
+            execution.clearActive();
+        } catch (RuntimeException | Error ignored) {
+            // Preserve the exact preparation Error without retaining history.
+        }
+    }
+
     private void releaseCatalogChargeLocked(CatalogMailboxValue released) {
         combinedQueuedCharge -= released.packetCharge();
     }
@@ -529,6 +924,16 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     private static long saturatingIncrement(long value) {
         return value == Long.MAX_VALUE ? value : value + 1L;
+    }
+
+    private static void rethrowCleanupFailure(
+            RuntimeException runtimeFailure, Error error) {
+        if (error != null) {
+            throw error;
+        }
+        if (runtimeFailure != null) {
+            throw runtimeFailure;
+        }
     }
 
     private static void requireCounter(long value, String name) {
@@ -563,6 +968,54 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             Objects.requireNonNull(payload, "payload");
         }
     }
+
+    private record CatalogBindAttempt(
+            CatalogMailboxValue mailboxValue,
+            P8ProfileCatalogSnapshot catalog,
+            P8ClientResourceIndex resourceIndex,
+            long connectionGeneration,
+            boolean connected,
+            long worldGeneration,
+            boolean worldReady,
+            long resourceGeneration,
+            boolean resourceReady,
+            InstalledCatalog installedCatalog,
+            InstalledCatalog replacementCatalog) {
+        private CatalogBindAttempt {
+            Objects.requireNonNull(mailboxValue, "mailboxValue");
+            Objects.requireNonNull(catalog, "catalog");
+            Objects.requireNonNull(resourceIndex, "resourceIndex");
+            Objects.requireNonNull(replacementCatalog, "replacementCatalog");
+        }
+    }
+
+    private record ResourceApplyAttempt(
+            long resourceCounter,
+            long resourceGeneration,
+            boolean resourceReady,
+            P8ClientResourceIndex resourceIndex,
+            long connectionGeneration,
+            boolean connected,
+            long worldGeneration,
+            boolean worldReady,
+            InstalledCatalog installedCatalog,
+            InstalledCatalog replacementCatalog,
+            P8ClientResourceIndex replacementIndex,
+            long nextResourceGeneration,
+            boolean exhausted) {
+        private ResourceApplyAttempt {
+            Objects.requireNonNull(resourceIndex, "resourceIndex");
+            Objects.requireNonNull(replacementIndex, "replacementIndex");
+        }
+    }
+
+    private record ConnectionTransitionAttempt(
+            long connectionGeneration, boolean connectedAfterCleanup) {}
+
+    private record WorldTransitionAttempt(
+            long connectionGeneration,
+            long worldGeneration,
+            boolean worldReadyAfterCleanup) {}
 
     private static final class CatalogDrainIdentity {}
 
@@ -635,11 +1088,18 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
 /** Immutable S4 resource-generation value; S5 will populate its bounded asset IDs. */
 final class P8ClientResourceIndex {
-    private static final P8ClientResourceIndex EMPTY = new P8ClientResourceIndex(List.of());
+    private static final P8ClientResourceIndex EMPTY =
+            new P8ClientResourceIndex(List.of(), false);
 
     private final List<ResourceLocation> resourceIds;
+    private final boolean omittedResources;
 
     P8ClientResourceIndex(List<ResourceLocation> resourceIds) {
+        this(resourceIds, false);
+    }
+
+    P8ClientResourceIndex(
+            List<ResourceLocation> resourceIds, boolean omittedResources) {
         Objects.requireNonNull(resourceIds, "resourceIds");
         if (resourceIds.size() > PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES) {
             throw new IllegalArgumentException("P8 client resource index exceeds its bound");
@@ -662,6 +1122,7 @@ final class P8ClientResourceIndex {
             }
         }
         this.resourceIds = List.copyOf(ordered);
+        this.omittedResources = omittedResources;
     }
 
     static P8ClientResourceIndex empty() {
@@ -670,6 +1131,10 @@ final class P8ClientResourceIndex {
 
     List<ResourceLocation> resourceIds() {
         return resourceIds;
+    }
+
+    boolean omittedResources() {
+        return omittedResources;
     }
 
     boolean contains(ResourceLocation resourceId) {
@@ -682,23 +1147,102 @@ final class P8ClientResourceIndex {
     }
 }
 
-/** Exact typed S4 terminal while no S5 factory/execution owner exists. */
 enum P8ClientPresentationHandoffResult {
-    S5_UNAVAILABLE
+    PRESENTED,
+    PARTIALLY_PRESENTED,
+    UNAVAILABLE
 }
 
-final class P8ClientPresentationHandoff {
-    private P8ClientPresentationHandoff() {
-        throw new AssertionError("no instances");
-    }
+abstract class P8ClientPresentationExecutionPort {
+    abstract P8ClientPreparedCatalog prepareCatalog(
+            P8ProfileCatalogSnapshot catalog,
+            P8ClientResourceIndex resources,
+            long connectionGeneration,
+            long worldGeneration,
+            long resourceGeneration);
 
-    static P8ClientPresentationHandoffResult offerUnavailable(
+    abstract void publishCatalog(P8ClientPreparedCatalog preparedCatalog);
+
+    abstract void onClientTick(
+            long connectionGeneration,
+            long worldGeneration,
+            long resourceGeneration,
+            long catalogGeneration);
+
+    abstract P8ClientPresentationHandoffResult present(
             PresentationEventPayload payload,
             P8ProfileCatalogSnapshot catalog,
-            P8ClientResourceIndex resources) {
+            P8ClientResourceIndex resources,
+            long connectionGeneration,
+            long worldGeneration,
+            long resourceGeneration);
+
+    abstract void clearActive();
+
+    abstract void clearActiveForCatalogReplacement();
+
+    abstract void clearAll();
+}
+
+abstract class P8ClientPreparedCatalog {}
+
+final class UnavailableP8ClientPresentationExecution
+        extends P8ClientPresentationExecutionPort {
+    static final UnavailableP8ClientPresentationExecution INSTANCE =
+            new UnavailableP8ClientPresentationExecution();
+
+    private UnavailableP8ClientPresentationExecution() {}
+
+    @Override
+    P8ClientPreparedCatalog prepareCatalog(
+            P8ProfileCatalogSnapshot catalog,
+            P8ClientResourceIndex resources,
+            long connectionGeneration,
+            long worldGeneration,
+            long resourceGeneration) {
+        Objects.requireNonNull(catalog, "catalog");
+        Objects.requireNonNull(resources, "resources");
+        return UnavailableP8ClientPreparedCatalog.INSTANCE;
+    }
+
+    @Override
+    void publishCatalog(P8ClientPreparedCatalog preparedCatalog) {}
+
+    @Override
+    void onClientTick(
+            long connectionGeneration,
+            long worldGeneration,
+            long resourceGeneration,
+            long catalogGeneration) {}
+
+    @Override
+    P8ClientPresentationHandoffResult present(
+            PresentationEventPayload payload,
+            P8ProfileCatalogSnapshot catalog,
+            P8ClientResourceIndex resources,
+            long connectionGeneration,
+            long worldGeneration,
+            long resourceGeneration) {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(catalog, "catalog");
         Objects.requireNonNull(resources, "resources");
-        return P8ClientPresentationHandoffResult.S5_UNAVAILABLE;
+        return P8ClientPresentationHandoffResult.UNAVAILABLE;
     }
+
+    @Override
+    void clearActive() {}
+
+    @Override
+    void clearActiveForCatalogReplacement() {}
+
+    @Override
+    void clearAll() {}
+}
+
+final class UnavailableP8ClientPreparedCatalog extends P8ClientPreparedCatalog {
+    static final UnavailableP8ClientPreparedCatalog INSTANCE =
+            new UnavailableP8ClientPreparedCatalog();
+
+    private UnavailableP8ClientPreparedCatalog() {}
+
 }

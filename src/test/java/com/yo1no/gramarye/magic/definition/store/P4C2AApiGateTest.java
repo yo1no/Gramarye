@@ -97,7 +97,12 @@ class P4C2AApiGateTest {
                 .toList();
         var attachmentId = manaBridge.getDeclaredMethod("attachmentId");
         var attachmentType = manaBridge.getDeclaredMethod("attachmentType");
+        var p8ClientRegistryOwners = Set.of(
+                "com/yo1no/gramarye/GramaryeClient.java",
+                "com/yo1no/gramarye/magic/api/registry/"
+                        + "P8BuiltInClientProfileFactories.java");
         var registryMutationOwners = production.stream()
+                .filter(path -> !p8ClientRegistryOwners.contains(relative(path)))
                 .filter(path -> {
                     var source = withoutCommentsAndLiterals(read(path));
                     return source.contains("DeferredRegister<AttachmentType<?>>")
@@ -155,9 +160,13 @@ class P4C2AApiGateTest {
                         relativeFilesContaining(production, ".copyOnDeath()")),
                 () -> assertEquals(Set.of(manaDefinitionRelative),
                         relativeFilesContaining(production, ".copyHandler(")),
-                () -> assertTrue(relativeFilesContaining(production, "RegisterEvent").isEmpty()),
-                () -> assertTrue(
-                        relativeFilesContaining(production, "event.register(").isEmpty()),
+                () -> assertEquals(
+                        Set.of("com/yo1no/gramarye/magic/api/registry/"
+                                + "P8BuiltInClientProfileFactories.java"),
+                        relativeFilesContaining(production, "RegisterEvent")),
+                () -> assertEquals(
+                        p8ClientRegistryOwners,
+                        relativeFilesContaining(production, "event.register(")),
                 () -> assertTrue(registryMutationFragments.stream()
                         .noneMatch(manaDefinition::contains)),
                 () -> assertTrue(bridgeForbiddenFragments.stream()

@@ -585,7 +585,17 @@ verify_b2_build_contracts() {
         "p4E0R2QConfiguredFormalRunNames.contains(name)" \
         "? p4E0ResearchMod" \
         ": name == 'p8S2ReloadGameTestServer'" \
-        "? p8S2GameTestMod : productionMod" \
+        "? p8S2GameTestMod" \
+        ": name == 'p8S5ClientRuntimeHarness'" \
+        "? p8S5ClientHarnessMod : productionMod" \
+        "sourceSets.create('p8S5ClientHarness')" \
+        "tasks.register('prepareP8S5ClientRuntimeHarness', Delete)" \
+        "mods.named('p8S5ClientRuntimeHarness')" \
+        "tasks.named('runP8S5ClientRuntimeHarness', JavaExec)" \
+        "tasks.register('verifyP8S5ClientRuntimeResultParser')" \
+        'dependsOn(verifyP8S5ClientRuntimeResultParser)' \
+        "tasks.named(p8S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
+        "add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)" \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)' \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)' \
         'add(p4B2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)' \
@@ -604,6 +614,12 @@ verify_b2_build_contracts() {
             "${literal}" \
             "P4-B2-B configuration check missing ${literal} in build.gradle"
     done
+    require_ere_count build.gradle \
+        'tasks\.named\(p8S5ClientHarnessSourceSet\.classesTaskName\)' 2 \
+        'P8-S5 harness classes must remain in both the run and required test paths'
+    require_ere_count build.gradle \
+        'verifyP8S5ClientRuntimeResultParser' 4 \
+        'P8-S5 parser task must remain bound to its definition, run, and required test paths'
     forbid_fixed \
         build.gradle \
         "name.startsWith('p4E0R2QCase')" \
@@ -1000,6 +1016,11 @@ verify_b2_sources_and_outputs() {
     local p7_network_handler='src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java'
     local p7_sync='src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java'
     local p7_lifecycle='src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java'
+    local p8_client_state='src/main/java/com/yo1no/gramarye/P8ClientPresentationState.java'
+    local p8_client_execution='src/main/java/com/yo1no/gramarye/P8ClientPresentationExecution.java'
+    local p8_client_lifecycle='src/main/java/com/yo1no/gramarye/P8ClientPresentationLifecycle.java'
+    local p8_client_renderer='src/main/java/com/yo1no/gramarye/P8ClientTrailRenderer.java'
+    local p8_client_backend='src/main/java/com/yo1no/gramarye/MinecraftP8ClientPresentationBackend.java'
 
     PRODUCTION_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-b2-production.XXXXXX")" \
         || fail 'P4-B2-B verifier could not create its production source list'
@@ -1200,7 +1221,11 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p7_network_handler}" \
                 || "${source}" == "${p7_sync}" \
                 || "${source}" == "${p7_lifecycle}" \
-                || "${source}" == 'src/main/java/com/yo1no/gramarye/P8ClientPresentationState.java' \
+                || "${source}" == "${p8_client_state}" \
+                || "${source}" == "${p8_client_execution}" \
+                || "${source}" == "${p8_client_lifecycle}" \
+                || "${source}" == "${p8_client_renderer}" \
+                || "${source}" == "${p8_client_backend}" \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]] \
@@ -1293,6 +1318,39 @@ verify_b2_sources_and_outputs() {
         forbid_ere "${source}" 'catch[[:space:]]*\([^)]*Throwable' \
             'P7 transport/lifecycle must not catch Throwable'
     done
+    require_ere_count "${p8_client_state}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 15 \
+        'P8 client state must contain exactly its fifteen reviewed Error catches'
+    require_ere_count "${p8_client_execution}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 31 \
+        'P8 client execution must contain exactly its thirty-one reviewed Error catches'
+    require_ere_count "${p8_client_lifecycle}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 4 \
+        'P8 client lifecycle must contain exactly its four reviewed Error catches'
+    require_ere_count "${p8_client_renderer}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 3 \
+        'P8 client renderer must contain exactly its three reviewed Error catches'
+    require_ere_count "${p8_client_backend}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 2 \
+        'P8 client backend must contain exactly its two reviewed Error catches'
+    require_ere_count "${p8_client_lifecycle}" \
+        'P8ClientTrailRenderer\.render\(snapshot, event\);' 1 \
+        'P8 client lifecycle must invoke the actual trail renderer exactly once'
+    require_ere_count "${p8_client_renderer}" \
+        'buffers\.endBatch\(renderType\);' 2 \
+        'P8 trail renderer must retain one normal and one cleanup batch termination'
+    require_ere_count "${p8_client_renderer}" \
+        'batchAttempted = true;' 1 \
+        'P8 trail renderer must mark its exact normal batch-attempt boundary'
+    for source in \
+        "${p8_client_state}" \
+        "${p8_client_execution}" \
+        "${p8_client_lifecycle}" \
+        "${p8_client_renderer}" \
+        "${p8_client_backend}"; do
+        forbid_ere "${source}" 'catch[[:space:]]*\([^)]*Throwable' \
+            'P8 client execution/lifecycle owners must not catch Throwable'
+    done
 
     for class_name in \
         P4B2ProbeSummary \
@@ -1360,11 +1418,13 @@ verify_production_jar_isolation() {
             'P4D3' \
             'p4D3Probe' \
             'p4D3GameTest' \
-            'gramarye_p4_d3'; do
+            'gramarye_p4_d3' \
+            'com/yo1no/gramarye/P8S5ClientRuntimeHarness.class' \
+            'com/yo1no/gramarye/P8S5ClientRuntimeHarness$'; do
             forbid_fixed \
                 "${JAR_LISTING}" \
                 "${literal}" \
-                "P4-A3/P4-B2-B probe classes or resources leaked into ${jar_path} (${literal})"
+                "test/probe/client-harness classes or resources leaked into ${jar_path} (${literal})"
         done
         require_fixed \
             "${JAR_LISTING}" \

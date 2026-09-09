@@ -10,7 +10,7 @@ fail() {
     exit 1
 }
 
-for required_tool in bash grep find git jar mktemp rm dirname pwd sed; do
+for required_tool in bash grep find git jar mktemp rm dirname pwd sed wc; do
     command -v "${required_tool}" >/dev/null 2>&1 \
         || fail "P4-E0-R1 verifier cannot find required tool: ${required_tool}"
 done
@@ -843,6 +843,71 @@ is_approved_p8_s4_test_path() {
     esac
 }
 
+is_approved_p8_s5_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/MinecraftP8ClientPresentationBackend.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPresentationExecution.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientTrailRenderer.java | \
+        src/main/java/com/yo1no/gramarye/client/presentation/api/ClientProfileFactories.java | \
+        src/main/java/com/yo1no/gramarye/client/presentation/api/ClientProfileFactory.java | \
+        src/main/java/com/yo1no/gramarye/client/presentation/api/ClientProfileFactoryRegistration.java | \
+        src/main/java/com/yo1no/gramarye/magic/api/registry/P8BuiltInClientProfileFactories.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p8_s5_resource_path() {
+    [[ "$1" == 'src/main/resources/META-INF/accesstransformer.cfg' ]]
+}
+
+is_approved_p8_s5_test_path() {
+    case "$1" in
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationExecutionTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationStateConcurrencyTest.java | \
+        src/test/java/com/yo1no/gramarye/client/presentation/api/ClientProfileApiTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/api/registry/P8BuiltInClientProfileFactoriesTest.java | \
+        src/p8S5ClientHarness/java/com/yo1no/gramarye/P8S5ClientRuntimeHarness.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+verify_p8_s5_access_transformer() {
+    local resource='src/main/resources/META-INF/accesstransformer.cfg'
+    local expected='public net.minecraft.client.particle.ParticleEngine spriteSets'
+    local bytes=''
+    local lines=''
+    local matches=0
+    local status=0
+
+    require_regular_file "${resource}" 'P8-S5 access transformer is missing or not regular'
+    [[ ! -L "${resource}" ]] || fail 'P8-S5 access transformer must not be a symlink'
+    bytes="$(LC_ALL=C wc -c < "${resource}")" \
+        || fail 'wc failed while checking P8-S5 access-transformer bytes'
+    lines="$(LC_ALL=C wc -l < "${resource}")" \
+        || fail 'wc failed while checking P8-S5 access-transformer lines'
+    matches="$(LC_ALL=C grep -Fxc -- "${expected}" "${resource}")" || status=$?
+    case "${status}" in
+        0) ;;
+        1) matches=0 ;;
+        *) fail "grep failed while checking ${resource} (exit ${status})" ;;
+    esac
+    [[ "${bytes}" -eq 63 && "${lines}" -eq 1 && "${matches}" -eq 1 ]] \
+        || fail 'P8-S5 access transformer must be the exact one-line 63-byte ParticleEngine spriteSets rule'
+    is_approved_p8_s5_resource_path "${resource}" \
+        || fail 'P8-S5 resource allowlist rejected its exact access transformer'
+    if is_approved_p8_s5_resource_path "${resource}.extra"; then
+        fail 'P8-S5 resource allowlist accepted a prefix-near access-transformer path'
+    fi
+}
+
 is_approved_p8_s3_test_changed_path() {
     case "$1" in
         src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
@@ -870,6 +935,9 @@ is_reviewed_changed_path() {
     is_approved_p8_s4_production_path "$1" && return 0
     is_approved_p8_s3_test_changed_path "$1" && return 0
     is_approved_p8_s4_test_path "$1" && return 0
+    is_approved_p8_s5_production_path "$1" && return 0
+    is_approved_p8_s5_resource_path "$1" && return 0
+    is_approved_p8_s5_test_path "$1" && return 0
     case "$1" in
         build.gradle | \
         scripts/verify-p4-b2-b-configuration.sh | \
@@ -951,11 +1019,13 @@ verify_prohibited_paths_unchanged() {
     local status=0
     git diff --quiet HEAD -- \
         src/main/resources \
+        ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
         docs/codex-spec \
         gradle.properties \
         || fail 'P4-E0-R1 modified production resource, authority, or version truth'
     untracked="$(git ls-files --others --exclude-standard -- \
-        src/main/resources docs/codex-spec)" || status=$?
+        src/main/resources docs/codex-spec \
+        ':(exclude)src/main/resources/META-INF/accesstransformer.cfg')" || status=$?
     [[ "${status}" -eq 0 ]] || fail 'git failed while checking prohibited untracked paths'
     [[ -z "${untracked}" ]] \
         || fail "P4-E0-R1 added a prohibited untracked path: ${untracked}"
@@ -1162,10 +1232,26 @@ verify_build_contract() {
         "name == 'p4E0R2QDedicatedSmoke'" \
         '? p4E0ResearchMod' \
         ": name == 'p8S2ReloadGameTestServer'" \
-        '? p8S2GameTestMod : productionMod'; do
+        '? p8S2GameTestMod' \
+        ": name == 'p8S5ClientRuntimeHarness'" \
+        '? p8S5ClientHarnessMod : productionMod' \
+        "sourceSets.create('p8S5ClientHarness')" \
+        "tasks.register('prepareP8S5ClientRuntimeHarness', Delete)" \
+        "mods.named('p8S5ClientRuntimeHarness')" \
+        "tasks.named('runP8S5ClientRuntimeHarness', JavaExec)" \
+        "tasks.register('verifyP8S5ClientRuntimeResultParser')" \
+        'dependsOn(verifyP8S5ClientRuntimeResultParser)' \
+        "tasks.named(p8S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
+        "add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
         require_fixed scripts/verify-p4-b2-b-configuration.sh "${marker}" \
             "P4-E0-R1 exact B2 runtime allowlist is missing ${marker}"
     done
+    require_fixed_count build.gradle \
+        'tasks.named(p8S5ClientHarnessSourceSet.classesTaskName)' 2 \
+        'P8-S5 harness classes escaped the exact run plus required-test topology'
+    require_fixed_count build.gradle \
+        'verifyP8S5ClientRuntimeResultParser' 4 \
+        'P8-S5 result parser escaped its exact definition/run/test topology'
     forbid_fixed build.gradle "name.startsWith('p4E0R2QCase')" \
         'P4-E0-R2Q formal cases must use exact generated loaded-mod membership'
     forbid_fixed build.gradle "name.startsWith('p4E0R2Q')" \
@@ -1709,6 +1795,7 @@ verify_jar_isolation() {
 main() {
     local executable=''
     verify_search_helpers
+    verify_p8_s5_access_transformer
     require_regular_file build.gradle 'P4-E0-R1 verifier cannot inspect build.gradle'
     require_regular_file .github/workflows/build.yml \
         'P4-E0-R1 verifier cannot inspect the workflow'

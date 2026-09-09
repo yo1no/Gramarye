@@ -209,6 +209,13 @@ def p4E0ResearchSourceSet = sourceSets.create('p4E0Research')
 def p4E0ResearchGameTestSourceSet = sourceSets.create('p4E0ResearchGameTest')
 // P8-S2's global-reload negative control is process-isolated and never packaged.
 def p8S2GameTestSourceSet = sourceSets.create('p8S2GameTest')
+// P8-S5's actual-client qualification harness is process-isolated and never packaged.
+def p8S5ClientHarnessSourceSet = sourceSets.create('p8S5ClientHarness')
+def p8S5ClientHarnessJvmArgs = [
+        '-Xms512m',
+        '-Xmx1536m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
 def p4B2FixedHeapJvmArgs = [
         '-Xms512m',
         '-Xmx1024m',
@@ -540,6 +547,33 @@ def p8S2ReloadGameDirectory =
 def prepareP8S2ReloadGameTest = tasks.register('prepareP8S2ReloadGameTest', Delete) {
     delete(p8S2ReloadGameDirectory)
 }
+def p8S5ClientRuntimeRoot = layout.buildDirectory.dir('p8-s5-client-runtime')
+def p8S5ClientRuntimeGameDirectory = p8S5ClientRuntimeRoot.map { it.dir('game') }
+def p8S5ClientRuntimeResult = p8S5ClientRuntimeRoot.map { it.file('result.txt') }
+def p8S5ClientRuntimeExpectedMarkers = [
+        '01 STARTUP_FACTORIES_AND_PRODUCTION_BACKEND_OK',
+        '02 FRESH_FIXED_SEED_WORLD_REQUESTED',
+        '03 WORLD_CONNECTION_RESOURCE_AND_CATALOG_READY',
+        '04 FIRST_EVENT_SERVER_PLAY_PACKET_SUBMITTED',
+        '05 FIRST_EVENT_S4_TO_S5_FACTORY_BACKEND_EXECUTED',
+        '06 FIRST_PLAY_SOUND_EVENT_OBSERVED',
+        '07 FIRST_PARTICLE_ENGINE_COUNT_OBSERVED',
+        '08 FIRST_AFTER_PARTICLES_RENDER_OBSERVED',
+        '09 CLIENT_RESOURCE_RELOAD_REQUESTED',
+        '10 CLIENT_RESOURCE_RELOAD_CLEANUP_AND_REBIND_OBSERVED',
+        '11 SECOND_EVENT_SERVER_PLAY_PACKET_SUBMITTED',
+        '12 SECOND_EVENT_S4_TO_S5_FACTORY_BACKEND_EXECUTED',
+        '13 SECOND_PLAY_SOUND_EVENT_OBSERVED',
+        '14 SECOND_PARTICLE_ENGINE_COUNT_OBSERVED',
+        '15 SECOND_AFTER_PARTICLES_RENDER_OBSERVED',
+        '16 DISCONNECT_REQUESTED',
+        '17 DISCONNECT_CONNECTION_WORLD_AND_ACTIVE_CLEANUP_OBSERVED',
+        '18 TERMINAL_PASS',
+]
+def prepareP8S5ClientRuntimeHarness =
+        tasks.register('prepareP8S5ClientRuntimeHarness', Delete) {
+    delete(p8S5ClientRuntimeRoot)
+}
 
 neoForge {
     // Specify the version of NeoForge to use.
@@ -559,6 +593,7 @@ neoForge {
     addModdingDependenciesTo(p4E0ResearchSourceSet)
     addModdingDependenciesTo(p4E0ResearchGameTestSourceSet)
     addModdingDependenciesTo(p8S2GameTestSourceSet)
+    addModdingDependenciesTo(p8S5ClientHarnessSourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -626,6 +661,13 @@ neoForge {
             sourceSet(sourceSets.main)
             sourceSet(p8S2GameTestSourceSet)
         }
+
+        // One finite actual-client runtime cohort. It shares the production mod identity while
+        // retaining its observer/controller class outside main and the production JAR.
+        p8S5ClientRuntimeHarness {
+            sourceSet(sourceSets.main)
+            sourceSet(p8S5ClientHarnessSourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
@@ -637,6 +679,7 @@ neoForge {
     def p4E3GameTestMod = mods.named('p4E3GameTestHarness').get()
     def p4E0ResearchMod = mods.named('p4E0ResearchHarness').get()
     def p8S2GameTestMod = mods.named('p8S2ReloadHarness').get()
+    def p8S5ClientHarnessMod = mods.named('p8S5ClientRuntimeHarness').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -1127,6 +1170,18 @@ neoForge {
             taskBefore(tasks.named(p8S2GameTestSourceSet.classesTaskName))
         }
 
+        p8S5ClientRuntimeHarness {
+            client()
+            sourceSet = p8S5ClientHarnessSourceSet
+            gameDirectory = p8S5ClientRuntimeGameDirectory.get().asFile
+            systemProperty 'gramarye.p8s5.clientHarnessResult',
+                    p8S5ClientRuntimeResult.get().asFile.absolutePath
+            jvmArguments.addAll(p8S5ClientHarnessJvmArgs)
+            disableIdeRun()
+            taskBefore(prepareP8S5ClientRuntimeHarness)
+            taskBefore(tasks.named(p8S5ClientHarnessSourceSet.classesTaskName))
+        }
+
         p4E0R2QFormalCaseIndices.each { formalCaseIndex ->
                 def formalCaseToken = String.format(
                         java.util.Locale.ROOT, '%02d', formalCaseIndex)
@@ -1249,7 +1304,9 @@ neoForge {
                             || p4E0R2QConfiguredFormalRunNames.contains(name))
                             ? p4E0ResearchMod
                             : name == 'p8S2ReloadGameTestServer'
-                                    ? p8S2GameTestMod : productionMod])
+                                    ? p8S2GameTestMod
+                                    : name == 'p8S5ClientRuntimeHarness'
+                                            ? p8S5ClientHarnessMod : productionMod])
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -1289,6 +1346,89 @@ if (p4E0R2QConfiguredFormalRunNames
 // The dedicated-server smoke harness sends the normal `stop` command through stdin.
 tasks.named('runServer', JavaExec).configure {
     standardInput = System.in
+}
+
+def validateP8S5ClientRuntimeResultLines = { List<String> resultLines ->
+    if (resultLines.size() != p8S5ClientRuntimeExpectedMarkers.size() + 2
+            || resultLines.first() != 'P8-S5-CLIENT-RUNTIME-HARNESS-V1'
+            || resultLines.last() != 'RESULT=PASS') {
+        throw new GradleException(
+                'P8-S5 client runtime harness result envelope is incomplete')
+    }
+    p8S5ClientRuntimeExpectedMarkers.eachWithIndex { expected, index ->
+        def actual = resultLines[index + 1]
+        if (actual != expected && !actual.startsWith(expected + ' ')) {
+            throw new GradleException(
+                    "P8-S5 client runtime marker ${index + 1} is not exact")
+        }
+    }
+}
+def verifyP8S5ClientRuntimeResultParser =
+        tasks.register('verifyP8S5ClientRuntimeResultParser') {
+    group = 'verification'
+    description = 'Preflights the finite P8-S5 actual-client result parser without a client.'
+    doLast {
+        def accepted = ['P8-S5-CLIENT-RUNTIME-HARNESS-V1']
+        p8S5ClientRuntimeExpectedMarkers.eachWithIndex { expected, index ->
+            accepted << (index % 2 == 0 ? expected : expected + ' detail=preflight')
+        }
+        accepted << 'RESULT=PASS'
+        validateP8S5ClientRuntimeResultLines(accepted)
+
+        def requireRejected = { String mutation, Closure<?> change ->
+            def candidate = new ArrayList<String>(accepted)
+            change(candidate)
+            def rejected = false
+            try {
+                validateP8S5ClientRuntimeResultLines(candidate)
+            } catch (GradleException ignored) {
+                rejected = true
+            }
+            if (!rejected) {
+                throw new GradleException(
+                        "P8-S5 result parser accepted ${mutation}")
+            }
+        }
+        requireRejected('a marker-prefix collision') { candidate ->
+            candidate[1] = candidate[1] + '-collision'
+        }
+        requireRejected('an out-of-order marker') { candidate ->
+            def replacement = candidate[1]
+            candidate[1] = candidate[2]
+            candidate[2] = replacement
+        }
+        requireRejected('an extra result line') { candidate ->
+            candidate.add(candidate.size() - 1, 'EXTRA')
+        }
+        requireRejected('a non-PASS terminal') { candidate ->
+            candidate[candidate.size() - 1] = 'RESULT=FAIL'
+        }
+    }
+}
+
+tasks.named('runP8S5ClientRuntimeHarness', JavaExec).configure {
+    dependsOn(verifyP8S5ClientRuntimeResultParser)
+    timeout.set(java.time.Duration.ofMinutes(10))
+    doLast {
+        def resultFile = p8S5ClientRuntimeResult.get().asFile
+        if (!resultFile.isFile()) {
+            throw new GradleException(
+                    'P8-S5 client runtime harness did not write its result')
+        }
+        if (resultFile.length() < 1L || resultFile.length() > 16_384L) {
+            throw new GradleException(
+                    'P8-S5 client runtime harness result exceeded its fixed file bound')
+        }
+        def resultLines = resultFile.readLines('UTF-8')
+        validateP8S5ClientRuntimeResultLines(resultLines)
+    }
+}
+
+// Full unit/check paths compile the isolated harness without executing a graphical client.
+tasks.named('test').configure {
+    dependsOn(
+            tasks.named(p8S5ClientHarnessSourceSet.classesTaskName),
+            verifyP8S5ClientRuntimeResultParser)
 }
 
 // Sets up a dependency configuration called 'localRuntime'.
@@ -1361,6 +1501,7 @@ dependencies {
     add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, p4E0ResearchSourceSet.output)
     add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, commonsCompressCoordinate)
     add(p8S2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
     testImplementation p4C2ProbeSourceSet.output
@@ -3423,6 +3564,9 @@ tasks.named(p4E0ResearchSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p8S2GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p8S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4E0ResearchGameTestSourceSet.compileJavaTaskName, JavaCompile).configure {

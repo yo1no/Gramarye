@@ -161,7 +161,8 @@ final class P8PayloadCodecSupport {
                     throw malformed("Profile configuration version is outside its bound");
                 }
                 Optional<String> retainedJson = Optional.empty();
-                Optional<ProfileConfiguration> decodedConfiguration = Optional.empty();
+                Optional<P8DecodedProfileConfiguration<?>> decodedConfiguration =
+                        Optional.empty();
                 var localType = profileTypes.getOptional(typeId);
                 if (localType.isPresent()
                         && matchesKnownType(
@@ -569,7 +570,7 @@ final class P8PayloadCodecSupport {
     }
 
     private static <C extends ProfileConfiguration>
-            Optional<ProfileConfiguration> decodeKnownConfiguration(
+            Optional<P8DecodedProfileConfiguration<?>> decodeKnownConfiguration(
                     ProfileType<C> type,
                     JsonObject configuration) {
         Objects.requireNonNull(type, "type");
@@ -584,8 +585,10 @@ final class P8PayloadCodecSupport {
         if (!validation.isValid()) {
             return Optional.empty();
         }
-        Objects.requireNonNull(type.estimateCost(value), "Profile estimated cost");
-        return Optional.of(value);
+        var estimatedCost = Objects.requireNonNull(
+                type.estimateCost(value), "Profile estimated cost");
+        return Optional.of(new P8DecodedProfileConfiguration<>(
+                type, value, estimatedCost));
     }
 
     private static void writeSelection(

@@ -11,13 +11,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.presentation.api.ProfileChannel;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
+import java.util.AbstractMap;
+import java.util.AbstractSet;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
@@ -288,18 +294,18 @@ final class P8ClientPresentationStateTest {
                 "prepare",
                 ResourceManager.class,
                 net.minecraft.util.profiling.ProfilerFiller.class);
+        var preparedType = prepare.getReturnType();
         var apply = listenerType.getDeclaredMethod(
                 "apply",
-                P8ClientResourceIndex.class,
+                preparedType,
                 ResourceManager.class,
                 net.minecraft.util.profiling.ProfilerFiller.class);
         prepare.setAccessible(true);
         apply.setAccessible(true);
 
-        var prepared = assertInstanceOf(
-                P8ClientResourceIndex.class,
-                prepare.invoke(
-                        listener, ResourceManager.Empty.INSTANCE, InactiveProfiler.INSTANCE));
+        var prepared = prepare.invoke(
+                listener, ResourceManager.Empty.INSTANCE, InactiveProfiler.INSTANCE);
+        assertInstanceOf(preparedType, prepared);
         assertAll(
                 () -> assertEquals(0L, state.resourceGeneration()),
                 () -> assertFalse(state.resourceReady()));
@@ -330,6 +336,103 @@ final class P8ClientPresentationStateTest {
                 () -> new P8ClientResourceIndex(List.of(
                         ResourceLocation.fromNamespaceAndPath(
                                 "a", "x".repeat(128)))));
+    }
+
+    @Test
+    void resourceListenerInspectsOnlyTheFirstTwoHundredFiftySixLexicalIds()
+            throws ReflectiveOperationException {
+        var state = new P8ClientPresentationState(() -> true);
+        var listenerType = Arrays.stream(P8ClientPresentationLifecycle.class
+                        .getDeclaredClasses())
+                .filter(type -> type.getSimpleName().equals("P8ResourceReloadListener"))
+                .findFirst()
+                .orElseThrow();
+        var constructor = listenerType.getDeclaredConstructor(
+                P8ClientPresentationState.class);
+        constructor.setAccessible(true);
+        var listener = constructor.newInstance(state);
+        var prepare = listenerType.getDeclaredMethod(
+                "prepare",
+                ResourceManager.class,
+                net.minecraft.util.profiling.ProfilerFiller.class);
+        prepare.setAccessible(true);
+
+        var discoveredIds = new ArrayList<ResourceLocation>(300);
+        for (var index = 0; index < 300; index++) {
+            var id = ResourceLocation.fromNamespaceAndPath(
+                    "fixture", String.format(Locale.ROOT, "resource_%03d", index));
+            discoveredIds.add(id);
+        }
+        var expected = List.copyOf(discoveredIds.subList(
+                0, PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES));
+        var inspected = new int[1];
+        Map<ResourceLocation, Object> discovered = new AbstractMap<>() {
+            @Override
+            public Set<Entry<ResourceLocation, Object>> entrySet() {
+                throw new AssertionError("resource entries must not be inspected");
+            }
+
+            @Override
+            public Set<ResourceLocation> keySet() {
+                return new AbstractSet<>() {
+                    @Override
+                    public Iterator<ResourceLocation> iterator() {
+                        var delegate = discoveredIds.iterator();
+                        return new Iterator<>() {
+                            @Override
+                            public boolean hasNext() {
+                                return delegate.hasNext();
+                            }
+
+                            @Override
+                            public ResourceLocation next() {
+                                inspected[0]++;
+                                if (inspected[0]
+                                        > PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES) {
+                                    throw new AssertionError(
+                                            "resource listener inspected beyond its fixed cap");
+                                }
+                                return delegate.next();
+                            }
+                        };
+                    }
+
+                    @Override
+                    public int size() {
+                        return discoveredIds.size();
+                    }
+                };
+            }
+
+            @Override
+            public int size() {
+                return discoveredIds.size();
+            }
+        };
+        var resourceManager = ResourceManager.class.cast(Proxy.newProxyInstance(
+                ResourceManager.class.getClassLoader(),
+                new Class<?>[] {ResourceManager.class},
+                (proxy, method, arguments) -> {
+                    if (method.getName().equals("listResources")) {
+                        return discovered;
+                    }
+                    throw new AssertionError("unexpected ResourceManager call: " + method);
+                }));
+
+        var prepared = prepare.invoke(
+                listener, resourceManager, InactiveProfiler.INSTANCE);
+        var indexAccessor = prepared.getClass().getDeclaredMethod("index");
+        indexAccessor.setAccessible(true);
+        var retained = (P8ClientResourceIndex) indexAccessor.invoke(prepared);
+        assertAll(
+                () -> assertEquals(expected, retained.resourceIds()),
+                () -> assertEquals(
+                        PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES,
+                        inspected[0]),
+                () -> assertTrue(retained.omittedResources()),
+                () -> assertEquals(
+                        PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES,
+                        retained.resourceIds().size()));
     }
 
     @Test

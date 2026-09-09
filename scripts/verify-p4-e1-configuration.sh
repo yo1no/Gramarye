@@ -523,6 +523,71 @@ is_approved_p8_s4_test_path() {
     esac
 }
 
+is_approved_p8_s5_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/MinecraftP8ClientPresentationBackend.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPresentationExecution.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientTrailRenderer.java | \
+        src/main/java/com/yo1no/gramarye/client/presentation/api/ClientProfileFactories.java | \
+        src/main/java/com/yo1no/gramarye/client/presentation/api/ClientProfileFactory.java | \
+        src/main/java/com/yo1no/gramarye/client/presentation/api/ClientProfileFactoryRegistration.java | \
+        src/main/java/com/yo1no/gramarye/magic/api/registry/P8BuiltInClientProfileFactories.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p8_s5_resource_path() {
+    [[ "$1" == 'src/main/resources/META-INF/accesstransformer.cfg' ]]
+}
+
+is_approved_p8_s5_test_path() {
+    case "$1" in
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationExecutionTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationStateConcurrencyTest.java | \
+        src/test/java/com/yo1no/gramarye/client/presentation/api/ClientProfileApiTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/api/registry/P8BuiltInClientProfileFactoriesTest.java | \
+        src/p8S5ClientHarness/java/com/yo1no/gramarye/P8S5ClientRuntimeHarness.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+verify_p8_s5_access_transformer() {
+    local resource='src/main/resources/META-INF/accesstransformer.cfg'
+    local expected='public net.minecraft.client.particle.ParticleEngine spriteSets'
+    local bytes=''
+    local lines=''
+    local matches=0
+    local status=0
+
+    [ -f "$resource" ] || fail 'P8-S5 access transformer is missing or not regular'
+    [ ! -L "$resource" ] || fail 'P8-S5 access transformer must not be a symlink'
+    bytes="$(LC_ALL=C wc -c < "$resource")" \
+        || fail 'wc failed while checking P8-S5 access-transformer bytes'
+    lines="$(LC_ALL=C wc -l < "$resource")" \
+        || fail 'wc failed while checking P8-S5 access-transformer lines'
+    matches="$(LC_ALL=C grep -Fxc -- "$expected" "$resource")" || status=$?
+    case "$status" in
+        0) ;;
+        1) matches=0 ;;
+        *) fail "grep failed while checking $resource (exit $status)" ;;
+    esac
+    [ "$bytes" -eq 63 ] && [ "$lines" -eq 1 ] && [ "$matches" -eq 1 ] \
+        || fail 'P8-S5 access transformer must be the exact one-line 63-byte ParticleEngine spriteSets rule'
+    is_approved_p8_s5_resource_path "$resource" \
+        || fail 'P8-S5 resource allowlist rejected its exact access transformer'
+    if is_approved_p8_s5_resource_path "${resource}.extra"; then
+        fail 'P8-S5 resource allowlist accepted a prefix-near access-transformer path'
+    fi
+}
+
 is_approved_p8_s3_test_changed_path() {
     case "$1" in
         src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
@@ -550,6 +615,9 @@ is_allowed_changed_path() {
     is_approved_p8_s4_production_path "$1" && return 0
     is_approved_p8_s3_test_changed_path "$1" && return 0
     is_approved_p8_s4_test_path "$1" && return 0
+    is_approved_p8_s5_production_path "$1" && return 0
+    is_approved_p8_s5_resource_path "$1" && return 0
+    is_approved_p8_s5_test_path "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \
@@ -707,6 +775,7 @@ verify_changed_paths() {
                     [ ! -x "$candidate" ] \
                         || fail "allowed P4-E3 build/workflow path is executable: $path"
                     ;;
+                src/main/resources/META-INF/accesstransformer.cfg) ;;
                 *.java | *.md) ;;
                 *) fail "allowed E1-A path has an unexpected file type: $path" ;;
             esac
@@ -774,6 +843,13 @@ self_regression() {
     is_allowed_changed_path \
         'src/test/java/com/yo1no/gramarye/P8PresentationRuntimeTest.java' \
         || fail "self-test rejected an exact P8-S3 test path"
+    is_allowed_changed_path \
+        'src/main/resources/META-INF/accesstransformer.cfg' \
+        || fail "self-test rejected the exact P8-S5 access-transformer path"
+    if is_allowed_changed_path \
+            'src/main/resources/META-INF/accesstransformer.cfg.extra'; then
+        fail "self-test accepted a prefix-near P8-S5 access-transformer path"
+    fi
     for approved in \
             'build.gradle' \
             '.github/workflows/build.yml' \
@@ -831,6 +907,7 @@ self_regression() {
     trap - RETURN
 }
 
+verify_p8_s5_access_transformer
 self_regression
 verify_changed_paths
 [ -x "$0" ] || fail "portable verifier is not executable"

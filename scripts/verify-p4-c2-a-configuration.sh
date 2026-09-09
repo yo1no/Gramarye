@@ -221,6 +221,8 @@ verify_exact_sources_and_registration() {
     local mana_definition="${mana_path}/ManaAttachments.java"
     local mana_bridge="${mana_path}/ManaAttachmentDefinitionBridge.java"
     local mana_game_tests="${mana_path}/ManaLifecycleGameTests.java"
+    local p8_client='src/main/java/com/yo1no/gramarye/GramaryeClient.java'
+    local p8_client_factories='src/main/java/com/yo1no/gramarye/magic/api/registry/P8BuiltInClientProfileFactories.java'
     local serialize_line=''
     local death_line=''
 
@@ -347,12 +349,22 @@ verify_exact_sources_and_registration() {
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" '.copyHandler(' "${mana_definition}" '' '' \
         'Attachment copyHandler definition escaped the mana definition owner'
-    forbid_fixed_in_file_list \
-        "${PRODUCTION_SOURCE_LIST}" 'RegisterEvent' \
-        'legacy direct RegisterEvent registry mutation must remain absent'
-    forbid_fixed_in_file_list \
-        "${PRODUCTION_SOURCE_LIST}" 'event.register(' \
-        'legacy direct event.register registry mutation must remain absent'
+    forbid_fixed_outside \
+        "${PRODUCTION_SOURCE_LIST}" 'RegisterEvent' "${p8_client_factories}" '' '' \
+        'RegisterEvent escaped the exact P8 client factory registration owner'
+    require_fixed_count "${p8_client_factories}" 'RegisterEvent' 2 \
+        'P8 client factory registration must retain its exact import and parameter type'
+    require_fixed_count "${p8_client_factories}" \
+        'bus = EventBusSubscriber.Bus.MOD)' 1 \
+        'P8 built-in factory registration must execute on the client mod bus'
+    forbid_fixed_outside \
+        "${PRODUCTION_SOURCE_LIST}" 'event.register(' "${p8_client_factories}" \
+        "${p8_client}" '' \
+        'event.register escaped the exact P8 client registry/factory owners'
+    require_fixed_count "${p8_client_factories}" 'event.register(' 1 \
+        'P8 built-in factory owner must perform exactly one startup registration batch'
+    require_fixed_count "${p8_client}" 'event.register(' 1 \
+        'P8 client bootstrap must register exactly one client factory registry'
     for literal in \
         'DeferredRegister<AttachmentType<?>>' \
         'DeferredHolder' \

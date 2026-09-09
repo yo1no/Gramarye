@@ -20,12 +20,15 @@ final class PresentationLimits {
     static final int MAX_PROFILE_CATALOG_PACKET_CHARGE_BYTES = 491_546;
     static final long MAX_CLIENT_CATALOG_RETAINED_BODY_BYTES = 468_683L;
     static final int MAX_SELECTED_RECIPIENTS = 32;
-    static final double MAX_RECIPIENT_DISTANCE_SQUARED = 4_096.0D;
+    static final int MAX_RECIPIENT_RANGE_BLOCKS = 64;
+    static final double MAX_RECIPIENT_DISTANCE_SQUARED =
+            (double) MAX_RECIPIENT_RANGE_BLOCKS * MAX_RECIPIENT_RANGE_BLOCKS;
 
     static final long MIN_SEQUENCE = 1L;
     static final long MAX_SEQUENCE = Long.MAX_VALUE;
 
     static final int MAX_PROFILE_PARTICLE_STARTS = 256;
+    static final int MAX_PROFILE_TRAIL_SEGMENTS = 48;
     static final int MIN_SAMPLE_INTERVAL_TICKS = 1;
     static final int MAX_SAMPLE_INTERVAL_TICKS = 120;
 
