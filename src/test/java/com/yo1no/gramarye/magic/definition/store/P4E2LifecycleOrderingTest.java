@@ -38,10 +38,12 @@ final class P4E2LifecycleOrderingTest {
         var recovery = withoutCommentsAndLiterals(Files.readString(RECOVERY_SERVICE));
         var production = javaSources(MAIN_JAVA);
         assertAll(
-                () -> assertEquals(1, occurrences(
+                () -> assertEquals(2, occurrences(
                         production, "PlayerEvent.PlayerLoggedInEvent")),
                 () -> assertEquals(
-                        Set.of(relative(RECOVERY_SERVICE)),
+                        Set.of(
+                                relative(RECOVERY_SERVICE),
+                                "com/yo1no/gramarye/P8ServerPresentationService.java"),
                         sourcePathsContaining("PlayerEvent.PlayerLoggedInEvent")),
                 () -> assertEquals(1, occurrences(recovery, "recoverPersistedPlayer(player)")),
                 () -> assertTrue(recovery.indexOf(

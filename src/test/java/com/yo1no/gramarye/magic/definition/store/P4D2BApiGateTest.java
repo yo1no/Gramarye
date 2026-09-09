@@ -220,6 +220,7 @@ final class P4D2BApiGateTest {
                 relativeSourcesContaining("SkillQuota.Unlimited.INSTANCE"));
         assertEquals(Set.of(
                         "DefaultSkillSubmissionPolicyProvider.java",
+                        "P8PayloadCodecSupport.java",
                         "P8ServerPresentationService.java"),
                 relativeSourcesContaining(
                         "new ValidationContext(MagicPolicyLimits.DEFAULTS)"));
@@ -244,10 +245,14 @@ final class P4D2BApiGateTest {
                                 MAIN_JAVA.relativize(path).toString()))
                 .map(P4D2BApiGateTest::read)
                 .collect(Collectors.joining("\n"));
-        assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
+        assertEquals(Set.of(
+                        "P8ServerPresentationService.java",
+                        "SkillSubmissionRecoveryService.java"),
                 relativeSourcesContaining("PlayerLoggedInEvent"));
         assertEquals(
-                Set.of("com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java"),
+                Set.of(
+                        "com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java",
+                        "com/yo1no/gramarye/P8ServerPresentationService.java"),
                 relativeProductionPathsContaining("PlayerLoggedOutEvent"));
         for (var forbidden : List.of(
                 "OfflineRoot",
@@ -262,10 +267,15 @@ final class P4D2BApiGateTest {
                         "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
                         "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
                         "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java",
-                        "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java"),
+                        "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java",
+                        "com/yo1no/gramarye/P8PacketSubmission.java",
+                        "com/yo1no/gramarye/PresentationEventPayload.java",
+                        "com/yo1no/gramarye/ProfileCatalogPayload.java"),
                 relativeProductionPathsContaining("CustomPacketPayload"));
         assertEquals(
-                Set.of("com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java"),
+                Set.of(
+                        "com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java",
+                        "com/yo1no/gramarye/P8PayloadRegistrationBridge.java"),
                 relativeProductionPathsContaining("PayloadRegistrar"));
         assertFalse(mainWithoutReviewedReconciliationOwners.contains("Reconciliation"),
                 "reconciliation escaped the exact E1/E2 owners");

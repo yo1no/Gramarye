@@ -298,6 +298,7 @@ is_approved_p6_s2_r3_changed_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachments.java | \
         src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java | \
         src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
@@ -469,6 +470,61 @@ is_approved_p8_s3_product_path() {
     esac
 }
 
+is_approved_p8_s4_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/GramaryeClient.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPayloadDispatchFactory.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPayloadDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPayloadHandlers.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPresentationLifecycle.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPresentationState.java | \
+        src/main/java/com/yo1no/gramarye/P8PacketSubmission.java | \
+        src/main/java/com/yo1no/gramarye/P8PayloadCodecSupport.java | \
+        src/main/java/com/yo1no/gramarye/P8PayloadRegistrationBridge.java | \
+        src/main/java/com/yo1no/gramarye/P8PresentationRuntime.java | \
+        src/main/java/com/yo1no/gramarye/P8ProfileCatalogEntry.java | \
+        src/main/java/com/yo1no/gramarye/P8ProfileCatalogSnapshot.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerConnectionAuthority.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java | \
+        src/main/java/com/yo1no/gramarye/PresentationEventPayload.java | \
+        src/main/java/com/yo1no/gramarye/PresentationLimits.java | \
+        src/main/java/com/yo1no/gramarye/ProfileCatalogPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p8_s4_test_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S2DedicatedRegistrationTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S2BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPayloadHandlersTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationStateTest.java | \
+        src/test/java/com/yo1no/gramarye/P8PayloadCodecTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S4PayloadBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S4ServerTransportTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ServerConnectionAuthorityTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
@@ -479,6 +535,8 @@ is_reviewed_e1a_production_or_ledger_path() {
     bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1" && return 0
     is_approved_p7_s3_r1_production_path "$1" && return 0
     is_approved_p8_s3_product_path "$1" && return 0
+    is_approved_p8_s4_production_path "$1" && return 0
+    is_approved_p8_s4_test_path "$1" && return 0
     bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "$1" && return 0
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \

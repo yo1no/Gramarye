@@ -200,7 +200,9 @@ final class P4D1ApiGateTest {
                                 MAIN_JAVA.relativize(path).toString()))
                 .map(P4D1ApiGateTest::read)
                 .collect(Collectors.joining("\n"));
-        assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
+        assertEquals(Set.of(
+                        "P8ServerPresentationService.java",
+                        "SkillSubmissionRecoveryService.java"),
                 relativeFilesContaining("PlayerLoggedInEvent"));
         for (var forbidden : List.of(
                 "RootCollector",
@@ -213,10 +215,15 @@ final class P4D1ApiGateTest {
                         "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
                         "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
                         "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java",
-                        "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java"),
+                        "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java",
+                        "com/yo1no/gramarye/P8PacketSubmission.java",
+                        "com/yo1no/gramarye/PresentationEventPayload.java",
+                        "com/yo1no/gramarye/ProfileCatalogPayload.java"),
                 relativeProductionPathsContaining("CustomPacketPayload"));
         assertEquals(
-                Set.of("com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java"),
+                Set.of(
+                        "com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java",
+                        "com/yo1no/gramarye/P8PayloadRegistrationBridge.java"),
                 relativeProductionPathsContaining("PayloadRegistrar"));
         assertFalse(mainWithoutReviewedReconciliationOwners.contains("Reconciliation"),
                 "reconciliation escaped the exact E1/E2 owners");

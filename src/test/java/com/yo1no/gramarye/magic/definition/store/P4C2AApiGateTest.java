@@ -478,10 +478,15 @@ class P4C2AApiGateTest {
                         "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
                         "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
                         "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java",
-                        "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java"),
+                        "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java",
+                        "com/yo1no/gramarye/P8PacketSubmission.java",
+                        "com/yo1no/gramarye/PresentationEventPayload.java",
+                        "com/yo1no/gramarye/ProfileCatalogPayload.java"),
                 relativeFilesContaining(javaSources(MAIN_JAVA), "CustomPacketPayload"));
         assertEquals(
-                Set.of("com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java"),
+                Set.of(
+                        "com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java",
+                        "com/yo1no/gramarye/P8PayloadRegistrationBridge.java"),
                 relativeFilesContaining(javaSources(MAIN_JAVA), "PayloadRegistrar"));
         assertFalse(productionWithoutReviewedReconciliationOwners.contains("Reconciliation"),
                 "reconciliation escaped the exact B2-A/B2-B owners");

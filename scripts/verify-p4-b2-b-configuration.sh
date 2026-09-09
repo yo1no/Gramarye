@@ -1150,7 +1150,11 @@ verify_b2_sources_and_outputs() {
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'CustomPacketPayload' \
-        'CustomPacketPayload escaped the exact P7-S2 payload owner allowlist' \
+        'CustomPacketPayload escaped the exact P7-S2/P8-S4 payload owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/P8PacketSubmission.java' \
+        'src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java' \
+        'src/main/java/com/yo1no/gramarye/PresentationEventPayload.java' \
+        'src/main/java/com/yo1no/gramarye/ProfileCatalogPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
@@ -1160,7 +1164,8 @@ verify_b2_sources_and_outputs() {
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'PayloadRegistrar' \
-        'PayloadRegistrar escaped the exact P7-S2 registrar owner allowlist' \
+        'PayloadRegistrar escaped the exact P7-S2/P8-S4 registrar owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/P8PayloadRegistrationBridge.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java'
     require_fixed \
         'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
@@ -1171,6 +1176,7 @@ verify_b2_sources_and_outputs() {
                 'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+                && "${source}" != 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]]; then
             forbid_fixed "${source}" 'PlayerEvent' \
                 'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
@@ -1194,6 +1200,8 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p7_network_handler}" \
                 || "${source}" == "${p7_sync}" \
                 || "${source}" == "${p7_lifecycle}" \
+                || "${source}" == 'src/main/java/com/yo1no/gramarye/P8ClientPresentationState.java' \
+                || "${source}" == 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]] \
                 || bash scripts/verify-p7-s4-source-contracts.sh \

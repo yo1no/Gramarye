@@ -175,12 +175,14 @@ forbid_fixed_outside() {
     local allowed_three="${5:-}"
     local message="$6"
     local allowed_four="${7:-}"
+    local allowed_five="${8:-}"
     local file=''
     while IFS= read -r -d '' file; do
         if [[ "${file}" == "${allowed_one}" \
                 || ( -n "${allowed_two}" && "${file}" == "${allowed_two}" ) \
                 || ( -n "${allowed_three}" && "${file}" == "${allowed_three}" ) \
-                || ( -n "${allowed_four}" && "${file}" == "${allowed_four}" ) ]]; then
+                || ( -n "${allowed_four}" && "${file}" == "${allowed_four}" ) \
+                || ( -n "${allowed_five}" && "${file}" == "${allowed_five}" ) ]]; then
             continue
         fi
         forbid_fixed "${file}" "${needle}" "${message} (${file})"
@@ -478,7 +480,8 @@ verify_phase_bounds_and_normal_tests() {
         'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
         'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
         'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist' \
-        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java'
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' \
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java'
 
     for literal in \
         "sourceSets.create('p4C2Probe')" \

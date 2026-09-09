@@ -36,16 +36,30 @@ import com.yo1no.gramarye.magic.trigger.type.TriggerPayload;
 import com.yo1no.gramarye.magic.trigger.type.TriggerType;
 import com.yo1no.gramarye.magic.validation.ValidationContext;
 import com.yo1no.gramarye.magic.validation.ValidationResult;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.util.ReferenceCountUtil;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.Connection;
+import net.minecraft.network.ProtocolInfo;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.GameProtocols;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -369,6 +383,521 @@ public final class P8S3PresentationGameTests {
         });
     }
 
+    @GameTest(
+            batch = "p8_s4",
+            templateNamespace = "minecraft",
+            template = "bastion/blocks/air",
+            timeoutTicks = 80)
+    @SuppressWarnings("removal")
+    public static void productionTransportEncodesCatalogBeforePresentationEvent(
+            GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        Connection connection = player.connection.getConnection();
+        EmbeddedChannel channel = (EmbeddedChannel) connection.channel();
+        var service = P8ServerPresentationService.create();
+        try {
+            NetworkRegistry.configureMockConnection(connection);
+            Connection.configureInMemoryPipeline(channel.pipeline(), PacketFlow.SERVERBOUND);
+            ProtocolInfo<ClientGamePacketListener> playProtocol =
+                    GameProtocols.CLIENTBOUND_TEMPLATE.bind(
+                            RegistryFriendlyByteBuf.decorator(
+                                    player.registryAccess(),
+                                    NetworkRegistry.getConnectionType(connection)));
+            connection.setupOutboundProtocol(playProtocol);
+            releaseOutbound(channel);
+
+            service.startForTesting(server, emptyCatalog());
+            helper.assertTrue(service.openConnectionForTesting(player).isPresent(),
+                    "current player must receive one P8 connection epoch");
+            long unreadyTick = server.getTickCount();
+            RuntimeFixture unready = runtimeFixture(
+                    server, player, 1L, unreadyTick, ACTIVE_CAST);
+            helper.assertTrue(service.offerApplied(
+                                    unready.event(), unready.context(), ONE_APPLIED)
+                            == P8PresentationOfferOutcome.DROPPED
+                            && service.bufferedEventsForTesting().isEmpty(),
+                    "an unready production recipient must be dropped before buffering");
+            var initialCatalogDrain = service.drainPresentationForTesting(server);
+
+            EncodedPayload catalog = readOnlyP8Payload(channel, playProtocol);
+            helper.assertTrue(catalog.payload() instanceof ProfileCatalogPayload payload
+                            && payload.catalogGeneration() == 1L
+                            && payload.bodySize()
+                                    == service.activeCatalogBodyBytesForTesting()
+                            && catalog.packetBytes()
+                                    == payload.bodySize()
+                                            + PresentationLimits
+                                                    .PROFILE_CATALOG_PACKET_OVERHEAD_BYTES
+                            && initialCatalogDrain.submissions() == 1
+                            && initialCatalogDrain.chargedBytes() == catalog.packetBytes()
+                            && service.connectionReadyForTesting(player.getUUID()),
+                    "actual PLAY encoder submission must publish and charge the catalog first");
+
+            helper.runAfterDelay(1L, () -> {
+                try {
+                    releaseOutbound(channel);
+                    var noReplayDrain = service.drainPresentationForTesting(server);
+                    helper.assertTrue(noReplayDrain.submissions() == 0
+                                    && noReplayDrain.chargedBytes() == 0L
+                                    && readOnlyP8Payloads(channel, playProtocol).isEmpty(),
+                            "the unready event must not replay after catalog readiness");
+                } catch (RuntimeException | Error failure) {
+                    service.stopForTesting();
+                    server.getPlayerList().remove(player);
+                    channel.finishAndReleaseAll();
+                    throw failure;
+                }
+
+                helper.runAfterDelay(1L, () -> {
+                    boolean passed = false;
+                    String failure = "P8 production event submission did not complete";
+                    try {
+                        releaseOutbound(channel);
+                        long runtimeTick = server.getTickCount();
+                        RuntimeFixture event = runtimeFixture(
+                                server, player, 2L, runtimeTick, ACTIVE_CAST);
+                        if (service.offerApplied(event.event(), event.context(), ONE_APPLIED)
+                                != P8PresentationOfferOutcome.ACCEPTED) {
+                            failure = "actual S3 offer did not enter the production transport";
+                        } else {
+                            service.drainPresentationForTesting(server);
+                            EncodedPayload encodedEvent = readOnlyP8Payload(channel, playProtocol);
+                            if (!(encodedEvent.payload()
+                                    instanceof PresentationEventPayload payload)) {
+                                failure = "actual second submission was not the P8 event payload";
+                            } else if (payload.catalogGeneration() != 1L
+                                    || payload.sequence() != 2L
+                                    || encodedEvent.packetBytes()
+                                            != payload.bodySize()
+                                                    + PresentationLimits
+                                                            .EVENT_PACKET_OVERHEAD_BYTES) {
+                                failure = "actual event payload lost its generation, sequence, or charge";
+                            } else {
+                                var maximumCatalog = maximumConstructibleCatalogPayload();
+                                int measuredMaximumCatalog =
+                                        P8PacketSubmission.measureClientboundPlayPacket(
+                                                player,
+                                                maximumCatalog,
+                                                PresentationLimits
+                                                        .MAX_PROFILE_CATALOG_PACKET_CHARGE_BYTES);
+                                P8PacketSubmission.send(player, maximumCatalog);
+                                var encodedMaximumCatalog =
+                                        readOnlyP8Payload(channel, playProtocol);
+                                var maximumEvent = maximumLegalEventPayload();
+                                int measuredMaximumEvent =
+                                        P8PacketSubmission.measureClientboundPlayPacket(
+                                                player,
+                                                maximumEvent,
+                                                PresentationLimits.MAX_EVENT_PACKET_CHARGE_BYTES);
+                                P8PacketSubmission.send(player, maximumEvent);
+                                var encodedMaximumEvent = readOnlyP8Payload(channel, playProtocol);
+                                passed = maximumCatalog.entries().size()
+                                                == PresentationLimits.MAX_PROFILE_INSTANCES
+                                        && maximumCatalog.bodySize()
+                                                <= PresentationLimits
+                                                        .MAX_CLIENT_CATALOG_RETAINED_BODY_BYTES
+                                        && measuredMaximumCatalog
+                                                == maximumCatalog.bodySize()
+                                                        + PresentationLimits
+                                                                .PROFILE_CATALOG_PACKET_OVERHEAD_BYTES
+                                        && encodedMaximumCatalog.packetBytes()
+                                                == measuredMaximumCatalog
+                                        && encodedMaximumCatalog.payload()
+                                                instanceof ProfileCatalogPayload
+                                        && maximumEvent.bodySize()
+                                                == PresentationLimits.MAX_LEGAL_EVENT_BODY_BYTES
+                                        && measuredMaximumEvent == 926
+                                        && encodedMaximumEvent.packetBytes()
+                                                == measuredMaximumEvent
+                                        && encodedMaximumEvent.payload()
+                                                instanceof PresentationEventPayload;
+                                if (!passed) {
+                                    failure = "maximum legal codec layouts disagreed with actual "
+                                            + "PLAY PacketEncoder charges";
+                                }
+                            }
+                        }
+                    } finally {
+                        service.stopForTesting();
+                        server.getPlayerList().remove(player);
+                        channel.finishAndReleaseAll();
+                    }
+                    if (passed) {
+                        helper.succeed();
+                    } else {
+                        helper.fail(failure);
+                    }
+                });
+            });
+        } catch (RuntimeException | Error failure) {
+            service.stopForTesting();
+            server.getPlayerList().remove(player);
+            channel.finishAndReleaseAll();
+            throw failure;
+        }
+    }
+
+    @GameTest(
+            batch = "p8_s4",
+            templateNamespace = "minecraft",
+            template = "bastion/blocks/air",
+            timeoutTicks = 80)
+    @SuppressWarnings("removal")
+    public static void catalogFailurePoliciesUseActualDrainAndBoundedAccounting(
+            GameTestHelper helper) {
+        MinecraftServer server = helper.getLevel().getServer();
+        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        ServerPlayer secondPlayer = helper.makeMockServerPlayerInLevel();
+        ServerPlayer thirdPlayer = helper.makeMockServerPlayerInLevel();
+        var players = List.of(player, secondPlayer, thirdPlayer);
+        players.forEach(value ->
+                NetworkRegistry.configureMockConnection(value.connection.getConnection()));
+
+        var sendOrder = new ArrayList<String>();
+        var retryEvents = new RecordingTransport(player.getUUID(), sendOrder);
+        var retryCatalog = new ScriptedCatalogTransport(
+                Set.of(),
+                sendOrder,
+                CatalogSubmitMode.READY,
+                CatalogSubmitMode.RUNTIME_EXCEPTION,
+                CatalogSubmitMode.READY);
+        var retryService = new P8ServerPresentationService(retryEvents, retryCatalog);
+        var terminalCatalog = new ScriptedCatalogTransport(
+                Set.of(), new ArrayList<>(), CatalogSubmitMode.RUNTIME_EXCEPTION,
+                CatalogSubmitMode.RUNTIME_EXCEPTION);
+        var terminalService = new P8ServerPresentationService(
+                UnavailableP8PresentationTransport.INSTANCE, terminalCatalog);
+        var errorEvents = new RecordingTransport(player.getUUID());
+        var errorCatalog = new ScriptedCatalogTransport(
+                Set.of(),
+                new ArrayList<>(),
+                CatalogSubmitMode.READY,
+                CatalogSubmitMode.ERROR);
+        var errorService = new P8ServerPresentationService(errorEvents, errorCatalog);
+
+        var orderedPlayers = new ArrayList<>(players);
+        orderedPlayers.sort((left, right) ->
+                compareUnsignedUuid(left.getUUID(), right.getUUID()));
+        UUID unavailablePlayerId = orderedPlayers.getFirst().getUUID();
+        var unavailableCatalog = new ScriptedCatalogTransport(
+                Set.of(unavailablePlayerId),
+                new ArrayList<>(),
+                CatalogSubmitMode.READY,
+                CatalogSubmitMode.READY);
+        var unavailableService = new P8ServerPresentationService(
+                UnavailableP8PresentationTransport.INSTANCE, unavailableCatalog);
+        var services = List.of(
+                retryService, terminalService, errorService, unavailableService);
+
+        try {
+            services.forEach(value -> value.startForTesting(server, emptyCatalog()));
+            helper.assertTrue(retryService.openConnectionForTesting(player).isPresent()
+                            && terminalService.openConnectionForTesting(player).isPresent()
+                            && errorService.openConnectionForTesting(player).isPresent(),
+                    "each service must open its exact initial current connection");
+            for (ServerPlayer current : orderedPlayers) {
+                helper.assertTrue(unavailableService.openConnectionForTesting(current).isPresent(),
+                        "the bounded-preflight service must open every current connection");
+            }
+
+            int packetCharge = Math.addExact(
+                    retryService.activeCatalogBodyBytesForTesting(),
+                    PresentationLimits.PROFILE_CATALOG_PACKET_OVERHEAD_BYTES);
+            var retryInitial = retryService.drainPresentationForTesting(server);
+            var errorInitial = errorService.drainPresentationForTesting(server);
+            var terminalFirst = terminalService.drainPresentationForTesting(server);
+            var unavailableFirst = unavailableService.drainPresentationForTesting(server);
+            helper.assertTrue(retryInitial.submissions() == 1
+                            && retryInitial.chargedBytes() == packetCharge
+                            && retryService.connectionAttemptsForTesting(player.getUUID()) == 1
+                            && retryService.connectionReadyForTesting(player.getUUID())
+                            && errorInitial.submissions() == 1
+                            && errorInitial.chargedBytes() == packetCharge
+                            && errorService.connectionReadyForTesting(player.getUUID())
+                            && terminalFirst.submissions() == 1
+                            && terminalFirst.chargedBytes() == packetCharge
+                            && terminalService.connectionAttemptsForTesting(player.getUUID()) == 1
+                            && !terminalService.connectionReadyForTesting(player.getUUID()),
+                    "initial catalog drains must establish real readiness and the one retry key");
+            helper.assertTrue(unavailableFirst.submissions()
+                                    == PresentationLimits
+                                            .MAX_CATALOG_SUBMISSIONS_PER_SERVER_TICK
+                            && unavailableFirst.chargedBytes()
+                                    == Math.multiplyExact(2L, packetCharge)
+                            && unavailableService.connectionAttemptsForTesting(
+                                            unavailablePlayerId)
+                                    == 0
+                            && !unavailableService.connectionReadyForTesting(
+                                    unavailablePlayerId)
+                            && unavailableCatalog.canSubmitCalls == 3
+                            && unavailableCatalog.packetChargeCalls == 2
+                            && unavailableCatalog.submissionCount == 2
+                            && orderedPlayers.stream()
+                                    .skip(1L)
+                                    .allMatch(current -> unavailableService
+                                                    .connectionAttemptsForTesting(
+                                                            current.getUUID())
+                                            == 1
+                                            && unavailableService.connectionReadyForTesting(
+                                                    current.getUUID())),
+                    "terminal preflight refusal must consume no attempt and must not starve later keys");
+            sendOrder.clear();
+
+            helper.runAfterDelay(1L, () -> {
+                try {
+                    helper.assertTrue(retryService.openConnectionForTesting(secondPlayer).isPresent()
+                                    && errorService.openConnectionForTesting(thirdPlayer).isPresent()
+                                    && retryService.connectionReadyForTesting(player.getUUID())
+                                    && errorService.connectionReadyForTesting(player.getUUID()),
+                            "later catalog keys must not revoke the already-ready event player");
+                    long runtimeTick = server.getTickCount();
+                    RuntimeFixture orderedEvent = runtimeFixture(
+                            server, player, 20L, runtimeTick, ACTIVE_CAST);
+                    RuntimeFixture errorEvent = runtimeFixture(
+                            server, player, 21L, runtimeTick, ACTIVE_CAST);
+                    helper.assertTrue(retryService.offerApplied(
+                                            orderedEvent.event(),
+                                            orderedEvent.context(),
+                                            ONE_APPLIED)
+                                    == P8PresentationOfferOutcome.ACCEPTED
+                                    && errorService.offerApplied(
+                                                    errorEvent.event(),
+                                                    errorEvent.context(),
+                                                    ONE_APPLIED)
+                                            == P8PresentationOfferOutcome.ACCEPTED,
+                            "ready event players must retain both controlled current-tick events");
+
+                    var retryFailure = retryService.drainPresentationForTesting(server);
+                    var terminalSecond = terminalService.drainPresentationForTesting(server);
+                    var unavailableLater = unavailableService.drainPresentationForTesting(server);
+                    Error actualCatalogError = null;
+                    try {
+                        errorService.drainPresentationForTesting(server);
+                    } catch (Error failure) {
+                        actualCatalogError = failure;
+                    }
+                    helper.assertTrue(retryFailure.submissions() == 1
+                                    && retryFailure.chargedBytes() == packetCharge
+                                    && retryService.connectionAttemptsForTesting(
+                                                    secondPlayer.getUUID())
+                                            == 1
+                                    && !retryService.connectionReadyForTesting(
+                                            secondPlayer.getUUID())
+                                    && retryService.connectionReadyForTesting(player.getUUID())
+                                    && retryService.bufferedEventsForTesting().isEmpty()
+                                    && sendOrder.equals(List.of("catalog", "event"))
+                                    && retryEvents.submittedSequences.equals(List.of(1L))
+                                    && retryService.hasRuntimeDiagnosticForTesting(
+                                            P8ServerRuntimeDiagnosticCode
+                                                    .CATALOG_TRANSPORT_RUNTIME_EXCEPTION)
+                                    && terminalSecond.submissions() == 1
+                                    && terminalSecond.chargedBytes() == packetCharge
+                                    && terminalService.connectionAttemptsForTesting(
+                                                    player.getUUID())
+                                            == PresentationLimits
+                                                    .MAX_CATALOG_SUBMISSION_ATTEMPTS
+                                    && !terminalService.connectionReadyForTesting(
+                                            player.getUUID())
+                                    && actualCatalogError == errorCatalog.error
+                                    && errorService.bufferedEventsForTesting().isEmpty()
+                                    && errorService.connectionAttemptsForTesting(
+                                                    thirdPlayer.getUUID())
+                                            == 1
+                                    && !errorService.connectionReadyForTesting(
+                                            thirdPlayer.getUUID())
+                                    && errorService.connectionReadyForTesting(player.getUUID())
+                                    && errorEvents.submitAttempts.isEmpty()
+                                    && unavailableLater.submissions() == 0
+                                    && unavailableLater.chargedBytes() == 0L
+                                    && unavailableCatalog.canSubmitCalls == 3
+                                    && unavailableCatalog.submissionCount == 2,
+                            "actual drain must charge the failure, send catalogs first, and clean Error ownership");
+                } catch (RuntimeException | Error failure) {
+                    stopServicesAndRemovePlayers(server, services, players);
+                    throw failure;
+                }
+
+                helper.runAfterDelay(1L, () -> {
+                    try {
+                        var retrySuccess = retryService.drainPresentationForTesting(server);
+                        var failedTerminal = terminalService.drainPresentationForTesting(server);
+                        var errorTerminal = errorService.drainPresentationForTesting(server);
+                        helper.assertTrue(retrySuccess.submissions() == 1
+                                        && retrySuccess.chargedBytes() == packetCharge
+                                        && retryService.connectionAttemptsForTesting(
+                                                        secondPlayer.getUUID())
+                                                == PresentationLimits
+                                                        .MAX_CATALOG_SUBMISSION_ATTEMPTS
+                                        && retryService.connectionReadyForTesting(
+                                                secondPlayer.getUUID())
+                                        && failedTerminal.submissions() == 0
+                                        && failedTerminal.chargedBytes() == 0L
+                                        && errorTerminal.submissions() == 0
+                                        && errorTerminal.chargedBytes() == 0L
+                                        && retryCatalog.submissionCount == 3
+                                        && terminalCatalog.submissionCount
+                                                == PresentationLimits
+                                                        .MAX_CATALOG_SUBMISSION_ATTEMPTS
+                                        && errorCatalog.submissionCount == 2,
+                                "next-tick success and terminal failures must leave every key bounded");
+                        retryEvents.submitAttempts.clear();
+                        retryEvents.submittedSequences.clear();
+                        retryEvents.submitModes = List.of(
+                                SubmitMode.RUNTIME_EXCEPTION, SubmitMode.NULL_RESULT);
+                    } catch (RuntimeException | Error failure) {
+                        stopServicesAndRemovePlayers(server, services, players);
+                        throw failure;
+                    }
+
+                    helper.runAfterDelay(1L, () -> {
+                        try {
+                            long eventTick = server.getTickCount();
+                            RuntimeFixture runtimeFailureEvent = runtimeFixture(
+                                    server, player, 22L, eventTick, ACTIVE_CAST);
+                            RuntimeFixture nullResultEvent = runtimeFixture(
+                                    server, player, 23L, eventTick, ACTIVE_CAST);
+                            helper.assertTrue(retryService.offerApplied(
+                                                    runtimeFailureEvent.event(),
+                                                    runtimeFailureEvent.context(),
+                                                    ONE_APPLIED)
+                                            == P8PresentationOfferOutcome.ACCEPTED
+                                            && retryService.offerApplied(
+                                                            nullResultEvent.event(),
+                                                            nullResultEvent.context(),
+                                                            ONE_APPLIED)
+                                                    == P8PresentationOfferOutcome.ACCEPTED,
+                                    "the ready service must retain both event-failure fixtures");
+                            NullPointerException nullInvariant = null;
+                            try {
+                                retryService.drainPresentationForTesting(server);
+                            } catch (NullPointerException failure) {
+                                nullInvariant = failure;
+                            }
+                            helper.assertTrue(nullInvariant != null
+                                            && retryEvents.submitAttempts.equals(List.of(2L, 3L))
+                                            && retryEvents.submittedSequences.isEmpty()
+                                            && retryService.bufferedEventsForTesting().isEmpty()
+                                            && retryService.connectionReadyForTesting(
+                                                    player.getUUID())
+                                            && retryService.connectionReadyForTesting(
+                                                    secondPlayer.getUUID())
+                                            && retryService.hasRuntimeDiagnosticForTesting(
+                                                    P8ServerRuntimeDiagnosticCode
+                                                            .EVENT_TRANSPORT_RUNTIME_EXCEPTION),
+                                    "event RuntimeException must drop one delivery and null must stay an invariant");
+                            retryEvents.submitAttempts.clear();
+                            retryEvents.submittedSequences.clear();
+                            retryEvents.submitModes = List.of(SubmitMode.ERROR);
+                        } catch (RuntimeException | Error failure) {
+                            stopServicesAndRemovePlayers(server, services, players);
+                            throw failure;
+                        }
+
+                        helper.runAfterDelay(1L, () -> {
+                            try {
+                                long eventTick = server.getTickCount();
+                                RuntimeFixture errorEvent = runtimeFixture(
+                                        server, player, 24L, eventTick, ACTIVE_CAST);
+                                helper.assertTrue(retryService.offerApplied(
+                                                        errorEvent.event(),
+                                                        errorEvent.context(),
+                                                        ONE_APPLIED)
+                                                == P8PresentationOfferOutcome.ACCEPTED,
+                                        "the event Error fixture must be retained while ready");
+                                Error actualEventError = null;
+                                try {
+                                    retryService.drainPresentationForTesting(server);
+                                } catch (Error failure) {
+                                    actualEventError = failure;
+                                }
+                                helper.assertTrue(actualEventError == retryEvents.submitError
+                                                && retryEvents.submitAttempts.equals(List.of(4L))
+                                                && retryService.bufferedEventsForTesting().isEmpty()
+                                                && retryService.connectionReadyForTesting(
+                                                        player.getUUID())
+                                                && retryService.connectionReadyForTesting(
+                                                        secondPlayer.getUUID()),
+                                        "event Error must propagate itself without revoking readiness");
+                            } finally {
+                                stopServicesAndRemovePlayers(server, services, players);
+                            }
+                            helper.succeed();
+                        });
+                    });
+                });
+            });
+        } catch (RuntimeException | Error failure) {
+            stopServicesAndRemovePlayers(server, services, players);
+            throw failure;
+        }
+    }
+
+    private static EncodedPayload readOnlyP8Payload(
+            EmbeddedChannel channel,
+            ProtocolInfo<ClientGamePacketListener> playProtocol) {
+        var payloads = readOnlyP8Payloads(channel, playProtocol);
+        if (payloads.size() != 1) {
+            throw new AssertionError(
+                    "expected exactly one encoded P8 payload; observed=" + payloads.size());
+        }
+        return payloads.getFirst();
+    }
+
+    private static List<EncodedPayload> readOnlyP8Payloads(
+            EmbeddedChannel channel,
+            ProtocolInfo<ClientGamePacketListener> playProtocol) {
+        channel.runPendingTasks();
+        channel.flushOutbound();
+        channel.runPendingTasks();
+        Object outbound;
+        var found = new ArrayList<EncodedPayload>();
+        while ((outbound = channel.readOutbound()) != null) {
+            try {
+                if (!(outbound instanceof ByteBuf encoded)) {
+                    continue;
+                }
+                int packetBytes = encoded.readableBytes();
+                if (packetBytes == 0 || encoded.getUnsignedByte(encoded.readerIndex()) != 25) {
+                    continue;
+                }
+                var packet = playProtocol.codec().decode(encoded);
+                if (packet instanceof ClientboundCustomPayloadPacket custom
+                        && (custom.payload() instanceof ProfileCatalogPayload
+                                || custom.payload() instanceof PresentationEventPayload)) {
+                    found.add(new EncodedPayload(packetBytes, custom.payload()));
+                }
+            } finally {
+                ReferenceCountUtil.release(outbound);
+            }
+        }
+        return List.copyOf(found);
+    }
+
+    private static void releaseOutbound(EmbeddedChannel channel) {
+        Object outbound;
+        while ((outbound = channel.readOutbound()) != null) {
+            ReferenceCountUtil.release(outbound);
+        }
+    }
+
+    private static int compareUnsignedUuid(UUID left, UUID right) {
+        int comparison = Long.compareUnsigned(
+                left.getMostSignificantBits(), right.getMostSignificantBits());
+        return comparison != 0
+                ? comparison
+                : Long.compareUnsigned(
+                        left.getLeastSignificantBits(), right.getLeastSignificantBits());
+    }
+
+    private static void stopServicesAndRemovePlayers(
+            MinecraftServer server,
+            List<P8ServerPresentationService> services,
+            List<ServerPlayer> players) {
+        services.forEach(P8ServerPresentationService::stopForTesting);
+        players.forEach(server.getPlayerList()::remove);
+    }
+
     private static void assertOfferReentryGuards(
             GameTestHelper helper,
             MinecraftServer server,
@@ -579,6 +1108,104 @@ public final class P8S3PresentationGameTests {
                 MagicRegistries.profileTypeRegistry(), Map.of());
     }
 
+    private static ProfileCatalogPayload maximumConstructibleCatalogPayload() {
+        var entries = new ArrayList<P8ProfileCatalogEntry>(
+                PresentationLimits.MAX_PROFILE_INSTANCES);
+        entries.add(new P8ProfileCatalogEntry(
+                id("default_particle"),
+                id("particle"),
+                com.yo1no.gramarye.magic.presentation.api.ProfileChannel.PARTICLE,
+                id("particle"),
+                0,
+                "{\"count\":8,\"lifetime_ticks\":20,\"particle\":"
+                        + "\"minecraft:enchant\",\"size_milli_blocks\":250,"
+                        + "\"speed_milli_blocks\":50}"));
+        entries.add(new P8ProfileCatalogEntry(
+                id("default_sound"),
+                id("sound"),
+                com.yo1no.gramarye.magic.presentation.api.ProfileChannel.SOUND,
+                id("sound"),
+                0,
+                "{\"pitch_milli\":1000,\"sound\":"
+                        + "\"minecraft:entity.experience_orb.pickup\","
+                        + "\"volume_milli\":600}"));
+        entries.add(new P8ProfileCatalogEntry(
+                id("default_trail"),
+                id("trail"),
+                com.yo1no.gramarye.magic.presentation.api.ProfileChannel.TRAIL,
+                id("trail"),
+                0,
+                "{\"lifetime_ticks\":16,\"particle\":\"minecraft:enchant\","
+                        + "\"sample_interval_ticks\":2,\"segments\":8,"
+                        + "\"size_milli_blocks\":200}"));
+        var maximumType = exactLengthId("type", 128);
+        var maximumConfiguration = maximumConfigurationJson();
+        var channels = com.yo1no.gramarye.magic.presentation.api.ProfileChannel.values();
+        for (var index = 0; index < 189; index++) {
+            entries.add(new P8ProfileCatalogEntry(
+                    exactLengthId(String.format(java.util.Locale.ROOT, "z%03d", index), 128),
+                    maximumType,
+                    channels[index % channels.length],
+                    maximumType,
+                    PresentationLimits.MAX_PROFILE_CONFIGURATION_VERSION,
+                    maximumConfiguration));
+        }
+        entries.sort(Comparator.comparing(P8ProfileCatalogEntry::profileId));
+        return new ProfileCatalogPayload(2L, entries);
+    }
+
+    private static String maximumConfigurationJson() {
+        var values = new ArrayList<String>(16);
+        for (var index = 0; index < 15; index++) {
+            values.add("x".repeat(128));
+        }
+        values.add("x".repeat(70));
+        var result = "{\"a\":[\"" + String.join("\",\"", values) + "\"]}";
+        if (result.length() != 2_045) {
+            throw new AssertionError("maximum configuration fixture has the wrong length");
+        }
+        return result;
+    }
+
+    private static PresentationEventPayload maximumLegalEventPayload() {
+        var parameters = new LinkedHashMap<ResourceLocation, Integer>();
+        for (var index = 0; index < PresentationLimits.MAX_EVENT_OVERRIDES; index++) {
+            parameters.put(exactLengthId(Integer.toString(index), 32), index);
+        }
+        return new PresentationEventPayload(
+                2L,
+                PresentationEventKind.HIT,
+                new PresentationSourceSummary(
+                        OptionalInt.of(Integer.MAX_VALUE),
+                        OptionalInt.of(Integer.MAX_VALUE)),
+                exactLengthId("dimension", 128),
+                new PresentationPosition(-30_000_000.0D, 2_048.0D, 30_000_000.0D),
+                new PresentationDirection((short) 18_918, (short) 18_918, (short) 18_918),
+                new PresentationAppearance(
+                        Integer.MIN_VALUE,
+                        Integer.MAX_VALUE,
+                        PresentationLimits.MAX_INTENSITY_MILLI,
+                        Optional.of(exactLengthId("sound", 128)),
+                        Optional.of(exactLengthId("particle", 128)),
+                        Optional.of(exactLengthId("trail", 128)),
+                        parameters),
+                Long.MIN_VALUE,
+                Long.MAX_VALUE);
+    }
+
+    private static ResourceLocation exactLengthId(String distinguishing, int utf8Length) {
+        int pathLength = utf8Length - 2;
+        if (pathLength < distinguishing.length()) {
+            throw new IllegalArgumentException("fixture identifier is longer than its bound");
+        }
+        var result = ResourceLocation.fromNamespaceAndPath(
+                "x", "a".repeat(pathLength - distinguishing.length()) + distinguishing);
+        if (result.toString().length() != utf8Length) {
+            throw new AssertionError("maximum identifier fixture has the wrong length");
+        }
+        return result;
+    }
+
     private static <T> T construct(
             Class<T> type, Class<?>[] parameterTypes, Object... arguments) {
         try {
@@ -605,6 +1232,8 @@ public final class P8S3PresentationGameTests {
 
     private record RuntimeFixture(RuntimeEvent event, RuntimeExecutionContext context) {}
 
+    private record EncodedPayload(int packetBytes, CustomPacketPayload payload) {}
+
     private enum CaptureFailure {
         NONE,
         RUNTIME_EXCEPTION,
@@ -615,11 +1244,65 @@ public final class P8S3PresentationGameTests {
         READY,
         UNAVAILABLE,
         RUNTIME_EXCEPTION,
+        ERROR,
+        NULL_RESULT
+    }
+
+    private enum CatalogSubmitMode {
+        READY,
+        RUNTIME_EXCEPTION,
         ERROR
+    }
+
+    private static final class ScriptedCatalogTransport implements P8CatalogTransport {
+        private final Set<UUID> unavailablePlayers;
+        private final List<String> submissionOrder;
+        private final ArrayList<CatalogSubmitMode> modes;
+        private final Error error = new AssertionError("same P8 catalog Error");
+        private int canSubmitCalls;
+        private int packetChargeCalls;
+        private int submissionCount;
+
+        private ScriptedCatalogTransport(
+                Set<UUID> unavailablePlayers,
+                List<String> submissionOrder,
+                CatalogSubmitMode... modes) {
+            this.unavailablePlayers = Set.copyOf(unavailablePlayers);
+            this.submissionOrder = submissionOrder;
+            this.modes = new ArrayList<>(List.of(modes));
+        }
+
+        @Override
+        public boolean canSubmit(ServerPlayer player, ProfileCatalogPayload payload) {
+            canSubmitCalls = Math.incrementExact(canSubmitCalls);
+            return !unavailablePlayers.contains(player.getUUID());
+        }
+
+        @Override
+        public int packetCharge(ServerPlayer player, ProfileCatalogPayload payload) {
+            packetChargeCalls = Math.incrementExact(packetChargeCalls);
+            return Math.addExact(
+                    payload.bodySize(),
+                    PresentationLimits.PROFILE_CATALOG_PACKET_OVERHEAD_BYTES);
+        }
+
+        @Override
+        public void submit(ServerPlayer player, ProfileCatalogPayload payload) {
+            submissionCount = Math.incrementExact(submissionCount);
+            submissionOrder.add("catalog");
+            CatalogSubmitMode mode = modes.removeFirst();
+            if (mode == CatalogSubmitMode.RUNTIME_EXCEPTION) {
+                throw new IllegalStateException("controlled P8 catalog RuntimeException");
+            }
+            if (mode == CatalogSubmitMode.ERROR) {
+                throw error;
+            }
+        }
     }
 
     private static final class RecordingTransport implements P8PresentationTransport {
         private final UUID readyPlayer;
+        private final List<String> submissionOrder;
         private final Error observerError = new AssertionError("same P8 observer Error");
         private final Error submitError = new AssertionError("same P8 transport Error");
         private final List<Long> submitAttempts = new ArrayList<>();
@@ -632,7 +1315,12 @@ public final class P8S3PresentationGameTests {
         private Runnable nextSubmitCallback;
 
         private RecordingTransport(UUID readyPlayer) {
+            this(readyPlayer, new ArrayList<>());
+        }
+
+        private RecordingTransport(UUID readyPlayer, List<String> submissionOrder) {
             this.readyPlayer = readyPlayer;
+            this.submissionOrder = submissionOrder;
         }
 
         private void failSecondCaptureWith(CaptureFailure failure) {
@@ -696,6 +1384,7 @@ public final class P8S3PresentationGameTests {
         public P8PresentationSubmissionResult submit(
                 P8RecipientIdentity identity, PresentationEvent event) {
             submitAttempts.add(event.sequence());
+            submissionOrder.add("event");
             Runnable callback = nextSubmitCallback;
             nextSubmitCallback = null;
             if (callback != null) {
@@ -712,6 +1401,9 @@ public final class P8S3PresentationGameTests {
             }
             if (submitMode == SubmitMode.ERROR) {
                 throw submitError;
+            }
+            if (submitMode == SubmitMode.NULL_RESULT) {
+                return null;
             }
             submittedSequences.add(event.sequence());
             return P8PresentationSubmissionResult.SUBMITTED;

@@ -15,6 +15,10 @@ final class PresentationLimits {
     static final int MAX_LEGAL_EVENT_BODY_BYTES = 897;
     static final int MAX_EVENT_BODY_BYTES = 1_024;
     static final int EVENT_PACKET_OVERHEAD_BYTES = 29;
+    static final int MAX_EVENT_PACKET_CHARGE_BYTES = 1_053;
+    static final int PROFILE_CATALOG_PACKET_OVERHEAD_BYTES = 26;
+    static final int MAX_PROFILE_CATALOG_PACKET_CHARGE_BYTES = 491_546;
+    static final long MAX_CLIENT_CATALOG_RETAINED_BODY_BYTES = 468_683L;
     static final int MAX_SELECTED_RECIPIENTS = 32;
     static final double MAX_RECIPIENT_DISTANCE_SQUARED = 4_096.0D;
 
@@ -41,6 +45,11 @@ final class PresentationLimits {
     static final int MAX_PROFILE_ENVELOPE_BYTES = 2_048;
     static final int MAX_PROFILE_CATALOG_BODY_BYTES = 491_520;
     static final int MAX_PROFILE_DIAGNOSTIC_KEYS = 256;
+    static final int MAX_CATALOG_READINESS_RECORDS = 512;
+    static final int MAX_CATALOG_SUBMISSIONS_PER_PLAYER_TICK = 1;
+    static final int MAX_CATALOG_SUBMISSIONS_PER_SERVER_TICK = 2;
+    static final int MAX_CATALOG_SUBMISSION_ATTEMPTS = 2;
+    static final long MAX_CATALOG_SUBMISSION_BYTES_PER_SERVER_TICK = 1_048_576L;
 
     static final long MAX_LOGICAL_EVENTS_PER_SKILL_PER_TICK = 8L;
     static final long MAX_LOGICAL_EVENTS_PER_SOURCE_PER_TICK = 32L;

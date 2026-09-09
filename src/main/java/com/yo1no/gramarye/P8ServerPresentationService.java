@@ -59,6 +59,7 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -92,6 +93,9 @@ final class P8ServerPresentationService {
 
     private final ProfileAvailabilityView availabilityView = this::availability;
     private final P8PresentationTransport transport;
+    private final P8CatalogTransport catalogTransport;
+    private final P8ServerConnectionAuthority connectionAuthority =
+            new P8ServerConnectionAuthority();
 
     private volatile CatalogSnapshot activeSnapshot;
     private MinecraftServer activeServer;
@@ -111,11 +115,18 @@ final class P8ServerPresentationService {
     private boolean registered;
 
     private P8ServerPresentationService() {
-        this(UnavailableP8PresentationTransport.INSTANCE);
+        catalogTransport = P8ProductionCatalogTransport.INSTANCE;
+        transport = new ProductionPresentationTransport(this);
     }
 
     P8ServerPresentationService(P8PresentationTransport transport) {
+        this(transport, P8ProductionCatalogTransport.INSTANCE);
+    }
+
+    P8ServerPresentationService(
+            P8PresentationTransport transport, P8CatalogTransport catalogTransport) {
         this.transport = Objects.requireNonNull(transport, "transport");
+        this.catalogTransport = Objects.requireNonNull(catalogTransport, "catalogTransport");
     }
 
     static P8ServerPresentationService create() {
@@ -583,6 +594,7 @@ final class P8ServerPresentationService {
             currentReloadMarker = null;
             activeServer = null;
             catalogGenerationHighWater = 0L;
+            connectionAuthority.reset();
             resetPresentationEpoch();
         }
     }
@@ -596,11 +608,37 @@ final class P8ServerPresentationService {
                 throw new IllegalStateException("P8 test server lifecycle is already active");
             }
             resetPresentationEpoch();
+            connectionAuthority.reset();
             activeServer = server;
             activeSnapshot = new CatalogSnapshot(1L, prepared);
             catalogGenerationHighWater = 1L;
             runtimeSuppressedDiagnosticCount = prepared.suppressedDiagnostics;
         }
+    }
+
+    Optional<P8RecipientIdentity> openConnectionForTesting(ServerPlayer player) {
+        Objects.requireNonNull(player, "player");
+        var server = Objects.requireNonNull(player.getServer(), "test player server");
+        requireServerThread(server);
+        synchronized (this) {
+            var active = activeSnapshot;
+            if (activeServer != server
+                    || active == null
+                    || !P8RecipientSelector.currentConnected(server, player)) {
+                return Optional.empty();
+            }
+            return connectionAuthority.open(
+                    player.getUUID(), active.generation, server.getTickCount());
+        }
+    }
+
+    int connectionAttemptsForTesting(UUID playerId) {
+        return connectionAuthority.attempts(Objects.requireNonNull(playerId, "playerId"));
+    }
+
+    boolean connectionReadyForTesting(UUID playerId) {
+        var active = activeSnapshot;
+        return active != null && connectionAuthority.ready(playerId, active.generation);
     }
 
     List<PresentationEvent> bufferedEventsForTesting() {
@@ -730,6 +768,8 @@ final class P8ServerPresentationService {
         }
         gameBus.addListener(EventPriority.LOWEST, this::addReloadListener);
         gameBus.addListener(EventPriority.LOWEST, this::handleDatapackSync);
+        gameBus.addListener(EventPriority.LOWEST, this::handlePlayerLoggedIn);
+        gameBus.addListener(EventPriority.LOWEST, this::handlePlayerLoggedOut);
         gameBus.addListener(EventPriority.LOWEST, this::handlePresentationPost);
         gameBus.addListener(EventPriority.LOWEST, this::handleServerStopping);
         gameBus.addListener(EventPriority.LOWEST, this::handleServerStopped);
@@ -750,6 +790,7 @@ final class P8ServerPresentationService {
             activeServer = server;
             activeSnapshot = null;
             catalogGenerationHighWater = 0L;
+            connectionAuthority.reset();
             resetPresentationEpoch();
             if (!activateMatchingCandidate(new ReloadIdentity(
                     server.getServerResources().managers()))) {
@@ -758,6 +799,7 @@ final class P8ServerPresentationService {
                 pendingCandidate = null;
                 currentReloadMarker = null;
                 catalogGenerationHighWater = 0L;
+                connectionAuthority.reset();
                 resetPresentationEpoch();
                 throw new IllegalStateException("P8 initial Profile catalog is unavailable");
             }
@@ -777,6 +819,18 @@ final class P8ServerPresentationService {
     void handleDatapackSync(OnDatapackSyncEvent event) {
         Objects.requireNonNull(event, "event");
         if (event.getPlayer() != null) {
+            var player = event.getPlayer();
+            var server = Objects.requireNonNull(player.getServer(), "datapack-sync server");
+            requireServerThread(server);
+            synchronized (this) {
+                var active = activeSnapshot;
+                if (activeServer == server
+                        && active != null
+                        && P8RecipientSelector.currentConnected(server, player)) {
+                    connectionAuthority.schedule(
+                            player.getUUID(), active.generation, server.getTickCount());
+                }
+            }
             return;
         }
         var server = Objects.requireNonNull(
@@ -791,19 +845,56 @@ final class P8ServerPresentationService {
         }
     }
 
+    private void handlePlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        Objects.requireNonNull(event, "event");
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        var server = Objects.requireNonNull(player.getServer(), "login server");
+        requireServerThread(server);
+        synchronized (this) {
+            var active = activeSnapshot;
+            if (activeServer != server
+                    || active == null
+                    || !P8RecipientSelector.currentConnected(server, player)) {
+                return;
+            }
+            connectionAuthority.open(
+                    player.getUUID(), active.generation, server.getTickCount());
+        }
+    }
+
+    private void handlePlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        Objects.requireNonNull(event, "event");
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        var server = Objects.requireNonNull(player.getServer(), "logout server");
+        requireServerThread(server);
+        synchronized (this) {
+            if (activeServer != server) {
+                return;
+            }
+            var current = server.getPlayerList().getPlayer(player.getUUID());
+            if (current == null || current == player) {
+                connectionAuthority.close(player.getUUID());
+            }
+        }
+    }
+
     private void handlePresentationPost(ServerTickEvent.Post event) {
         Objects.requireNonNull(event, "event");
         drainPresentation(event.getServer());
     }
 
-    void drainPresentationForTesting(MinecraftServer server) {
-        drainPresentation(server);
+    CatalogDrainResultForTesting drainPresentationForTesting(MinecraftServer server) {
+        return drainPresentation(server);
     }
 
-    private void drainPresentation(MinecraftServer server) {
+    private CatalogDrainResultForTesting drainPresentation(MinecraftServer server) {
         Objects.requireNonNull(server, "server");
         if (activeServer != server) {
-            return;
+            return CatalogDrainResultForTesting.empty();
         }
         requireServerThread(server);
         if (offerInProgress || drainInProgress) {
@@ -821,14 +912,15 @@ final class P8ServerPresentationService {
             tickState = P8TickState.empty();
             tickStateServerTick = Long.MIN_VALUE;
             advanceDrainedRuntimeTick(draining);
+            CatalogDrainResultForTesting catalogDrain = drainCatalogs(server, serverTick);
             if (!server.isRunning() || server.isStopped()) {
-                return;
+                return catalogDrain;
             }
             CatalogSnapshot active = activeSnapshot;
             if (active == null
                     || drainingServerTick != serverTick
                     || draining.buffer().isEmpty()) {
-                return;
+                return catalogDrain;
             }
 
             var deliveries = new ArrayList<P8Delivery>();
@@ -858,7 +950,22 @@ final class P8ServerPresentationService {
                         server, delivery.buffered(), selected, transport)) {
                     continue;
                 }
-                eligible.add(delivery);
+                var player = server.getPlayerList().getPlayer(delivery.identity().playerId());
+                if (player == null || !P8RecipientSelector.currentConnected(server, player)) {
+                    continue;
+                }
+                var measured = transport.packetCharge(
+                        player,
+                        delivery.identity(),
+                        delivery.buffered().event());
+                if (measured.isEmpty()) {
+                    continue;
+                }
+                eligible.add(new P8Delivery(
+                        delivery.ordering(),
+                        delivery.identity(),
+                        delivery.buffered(),
+                        measured.orElseThrow()));
             }
 
             var admitted = new ArrayList<>(P8DeliveryAdmission.admit(eligible));
@@ -872,22 +979,133 @@ final class P8ServerPresentationService {
                                 right.buffered().event().sequence());
             });
             for (P8Delivery delivery : admitted) {
-                try {
-                    P8PresentationSubmissionResult result = Objects.requireNonNull(
-                            transport.submit(
-                                    delivery.identity(), delivery.buffered().event()),
-                            "P8 transport submission result");
-                    if (result == P8PresentationSubmissionResult.UNAVAILABLE) {
-                        continue;
-                    }
-                } catch (RuntimeException ignored) {
-                    recordRuntimeDiagnostic(
-                            P8ServerRuntimeDiagnosticCode.EVENT_TRANSPORT_RUNTIME_EXCEPTION);
-                }
+                submitEvent(delivery.identity(), delivery.buffered().event());
             }
+            return catalogDrain;
         } finally {
             lastDrainServerTick = serverTick;
             drainInProgress = false;
+        }
+    }
+
+    private CatalogDrainResultForTesting drainCatalogs(
+            MinecraftServer server, long serverTick) {
+        CatalogSnapshot active = activeSnapshot;
+        if (active == null) {
+            return CatalogDrainResultForTesting.empty();
+        }
+        var due = connectionAuthority.due(serverTick);
+        if (due.isEmpty()) {
+            return CatalogDrainResultForTesting.empty();
+        }
+        ProfileCatalogPayload payload = active.toPayload();
+        long chargedBytes = 0L;
+        int submissions = 0;
+        for (P8CatalogAttemptKey key : due) {
+            if (submissions
+                    == PresentationLimits.MAX_CATALOG_SUBMISSIONS_PER_SERVER_TICK) {
+                break;
+            }
+            if (key.catalogGeneration() != active.generation
+                    || !connectionAuthority.isCurrent(key)) {
+                continue;
+            }
+            var player = server.getPlayerList().getPlayer(key.playerId());
+            if (player == null || !P8RecipientSelector.currentConnected(server, player)) {
+                connectionAuthority.close(key.playerId());
+                continue;
+            }
+            if (!catalogTransport.canSubmit(player, payload)) {
+                connectionAuthority.cancel(key);
+                continue;
+            }
+            int packetCharge = catalogTransport.packetCharge(player, payload);
+            if (packetCharge <= 0
+                    || packetCharge
+                            > PresentationLimits.MAX_PROFILE_CATALOG_PACKET_CHARGE_BYTES) {
+                throw new IllegalStateException("P8 catalog packet charge is outside bounds");
+            }
+            if (Math.addExact(chargedBytes, packetCharge)
+                            > PresentationLimits.MAX_CATALOG_SUBMISSION_BYTES_PER_SERVER_TICK) {
+                continue;
+            }
+            if (!connectionAuthority.beginAttempt(key, serverTick)) {
+                continue;
+            }
+            submissions = Math.incrementExact(submissions);
+            chargedBytes = Math.addExact(chargedBytes, packetCharge);
+            completeCatalogSubmission(key, serverTick, player, payload);
+        }
+        return new CatalogDrainResultForTesting(submissions, chargedBytes);
+    }
+
+    private void completeCatalogSubmission(
+            P8CatalogAttemptKey key,
+            long serverTick,
+            ServerPlayer player,
+            ProfileCatalogPayload payload) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(payload, "payload");
+        try {
+            catalogTransport.submit(player, payload);
+        } catch (RuntimeException ignored) {
+            connectionAuthority.failed(key, serverTick);
+            recordRuntimeDiagnostic(
+                    P8ServerRuntimeDiagnosticCode.CATALOG_TRANSPORT_RUNTIME_EXCEPTION);
+            return;
+        } catch (Error failure) {
+            connectionAuthority.cancel(key);
+            throw failure;
+        }
+        connectionAuthority.submitted(key);
+    }
+
+    private void submitEvent(P8RecipientIdentity identity, PresentationEvent event) {
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(event, "event");
+        P8PresentationSubmissionResult result;
+        try {
+            result = transport.submit(identity, event);
+        } catch (RuntimeException ignored) {
+            recordRuntimeDiagnostic(
+                    P8ServerRuntimeDiagnosticCode.EVENT_TRANSPORT_RUNTIME_EXCEPTION);
+            return;
+        }
+        Objects.requireNonNull(result, "P8 transport submission result");
+    }
+
+    static final class CatalogDrainResultForTesting {
+        private static final CatalogDrainResultForTesting EMPTY =
+                new CatalogDrainResultForTesting(0, 0L);
+
+        private final int submissions;
+        private final long chargedBytes;
+
+        private CatalogDrainResultForTesting(int submissions, long chargedBytes) {
+            if (submissions < 0
+                    || submissions
+                            > PresentationLimits.MAX_CATALOG_SUBMISSIONS_PER_SERVER_TICK
+                    || chargedBytes < 0L
+                    || chargedBytes
+                            > PresentationLimits.MAX_CATALOG_SUBMISSION_BYTES_PER_SERVER_TICK
+                    || submissions == 0 && chargedBytes != 0L) {
+                throw new IllegalArgumentException("P8 catalog drain result is outside bounds");
+            }
+            this.submissions = submissions;
+            this.chargedBytes = chargedBytes;
+        }
+
+        private static CatalogDrainResultForTesting empty() {
+            return EMPTY;
+        }
+
+        int submissions() {
+            return submissions;
+        }
+
+        long chargedBytes() {
+            return chargedBytes;
         }
     }
 
@@ -978,6 +1196,14 @@ final class P8ServerPresentationService {
         tickState = tickState.clearBufferPreservingLogicalWork();
         activeSnapshot = nextSnapshot;
         catalogGenerationHighWater = nextGeneration;
+        if (activeServer != null) {
+            connectionAuthority.retainMatching(playerId -> {
+                var player = activeServer.getPlayerList().getPlayer(playerId);
+                return player != null
+                        && P8RecipientSelector.currentConnected(activeServer, player);
+            });
+            connectionAuthority.scheduleAll(nextGeneration, activeServer.getTickCount());
+        }
         runtimeDiagnosticCodes.clear();
         runtimeSuppressedDiagnosticCount = nextSnapshot.suppressedDiagnostics;
         releasePending(pending);
@@ -1007,6 +1233,7 @@ final class P8ServerPresentationService {
             currentReloadMarker = null;
             activeServer = null;
             catalogGenerationHighWater = 0L;
+            connectionAuthority.reset();
             resetPresentationEpoch();
         }
     }
@@ -1741,7 +1968,13 @@ final class P8ServerPresentationService {
     private abstract static class ProfileEntry {
         abstract ResourceLocation id();
 
+        abstract ResourceLocation typeId();
+
         abstract ProfileChannel channel();
+
+        abstract ResourceLocation clientFactoryId();
+
+        abstract int configurationVersion();
 
         abstract ProfileConfiguration configuration();
 
@@ -1805,8 +2038,23 @@ final class P8ServerPresentationService {
         }
 
         @Override
+        ResourceLocation typeId() {
+            return typeId;
+        }
+
+        @Override
         ProfileChannel channel() {
             return channel;
+        }
+
+        @Override
+        ResourceLocation clientFactoryId() {
+            return clientFactoryId;
+        }
+
+        @Override
+        int configurationVersion() {
+            return configurationVersion;
         }
 
         @Override
@@ -1911,6 +2159,7 @@ final class P8ServerPresentationService {
         private final List<DiagnosticKey> diagnostics;
         private final long suppressedDiagnostics;
         private final int wireBodyBytes;
+        private final ProfileCatalogPayload wirePayload;
 
         private CatalogSnapshot(long generation, PreparedCatalog prepared) {
             if (generation <= 0) {
@@ -1922,6 +2171,7 @@ final class P8ServerPresentationService {
             this.diagnostics = prepared.diagnostics;
             this.suppressedDiagnostics = prepared.suppressedDiagnostics;
             this.wireBodyBytes = prepared.wireBodyBytes;
+            this.wirePayload = createWirePayload(generation, entries, wireBodyBytes);
         }
 
         private boolean contains(ProfileChannel channel, ResourceLocation id) {
@@ -1930,6 +2180,10 @@ final class P8ServerPresentationService {
 
         private Optional<ProfileEntry> entry(ResourceLocation id) {
             return Optional.ofNullable(entries.get(id));
+        }
+
+        private ProfileCatalogPayload toPayload() {
+            return wirePayload;
         }
 
         private CatalogSnapshot withGeneration(long nextGeneration) {
@@ -1958,6 +2212,28 @@ final class P8ServerPresentationService {
             this.diagnostics = diagnostics;
             this.suppressedDiagnostics = suppressedDiagnostics;
             this.wireBodyBytes = wireBodyBytes;
+            this.wirePayload = createWirePayload(generation, entries, wireBodyBytes);
+        }
+
+        private static ProfileCatalogPayload createWirePayload(
+                long generation,
+                NavigableMap<ResourceLocation, ProfileEntry> entries,
+                int expectedBodyBytes) {
+            var wireEntries = entries.values().stream()
+                    .map(entry -> new P8ProfileCatalogEntry(
+                            entry.id(),
+                            entry.typeId(),
+                            entry.channel(),
+                            entry.clientFactoryId(),
+                            entry.configurationVersion(),
+                            entry.canonicalConfigurationJson()))
+                    .toList();
+            var payload = new ProfileCatalogPayload(generation, wireEntries);
+            if (payload.bodySize() != expectedBodyBytes) {
+                throw new IllegalStateException(
+                        "P8 catalog wire projection disagrees with its snapshot");
+            }
+            return payload;
         }
     }
 
@@ -1976,6 +2252,106 @@ final class P8ServerPresentationService {
 
         PresentationProfileView profiles() {
             return profiles;
+        }
+    }
+
+    private Optional<P8RecipientIdentity> captureReadyIdentity(
+            ServerPlayer player, long catalogGeneration) {
+        Objects.requireNonNull(player, "player");
+        var server = activeServer;
+        var active = activeSnapshot;
+        if (server == null
+                || active == null
+                || active.generation != catalogGeneration
+                || !P8RecipientSelector.currentConnected(server, player)) {
+            return Optional.empty();
+        }
+        return connectionAuthority.captureReady(player.getUUID(), catalogGeneration);
+    }
+
+    private Optional<ServerPlayer> currentReadyPlayer(
+            P8RecipientIdentity identity, long catalogGeneration) {
+        Objects.requireNonNull(identity, "identity");
+        var server = activeServer;
+        var active = activeSnapshot;
+        if (server == null
+                || active == null
+                || active.generation != catalogGeneration
+                || !connectionAuthority.isCurrent(identity, catalogGeneration)) {
+            return Optional.empty();
+        }
+        var player = server.getPlayerList().getPlayer(identity.playerId());
+        return player != null && P8RecipientSelector.currentConnected(server, player)
+                ? Optional.of(player)
+                : Optional.empty();
+    }
+
+    private static final class ProductionPresentationTransport
+            implements P8PresentationTransport {
+        private final P8ServerPresentationService owner;
+
+        private ProductionPresentationTransport(P8ServerPresentationService owner) {
+            this.owner = Objects.requireNonNull(owner, "owner");
+        }
+
+        @Override
+        public Optional<P8RecipientIdentity> captureReadyIdentity(
+                ServerPlayer player, long catalogGeneration) {
+            return owner.captureReadyIdentity(player, catalogGeneration);
+        }
+
+        @Override
+        public boolean isCurrent(
+                ServerPlayer player,
+                P8RecipientIdentity identity,
+                long catalogGeneration) {
+            Objects.requireNonNull(player, "player");
+            return owner.currentReadyPlayer(identity, catalogGeneration)
+                    .filter(current -> current == player)
+                    .isPresent();
+        }
+
+        @Override
+        public OptionalInt packetCharge(
+                ServerPlayer player,
+                P8RecipientIdentity identity,
+                PresentationEvent event) {
+            Objects.requireNonNull(event, "event");
+            var current = owner.currentReadyPlayer(
+                    identity, event.catalogGeneration());
+            if (current.isEmpty() || current.orElseThrow() != player) {
+                return OptionalInt.empty();
+            }
+            var payload = new PresentationEventPayload(event);
+            if (!P8PacketSubmission.canSubmit(player, payload)) {
+                return OptionalInt.empty();
+            }
+            int measured = P8PacketSubmission.measureClientboundPlayPacket(
+                    player,
+                    payload,
+                    PresentationLimits.MAX_EVENT_PACKET_CHARGE_BYTES);
+            int expected = Math.addExact(
+                    event.bodySize(), PresentationLimits.EVENT_PACKET_OVERHEAD_BYTES);
+            if (measured != expected
+                    || measured > PresentationLimits.MAX_EVENT_PACKET_CHARGE_BYTES) {
+                throw new IllegalStateException(
+                        "P8 event PacketEncoder charge is not the authorized value");
+            }
+            return OptionalInt.of(measured);
+        }
+
+        @Override
+        public P8PresentationSubmissionResult submit(
+                P8RecipientIdentity identity, PresentationEvent event) {
+            Objects.requireNonNull(event, "event");
+            var player = owner.currentReadyPlayer(
+                    identity, event.catalogGeneration());
+            if (player.isEmpty()) {
+                return P8PresentationSubmissionResult.UNAVAILABLE;
+            }
+            P8PacketSubmission.send(
+                    player.orElseThrow(), new PresentationEventPayload(event));
+            return P8PresentationSubmissionResult.SUBMITTED;
         }
     }
 

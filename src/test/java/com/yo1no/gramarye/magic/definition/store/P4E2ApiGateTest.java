@@ -462,10 +462,12 @@ final class P4E2ApiGateTest {
                 () -> assertEquals(
                         Set.of(relative(storeService)),
                         sourcePathsContaining("new SkillRetentionRootAuditService(")),
-                () -> assertEquals(1, occurrences(
+                () -> assertEquals(2, occurrences(
                         production, "PlayerEvent.PlayerLoggedInEvent")),
                 () -> assertEquals(
-                        Set.of(relative(RECOVERY_SERVICE)),
+                        Set.of(
+                                relative(RECOVERY_SERVICE),
+                                "com/yo1no/gramarye/P8ServerPresentationService.java"),
                         sourcePathsContaining("PlayerEvent.PlayerLoggedInEvent")),
                 () -> assertEquals(2, occurrences(production, ".setData(")),
                 () -> assertEquals(

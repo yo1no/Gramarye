@@ -39,6 +39,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -574,6 +575,11 @@ final class P8S2BoundaryTest {
         var transportMethods = Arrays.stream(P8PresentationTransport.class.getDeclaredMethods())
                 .filter(method -> !method.isSynthetic() && !method.isBridge())
                 .toList();
+        var packetCharge = P8PresentationTransport.class.getDeclaredMethod(
+                "packetCharge",
+                net.minecraft.server.level.ServerPlayer.class,
+                P8RecipientIdentity.class,
+                PresentationEvent.class);
 
         assertAll(
                 () -> assertEquals(2, NEW_S3_SOURCE_ROLES.size()),
@@ -612,12 +618,18 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(0, offer.getExceptionTypes().length),
                 () -> assertFalse(Modifier.isPublic(
                         P8PresentationTransport.class.getModifiers())),
-                () -> assertEquals(3, transportMethods.size()),
+                () -> assertEquals(4, transportMethods.size()),
                 () -> assertEquals(
-                        Set.of("captureReadyIdentity", "isCurrent", "submit"),
+                        Set.of("captureReadyIdentity", "isCurrent", "packetCharge", "submit"),
                         transportMethods.stream()
                                 .map(java.lang.reflect.Method::getName)
                                 .collect(Collectors.toUnmodifiableSet())),
+                () -> assertEquals(OptionalInt.class, packetCharge.getReturnType()),
+                () -> assertTrue(packetCharge.isDefault()),
+                () -> assertEquals(0, packetCharge.getExceptionTypes().length),
+                () -> assertEquals(1, occurrences(
+                        read(PRESENTATION_RUNTIME_SOURCE),
+                        "return OptionalInt.of(event.packetCharge());")),
                 () -> assertFalse(read(PRESENTATION_RUNTIME_SOURCE).contains(
                         "P8PayloadRegistrationBridge")));
     }

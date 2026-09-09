@@ -472,19 +472,25 @@ verify_static_ownership_and_phase_bounds() {
     require_only_fixed_owner 'SkillQuota.Unlimited.INSTANCE' "${default_provider}" \
         'default quota escaped the unique reviewed provider'
     require_exact_ere_owners \
-        'new ValidationContext\(MagicPolicyLimits\.DEFAULTS\)' 2 \
+        'new ValidationContext\(MagicPolicyLimits\.DEFAULTS\)' 3 \
         'default validation context escaped the exact reviewed P4 and P8 owners' \
         "${default_provider}" \
+        'src/main/java/com/yo1no/gramarye/P8PayloadCodecSupport.java' \
         'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java'
 
-    require_only_fixed_owner \
-        'PlayerLoggedInEvent' \
-        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
-        'PlayerLoggedInEvent escaped the exact D3-A recovery service'
-    require_only_fixed_owner \
-        'PlayerLoggedOutEvent' \
-        'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
-        'PlayerLoggedOutEvent escaped the exact P7-S4 lifecycle owner'
+    require_exact_ere_owners \
+        'PlayerLoggedInEvent' 4 \
+        'PlayerLoggedInEvent escaped the exact D3-A/P8-S4 lifecycle owners' \
+        'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' \
+        'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java'
+    require_exact_ere_owners \
+        'PlayerLoggedOutEvent' 3 \
+        'PlayerLoggedOutEvent escaped the exact P7-S4/P8-S4 lifecycle owners' \
+        'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java'
     for literal in \
         'OfflineRoot' \
         'RootCollector' \
@@ -497,7 +503,11 @@ verify_static_ownership_and_phase_bounds() {
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'CustomPacketPayload' \
-        'CustomPacketPayload escaped the exact P7-S2 payload owner allowlist' \
+        'CustomPacketPayload escaped the exact P7-S2/P8-S4 payload owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/P8PacketSubmission.java' \
+        'src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java' \
+        'src/main/java/com/yo1no/gramarye/PresentationEventPayload.java' \
+        'src/main/java/com/yo1no/gramarye/ProfileCatalogPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
@@ -507,7 +517,8 @@ verify_static_ownership_and_phase_bounds() {
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'PayloadRegistrar' \
-        'PayloadRegistrar escaped the exact P7-S2 registrar owner allowlist' \
+        'PayloadRegistrar escaped the exact P7-S2/P8-S4 registrar owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/P8PayloadRegistrationBridge.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java'
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \

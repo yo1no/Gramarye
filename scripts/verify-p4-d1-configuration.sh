@@ -180,7 +180,7 @@ verify_d2a_sources_and_owners() {
 
     [[ "$(grep -R -l -F --include='*.java' -- 'SkillQuota.Unlimited.INSTANCE' src/main/java | wc -l | tr -d ' ')" -eq 1 ]] \
         || fail 'submission Unlimited default must have one production owner'
-    [[ "$(grep -R -l -F --include='*.java' -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' src/main/java | wc -l | tr -d ' ')" -eq 2 ]] \
+    [[ "$(grep -R -l -F --include='*.java' -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' src/main/java | wc -l | tr -d ' ')" -eq 3 ]] \
         || fail 'validation defaults must have the exact reviewed P4 and P8 production owners'
     grep -Fq -- 'SkillQuota.Unlimited.INSTANCE' \
         "${SUBMISSION_ROOT}/DefaultSkillSubmissionPolicyProvider.java" \
@@ -191,6 +191,9 @@ verify_d2a_sources_and_owners() {
     grep -Fq -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' \
         'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
         || fail 'P8 Profile validation default escaped the reviewed catalog owner'
+    grep -Fq -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' \
+        'src/main/java/com/yo1no/gramarye/P8PayloadCodecSupport.java' \
+        || fail 'P8 wire Profile validation default escaped the reviewed codec owner'
 
     grep -Fq -- 'prepareLatestTransitionToCurrent(' "${PLAYER_SERVICE}" \
         || fail 'P4-C prepare-to-current seam is missing'
@@ -227,7 +230,7 @@ verify_d2a_sources_and_owners() {
     done
 }
 
-is_reviewed_p7_s2_platform_owner() {
+is_reviewed_p7_s2_or_p8_s4_platform_owner() {
     case "$1:$2" in
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java | \
@@ -235,6 +238,11 @@ is_reviewed_p7_s2_platform_owner() {
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/P8PacketSubmission.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/PresentationEventPayload.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/ProfileCatalogPayload.java | \
+        PayloadRegistrar:src/main/java/com/yo1no/gramarye/P8PayloadRegistrationBridge.java | \
         PayloadRegistrar:src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java)
             return 0
             ;;
@@ -260,6 +268,7 @@ verify_phase_boundary() {
         if [[ "${source}" != "${RECOVERY_SERVICE}" ]] \
                 && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' ]] \
                 && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]] \
+                && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' ]] \
                 && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]] \
                 && grep -Fq -- 'PlayerEvent' "${source}"; then
             fail "PlayerEvent escaped the exact P4-D3-A recovery-service allowlist: ${source}"
@@ -272,7 +281,7 @@ verify_phase_boundary() {
         PayloadRegistrar; do
         while IFS= read -r -d '' source; do
             if grep -Fq -- "${token}" "${source}" \
-                    && ! is_reviewed_p7_s2_platform_owner "${token}" "${source}"; then
+                    && ! is_reviewed_p7_s2_or_p8_s4_platform_owner "${token}" "${source}"; then
                 fail "later-phase production token escaped its exact owner allowlist: ${token} (${source})"
             fi
         done < <(find src/main/java -type f -name '*.java' -print0)

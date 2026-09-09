@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.network;
 
 import com.yo1no.gramarye.Gramarye;
+import com.yo1no.gramarye.P8PayloadRegistrationBridge;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -39,5 +40,7 @@ final class P7PayloadRegistrar {
                 SkillCooldownSyncPayload.STREAM_CODEC,
                 (payload, context) -> P7ClientPayloadHandlers.handleSkillCooldownSnapshot(
                         payload, context, PRODUCTION));
+        P8PayloadRegistrationBridge.register(
+                registrar.versioned("gramarye-p8-v0"));
     }
 }

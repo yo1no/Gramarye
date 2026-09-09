@@ -31,10 +31,11 @@ enum P8PresentationSubmissionResult {
 
 enum P8ServerRuntimeDiagnosticCode {
     OBSERVER_RUNTIME_EXCEPTION,
+    CATALOG_TRANSPORT_RUNTIME_EXCEPTION,
     EVENT_TRANSPORT_RUNTIME_EXCEPTION
 }
 
-/** S3's package-private typed boundary; the production endpoint stays unavailable until S4. */
+/** Package-private typed boundary between S3 delivery planning and S4 submission. */
 interface P8PresentationTransport {
     Optional<P8RecipientIdentity> captureReadyIdentity(
             ServerPlayer player, long catalogGeneration);
@@ -43,6 +44,17 @@ interface P8PresentationTransport {
             ServerPlayer player,
             P8RecipientIdentity identity,
             long catalogGeneration);
+
+    /** Measures the exact pre-compression PLAY packet immediately before admission. */
+    default OptionalInt packetCharge(
+            ServerPlayer player,
+            P8RecipientIdentity identity,
+            PresentationEvent event) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(event, "event");
+        return OptionalInt.of(event.packetCharge());
+    }
 
     P8PresentationSubmissionResult submit(
             P8RecipientIdentity identity, PresentationEvent event);
@@ -66,6 +78,17 @@ enum UnavailableP8PresentationTransport implements P8PresentationTransport {
         Objects.requireNonNull(player, "player");
         Objects.requireNonNull(identity, "identity");
         return false;
+    }
+
+    @Override
+    public OptionalInt packetCharge(
+            ServerPlayer player,
+            P8RecipientIdentity identity,
+            PresentationEvent event) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(event, "event");
+        return OptionalInt.empty();
     }
 
     @Override
@@ -192,7 +215,15 @@ record P8BufferedPresentation(
 record P8Delivery(
         PresentationOrdering.DeliveryCandidate ordering,
         P8RecipientIdentity identity,
-        P8BufferedPresentation buffered) {
+        P8BufferedPresentation buffered,
+        int packetCharge) {
+    P8Delivery(
+            PresentationOrdering.DeliveryCandidate ordering,
+            P8RecipientIdentity identity,
+            P8BufferedPresentation buffered) {
+        this(ordering, identity, buffered, buffered.event().packetCharge());
+    }
+
     P8Delivery {
         Objects.requireNonNull(ordering, "ordering");
         Objects.requireNonNull(identity, "identity");
@@ -200,6 +231,10 @@ record P8Delivery(
         if (!ordering.recipientId().equals(identity.playerId())
                 || ordering.sequence() != buffered.event().sequence()) {
             throw new IllegalArgumentException("delivery identity is inconsistent");
+        }
+        if (packetCharge <= 0
+                || packetCharge > PresentationLimits.MAX_EVENT_PACKET_CHARGE_BYTES) {
+            throw new IllegalArgumentException("delivery packet charge is outside bounds");
         }
     }
 }
@@ -235,8 +270,7 @@ final class P8DeliveryAdmission {
             if (delivery == null) {
                 throw new IllegalStateException("P8 delivery ordering lost its value");
             }
-            var charge = new PresentationCost(
-                    1L, delivery.buffered().event().packetCharge());
+            var charge = new PresentationCost(1L, delivery.packetCharge());
             var nextServer = serverBudget.consume(charge);
             var playerBudget = playerBudgets.getOrDefault(
                     delivery.identity().playerId(),
@@ -431,7 +465,7 @@ final class P8RecipientSelector {
         return PresentationOrdering.RecipientCategory.ORDINARY;
     }
 
-    private static boolean currentConnected(
+    static boolean currentConnected(
             MinecraftServer server, ServerPlayer player) {
         var connection = player.connection;
         return player.getServer() == server

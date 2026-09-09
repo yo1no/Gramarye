@@ -394,7 +394,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(19, dependencyErrorCatchCount(production)),
+                () -> assertEquals(21, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -620,22 +620,38 @@ class P4B2BApiGateTest {
                 "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java"))));
         var lifecycleCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java"))));
+        var p8ClientCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/P8ClientPresentationState.java"))));
+        var p8ServerCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/P8ServerPresentationService.java"))));
         var primary = new java.util.ArrayList<ErrorCatchBlock>(p5Primary);
         primary.addAll(storeCatches);
         primary.addAll(networkCatches);
         primary.addAll(syncCatches);
+        primary.addAll(p8ClientCatches);
+        primary.addAll(p8ServerCatches);
         assertAll(
                 () -> assertEquals(10, p5Catches.size()),
                 () -> assertEquals(5, p5Primary.size()),
-                () -> assertEquals(8, primary.size()),
+                () -> assertEquals(10, primary.size()),
                 () -> assertEquals(5, secondary.size()),
                 () -> assertEquals(1, storeCatches.size()),
                 () -> assertEquals(1, networkCatches.size()),
                 () -> assertEquals(1, syncCatches.size()),
+                () -> assertEquals(1, p8ClientCatches.size()),
+                () -> assertEquals(1, p8ServerCatches.size()),
                 () -> assertEquals("primary", syncCatches.getFirst().binding()),
                 () -> assertTrue(syncCatches.getFirst().body().contains(
                         "lifecycle.submissionFailed(server, actor, identity, primary);")),
                 () -> assertTrue(syncCatches.getFirst().body().contains("throw primary;")),
+                () -> assertEquals("failure", p8ClientCatches.getFirst().binding()),
+                () -> assertTrue(p8ClientCatches.getFirst().body().contains(
+                        "cancelCatalogDrain(drainIdentity);")),
+                () -> assertTrue(p8ClientCatches.getFirst().body().contains("throw failure;")),
+                () -> assertEquals("failure", p8ServerCatches.getFirst().binding()),
+                () -> assertTrue(p8ServerCatches.getFirst().body().contains(
+                        "connectionAuthority.cancel(key);")),
+                () -> assertTrue(p8ServerCatches.getFirst().body().contains("throw failure;")),
                 () -> assertEquals(6, lifecycleCatches.size()),
                 () -> assertEquals(5, lifecycleCatches.stream()
                         .filter(block -> block.binding().equals("secondary")
@@ -661,7 +677,7 @@ class P4B2BApiGateTest {
                 () -> assertTrue(secondary.stream().allMatch(block -> block.body().isBlank())),
                 () -> assertEquals(primary.size() + secondary.size() + lifecycleCatches.size(),
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(19, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(21, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
                 "permit.releaseAfterEnqueueFailure();", "throw failure;");
         assertOrdered(

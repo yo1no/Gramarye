@@ -210,6 +210,39 @@ require_only_owner() {
         || fail "${message}: expected ${expected_count}, found ${total}"
 }
 
+require_exact_two_owners() {
+    local needle="$1"
+    local expected_one="$2"
+    local expected_two="$3"
+    local expected_count="$4"
+    local message="$5"
+    local file=''
+    local total=0
+    local count=0
+    local status=0
+    while IFS= read -r -d '' file; do
+        if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}"; then
+            continue
+        fi
+        status=0
+        count="$(LC_ALL=C grep -Fc -- "${needle}" "${file}")" || status=$?
+        case "${status}" in
+            0) ;;
+            1) count=0 ;;
+            *) grep_failed "${file}" "${status}" ;;
+        esac
+        if [[ "${count}" -gt 0 \
+                && "${file}" != "${expected_one}" \
+                && "${file}" != "${expected_two}" ]]; then
+            fail "${message}: unexpected owner ${file}"
+        fi
+        total=$((total + count))
+    done < "${PRODUCTION_SOURCE_LIST}"
+    [[ "${total}" -eq "${expected_count}" ]] \
+        || fail "${message}: expected ${expected_count}, found ${total}"
+}
+
 line_of_fixed() {
     local file="$1"
     local needle="$2"
@@ -320,6 +353,7 @@ is_approved_p6_s2_r3_changed_path() {
         src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachments.java | \
         src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java | \
         src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
@@ -652,6 +686,61 @@ is_approved_p8_s3_product_changed_path() {
     esac
 }
 
+is_approved_p8_s4_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/GramaryeClient.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPayloadDispatchFactory.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPayloadDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPayloadHandlers.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPresentationLifecycle.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPresentationState.java | \
+        src/main/java/com/yo1no/gramarye/P8PacketSubmission.java | \
+        src/main/java/com/yo1no/gramarye/P8PayloadCodecSupport.java | \
+        src/main/java/com/yo1no/gramarye/P8PayloadRegistrationBridge.java | \
+        src/main/java/com/yo1no/gramarye/P8PresentationRuntime.java | \
+        src/main/java/com/yo1no/gramarye/P8ProfileCatalogEntry.java | \
+        src/main/java/com/yo1no/gramarye/P8ProfileCatalogSnapshot.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerConnectionAuthority.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java | \
+        src/main/java/com/yo1no/gramarye/PresentationEventPayload.java | \
+        src/main/java/com/yo1no/gramarye/PresentationLimits.java | \
+        src/main/java/com/yo1no/gramarye/ProfileCatalogPayload.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p8_s4_test_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S2DedicatedRegistrationTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S2BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPayloadHandlersTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationStateTest.java | \
+        src/test/java/com/yo1no/gramarye/P8PayloadCodecTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S4PayloadBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S4ServerTransportTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ServerConnectionAuthorityTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_approved_p8_s3_test_changed_path() {
     case "$1" in
         src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
@@ -676,7 +765,9 @@ is_allowed_changed_path() {
     bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "$1" && return 0
     is_approved_p7_s3_r1_changed_path "$1" && return 0
     is_approved_p8_s3_product_changed_path "$1" && return 0
+    is_approved_p8_s4_production_path "$1" && return 0
     is_approved_p8_s3_test_changed_path "$1" && return 0
+    is_approved_p8_s4_test_path "$1" && return 0
     case "$1" in
         scripts/verify-p4-c2-a-configuration.sh | \
         scripts/verify-p4-c2-b-configuration.sh | \
@@ -1103,8 +1194,12 @@ require_fixed_count "${P4C2_ADAPTER}" 'getCustomExtension(P4E2QualificationFacad
     'test-only adapter must have one exact custom-extension retrieval callsite'
 require_fixed_count "${P4C2_ADAPTER}" 'getModContainerById(Gramarye.MOD_ID)' 1 \
     'test-only adapter must retrieve only the exact Gramarye container'
-require_only_owner 'PlayerEvent.PlayerLoggedInEvent' "${RECOVERY_SERVICE}" 1 \
-    'login listener must have one exact recovery-service owner'
+    require_exact_two_owners \
+        'PlayerEvent.PlayerLoggedInEvent' \
+        "${RECOVERY_SERVICE}" \
+        "${ROOT_PACKAGE}/P8ServerPresentationService.java" \
+        2 \
+        'login listener escaped the exact recovery and P8 presentation owners'
 require_only_owner '.reconcileAfterRecovery(' "${RECOVERY_SERVICE}" 1 \
     'typed P4-E2 continuation must have one exact production callsite'
 require_fixed \

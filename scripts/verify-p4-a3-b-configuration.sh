@@ -357,7 +357,11 @@ main() {
     forbid_fixed_in_file_list_except \
         "${SOURCE_FILE_LIST}" \
         'CustomPacketPayload' \
-        'CustomPacketPayload escaped the exact P7-S2 payload owner allowlist' \
+        'CustomPacketPayload escaped the exact P7-S2/P8-S4 payload owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/P8PacketSubmission.java' \
+        'src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java' \
+        'src/main/java/com/yo1no/gramarye/PresentationEventPayload.java' \
+        'src/main/java/com/yo1no/gramarye/ProfileCatalogPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
@@ -367,7 +371,8 @@ main() {
     forbid_fixed_in_file_list_except \
         "${SOURCE_FILE_LIST}" \
         'PayloadRegistrar' \
-        'PayloadRegistrar escaped the exact P7-S2 registrar owner allowlist' \
+        'PayloadRegistrar escaped the exact P7-S2/P8-S4 registrar owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/P8PayloadRegistrationBridge.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java'
     require_fixed \
         'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
@@ -378,6 +383,7 @@ main() {
                 'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
                 && "${file}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
                 && "${file}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+                && "${file}" != 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 && "${file}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]]; then
             forbid_fixed "${file}" 'PlayerEvent' \
                 'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
