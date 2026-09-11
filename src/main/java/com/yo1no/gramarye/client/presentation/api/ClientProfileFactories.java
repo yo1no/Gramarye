@@ -39,12 +39,19 @@ public final class ClientProfileFactories {
     private static void validateRegistry(
             Registry<ClientProfileFactoryRegistration<?>> registry) {
         Objects.requireNonNull(registry, "registry");
+        validateRegistry(registry, MagicRegistries.profileTypeRegistry());
+    }
+
+    static void validateRegistry(
+            Registry<ClientProfileFactoryRegistration<?>> registry,
+            Registry<ProfileType<?>> profileTypes) {
+        Objects.requireNonNull(registry, "registry");
+        Objects.requireNonNull(profileTypes, "profileTypes");
         if (registry.size() > 64) {
             throw new IllegalStateException(
                     "Client Profile factory registry exceeds 64 entries");
         }
 
-        var profileTypes = MagicRegistries.profileTypeRegistry();
         var matchedKeys = Collections.newSetFromMap(
                 new IdentityHashMap<ClientFactoryKey<?>, Boolean>());
         for (var entry : registry.entrySet()) {

@@ -9,12 +9,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.definition.document.AppearanceField;
 import com.yo1no.gramarye.magic.definition.validation.ProfileAvailability;
+import com.yo1no.gramarye.magic.presentation.api.ProfileChannel;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.TreeMap;
+import java.util.UUID;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 /** Direct transition tests for the root-owned P8-S2 active/pending authority. */
 final class P8ServerPresentationServiceTest {
+    private static final ResourceLocation OVERWORLD =
+            ResourceLocation.fromNamespaceAndPath("minecraft", "overworld");
+
     @Test
     void pendingIsInaccessibleAndOnlyReferenceIdenticalTokenActivatesIt() {
         var profileId = P8S2TestFixtures.id("pending_sound");
@@ -137,6 +148,177 @@ final class P8ServerPresentationServiceTest {
     }
 
     @Test
+    void reloadRawWorkReachesExactAcceptedAndInspectedAggregateBounds() {
+        var acceptedSource = P8S2TestFixtures.paddedTo(
+                P8S2TestFixtures.profile(
+                        P8S2TestFixtures.SOUND_TYPE_ID,
+                        P8S2TestFixtures.soundConfiguration(600)),
+                PresentationLimits.MAX_PROFILE_RAW_SOURCE_BYTES);
+        assertEquals(
+                PresentationLimits.MAX_PROFILE_ACCEPTED_RELOAD_BYTES,
+                (long) PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES
+                        * acceptedSource.length);
+        var accepted = P8ServerPresentationService.create();
+        activate(
+                accepted,
+                candidate(repeatedSources(
+                        "accepted_raw",
+                        PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES,
+                        acceptedSource)));
+
+        assertAll(
+                () -> assertEquals(66, accepted.activeEntryCountForTesting()),
+                () -> assertTrue(accepted.hasActiveCapacityDiagnosticForTesting(
+                        P8S2TestFixtures.id("accepted_raw_255"))),
+                () -> assertTrue(
+                        accepted.activeCatalogBodyBytesForTesting()
+                                <= PresentationLimits.MAX_CLIENT_CATALOG_RETAINED_BODY_BYTES));
+
+        var inspectedSource = P8S2TestFixtures.paddedTo(
+                acceptedSource, PresentationLimits.MAX_PROFILE_INSPECTED_SOURCE_BYTES);
+        assertEquals(
+                PresentationLimits.MAX_PROFILE_INSPECTED_RELOAD_BYTES,
+                (long) PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES
+                        * inspectedSource.length);
+        var inspected = P8ServerPresentationService.create();
+        activate(
+                inspected,
+                candidate(repeatedSources(
+                        "inspected_raw",
+                        PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES,
+                        inspectedSource)));
+
+        assertAll(
+                () -> assertEquals(3, inspected.activeEntryCountForTesting()),
+                () -> assertEquals(
+                        PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS,
+                        inspected.activeDiagnosticCountForTesting()),
+                () -> assertTrue(inspected.hasActiveDiagnosticDetailForTesting(
+                        P8S2TestFixtures.id("inspected_raw_255"))),
+                () -> assertEquals(
+                        0L, inspected.activeSuppressedDiagnosticCountForTesting()));
+    }
+
+    @Test
+    void reloadJsonWorkReachesTheExactAggregateNodeMaximum() {
+        var maximumNodeSource = P8S2TestFixtures.profile(
+                P8S2TestFixtures.TREE_TYPE_ID,
+                P8S2TestFixtures.arrayPayload(250));
+        assertEquals(
+                PresentationLimits.MAX_PROFILE_JSON_NODES_PER_RELOAD,
+                (long) PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES
+                        * PresentationLimits.MAX_PROFILE_JSON_NODES_PER_ENTRY);
+        var service = P8ServerPresentationService.create();
+
+        activate(
+                service,
+                candidate(repeatedSources(
+                        "maximum_nodes",
+                        PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES,
+                        maximumNodeSource)));
+
+        assertAll(
+                () -> assertEquals(66, service.activeEntryCountForTesting()),
+                () -> assertTrue(service.hasActiveCapacityDiagnosticForTesting(
+                        P8S2TestFixtures.id("maximum_nodes_255"))),
+                () -> assertTrue(
+                        service.activeCatalogBodyBytesForTesting()
+                                <= PresentationLimits.MAX_CLIENT_CATALOG_RETAINED_BODY_BYTES));
+    }
+
+    @Test
+    void serverOwnerRetainsExactMaximumActiveAndPendingReferenceCounts() {
+        var service = P8ServerPresentationService.create();
+        activate(service, maximumCatalogCandidate("active_maximum"));
+        var pendingIdentity = P8ServerPresentationService.newReloadIdentityForTesting();
+
+        service.stageCandidateForTesting(
+                pendingIdentity, maximumCatalogCandidate("pending_maximum"));
+
+        assertAll(
+                () -> assertEquals(
+                        PresentationLimits.MAX_PROFILE_INSTANCES,
+                        service.activeEntryCountForTesting()),
+                () -> assertEquals(
+                        PresentationLimits.MAX_PROFILE_INSTANCES,
+                        service.pendingEntryCountForTesting()),
+                () -> assertTrue(
+                        service.activeCatalogBodyBytesForTesting()
+                                <= PresentationLimits.MAX_CLIENT_CATALOG_RETAINED_BODY_BYTES),
+                () -> assertTrue(
+                        service.pendingCatalogBodyBytesForTesting()
+                                <= PresentationLimits.MAX_CLIENT_CATALOG_RETAINED_BODY_BYTES));
+    }
+
+    @Test
+    void activationClearsMaximumEventsAndSchedulesMaximumReadinessRecords() {
+        var service = P8ServerPresentationService.create();
+        activate(service, maximumCatalogCandidate("activation_active"));
+        seedMaximumReadiness(service);
+        service.setTickStateForTesting(maximumBufferedTickState(70L));
+        var pendingIdentity = P8ServerPresentationService.newReloadIdentityForTesting();
+        service.stageCandidateForTesting(
+                pendingIdentity, maximumCatalogCandidate("activation_pending"));
+
+        assertAll(
+                () -> assertEquals(
+                        PresentationLimits.MAX_CATALOG_READINESS_RECORDS,
+                        service.readinessRecordCountForTesting()),
+                () -> assertEquals(
+                        Math.toIntExact(
+                                PresentationLimits.MAX_CURRENT_TICK_EVENT_BUFFER_EVENTS),
+                        service.bufferedEventsForTesting().size()),
+                () -> assertEquals(
+                        PresentationLimits.MAX_PROFILE_INSTANCES,
+                        service.pendingEntryCountForTesting()));
+
+        assertTrue(service.activateCandidateAndScheduleAllForTesting(
+                pendingIdentity, 71L));
+
+        var due = service.dueCatalogsForTesting(71L);
+        assertAll(
+                () -> assertEquals(2L, service.catalogGenerationForTesting()),
+                () -> assertEquals(
+                        PresentationLimits.MAX_PROFILE_INSTANCES,
+                        service.activeEntryCountForTesting()),
+                () -> assertEquals(0, service.pendingEntryCountForTesting()),
+                () -> assertTrue(service.bufferedEventsForTesting().isEmpty()),
+                () -> assertEquals(
+                        PresentationLimits.MAX_CATALOG_READINESS_RECORDS,
+                        service.readinessRecordCountForTesting()),
+                () -> assertEquals(
+                        PresentationLimits.MAX_CATALOG_READINESS_RECORDS,
+                        due.size()),
+                () -> assertTrue(due.stream()
+                        .allMatch(key -> key.catalogGeneration() == 2L)));
+    }
+
+    @Test
+    void serverDiagnosticInsertionRetainsExact128ByteIdAndOmits129ByteDetail() {
+        var exact = ResourceLocation.fromNamespaceAndPath("a", "x".repeat(126));
+        var over = ResourceLocation.fromNamespaceAndPath("a", "y".repeat(127));
+        assertAll(
+                () -> assertEquals(
+                        PresentationLimits.MAX_RESOURCE_LOCATION_UTF8_BYTES,
+                        exact.toString().getBytes(StandardCharsets.UTF_8).length),
+                () -> assertEquals(
+                        PresentationLimits.MAX_RESOURCE_LOCATION_UTF8_BYTES + 1,
+                        over.toString().getBytes(StandardCharsets.UTF_8).length));
+        var service = P8ServerPresentationService.create();
+
+        activate(
+                service,
+                candidate(Map.of(
+                        exact, "not-json".getBytes(StandardCharsets.UTF_8),
+                        over, "not-json".getBytes(StandardCharsets.UTF_8))));
+
+        assertAll(
+                () -> assertEquals(2, service.activeDiagnosticCountForTesting()),
+                () -> assertTrue(service.hasActiveDiagnosticDetailForTesting(exact)),
+                () -> assertFalse(service.hasActiveDiagnosticDetailForTesting(over)));
+    }
+
+    @Test
     void stableAvailabilityViewAtomicallyObservesChannelAndConfigurationReplacement() {
         var profileId = P8S2TestFixtures.id("same_profile_id");
         var service = P8ServerPresentationService.create();
@@ -229,6 +411,39 @@ final class P8ServerPresentationServiceTest {
     }
 
     @Test
+    void stopClearsMaximumReadinessEventsAndPendingCatalogAtTheActualOwner() {
+        var service = P8ServerPresentationService.create();
+        activate(service, maximumCatalogCandidate("cleanup_active"));
+        seedMaximumReadiness(service);
+        service.setTickStateForTesting(maximumBufferedTickState(80L));
+        var lateIdentity = P8ServerPresentationService.newReloadIdentityForTesting();
+        service.stageCandidateForTesting(
+                lateIdentity, maximumCatalogCandidate("cleanup_pending"));
+
+        assertAll(
+                () -> assertEquals(
+                        PresentationLimits.MAX_CATALOG_READINESS_RECORDS,
+                        service.readinessRecordCountForTesting()),
+                () -> assertEquals(
+                        Math.toIntExact(
+                                PresentationLimits.MAX_CURRENT_TICK_EVENT_BUFFER_EVENTS),
+                        service.bufferedEventsForTesting().size()),
+                () -> assertEquals(
+                        PresentationLimits.MAX_PROFILE_INSTANCES,
+                        service.pendingEntryCountForTesting()));
+
+        service.stopForTesting();
+
+        assertAll(
+                () -> assertEquals(0, service.activeEntryCountForTesting()),
+                () -> assertEquals(0, service.pendingEntryCountForTesting()),
+                () -> assertEquals(0, service.readinessRecordCountForTesting()),
+                () -> assertTrue(service.bufferedEventsForTesting().isEmpty()),
+                () -> assertEquals(0L, service.catalogGenerationForTesting()),
+                () -> assertFalse(service.activateCandidateForTesting(lateIdentity)));
+    }
+
+    @Test
     void generationMaximumIsUsableOnceAndNeverWraps() {
         var profileId = P8S2TestFixtures.id("generation_sound");
         var service = P8ServerPresentationService.create();
@@ -271,6 +486,42 @@ final class P8ServerPresentationServiceTest {
                 () -> assertThrows(
                         IllegalArgumentException.class,
                         () -> service.setCatalogGenerationHighWaterForTesting(0L)));
+    }
+
+    @Test
+    void suppressedRuntimeDiagnosticCountSaturatesAtLongMaximum() {
+        var sources = new LinkedHashMap<ResourceLocation, byte[]>();
+        for (var index = 0;
+                index < PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS;
+                index++) {
+            sources.put(
+                    P8S2TestFixtures.id("saturated_diagnostic_%03d".formatted(index)),
+                    "not-json".getBytes(StandardCharsets.UTF_8));
+        }
+        var service = P8ServerPresentationService.create();
+        activate(service, candidate(sources));
+        service.setRuntimeSuppressedDiagnosticCountForTesting(Long.MAX_VALUE - 1L);
+
+        service.recordObserverRuntimeException();
+
+        assertAll(
+                () -> assertEquals(
+                        PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS,
+                        service.activeDiagnosticCountForTesting()),
+                () -> assertEquals(
+                        Long.MAX_VALUE,
+                        service.activeSuppressedDiagnosticCountForTesting()),
+                () -> assertFalse(service.hasRuntimeDiagnosticForTesting(
+                        P8ServerRuntimeDiagnosticCode.OBSERVER_RUNTIME_EXCEPTION)));
+
+        service.recordObserverRuntimeException();
+
+        assertAll(
+                () -> assertEquals(
+                        Long.MAX_VALUE,
+                        service.activeSuppressedDiagnosticCountForTesting()),
+                () -> assertFalse(service.hasRuntimeDiagnosticForTesting(
+                        P8ServerRuntimeDiagnosticCode.OBSERVER_RUNTIME_EXCEPTION)));
     }
 
     @Test
@@ -351,6 +602,134 @@ final class P8ServerPresentationServiceTest {
                         ProfileAvailability.MISSING,
                         service.profileAvailabilityView().availability(
                                 AppearanceField.SOUND_PROFILE, staleProfile)));
+    }
+
+    private static Map<ResourceLocation, byte[]> repeatedSources(
+            String prefix, int count, byte[] source) {
+        var sources = new LinkedHashMap<ResourceLocation, byte[]>(count);
+        for (var index = 0; index < count; index++) {
+            sources.put(
+                    P8S2TestFixtures.id("%s_%03d".formatted(prefix, index)),
+                    source);
+        }
+        return sources;
+    }
+
+    private static P8ServerPresentationService.PreparedCatalog maximumCatalogCandidate(
+            String prefix) {
+        var sources = new LinkedHashMap<ResourceLocation, byte[]>();
+        for (var index = 0;
+                index < PresentationLimits.MAX_PROFILE_INSTANCES_PER_CHANNEL - 1;
+                index++) {
+            sources.put(
+                    P8S2TestFixtures.id("%s_sound_%02d".formatted(prefix, index)),
+                    P8S2TestFixtures.profile(
+                            P8S2TestFixtures.SOUND_TYPE_ID,
+                            P8S2TestFixtures.soundConfiguration(index)));
+            sources.put(
+                    P8S2TestFixtures.id("%s_particle_%02d".formatted(prefix, index)),
+                    P8S2TestFixtures.profile(
+                            P8S2TestFixtures.PARTICLE_TYPE_ID,
+                            P8S2TestFixtures.particleConfiguration(index)));
+            sources.put(
+                    P8S2TestFixtures.id("%s_trail_%02d".formatted(prefix, index)),
+                    P8S2TestFixtures.profile(
+                            P8S2TestFixtures.TRAIL_TYPE_ID,
+                            P8S2TestFixtures.trailConfiguration(
+                                    Math.min(48, Math.max(1, index)))));
+        }
+        return candidate(sources);
+    }
+
+    private static void seedMaximumReadiness(P8ServerPresentationService service) {
+        for (var index = 0;
+                index < PresentationLimits.MAX_CATALOG_READINESS_RECORDS;
+                index++) {
+            assertTrue(service.openReadinessRecordForTesting(
+                    new UUID(0L, index + 1L),
+                    service.catalogGenerationForTesting(),
+                    0L));
+        }
+    }
+
+    private static P8TickState maximumBufferedTickState(long tick) {
+        var scratch = P8TickState.empty().scratch(tick);
+        for (var sequence = 1L;
+                sequence <= PresentationLimits.MAX_CURRENT_TICK_EVENT_BUFFER_EVENTS;
+                sequence++) {
+            assertEquals(
+                    PresentationDegradation.Outcome.UNCHANGED,
+                    scratch.admitBuffered(buffered(tick, sequence)).outcome());
+        }
+        return scratch.freeze();
+    }
+
+    private static P8BufferedPresentation buffered(long tick, long sequence) {
+        var appearance = new EffectiveAppearance(
+                0xff_ffffff,
+                0xff_ffffff,
+                1_000,
+                disabled(ProfileChannel.SOUND),
+                disabled(ProfileChannel.PARTICLE),
+                disabled(ProfileChannel.TRAIL),
+                Map.of());
+        var event = ((AcceptedPresentationEvent) PresentationEvent.createServer(
+                        1L,
+                        PresentationEventKind.CAST_RELEASE.wireCode(),
+                        OptionalInt.empty(),
+                        OptionalInt.empty(),
+                        OVERWORLD,
+                        0.0D,
+                        64.0D,
+                        0.0D,
+                        1.0D,
+                        0.0D,
+                        0.0D,
+                        appearance,
+                        sequence))
+                .event();
+        var direction = event.direction();
+        var wireAppearance = event.appearance();
+        var identity = new PresentationCoalescing.Identity(
+                tick,
+                sequence,
+                0,
+                event.catalogGeneration(),
+                event.kind().wireCode(),
+                event.sourceSummary().sourceEntityId(),
+                event.sourceSummary().targetEntityId(),
+                event.dimension(),
+                event.position().x(),
+                event.position().y(),
+                event.position().z(),
+                direction.xQ15(),
+                direction.yQ15(),
+                direction.zQ15(),
+                wireAppearance.primaryArgb(),
+                wireAppearance.secondaryArgb(),
+                wireAppearance.soundProfileId(),
+                wireAppearance.particleProfileId(),
+                wireAppearance.trailProfileId(),
+                new TreeMap<>(wireAppearance.parameters()),
+                wireAppearance.intensityMilli(),
+                List.of());
+        return new P8BufferedPresentation(
+                tick,
+                sequence,
+                0,
+                event,
+                PresentationCoalescing.Value.create(identity, sequence),
+                List.of(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
+    }
+
+    private static ResolvedProfile disabled(ProfileChannel channel) {
+        return new ResolvedProfile(
+                channel,
+                Optional.empty(),
+                ProfileResolutionReason.EXPLICITLY_DISABLED);
     }
 
     private static P8ServerPresentationService.PreparedCatalog candidate(

@@ -315,7 +315,7 @@ final class P8RecipientSelector {
         Objects.requireNonNull(transport, "transport");
 
         var online = server.getPlayerList().getPlayers();
-        if (online.size() > PresentationLimits.MAX_ONLINE_RECIPIENT_SCAN_PER_EVENT) {
+        if (!withinOnlineScanBound(online.size())) {
             return Optional.empty();
         }
 
@@ -332,7 +332,7 @@ final class P8RecipientSelector {
                 return Optional.of(new P8RecipientSelection(List.of(), 0));
             }
             var watchers = targetLevel.getChunkSource().chunkMap.getPlayersWatching(target);
-            if (watchers.size() > PresentationLimits.MAX_ONLINE_RECIPIENT_SCAN_PER_EVENT) {
+            if (!withinOnlineScanBound(watchers.size())) {
                 return Optional.empty();
             }
             for (ServerPlayer watcher : watchers) {
@@ -379,12 +379,43 @@ final class P8RecipientSelector {
                     identity, category(material, identity.playerId()), distance));
         }
 
+        return Optional.of(retainEligible(eligible, evaluations, event.sequence()));
+    }
+
+    static boolean withinOnlineScanBound(int count) {
+        if (count < 0) {
+            throw new IllegalArgumentException("online recipient count cannot be negative");
+        }
+        return count <= PresentationLimits.MAX_ONLINE_RECIPIENT_SCAN_PER_EVENT;
+    }
+
+    static <T> boolean admitCandidate(
+            Map<UUID, T> candidates, UUID playerId, T candidate) {
+        Objects.requireNonNull(candidates, "candidates");
+        Objects.requireNonNull(playerId, "playerId");
+        Objects.requireNonNull(candidate, "candidate");
+        if (candidates.containsKey(playerId)) {
+            return true;
+        }
+        if (candidates.size() >= PresentationLimits.MAX_ONLINE_RECIPIENT_SCAN_PER_EVENT) {
+            return false;
+        }
+        candidates.put(playerId, candidate);
+        return true;
+    }
+
+    static P8RecipientSelection retainEligible(
+            List<P8SelectedRecipient> eligible, int evaluations, long sequence) {
+        Objects.requireNonNull(eligible, "eligible");
+        if (eligible.size() > PresentationLimits.MAX_ONLINE_RECIPIENT_SCAN_PER_EVENT) {
+            throw new IllegalArgumentException("eligible recipients exceed the P8 scan bound");
+        }
         var orderInputs = eligible.stream()
                 .map(value -> new PresentationOrdering.DeliveryCandidate(
                         value.category(),
                         value.squaredDistance(),
                         value.identity().playerId(),
-                        event.sequence()))
+                        sequence))
                 .toList();
         var selectedOrder = PresentationOrdering.selectDeliveries(
                 orderInputs,
@@ -397,19 +428,13 @@ final class P8RecipientSelector {
         var selected = selectedOrder.retained().stream()
                 .map(byOrdering::get)
                 .toList();
-        return Optional.of(new P8RecipientSelection(selected, evaluations));
+        return new P8RecipientSelection(selected, evaluations);
     }
 
     private static boolean addBoundedCandidate(
             Map<UUID, ServerPlayer> candidates, ServerPlayer player) {
-        if (player == null || candidates.containsKey(player.getUUID())) {
-            return true;
-        }
-        if (candidates.size() >= PresentationLimits.MAX_ONLINE_RECIPIENT_SCAN_PER_EVENT) {
-            return false;
-        }
-        candidates.put(player.getUUID(), player);
-        return true;
+        return player == null
+                || admitCandidate(candidates, player.getUUID(), player);
     }
 
     static boolean remainsEligible(

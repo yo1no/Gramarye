@@ -148,6 +148,61 @@ final class P8PresentationRuntimeTest {
     }
 
     @Test
+    void recipientSelectorClosesPlayerListAndCandidateAdmissionAtFiveHundredTwelve() {
+        assertTrue(P8RecipientSelector.withinOnlineScanBound(512));
+        assertFalse(P8RecipientSelector.withinOnlineScanBound(513));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> P8RecipientSelector.withinOnlineScanBound(-1));
+
+        var candidates = new TreeMap<UUID, Long>();
+        for (var index = 1L; index <= 512L; index++) {
+            assertTrue(P8RecipientSelector.admitCandidate(
+                    candidates, new UUID(0L, index), index));
+        }
+        assertEquals(512, candidates.size());
+        assertTrue(P8RecipientSelector.admitCandidate(
+                candidates, new UUID(0L, 1L), Long.MAX_VALUE));
+        assertEquals(1L, candidates.get(new UUID(0L, 1L)));
+        assertFalse(P8RecipientSelector.admitCandidate(
+                candidates, new UUID(0L, 513L), 513L));
+        assertEquals(512, candidates.size());
+    }
+
+    @Test
+    void recipientSelectorRetainsTheDeterministicBestThirtyTwoFromThirtyThree() {
+        var exact = java.util.stream.LongStream.rangeClosed(1L, 32L)
+                .map(index -> 33L - index)
+                .mapToObj(index -> recipient(
+                        new P8RecipientIdentity(new UUID(0L, index), 1L), 1.0D))
+                .toList();
+        var expected = java.util.stream.LongStream.rangeClosed(1L, 32L)
+                .mapToObj(index -> new UUID(0L, index))
+                .toList();
+
+        var exactSelection = P8RecipientSelector.retainEligible(exact, 32, 1L);
+
+        assertEquals(32, exactSelection.evaluations());
+        assertEquals(expected, exactSelection.recipients().stream()
+                .map(value -> value.identity().playerId())
+                .toList());
+
+        var oneOver = java.util.stream.LongStream.rangeClosed(1L, 33L)
+                .map(index -> 34L - index)
+                .mapToObj(index -> recipient(
+                        new P8RecipientIdentity(new UUID(0L, index), 1L), 1.0D))
+                .toList();
+
+        var trimmed = P8RecipientSelector.retainEligible(oneOver, 33, 2L);
+
+        assertEquals(33, trimmed.evaluations());
+        assertEquals(32, trimmed.recipients().size());
+        assertEquals(expected, trimmed.recipients().stream()
+                .map(value -> value.identity().playerId())
+                .toList());
+    }
+
+    @Test
     void activationStyleBufferClearPreservesAlreadyChargedLogicalWork() {
         var skill = skill(0x8303L);
         var source = new UUID(0L, 0x8303L);

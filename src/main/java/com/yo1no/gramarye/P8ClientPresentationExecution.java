@@ -80,7 +80,11 @@ final class P8ClientPresentationExecution extends P8ClientPresentationExecutionP
                 worldGeneration,
                 resourceGeneration,
                 catalog.catalogGeneration());
-        return new PreparedCatalog(bindCatalog(catalog, resources, generations));
+        var preparedDiagnostics = new PreparedDiagnosticAccumulator();
+        return new PreparedCatalog(
+                bindCatalog(catalog, resources, generations, preparedDiagnostics),
+                preparedDiagnostics.retained(),
+                preparedDiagnostics.suppressed());
     }
 
     @Override
@@ -88,6 +92,10 @@ final class P8ClientPresentationExecution extends P8ClientPresentationExecutionP
         if (preparedCatalog instanceof PreparedCatalog prepared
                 && prepared.owner == this) {
             boundCatalog = prepared.catalog;
+            for (var key : prepared.diagnostics) {
+                diagnostic(key);
+            }
+            addSuppressedDiagnostics(prepared.suppressedDiagnostics);
         }
     }
 
@@ -332,8 +340,26 @@ final class P8ClientPresentationExecution extends P8ClientPresentationExecutionP
         return diagnostics.size();
     }
 
+    boolean hasDiagnosticForTesting(
+            P8ClientDiagnosticCode code,
+            ResourceLocation first,
+            ResourceLocation second) {
+        return diagnostics.contains(new P8ClientDiagnosticKey(code, first, second));
+    }
+
     long suppressedDiagnosticCount() {
         return suppressedDiagnostics;
+    }
+
+    /** Package-private saturation seam; valid product code never calls this. */
+    void setSuppressedDiagnosticCountForTest(long value) {
+        if (value < 0L
+                || diagnostics.size()
+                        != PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS) {
+            throw new IllegalStateException(
+                    "client diagnostic saturation requires a full retained owner");
+        }
+        suppressedDiagnostics = value;
     }
 
     P8ClientTrailRenderSnapshot trailRenderSnapshot() {
@@ -454,15 +480,21 @@ final class P8ClientPresentationExecution extends P8ClientPresentationExecutionP
     private BoundCatalog bindCatalog(
             P8ProfileCatalogSnapshot catalog,
             P8ClientResourceIndex resources,
-            ClientGenerations generations) {
+            ClientGenerations generations,
+            PreparedDiagnosticAccumulator preparedDiagnostics) {
         if (resources.omittedResources()) {
-            diagnostic(P8ClientDiagnosticCode.RESOURCE_INDEX_TRUNCATED, null, null);
+            preparedDiagnostic(
+                    preparedDiagnostics,
+                    P8ClientDiagnosticCode.RESOURCE_INDEX_TRUNCATED,
+                    null,
+                    null);
         }
         var assetProbe = new AssetProbe(backend, resources);
         var bound = new HashMap<ResourceLocation, BoundProfile<?>>();
         for (var entry : catalog.entries()) {
             if (entry.decodedProfile().isEmpty()) {
-                diagnostic(
+                preparedDiagnostic(
+                        preparedDiagnostics,
                         P8ClientDiagnosticCode.PROFILE_UNAVAILABLE,
                         entry.profileId(),
                         entry.typeId());
@@ -470,7 +502,8 @@ final class P8ClientPresentationExecution extends P8ClientPresentationExecutionP
             }
             var captured = bindCaptured(entry, entry.decodedProfile().orElseThrow());
             if (captured.isEmpty()) {
-                diagnostic(
+                preparedDiagnostic(
+                        preparedDiagnostics,
                         P8ClientDiagnosticCode.FACTORY_BINDING_MISMATCH,
                         entry.profileId(),
                         entry.clientFactoryId());
@@ -481,13 +514,15 @@ final class P8ClientPresentationExecution extends P8ClientPresentationExecutionP
                 if (isAvailable(value, assetProbe)) {
                     bound.put(entry.profileId(), value);
                 } else {
-                    diagnostic(
+                    preparedDiagnostic(
+                            preparedDiagnostics,
                             P8ClientDiagnosticCode.ASSET_UNAVAILABLE,
                             entry.profileId(),
                             entry.clientFactoryId());
                 }
             } catch (RuntimeException failure) {
-                diagnostic(
+                preparedDiagnostic(
+                        preparedDiagnostics,
                         P8ClientDiagnosticCode.FACTORY_RUNTIME_EXCEPTION,
                         entry.profileId(),
                         entry.clientFactoryId());
@@ -978,15 +1013,39 @@ final class P8ClientPresentationExecution extends P8ClientPresentationExecutionP
             P8ClientDiagnosticCode code,
             ResourceLocation first,
             ResourceLocation second) {
-        var key = new P8ClientDiagnosticKey(code, first, second);
+        diagnostic(new P8ClientDiagnosticKey(code, first, second));
+    }
+
+    private void diagnostic(P8ClientDiagnosticKey key) {
         if (diagnostics.contains(key)) {
             return;
         }
         if (diagnostics.size() < PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS) {
             diagnostics.add(key);
         } else if (suppressedDiagnostics != Long.MAX_VALUE) {
-            suppressedDiagnostics++;
+            suppressedDiagnostics = Math.addExact(suppressedDiagnostics, 1L);
         }
+    }
+
+    private void preparedDiagnostic(
+            PreparedDiagnosticAccumulator preparedDiagnostics,
+            P8ClientDiagnosticCode code,
+            ResourceLocation first,
+            ResourceLocation second) {
+        preparedDiagnostics.add(new P8ClientDiagnosticKey(code, first, second));
+    }
+
+    private void addSuppressedDiagnostics(long count) {
+        if (count < 0L) {
+            throw new IllegalStateException("suppressed client diagnostic delta is negative");
+        }
+        if (count == 0L || suppressedDiagnostics == Long.MAX_VALUE) {
+            return;
+        }
+        var remaining = Long.MAX_VALUE - suppressedDiagnostics;
+        suppressedDiagnostics = count >= remaining
+                ? Long.MAX_VALUE
+                : Math.addExact(suppressedDiagnostics, count);
     }
 
     private static boolean validParticle(
@@ -1204,10 +1263,49 @@ final class P8ClientPresentationExecution extends P8ClientPresentationExecutionP
     private final class PreparedCatalog extends P8ClientPreparedCatalog {
         private final P8ClientPresentationExecution owner;
         private final BoundCatalog catalog;
+        private final List<P8ClientDiagnosticKey> diagnostics;
+        private final long suppressedDiagnostics;
 
-        private PreparedCatalog(BoundCatalog prepared) {
+        private PreparedCatalog(
+                BoundCatalog prepared,
+                List<P8ClientDiagnosticKey> preparedDiagnostics,
+                long preparedSuppressedDiagnostics) {
             owner = P8ClientPresentationExecution.this;
             catalog = Objects.requireNonNull(prepared, "prepared");
+            diagnostics = List.copyOf(Objects.requireNonNull(
+                    preparedDiagnostics, "preparedDiagnostics"));
+            if (preparedSuppressedDiagnostics < 0L) {
+                throw new IllegalArgumentException(
+                        "prepared suppressed diagnostics cannot be negative");
+            }
+            suppressedDiagnostics = preparedSuppressedDiagnostics;
+        }
+    }
+
+    private final class PreparedDiagnosticAccumulator {
+        private final LinkedHashSet<P8ClientDiagnosticKey> retained =
+                new LinkedHashSet<>();
+        private long suppressed;
+
+        private void add(P8ClientDiagnosticKey key) {
+            Objects.requireNonNull(key, "key");
+            if (diagnostics.contains(key) || retained.contains(key)) {
+                return;
+            }
+            if ((long) diagnostics.size() + retained.size()
+                    < PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS) {
+                retained.add(key);
+            } else if (suppressed != Long.MAX_VALUE) {
+                suppressed = Math.addExact(suppressed, 1L);
+            }
+        }
+
+        private List<P8ClientDiagnosticKey> retained() {
+            return List.copyOf(retained);
+        }
+
+        private long suppressed() {
+            return suppressed;
         }
     }
 

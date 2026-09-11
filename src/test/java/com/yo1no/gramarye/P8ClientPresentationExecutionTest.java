@@ -13,12 +13,14 @@ import com.yo1no.gramarye.magic.presentation.api.ProfileConfiguration;
 import com.yo1no.gramarye.magic.presentation.api.ProfileType;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -371,6 +373,432 @@ final class P8ClientPresentationExecutionTest {
         assertEquals(0L, execution.totalTrailSegments());
         assertEquals(0L, execution.liveParticleCredits());
         assertEquals(0, execution.activePresentationCount());
+    }
+
+    @Test
+    void thirdPartyOutputRejectsGeometryScalarAndLifetimeViolationsBeforeBackend() {
+        var zero = new PresentationPosition(0.0D, 0.0D, 0.0D);
+        var horizontal = PresentationLimits.MAX_HORIZONTAL_POSITION;
+        var vertical = PresentationLimits.MAX_VERTICAL_POSITION;
+
+        for (var origin : List.of(
+                new PresentationPosition(horizontal, 0.0D, 0.0D),
+                new PresentationPosition(-horizontal, 0.0D, 0.0D),
+                new PresentationPosition(0.0D, vertical, 0.0D),
+                new PresentationPosition(0.0D, -vertical, 0.0D),
+                new PresentationPosition(0.0D, 0.0D, horizontal),
+                new PresentationPosition(0.0D, 0.0D, -horizontal))) {
+            assertParticleOutput(
+                    true,
+                    origin,
+                    particleAt(origin.x(), origin.y(), origin.z(), 0.0D, 0.0D, 0.0D, 1.0F, 1));
+        }
+        for (var command : List.of(
+                particleAt(Math.nextUp(horizontal), 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 1.0F, 1),
+                particleAt(-Math.nextUp(horizontal), 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 1.0F, 1),
+                particleAt(0.0D, Math.nextUp(vertical), 0.0D, 0.0D, 0.0D, 0.0D, 1.0F, 1),
+                particleAt(0.0D, 0.0D, Math.nextUp(horizontal), 0.0D, 0.0D, 0.0D, 1.0F, 1),
+                particleAt(Double.NaN, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 1.0F, 1),
+                particleAt(Double.POSITIVE_INFINITY, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 1.0F, 1))) {
+            assertParticleOutput(false, zero, command);
+        }
+
+        assertParticleOutput(
+                true, zero, particleAt(64.0D, 0.0D, 0.0D, -16.0D, 16.0D, 0.0D, 1.0F, 1));
+        assertParticleOutput(
+                true, zero, particleAt(-64.0D, 0.0D, 0.0D, 16.0D, -16.0D, 0.0D, 1.0F, 1));
+        for (var command : List.of(
+                particleAt(Math.nextUp(64.0D), 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 1.0F, 1),
+                particleAt(0.0D, 0.0D, 0.0D, Math.nextUp(16.0D), 0.0D, 0.0D, 1.0F, 1),
+                particleAt(0.0D, 0.0D, 0.0D, Math.nextDown(-16.0D), 0.0D, 0.0D, 1.0F, 1),
+                particleAt(0.0D, 0.0D, 0.0D, 0.0D, Double.NaN, 0.0D, 1.0F, 1),
+                particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, Double.NEGATIVE_INFINITY, 1.0F, 1),
+                particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0F, 1),
+                particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, -Float.MIN_VALUE, 1),
+                particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, Math.nextUp(16.0F), 1),
+                particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, Float.NaN, 1),
+                particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, Float.POSITIVE_INFINITY, 1),
+                particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 1.0F, 0),
+                particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 1.0F, 121))) {
+            assertParticleOutput(false, zero, command);
+        }
+        assertParticleOutput(
+                true, zero, particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, Float.MIN_VALUE, 1));
+        assertParticleOutput(
+                true, zero, particleAt(0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 16.0F, 120));
+
+        assertSoundOutput(true, new ClientProfileFactory.Sound(
+                SOUND_ASSET, 0.0D, 0.0D, 0.0D, Float.MIN_VALUE, 0.5F));
+        assertSoundOutput(true, new ClientProfileFactory.Sound(
+                SOUND_ASSET, 0.0D, 0.0D, 0.0D, 1.0F, 2.0F));
+        assertSoundOutput(false, new ClientProfileFactory.Sound(
+                SOUND_ASSET, 0.0D, 0.0D, 0.0D, 0.0F, 1.0F));
+        for (var command : List.of(
+                new ClientProfileFactory.Sound(
+                        SOUND_ASSET, 0.0D, 0.0D, 0.0D, -Float.MIN_VALUE, 1.0F),
+                new ClientProfileFactory.Sound(
+                        SOUND_ASSET, 0.0D, 0.0D, 0.0D, Math.nextUp(1.0F), 1.0F),
+                new ClientProfileFactory.Sound(
+                        SOUND_ASSET, 0.0D, 0.0D, 0.0D, Float.NaN, 1.0F),
+                new ClientProfileFactory.Sound(
+                        SOUND_ASSET, 0.0D, 0.0D, 0.0D, Float.POSITIVE_INFINITY, 1.0F),
+                new ClientProfileFactory.Sound(
+                        SOUND_ASSET, 0.0D, 0.0D, 0.0D, 1.0F, Math.nextDown(0.5F)),
+                new ClientProfileFactory.Sound(
+                        SOUND_ASSET, 0.0D, 0.0D, 0.0D, 1.0F, Math.nextUp(2.0F)),
+                new ClientProfileFactory.Sound(
+                        SOUND_ASSET, 0.0D, 0.0D, 0.0D, 1.0F, Float.NaN),
+                new ClientProfileFactory.Sound(
+                        SOUND_ASSET, 0.0D, 0.0D, 0.0D, 1.0F, Float.NEGATIVE_INFINITY))) {
+            assertSoundOutput(false, command);
+        }
+
+        assertTrailOutput(true, trailAt(Float.MIN_VALUE, 1, 1, OptionalInt.of(1)));
+        assertTrailOutput(true, trailAt(16.0F, 120, 120, OptionalInt.of(Integer.MAX_VALUE)));
+        for (var command : List.of(
+                trailAt(0.0F, 1, 1, OptionalInt.empty()),
+                trailAt(-Float.MIN_VALUE, 1, 1, OptionalInt.empty()),
+                trailAt(Math.nextUp(16.0F), 1, 1, OptionalInt.empty()),
+                trailAt(Float.NaN, 1, 1, OptionalInt.empty()),
+                trailAt(Float.POSITIVE_INFINITY, 1, 1, OptionalInt.empty()),
+                trailAt(1.0F, 0, 1, OptionalInt.empty()),
+                trailAt(1.0F, 121, 1, OptionalInt.empty()),
+                trailAt(1.0F, 1, 0, OptionalInt.empty()),
+                trailAt(1.0F, 1, 121, OptionalInt.empty()),
+                trailAt(1.0F, 1, 1, OptionalInt.of(0)),
+                trailAt(1.0F, 1, 1, OptionalInt.of(-1)))) {
+            assertTrailOutput(false, command);
+        }
+    }
+
+    @Test
+    void trailOutputOwnsOneStartAndAppliesActualPreferenceIntervals() {
+        var results = new ArrayList<Boolean>();
+        var trailFactory = trailFactory((configuration, input, output) -> {
+            var command = trail(configuration, input);
+            results.add(output.trail(command));
+            results.add(output.trail(command));
+            return ClientProfileFactory.Result.PRESENTED;
+        });
+        var backend = new FakeBackend();
+        var execution = execution(
+                idleSoundFactory(), idleParticleFactory(), trailFactory, backend);
+        var catalog = catalog();
+        execution.replaceCatalog(
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        execution.present(
+                event(Optional.empty(), Optional.empty(), Optional.of(
+                        P8S2TestFixtures.DEFAULT_TRAIL_ID), 1L),
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        assertEquals(List.of(true, false), results);
+        assertEquals(1L, execution.activeTrails());
+        assertEquals(1, backend.particlePrepareCalls);
+        execution.clearAll();
+
+        assertTrailPreferenceInterval(P8ClientParticlePreference.REDUCED, 2);
+        assertTrailPreferenceInterval(P8ClientParticlePreference.MINIMAL, 4);
+    }
+
+    @Test
+    void clientDiagnosticsCloseCapacitySaturationAndConnectionReset() {
+        var execution = execution(
+                idleSoundFactory(), idleParticleFactory(), idleTrailFactory(), new FakeBackend());
+        var retainedCatalog = catalog();
+        execution.replaceCatalog(
+                retainedCatalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+        for (var index = 0; index < 64; index++) {
+            execution.present(
+                    event(
+                            Optional.of(id("preexisting_missing_sound_" + index)),
+                            Optional.empty(),
+                            Optional.empty(),
+                            index + 1L),
+                    retainedCatalog,
+                    P8ClientResourceIndex.empty(),
+                    CONNECTION_GENERATION,
+                    WORLD_GENERATION,
+                    RESOURCE_GENERATION);
+            tick(execution, CATALOG_GENERATION);
+        }
+        assertEquals(64, execution.diagnosticCount());
+        var diagnosticLimitCatalog = unavailableDiagnosticLimitCatalog();
+        var prepared = execution.prepareCatalog(
+                diagnosticLimitCatalog,
+                new P8ClientResourceIndex(List.of(), true),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+        execution.publishCatalog(prepared);
+        assertEquals(PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS, execution.diagnosticCount());
+        assertEquals(1L, execution.suppressedDiagnosticCount());
+        execution.clearAll();
+
+        var state = new P8ClientPresentationState(() -> true, execution);
+        state.onConnectionOpened();
+        state.onWorldLoaded();
+        var catalog = catalog();
+        execution.replaceCatalog(
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        for (var index = 0; index < PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS; index++) {
+            execution.present(
+                    event(
+                            Optional.of(id("missing_sound_" + index)),
+                            Optional.empty(),
+                            Optional.empty(),
+                            index + 1L),
+                    catalog,
+                    P8ClientResourceIndex.empty(),
+                    CONNECTION_GENERATION,
+                    WORLD_GENERATION,
+                    RESOURCE_GENERATION);
+            tick(execution, CATALOG_GENERATION);
+        }
+        assertEquals(PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS, execution.diagnosticCount());
+        assertEquals(0L, execution.suppressedDiagnosticCount());
+
+        execution.setSuppressedDiagnosticCountForTest(Long.MAX_VALUE - 1L);
+        execution.present(
+                event(
+                        Optional.of(id("missing_sound_overflow_1")),
+                        Optional.empty(),
+                        Optional.empty(),
+                        257L),
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+        assertEquals(Long.MAX_VALUE, execution.suppressedDiagnosticCount());
+        tick(execution, CATALOG_GENERATION);
+        execution.present(
+                event(
+                        Optional.of(id("missing_sound_overflow_2")),
+                        Optional.empty(),
+                        Optional.empty(),
+                        258L),
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+        assertEquals(PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS, execution.diagnosticCount());
+        assertEquals(Long.MAX_VALUE, execution.suppressedDiagnosticCount());
+
+        state.onLoggedOut();
+
+        assertEquals(0, execution.diagnosticCount());
+        assertEquals(0L, execution.suppressedDiagnosticCount());
+    }
+
+    @Test
+    void staleActualCatalogPreparationCannotPublishDiagnosticsIntoNewConnection() {
+        var stateHolder = new P8ClientPresentationState[1];
+        var latestDrain = new P8ClientDispatchTask[1];
+        var availabilityCalls = new int[1];
+        var latestPayload = new ProfileCatalogPayload(2L, catalog().entries());
+        var soundFactory = new RecordingFactory<P8S2TestFixtures.SoundConfiguration>(
+                (configuration, assets) -> {
+                    availabilityCalls[0]++;
+                    if (availabilityCalls[0] == 1) {
+                        var state = stateHolder[0];
+                        state.onLoggedOut();
+                        state.onConnectionOpened();
+                        state.onWorldLoaded();
+                        latestDrain[0] = state.prepareProfileCatalog(latestPayload).orElseThrow();
+                        return ClientProfileFactory.Availability.UNAVAILABLE;
+                    }
+                    return ClientProfileFactory.Availability.AVAILABLE;
+                },
+                (configuration, input, output) -> ClientProfileFactory.Result.PRESENTED);
+        var execution = execution(
+                soundFactory, idleParticleFactory(), idleTrailFactory(), new FakeBackend());
+        var state = new P8ClientPresentationState(() -> true, execution);
+        stateHolder[0] = state;
+        state.onResourceIndexApplied(P8ClientResourceIndex.empty());
+        state.onConnectionOpened();
+        state.onWorldLoaded();
+
+        state.prepareProfileCatalog(new ProfileCatalogPayload(1L, catalog().entries()))
+                .orElseThrow()
+                .run();
+
+        assertEquals(0L, state.installedCatalogGeneration());
+        assertEquals(2L, state.pendingCatalogGeneration());
+        assertEquals(0, execution.diagnosticCount());
+
+        latestDrain[0].run();
+
+        assertEquals(2L, state.installedCatalogGeneration());
+        assertEquals(0, execution.diagnosticCount());
+        assertEquals(2, availabilityCalls[0]);
+    }
+
+    @Test
+    void catalogAvailabilityRuntimeIsPublicationBoundAndErrorRetainsIdentity() {
+        var runtimeFactory = new RecordingFactory<P8S2TestFixtures.SoundConfiguration>(
+                (configuration, assets) -> {
+                    throw new IllegalStateException("contained availability failure");
+                },
+                (configuration, input, output) -> ClientProfileFactory.Result.PRESENTED);
+        var runtimeExecution = execution(
+                runtimeFactory, idleParticleFactory(), idleTrailFactory(), new FakeBackend());
+        var runtimeCatalog = catalog();
+
+        var prepared = runtimeExecution.prepareCatalog(
+                runtimeCatalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        assertEquals(0, runtimeExecution.diagnosticCount());
+        runtimeExecution.publishCatalog(prepared);
+        assertEquals(1, runtimeExecution.diagnosticCount());
+
+        var expectedError = new AssertionError("availability error");
+        var errorFactory = new RecordingFactory<P8S2TestFixtures.SoundConfiguration>(
+                (configuration, assets) -> {
+                    throw expectedError;
+                },
+                (configuration, input, output) -> ClientProfileFactory.Result.PRESENTED);
+        var errorExecution = execution(
+                errorFactory, idleParticleFactory(), idleTrailFactory(), new FakeBackend());
+        var errorState = new P8ClientPresentationState(() -> true, errorExecution);
+        errorState.onResourceIndexApplied(P8ClientResourceIndex.empty());
+        errorState.onConnectionOpened();
+        errorState.onWorldLoaded();
+        var drain = errorState.prepareProfileCatalog(
+                        new ProfileCatalogPayload(1L, catalog().entries()))
+                .orElseThrow();
+
+        var observed = assertThrows(AssertionError.class, drain::run);
+
+        assertSame(expectedError, observed);
+        assertEquals(0L, errorState.installedCatalogGeneration());
+        assertEquals(0L, errorState.inFlightCatalogBodyBytes());
+        assertEquals(0L, errorState.combinedQueuedCharge());
+        assertEquals(0, errorExecution.diagnosticCount());
+    }
+
+    @Test
+    void catalogRebuildChecksAllProfilesAndStopsAtTwoHundredFiftySixUniqueAssets() {
+        var availabilityCalls = new int[3];
+        var soundFactory = new RecordingFactory<P8S2TestFixtures.SoundConfiguration>(
+                (configuration, assets) -> {
+                    availabilityCalls[0]++;
+                    var primary = assets.soundExists(configuration.sound());
+                    var auxiliary = assets.resourceExists(id(
+                            "rebuild_aux_" + configuration.sound().getPath()));
+                    return primary && auxiliary
+                            ? ClientProfileFactory.Availability.AVAILABLE
+                            : ClientProfileFactory.Availability.UNAVAILABLE;
+                },
+                (configuration, input, output) -> ClientProfileFactory.Result.PRESENTED);
+        var particleFactory = new RecordingFactory<P8S2TestFixtures.ParticleConfiguration>(
+                (configuration, assets) -> {
+                    availabilityCalls[1]++;
+                    return assets.particleExists(configuration.particle())
+                            ? ClientProfileFactory.Availability.AVAILABLE
+                            : ClientProfileFactory.Availability.UNAVAILABLE;
+                },
+                (configuration, input, output) -> ClientProfileFactory.Result.PRESENTED);
+        var trailFactory = new RecordingFactory<P8S2TestFixtures.TrailConfiguration>(
+                (configuration, assets) -> {
+                    availabilityCalls[2]++;
+                    var primary = assets.particleExists(configuration.particle());
+                    if (configuration.particle().getPath().equals("rebuild_trail_063")) {
+                        var exactMaximum = assets.resourceExists(id("rebuild_asset_256"));
+                        var oneOver = assets.resourceExists(id("rebuild_asset_257"));
+                        assertTrue(exactMaximum);
+                        assertFalse(oneOver);
+                        primary &= exactMaximum && oneOver;
+                    }
+                    return primary
+                            ? ClientProfileFactory.Availability.AVAILABLE
+                            : ClientProfileFactory.Availability.UNAVAILABLE;
+                },
+                (configuration, input, output) -> ClientProfileFactory.Result.PRESENTED);
+        var backend = new FakeBackend();
+        backend.allAssetsAvailable = true;
+        var execution = execution(soundFactory, particleFactory, trailFactory, backend);
+
+        execution.replaceCatalog(
+                maximumAvailabilityCatalog(),
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        assertEquals(List.of(64, 64, 64), Arrays.stream(availabilityCalls).boxed().toList());
+        assertEquals(
+                PresentationLimits.MAX_PROFILE_DISCOVERED_RESOURCES,
+                backend.assetExistenceCalls);
+        assertEquals(1, execution.diagnosticCount());
+    }
+
+    @Test
+    void clientDiagnosticInsertionRetainsAnExactOneHundredTwentyEightByteProfileId() {
+        var maximumId = ResourceLocation.fromNamespaceAndPath(
+                Gramarye.MOD_ID, "x".repeat(119));
+        var excessiveId = ResourceLocation.fromNamespaceAndPath(
+                Gramarye.MOD_ID, "x".repeat(120));
+        assertEquals(128, maximumId.toString().getBytes(StandardCharsets.UTF_8).length);
+        assertEquals(129, excessiveId.toString().getBytes(StandardCharsets.UTF_8).length);
+        var unavailable = P8ProfileCatalogEntry.incoming(
+                maximumId,
+                P8S2TestFixtures.SOUND_TYPE_ID,
+                P8S2TestFixtures.SOUND_TYPE.channel(),
+                P8S2TestFixtures.SOUND_TYPE.clientFactoryKey().id(),
+                0,
+                0,
+                Optional.of(DEFAULT_SOUND_JSON),
+                Optional.empty());
+        var execution = execution(
+                idleSoundFactory(), idleParticleFactory(), idleTrailFactory(), new FakeBackend());
+
+        execution.replaceCatalog(
+                catalog(unavailable),
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        assertEquals(1, execution.diagnosticCount());
+        assertTrue(execution.hasDiagnosticForTesting(
+                P8ClientDiagnosticCode.PROFILE_UNAVAILABLE, maximumId,
+                P8S2TestFixtures.SOUND_TYPE_ID));
+        assertThrows(IllegalArgumentException.class, () -> new P8ClientDiagnosticKey(
+                P8ClientDiagnosticCode.PROFILE_UNAVAILABLE,
+                excessiveId,
+                P8S2TestFixtures.SOUND_TYPE_ID));
+        assertThrows(IllegalArgumentException.class, () -> P8ProfileCatalogEntry.incoming(
+                excessiveId,
+                P8S2TestFixtures.SOUND_TYPE_ID,
+                P8S2TestFixtures.SOUND_TYPE.channel(),
+                P8S2TestFixtures.SOUND_TYPE.clientFactoryKey().id(),
+                0,
+                0,
+                Optional.of(DEFAULT_SOUND_JSON),
+                Optional.empty()));
     }
 
     @Test
@@ -1965,6 +2393,218 @@ final class P8ClientPresentationExecutionTest {
         assertEquals(2L, state.resourceGeneration());
     }
 
+    private static void assertParticleOutput(
+            boolean expected,
+            PresentationPosition origin,
+            ClientProfileFactory.Particle command) {
+        var accepted = new boolean[1];
+        var factory = particleFactory((configuration, input, output) -> {
+            accepted[0] = output.particle(command);
+            return ClientProfileFactory.Result.PRESENTED;
+        });
+        var backend = new FakeBackend();
+        var execution = execution(
+                idleSoundFactory(), factory, idleTrailFactory(), backend);
+        var configuration = new P8S2TestFixtures.ParticleConfiguration(
+                PARTICLE_ASSET, 1, 0, 250, 120);
+        var catalog = catalog(entry(
+                SELECTED_PARTICLE_ID,
+                P8S2TestFixtures.PARTICLE_TYPE_ID,
+                P8S2TestFixtures.PARTICLE_TYPE,
+                configuration,
+                particleJson(1, 120)));
+        execution.replaceCatalog(
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        execution.present(
+                eventAt(
+                        origin,
+                        Optional.empty(),
+                        Optional.of(SELECTED_PARTICLE_ID),
+                        Optional.empty(),
+                        1L),
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        assertEquals(expected, accepted[0], () -> "particle command: " + command);
+        assertEquals(expected ? 1 : 0, backend.particlePrepareCalls);
+        assertEquals(expected ? 1 : 0, backend.particles.size());
+        execution.clearAll();
+    }
+
+    private static void assertSoundOutput(
+            boolean expected, ClientProfileFactory.Sound command) {
+        var accepted = new boolean[1];
+        var factory = soundFactory((configuration, input, output) -> {
+            accepted[0] = output.sound(command);
+            return ClientProfileFactory.Result.PRESENTED;
+        });
+        var backend = new FakeBackend();
+        var execution = execution(
+                factory, idleParticleFactory(), idleTrailFactory(), backend);
+        var catalog = catalog();
+        execution.replaceCatalog(
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        execution.present(
+                eventAt(
+                        new PresentationPosition(0.0D, 0.0D, 0.0D),
+                        Optional.of(P8S2TestFixtures.DEFAULT_SOUND_ID),
+                        Optional.empty(),
+                        Optional.empty(),
+                        1L),
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        assertEquals(expected, accepted[0], () -> "sound command: " + command);
+        assertEquals(expected ? 1 : 0, backend.handles.size());
+        assertEquals(expected ? 1 : 0, backend.sounds.size());
+        execution.clearAll();
+    }
+
+    private static void assertTrailOutput(
+            boolean expected, ClientProfileFactory.Trail command) {
+        var accepted = new boolean[1];
+        var factory = trailFactory((configuration, input, output) -> {
+            accepted[0] = output.trail(command);
+            return ClientProfileFactory.Result.PRESENTED;
+        });
+        var backend = new FakeBackend();
+        command.trackedEntityId().ifPresent(entityId -> backend.trackedPositions.put(
+                entityId, new P8ClientPosition(command.x(), command.y(), command.z())));
+        var execution = execution(
+                idleSoundFactory(), idleParticleFactory(), factory, backend);
+        var configuration = new P8S2TestFixtures.TrailConfiguration(
+                PARTICLE_ASSET, 1, 1, 200, 120);
+        var catalog = catalog(entry(
+                SELECTED_TRAIL_ID,
+                P8S2TestFixtures.TRAIL_TYPE_ID,
+                P8S2TestFixtures.TRAIL_TYPE,
+                configuration,
+                trailJson(1, 1, 120)));
+        execution.replaceCatalog(
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        execution.present(
+                eventAt(
+                        new PresentationPosition(0.0D, 0.0D, 0.0D),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(SELECTED_TRAIL_ID),
+                        1L),
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+
+        assertEquals(expected, accepted[0], () -> "trail command: " + command);
+        assertEquals(expected ? 1 : 0, backend.particlePrepareCalls);
+        assertEquals(expected ? 1 : 0, backend.particles.size());
+        if (!expected) {
+            assertEquals(0, backend.trackedPositionCalls);
+        }
+        execution.clearAll();
+    }
+
+    private static void assertTrailPreferenceInterval(
+            P8ClientParticlePreference preference, int expectedInterval) {
+        var configuration = new P8S2TestFixtures.TrailConfiguration(
+                PARTICLE_ASSET, 8, 1, 200, 20);
+        var factory = trailFactory((value, input, output) -> {
+            assertTrue(output.trail(trail(value, input)));
+            return ClientProfileFactory.Result.PRESENTED;
+        });
+        var backend = new FakeBackend();
+        backend.preference = preference;
+        var execution = execution(
+                idleSoundFactory(), idleParticleFactory(), factory, backend);
+        var catalog = catalog(entry(
+                SELECTED_TRAIL_ID,
+                P8S2TestFixtures.TRAIL_TYPE_ID,
+                P8S2TestFixtures.TRAIL_TYPE,
+                configuration,
+                trailJson(8, 1, 20)));
+        execution.replaceCatalog(
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+        execution.present(
+                event(Optional.empty(), Optional.empty(), Optional.of(SELECTED_TRAIL_ID), 1L),
+                catalog,
+                P8ClientResourceIndex.empty(),
+                CONNECTION_GENERATION,
+                WORLD_GENERATION,
+                RESOURCE_GENERATION);
+        assertEquals(1L, execution.totalTrailSegments());
+        for (var tick = 1; tick < expectedInterval; tick++) {
+            tick(execution, CATALOG_GENERATION);
+            assertEquals(1L, execution.totalTrailSegments());
+        }
+        tick(execution, CATALOG_GENERATION);
+        assertEquals(2L, execution.totalTrailSegments());
+        execution.clearAll();
+    }
+
+    private static ClientProfileFactory.Particle particleAt(
+            double x,
+            double y,
+            double z,
+            double velocityX,
+            double velocityY,
+            double velocityZ,
+            float size,
+            int lifetimeTicks) {
+        return new ClientProfileFactory.Particle(
+                PARTICLE_ASSET,
+                x,
+                y,
+                z,
+                velocityX,
+                velocityY,
+                velocityZ,
+                0xff010203,
+                size,
+                lifetimeTicks);
+    }
+
+    private static ClientProfileFactory.Trail trailAt(
+            float size,
+            int lifetimeTicks,
+            int sampleIntervalTicks,
+            OptionalInt trackedEntityId) {
+        return new ClientProfileFactory.Trail(
+                PARTICLE_ASSET,
+                trackedEntityId,
+                0.0D,
+                0.0D,
+                0.0D,
+                0xff010203,
+                size,
+                lifetimeTicks,
+                sampleIntervalTicks);
+    }
+
     private static List<Integer> acceptedParticleColors(P8ClientParticlePreference preference) {
         return acceptedParticleColors(preference, 1L);
     }
@@ -2204,6 +2844,103 @@ final class P8ClientPresentationExecutionTest {
         return P8ProfileCatalogSnapshot.incoming(CATALOG_GENERATION, entries);
     }
 
+    private static P8ProfileCatalogSnapshot unavailableDiagnosticLimitCatalog() {
+        var entries = new ArrayList<P8ProfileCatalogEntry>();
+        for (var requiredDefault : catalog().entries()) {
+            entries.add(P8ProfileCatalogEntry.incoming(
+                    requiredDefault.profileId(),
+                    requiredDefault.typeId(),
+                    requiredDefault.channel(),
+                    requiredDefault.clientFactoryId(),
+                    requiredDefault.configurationVersion(),
+                    0,
+                    requiredDefault.retainedCanonicalConfigurationJson(),
+                    Optional.empty()));
+        }
+        for (var index = 1;
+                index < PresentationLimits.MAX_PROFILE_INSTANCES_PER_CHANNEL;
+                index++) {
+            entries.add(unavailableEntry(
+                    id("unavailable_sound_" + index),
+                    P8S2TestFixtures.SOUND_TYPE_ID,
+                    P8S2TestFixtures.SOUND_TYPE,
+                    DEFAULT_SOUND_JSON));
+            entries.add(unavailableEntry(
+                    id("unavailable_particle_" + index),
+                    P8S2TestFixtures.PARTICLE_TYPE_ID,
+                    P8S2TestFixtures.PARTICLE_TYPE,
+                    DEFAULT_PARTICLE_JSON));
+            entries.add(unavailableEntry(
+                    id("unavailable_trail_" + index),
+                    P8S2TestFixtures.TRAIL_TYPE_ID,
+                    P8S2TestFixtures.TRAIL_TYPE,
+                    DEFAULT_TRAIL_JSON));
+        }
+        entries.sort(Comparator.comparing(P8ProfileCatalogEntry::profileId));
+        return P8ProfileCatalogSnapshot.incoming(CATALOG_GENERATION, entries);
+    }
+
+    private static P8ProfileCatalogSnapshot maximumAvailabilityCatalog() {
+        var entries = new ArrayList<>(catalog().entries());
+        for (var index = 1;
+                index < PresentationLimits.MAX_PROFILE_INSTANCES_PER_CHANNEL;
+                index++) {
+            var suffix = String.format(Locale.ROOT, "%03d", index);
+            var sound = id("rebuild_sound_" + suffix);
+            var soundConfiguration = new P8S2TestFixtures.SoundConfiguration(
+                    sound, 600, 1_000);
+            entries.add(entry(
+                    id("rebuild_sound_profile_" + suffix),
+                    P8S2TestFixtures.SOUND_TYPE_ID,
+                    P8S2TestFixtures.SOUND_TYPE,
+                    soundConfiguration,
+                    "{\"pitch_milli\":1000,\"sound\":\"" + sound
+                            + "\",\"volume_milli\":600}"));
+
+            var particle = id("rebuild_particle_" + suffix);
+            var particleConfiguration = new P8S2TestFixtures.ParticleConfiguration(
+                    particle, 1, 0, 1, 1);
+            entries.add(entry(
+                    id("rebuild_particle_profile_" + suffix),
+                    P8S2TestFixtures.PARTICLE_TYPE_ID,
+                    P8S2TestFixtures.PARTICLE_TYPE,
+                    particleConfiguration,
+                    "{\"count\":1,\"lifetime_ticks\":1,\"particle\":\""
+                            + particle
+                            + "\",\"size_milli_blocks\":1,\"speed_milli_blocks\":0}"));
+
+            var trail = id("rebuild_trail_" + suffix);
+            var trailConfiguration = new P8S2TestFixtures.TrailConfiguration(
+                    trail, 1, 1, 1, 1);
+            entries.add(entry(
+                    id("rebuild_trail_profile_" + suffix),
+                    P8S2TestFixtures.TRAIL_TYPE_ID,
+                    P8S2TestFixtures.TRAIL_TYPE,
+                    trailConfiguration,
+                    "{\"lifetime_ticks\":1,\"particle\":\"" + trail
+                            + "\",\"sample_interval_ticks\":1,\"segments\":1,"
+                            + "\"size_milli_blocks\":1}"));
+        }
+        entries.sort(Comparator.comparing(P8ProfileCatalogEntry::profileId));
+        return P8ProfileCatalogSnapshot.incoming(CATALOG_GENERATION, entries);
+    }
+
+    private static <C extends ProfileConfiguration> P8ProfileCatalogEntry unavailableEntry(
+            ResourceLocation profileId,
+            ResourceLocation typeId,
+            ProfileType<C> type,
+            String canonicalJson) {
+        return P8ProfileCatalogEntry.incoming(
+                profileId,
+                typeId,
+                type.channel(),
+                type.clientFactoryKey().id(),
+                type.currentConfigurationVersion(),
+                0,
+                Optional.of(canonicalJson),
+                Optional.empty());
+    }
+
     private static <C extends ProfileConfiguration> P8ProfileCatalogEntry entry(
             ResourceLocation profileId,
             ResourceLocation typeId,
@@ -2229,12 +2966,26 @@ final class P8ClientPresentationExecutionTest {
             Optional<ResourceLocation> particle,
             Optional<ResourceLocation> trail,
             long sequence) {
+        return eventAt(
+                new PresentationPosition(1.0D, 2.0D, 3.0D),
+                sound,
+                particle,
+                trail,
+                sequence);
+    }
+
+    private static PresentationEventPayload eventAt(
+            PresentationPosition position,
+            Optional<ResourceLocation> sound,
+            Optional<ResourceLocation> particle,
+            Optional<ResourceLocation> trail,
+            long sequence) {
         return new PresentationEventPayload(
                 CATALOG_GENERATION,
                 PresentationEventKind.CAST_RELEASE,
                 new PresentationSourceSummary(OptionalInt.of(11), OptionalInt.of(22)),
                 OVERWORLD,
-                new PresentationPosition(1.0D, 2.0D, 3.0D),
+                position,
                 new PresentationDirection((short) 32_767, (short) 0, (short) 0),
                 new PresentationAppearance(
                         0xff010203,
@@ -2392,6 +3143,8 @@ final class P8ClientPresentationExecutionTest {
         private Error nextSoundStopError;
         private boolean nextSoundStopErrorLeavesActive;
         private Runnable beforeParticleStart = () -> {};
+        private boolean allAssetsAvailable;
+        private int assetExistenceCalls;
         private P8ClientRecipientContext recipientContext = new P8ClientRecipientContext(
                 PresentationOrdering.RecipientCategory.ORDINARY, 0.0D);
 
@@ -2408,18 +3161,21 @@ final class P8ClientPresentationExecutionTest {
 
         @Override
         public boolean soundExists(ResourceLocation id) {
-            return SOUND_ASSET.equals(id);
+            assetExistenceCalls++;
+            return allAssetsAvailable || SOUND_ASSET.equals(id);
         }
 
         @Override
         public boolean particleExists(ResourceLocation id) {
-            return PARTICLE_ASSET.equals(id);
+            assetExistenceCalls++;
+            return allAssetsAvailable || PARTICLE_ASSET.equals(id);
         }
 
         @Override
         public boolean resourceExists(
                 ResourceLocation id, P8ClientResourceIndex resources) {
-            return resources.contains(id);
+            assetExistenceCalls++;
+            return allAssetsAvailable || resources.contains(id);
         }
 
         @Override

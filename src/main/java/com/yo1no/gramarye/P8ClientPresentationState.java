@@ -50,6 +50,7 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     private long reservedEventCount;
     private long reservedEventBodyBytes;
     private long combinedQueuedCharge;
+    private long inFlightCatalogBodyBytes;
     private long unavailableHandoffCount;
 
     P8ClientPresentationState(BooleanSupplier clientThreadCheck) {
@@ -84,13 +85,11 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         var packetCharge = Math.addExact(
                 (long) payload.bodySize(),
                 PresentationLimits.PROFILE_CATALOG_PACKET_OVERHEAD_BYTES);
-        if (catalogBindAttempt != null) {
-            if (catalogBindAttempt.connectionGeneration() != capturedConnection) {
-                releaseCatalogBindAttemptLocked(catalogBindAttempt);
-            } else if (incomingGeneration
-                    <= catalogBindAttempt.catalog().catalogGeneration()) {
-                return Optional.empty();
-            }
+        if (catalogBindAttempt != null
+                && catalogBindAttempt.connectionGeneration() == capturedConnection
+                && incomingGeneration
+                        <= catalogBindAttempt.catalog().catalogGeneration()) {
+            return Optional.empty();
         }
         if (catalogMailbox != null) {
             if (catalogMailbox.connectionGeneration() != capturedConnection) {
@@ -99,25 +98,34 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 if (incomingGeneration <= catalogMailbox.payload().catalogGeneration()) {
                     return Optional.empty();
                 }
-                var chargeWithoutOld = combinedQueuedCharge - catalogMailbox.packetCharge();
+                var chargeWithoutOld = checkedSubtractNonnegative(
+                        combinedQueuedCharge,
+                        catalogMailbox.packetCharge(),
+                        "P8 queued charge");
                 if (packetCharge
-                        > PresentationLimits.MAX_CLIENT_COMBINED_QUEUED_BYTES
-                                - chargeWithoutOld) {
+                        > checkedSubtractNonnegative(
+                                PresentationLimits.MAX_CLIENT_COMBINED_QUEUED_BYTES,
+                                chargeWithoutOld,
+                                "P8 queued capacity")) {
                     return Optional.empty();
                 }
+                var nextCombinedQueuedCharge = Math.addExact(
+                        chargeWithoutOld, packetCharge);
                 catalogMailbox = new CatalogMailboxValue(
                         catalogMailbox.drainIdentity(),
                         capturedConnection,
                         payload,
                         packetCharge);
-                combinedQueuedCharge = chargeWithoutOld + packetCharge;
+                combinedQueuedCharge = nextCombinedQueuedCharge;
                 return Optional.empty();
             }
         }
 
         if (packetCharge
-                > PresentationLimits.MAX_CLIENT_COMBINED_QUEUED_BYTES
-                        - combinedQueuedCharge) {
+                > checkedSubtractNonnegative(
+                        PresentationLimits.MAX_CLIENT_COMBINED_QUEUED_BYTES,
+                        combinedQueuedCharge,
+                        "P8 queued capacity")) {
             return Optional.empty();
         }
         var drainIdentity = new CatalogDrainIdentity();
@@ -125,8 +133,10 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 drainIdentity, capturedConnection, payload, packetCharge);
         var task = Optional.<P8ClientDispatchTask>of(new CatalogDrainTask(
                 this, drainIdentity, capturedConnection));
+        var nextCombinedQueuedCharge = Math.addExact(
+                combinedQueuedCharge, packetCharge);
         catalogMailbox = replacement;
-        combinedQueuedCharge += packetCharge;
+        combinedQueuedCharge = nextCombinedQueuedCharge;
         return task;
     }
 
@@ -143,11 +153,15 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 bodyBytes, PresentationLimits.EVENT_PACKET_OVERHEAD_BYTES);
         if (reservedEventCount >= PresentationLimits.MAX_CLIENT_PENDING_EVENTS
                 || bodyBytes
-                        > PresentationLimits.MAX_CLIENT_PENDING_EVENT_BODY_BYTES
-                                - reservedEventBodyBytes
+                        > checkedSubtractNonnegative(
+                                PresentationLimits.MAX_CLIENT_PENDING_EVENT_BODY_BYTES,
+                                reservedEventBodyBytes,
+                                "P8 event body capacity")
                 || packetCharge
-                        > PresentationLimits.MAX_CLIENT_COMBINED_QUEUED_BYTES
-                                - combinedQueuedCharge) {
+                        > checkedSubtractNonnegative(
+                                PresentationLimits.MAX_CLIENT_COMBINED_QUEUED_BYTES,
+                                combinedQueuedCharge,
+                                "P8 queued capacity")) {
             return Optional.empty();
         }
 
@@ -161,10 +175,13 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 packetCharge);
         var task = Optional.<P8ClientDispatchTask>of(
                 new EventMainTask(this, payload, reservation));
+        var nextEventCount = Math.addExact(reservedEventCount, 1L);
+        var nextEventBodyBytes = Math.addExact(reservedEventBodyBytes, bodyBytes);
+        var nextCombinedQueuedCharge = Math.addExact(combinedQueuedCharge, packetCharge);
         eventReservations.put(reservation, EventReservationOwner.NETWORK_TASK);
-        reservedEventCount++;
-        reservedEventBodyBytes += bodyBytes;
-        combinedQueuedCharge += packetCharge;
+        reservedEventCount = nextEventCount;
+        reservedEventBodyBytes = nextEventBodyBytes;
+        combinedQueuedCharge = nextCombinedQueuedCharge;
         return task;
     }
 
@@ -327,10 +344,23 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             var nextResourceGeneration = exhausted
                     ? resourceCounter
                     : resourceCounter + 1L;
-            var replacementCatalog = installedCatalog == null
+            var bindingCatalog = catalogBindAttempt != null
+                            && connected
+                            && catalogBindAttempt.connectionGeneration()
+                                    == connectionGeneration
+                            && (installedCatalog == null
+                                    || catalogBindAttempt.catalog().catalogGeneration()
+                                            > installedCatalog.snapshot()
+                                                    .catalogGeneration())
+                    ? catalogBindAttempt.catalog()
+                    : null;
+            var catalogForEvaluation = bindingCatalog != null
+                    ? bindingCatalog
+                    : installedCatalog == null ? null : installedCatalog.snapshot();
+            var replacementCatalog = catalogForEvaluation == null
                     ? null
                     : new InstalledCatalog(
-                            installedCatalog.snapshot(),
+                            catalogForEvaluation,
                             exhausted ? 0L : nextResourceGeneration);
             attempt = new ResourceApplyAttempt(
                     resourceCounter,
@@ -341,7 +371,10 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                     connected,
                     worldGeneration,
                     worldReady,
-                    installedCatalog,
+                    installedCatalog == null
+                            ? 0L
+                            : installedCatalog.snapshot().catalogGeneration(),
+                    catalogForEvaluation,
                     replacementCatalog,
                     replacement,
                     nextResourceGeneration,
@@ -351,10 +384,10 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
         P8ClientPreparedCatalog preparedCatalog = null;
         try {
-            if (!attempt.exhausted() && attempt.installedCatalog() != null) {
+            if (!attempt.exhausted() && attempt.catalogForEvaluation() != null) {
                 preparedCatalog = Objects.requireNonNull(
                         execution.prepareCatalog(
-                        attempt.installedCatalog().snapshot(),
+                        attempt.catalogForEvaluation(),
                         attempt.replacementIndex(),
                         attempt.connectionGeneration(),
                         attempt.worldGeneration(),
@@ -512,6 +545,16 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         return resourceReady;
     }
 
+    synchronized P8ClientResourceIndex resourceIndexForTesting() {
+        return resourceIndex;
+    }
+
+    synchronized P8ClientResourceIndex resourceApplyCandidateForTesting() {
+        return resourceApplyAttempt == null
+                ? null
+                : resourceApplyAttempt.replacementIndex();
+    }
+
     synchronized long installedCatalogGeneration() {
         return installedCatalog == null
                 ? 0L
@@ -540,6 +583,18 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         return combinedQueuedCharge;
     }
 
+    synchronized long inFlightCatalogBodyBytes() {
+        return inFlightCatalogBodyBytes;
+    }
+
+    synchronized long inFlightCatalogPacketCharge() {
+        return inFlightCatalogBodyBytes == 0L
+                ? 0L
+                : Math.addExact(
+                        inFlightCatalogBodyBytes,
+                        PresentationLimits.PROFILE_CATALOG_PACKET_OVERHEAD_BYTES);
+    }
+
     synchronized int pendingEventCount() {
         return pendingEvents.size();
     }
@@ -564,7 +619,10 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         requireCounter(worldCounter, "worldCounter");
         requireCounter(resourceCounter, "resourceCounter");
         synchronized (this) {
-            if (!eventReservations.isEmpty() || catalogMailbox != null) {
+            if (!eventReservations.isEmpty()
+                    || catalogMailbox != null
+                    || catalogBindAttempt != null
+                    || inFlightCatalogBodyBytes != 0L) {
                 throw new IllegalStateException(
                         "cannot prime P8 counters while handoff work is reserved");
             }
@@ -589,20 +647,19 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             if (value == null || value.drainIdentity() != drainIdentity) {
                 return;
             }
-            catalogMailbox = null;
             try {
                 if (!connected
                         || capturedConnection < 1L
                         || capturedConnection != connectionGeneration
                         || value.connectionGeneration() != capturedConnection) {
-                    releaseCatalogChargeLocked(value);
+                    releaseCatalogMailboxLocked();
                     return;
                 }
                 var incoming = value.payload().snapshot();
                 if (installedCatalog != null
                         && incoming.catalogGeneration()
                                 <= installedCatalog.snapshot().catalogGeneration()) {
-                    releaseCatalogChargeLocked(value);
+                    releaseCatalogMailboxLocked();
                     return;
                 }
 
@@ -619,11 +676,15 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                         worldReady,
                         resourceGeneration,
                         resourceReady,
-                        installedCatalog,
+                        installedCatalog == null
+                                ? 0L
+                                : installedCatalog.snapshot().catalogGeneration(),
                         new InstalledCatalog(incoming, evaluatedResourceGeneration));
-                catalogBindAttempt = attempt;
+                transferCatalogMailboxToBindLocked(value, attempt);
             } catch (RuntimeException | Error failure) {
-                releaseCatalogChargeLocked(value);
+                if (catalogMailbox == value) {
+                    releaseCatalogMailboxLocked();
+                }
                 throw failure;
             }
         }
@@ -665,14 +726,13 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 releaseCatalogBindAttemptLocked(attempt);
                 return;
             }
-            catalogBindAttempt = null;
             try {
-                clearEventWorkFromOtherCatalogsLocked(
+                clearEventWorkOutsideInstallableCatalogsLocked(
                         attempt.catalog().catalogGeneration());
                 execution.publishCatalog(preparedCatalog);
                 installedCatalog = attempt.replacementCatalog();
             } finally {
-                releaseCatalogChargeLocked(attempt.mailboxValue());
+                releaseCatalogBindAttemptLocked(attempt);
             }
         }
     }
@@ -754,7 +814,6 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     private void clearConnectionScopedStateLocked() {
         releaseCatalogMailboxLocked();
-        releaseCatalogBindAttemptLocked(catalogBindAttempt);
         resourceApplyAttempt = null;
         connectionTransitionAttempt = null;
         worldTransitionAttempt = null;
@@ -779,32 +838,64 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     }
 
     private void clearAllEventWorkLocked() {
-        pendingEvents.clear();
         var eventCharge = Math.addExact(
                 reservedEventBodyBytes,
                 Math.multiplyExact(
                         reservedEventCount,
                         (long) PresentationLimits.EVENT_PACKET_OVERHEAD_BYTES));
+        var nextCombinedQueuedCharge = checkedSubtractNonnegative(
+                combinedQueuedCharge, eventCharge, "P8 queued charge");
+        pendingEvents.clear();
         eventReservations.clear();
         reservedEventCount = 0L;
         reservedEventBodyBytes = 0L;
-        combinedQueuedCharge = Math.max(0L, combinedQueuedCharge - eventCharge);
+        combinedQueuedCharge = nextCombinedQueuedCharge;
     }
 
-    private void clearEventWorkFromOtherCatalogsLocked(long retainedCatalogGeneration) {
-        pendingEvents.removeIf(pending ->
-                pending.reservation().catalogGeneration() != retainedCatalogGeneration);
-        var iterator = eventReservations.entrySet().iterator();
-        while (iterator.hasNext()) {
-            var entry = iterator.next();
-            var reservation = entry.getKey();
-            if (reservation.catalogGeneration() != retainedCatalogGeneration) {
-                iterator.remove();
-                reservedEventCount--;
-                reservedEventBodyBytes -= reservation.bodyBytes();
-                combinedQueuedCharge -= reservation.packetCharge();
+    private void clearEventWorkOutsideInstallableCatalogsLocked(
+            long retainedCatalogGeneration) {
+        var pendingGeneration = catalogMailbox != null
+                        && catalogMailbox.connectionGeneration() == connectionGeneration
+                ? catalogMailbox.payload().catalogGeneration()
+                : 0L;
+        var releasedReservations = new ArrayList<EventReservation>();
+        for (var reservation : eventReservations.keySet()) {
+            if (!isInstallableEventReservationLocked(
+                    reservation, retainedCatalogGeneration, pendingGeneration)) {
+                releasedReservations.add(reservation);
             }
         }
+        releaseEventReservationsLocked(releasedReservations);
+        pendingEvents.removeIf(pending -> releasedReservations.stream()
+                .anyMatch(released -> released == pending.reservation()));
+    }
+
+    private boolean isInstallableEventReservationLocked(
+            EventReservation reservation,
+            long retainedCatalogGeneration,
+            long pendingCatalogGeneration) {
+        return reservation.connectionGeneration() == connectionGeneration
+                && (reservation.catalogGeneration() == retainedCatalogGeneration
+                        || reservation.catalogGeneration() == pendingCatalogGeneration);
+    }
+
+    private void clearEventWorkForCatalogBindLocked(CatalogBindAttempt attempt) {
+        var releasedReservations = new ArrayList<EventReservation>();
+        for (var reservation : eventReservations.keySet()) {
+            if (matchesCatalogBindReservation(reservation, attempt)) {
+                releasedReservations.add(reservation);
+            }
+        }
+        releaseEventReservationsLocked(releasedReservations);
+        pendingEvents.removeIf(pending -> releasedReservations.stream()
+                .anyMatch(released -> released == pending.reservation()));
+    }
+
+    private static boolean matchesCatalogBindReservation(
+            EventReservation reservation, CatalogBindAttempt attempt) {
+        return reservation.connectionGeneration() == attempt.connectionGeneration()
+                && reservation.catalogGeneration()
+                        == attempt.catalog().catalogGeneration();
     }
 
     private void releaseEventReservationLocked(
@@ -814,10 +905,20 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 || (expectedOwner != null && actualOwner != expectedOwner)) {
             return;
         }
+        var nextEventCount = checkedSubtractNonnegative(
+                reservedEventCount, 1L, "P8 event reservation count");
+        var nextEventBodyBytes = checkedSubtractNonnegative(
+                reservedEventBodyBytes,
+                reservation.bodyBytes(),
+                "P8 event reservation body bytes");
+        var nextCombinedQueuedCharge = checkedSubtractNonnegative(
+                combinedQueuedCharge,
+                reservation.packetCharge(),
+                "P8 queued charge");
         eventReservations.remove(reservation);
-        reservedEventCount--;
-        reservedEventBodyBytes -= reservation.bodyBytes();
-        combinedQueuedCharge -= reservation.packetCharge();
+        reservedEventCount = nextEventCount;
+        reservedEventBodyBytes = nextEventBodyBytes;
+        combinedQueuedCharge = nextCombinedQueuedCharge;
     }
 
     private void releaseCatalogMailboxLocked() {
@@ -825,8 +926,12 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             return;
         }
         var released = catalogMailbox;
+        var nextCombinedQueuedCharge = checkedSubtractNonnegative(
+                combinedQueuedCharge,
+                released.packetCharge(),
+                "P8 queued charge");
         catalogMailbox = null;
-        releaseCatalogChargeLocked(released);
+        combinedQueuedCharge = nextCombinedQueuedCharge;
     }
 
     private boolean matchesCatalogBindAttemptLocked(CatalogBindAttempt attempt) {
@@ -834,20 +939,22 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 && connected
                 && attempt.connected()
                 && connectionGeneration == attempt.connectionGeneration()
-                && worldGeneration == attempt.worldGeneration()
-                && worldReady == attempt.worldReady()
-                && resourceGeneration == attempt.resourceGeneration()
-                && resourceReady == attempt.resourceReady()
-                && resourceIndex == attempt.resourceIndex()
-                && installedCatalog == attempt.installedCatalog();
+                && (installedCatalog == null
+                        ? attempt.priorInstalledCatalogGeneration() == 0L
+                        : installedCatalog.snapshot().catalogGeneration()
+                                == attempt.priorInstalledCatalogGeneration());
     }
 
     private void releaseCatalogBindAttemptLocked(CatalogBindAttempt attempt) {
         if (attempt == null || catalogBindAttempt != attempt) {
             return;
         }
+        if (inFlightCatalogBodyBytes != attempt.catalog().wireBodyBytes()) {
+            throw new IllegalStateException(
+                    "P8 in-flight catalog retention ledger diverged from its owner");
+        }
         catalogBindAttempt = null;
-        releaseCatalogChargeLocked(attempt.mailboxValue());
+        inFlightCatalogBodyBytes = 0L;
     }
 
     private boolean matchesResourceApplyAttemptLocked(ResourceApplyAttempt attempt) {
@@ -860,7 +967,10 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 && connected == attempt.connected()
                 && worldGeneration == attempt.worldGeneration()
                 && worldReady == attempt.worldReady()
-                && installedCatalog == attempt.installedCatalog();
+                && (installedCatalog == null
+                        ? attempt.priorInstalledCatalogGeneration() == 0L
+                        : installedCatalog.snapshot().catalogGeneration()
+                                == attempt.priorInstalledCatalogGeneration());
     }
 
     private void cleanupFailedCatalogBind(CatalogBindAttempt attempt) {
@@ -870,7 +980,9 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                     return;
                 }
                 try {
-                    clearAllEventWorkLocked();
+                    if (!isCatalogBindInstalledLocked(attempt)) {
+                        clearEventWorkForCatalogBindLocked(attempt);
+                    }
                 } finally {
                     releaseCatalogBindAttemptLocked(attempt);
                 }
@@ -878,6 +990,14 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         } catch (RuntimeException | Error ignored) {
             // The exact bind failure remains primary.
         }
+    }
+
+    private boolean isCatalogBindInstalledLocked(CatalogBindAttempt attempt) {
+        return connected
+                && connectionGeneration == attempt.connectionGeneration()
+                && installedCatalog != null
+                && installedCatalog.snapshot().catalogGeneration()
+                        == attempt.catalog().catalogGeneration();
     }
 
     private void cleanupFailedResourceApply(ResourceApplyAttempt attempt) {
@@ -911,8 +1031,68 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         }
     }
 
-    private void releaseCatalogChargeLocked(CatalogMailboxValue released) {
-        combinedQueuedCharge -= released.packetCharge();
+    private void transferCatalogMailboxToBindLocked(
+            CatalogMailboxValue value, CatalogBindAttempt attempt) {
+        var retainedBodyBytes = (long) value.payload().bodySize();
+        if (catalogMailbox != value
+                || catalogBindAttempt != null
+                || inFlightCatalogBodyBytes != 0L
+                || retainedBodyBytes != attempt.catalog().wireBodyBytes()) {
+            throw new IllegalStateException(
+                    "P8 catalog mailbox-to-bind ownership transfer is invalid");
+        }
+        var nextCombinedQueuedCharge = checkedSubtractNonnegative(
+                combinedQueuedCharge,
+                value.packetCharge(),
+                "P8 queued charge");
+        catalogMailbox = null;
+        combinedQueuedCharge = nextCombinedQueuedCharge;
+        catalogBindAttempt = attempt;
+        inFlightCatalogBodyBytes = retainedBodyBytes;
+    }
+
+    private void releaseEventReservationsLocked(
+            List<EventReservation> releasedReservations) {
+        if (releasedReservations.isEmpty()) {
+            return;
+        }
+        long releasedCount = 0L;
+        long releasedBodyBytes = 0L;
+        long releasedPacketCharge = 0L;
+        for (var reservation : releasedReservations) {
+            if (!eventReservations.containsKey(reservation)) {
+                throw new IllegalStateException("P8 event reservation owner is missing");
+            }
+            releasedCount = Math.addExact(releasedCount, 1L);
+            releasedBodyBytes = Math.addExact(
+                    releasedBodyBytes, reservation.bodyBytes());
+            releasedPacketCharge = Math.addExact(
+                    releasedPacketCharge, reservation.packetCharge());
+        }
+        var nextEventCount = checkedSubtractNonnegative(
+                reservedEventCount, releasedCount, "P8 event reservation count");
+        var nextEventBodyBytes = checkedSubtractNonnegative(
+                reservedEventBodyBytes,
+                releasedBodyBytes,
+                "P8 event reservation body bytes");
+        var nextCombinedQueuedCharge = checkedSubtractNonnegative(
+                combinedQueuedCharge,
+                releasedPacketCharge,
+                "P8 queued charge");
+        for (var reservation : releasedReservations) {
+            eventReservations.remove(reservation);
+        }
+        reservedEventCount = nextEventCount;
+        reservedEventBodyBytes = nextEventBodyBytes;
+        combinedQueuedCharge = nextCombinedQueuedCharge;
+    }
+
+    private static long checkedSubtractNonnegative(
+            long current, long released, String owner) {
+        if (current < 0L || released < 0L || released > current) {
+            throw new IllegalStateException(owner + " underflow");
+        }
+        return Math.subtractExact(current, released);
     }
 
     private void requireClientThread() {
@@ -979,12 +1159,16 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             boolean worldReady,
             long resourceGeneration,
             boolean resourceReady,
-            InstalledCatalog installedCatalog,
+            long priorInstalledCatalogGeneration,
             InstalledCatalog replacementCatalog) {
         private CatalogBindAttempt {
             Objects.requireNonNull(mailboxValue, "mailboxValue");
             Objects.requireNonNull(catalog, "catalog");
             Objects.requireNonNull(resourceIndex, "resourceIndex");
+            if (priorInstalledCatalogGeneration < 0L) {
+                throw new IllegalArgumentException(
+                        "priorInstalledCatalogGeneration cannot be negative");
+            }
             Objects.requireNonNull(replacementCatalog, "replacementCatalog");
         }
     }
@@ -998,13 +1182,18 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             boolean connected,
             long worldGeneration,
             boolean worldReady,
-            InstalledCatalog installedCatalog,
+            long priorInstalledCatalogGeneration,
+            P8ProfileCatalogSnapshot catalogForEvaluation,
             InstalledCatalog replacementCatalog,
             P8ClientResourceIndex replacementIndex,
             long nextResourceGeneration,
             boolean exhausted) {
         private ResourceApplyAttempt {
             Objects.requireNonNull(resourceIndex, "resourceIndex");
+            if (priorInstalledCatalogGeneration < 0L) {
+                throw new IllegalArgumentException(
+                        "priorInstalledCatalogGeneration cannot be negative");
+            }
             Objects.requireNonNull(replacementIndex, "replacementIndex");
         }
     }

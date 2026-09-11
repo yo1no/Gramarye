@@ -42,6 +42,7 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Predicate;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
@@ -587,15 +588,49 @@ final class P8ServerPresentationService {
         }
     }
 
+    boolean activateCandidateAndScheduleAllForTesting(
+            ReloadIdentity identity, long currentTick) {
+        Objects.requireNonNull(identity, "identity");
+        if (currentTick < 0L) {
+            throw new IllegalArgumentException("P8 test activation tick is invalid");
+        }
+        synchronized (this) {
+            return activateMatchingCandidate(identity, ignored -> true, currentTick);
+        }
+    }
+
     void stopForTesting() {
         synchronized (this) {
-            activeSnapshot = null;
-            pendingCandidate = null;
-            currentReloadMarker = null;
-            activeServer = null;
-            catalogGenerationHighWater = 0L;
-            connectionAuthority.reset();
-            resetPresentationEpoch();
+            clearServerState();
+        }
+    }
+
+    boolean openReadinessRecordForTesting(
+            UUID playerId, long catalogGeneration, long eligibleTick) {
+        synchronized (this) {
+            return connectionAuthority.open(
+                            Objects.requireNonNull(playerId, "playerId"),
+                            catalogGeneration,
+                            eligibleTick)
+                    .isPresent();
+        }
+    }
+
+    int readinessRecordCountForTesting() {
+        synchronized (this) {
+            return connectionAuthority.size();
+        }
+    }
+
+    List<P8CatalogAttemptKey> dueCatalogsForTesting(long tick) {
+        synchronized (this) {
+            return connectionAuthority.due(tick);
+        }
+    }
+
+    void setTickStateForTesting(P8TickState replacement) {
+        synchronized (this) {
+            tickState = Objects.requireNonNull(replacement, "replacement");
         }
     }
 
@@ -696,6 +731,12 @@ final class P8ServerPresentationService {
         }
     }
 
+    int pendingCatalogBodyBytesForTesting() {
+        synchronized (this) {
+            return pendingCandidate == null ? 0 : pendingCandidate.prepared.wireBodyBytes;
+        }
+    }
+
     int activeDiagnosticCountForTesting() {
         var snapshot = activeSnapshot;
         return snapshot == null ? 0 : snapshot.diagnostics.size();
@@ -703,6 +744,40 @@ final class P8ServerPresentationService {
 
     long activeSuppressedDiagnosticCountForTesting() {
         return activeSnapshot == null ? 0L : runtimeSuppressedDiagnosticCount;
+    }
+
+    boolean hasActiveDiagnosticDetailForTesting(ResourceLocation id) {
+        Objects.requireNonNull(id, "id");
+        var snapshot = activeSnapshot;
+        return snapshot != null
+                && snapshot.diagnostics.stream().anyMatch(key ->
+                        key.primary().filter(id::equals).isPresent()
+                                || key.secondary().filter(id::equals).isPresent());
+    }
+
+    boolean hasActiveCapacityDiagnosticForTesting(ResourceLocation id) {
+        Objects.requireNonNull(id, "id");
+        var snapshot = activeSnapshot;
+        return snapshot != null
+                && snapshot.diagnostics.stream().anyMatch(key ->
+                        key.code() == DiagnosticCode.CAPACITY_LIMIT
+                                && key.primary().filter(id::equals).isPresent());
+    }
+
+    void setRuntimeSuppressedDiagnosticCountForTesting(long suppressedDiagnosticCount) {
+        if (suppressedDiagnosticCount < 0L) {
+            throw new IllegalArgumentException(
+                    "suppressed diagnostic count must be non-negative");
+        }
+        synchronized (this) {
+            if (activeSnapshot == null
+                    || activeSnapshot.diagnostics.size()
+                            != PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS) {
+                throw new IllegalStateException(
+                        "suppressed diagnostic saturation requires a full active owner");
+            }
+            runtimeSuppressedDiagnosticCount = suppressedDiagnosticCount;
+        }
     }
 
     int activeCatalogBodyBytesForTesting() {
@@ -1181,6 +1256,23 @@ final class P8ServerPresentationService {
     }
 
     private boolean activateMatchingCandidate(ReloadIdentity exactToken) {
+        var server = activeServer;
+        return server == null
+                ? activateMatchingCandidate(exactToken, null, 0L)
+                : activateMatchingCandidate(
+                        exactToken,
+                        playerId -> {
+                            var player = server.getPlayerList().getPlayer(playerId);
+                            return player != null
+                                    && P8RecipientSelector.currentConnected(server, player);
+                        },
+                        server.getTickCount());
+    }
+
+    private boolean activateMatchingCandidate(
+            ReloadIdentity exactToken,
+            Predicate<UUID> currentIdentity,
+            long currentTick) {
         var pending = pendingCandidate;
         if (pending == null
                 || currentReloadMarker != pending.cycle.marker
@@ -1196,13 +1288,9 @@ final class P8ServerPresentationService {
         tickState = tickState.clearBufferPreservingLogicalWork();
         activeSnapshot = nextSnapshot;
         catalogGenerationHighWater = nextGeneration;
-        if (activeServer != null) {
-            connectionAuthority.retainMatching(playerId -> {
-                var player = activeServer.getPlayerList().getPlayer(playerId);
-                return player != null
-                        && P8RecipientSelector.currentConnected(activeServer, player);
-            });
-            connectionAuthority.scheduleAll(nextGeneration, activeServer.getTickCount());
+        if (currentIdentity != null) {
+            connectionAuthority.retainMatching(currentIdentity);
+            connectionAuthority.scheduleAll(nextGeneration, currentTick);
         }
         runtimeDiagnosticCodes.clear();
         runtimeSuppressedDiagnosticCount = nextSnapshot.suppressedDiagnostics;
@@ -1228,14 +1316,18 @@ final class P8ServerPresentationService {
                 return;
             }
             requireServerThread(server);
-            activeSnapshot = null;
-            pendingCandidate = null;
-            currentReloadMarker = null;
-            activeServer = null;
-            catalogGenerationHighWater = 0L;
-            connectionAuthority.reset();
-            resetPresentationEpoch();
+            clearServerState();
         }
+    }
+
+    private void clearServerState() {
+        activeSnapshot = null;
+        pendingCandidate = null;
+        currentReloadMarker = null;
+        activeServer = null;
+        catalogGenerationHighWater = 0L;
+        connectionAuthority.reset();
+        resetPresentationEpoch();
     }
 
     private void resetPresentationEpoch() {
