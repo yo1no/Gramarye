@@ -77,6 +77,12 @@ final class P8S2BoundaryTest {
             "magic/definition/submission/SkillDefinitionSubmissionService.java");
     private static final Path ARCHITECTURE_SOURCE = PROJECT_ROOT.resolve(
             "docs/architecture/P5-A-server-runtime-event-kernel.md");
+    private static final int ARCHITECTURE_PREFIX_LENGTH = 28_565_604;
+    private static final String ARCHITECTURE_PREFIX_SHA256 =
+            "119165ae2477be0d49f68a9447d566f6e36fd5baedb1ea34c3952c5cc63076d1";
+    private static final int ARCHITECTURE_FINAL_LENGTH = 28_739_448;
+    private static final String ARCHITECTURE_FINAL_SHA256 =
+            "a1b5599c99f1e3b7cf2099c87343eb267f2cf7c1d8d32fe058660eb251733b67";
     private static final Path P7_LOGIN_ISOLATION_SOURCE =
             ROOT_PACKAGE.resolve("P7S4LoginManaGameTests.java");
     private static final Path LEGACY_SEMANTIC_PACKAGE =
@@ -790,11 +796,15 @@ final class P8S2BoundaryTest {
 
     @Test
     void authorityAndRecoveredP7IsolationRemainExactBaseBytes() {
+        var architectureBytes = readBytes(ARCHITECTURE_SOURCE);
         assertAll(
-                () -> assertEquals(28_565_604L, fileSize(ARCHITECTURE_SOURCE)),
+                () -> assertEquals(ARCHITECTURE_FINAL_LENGTH, architectureBytes.length),
                 () -> assertEquals(
-                        "119165ae2477be0d49f68a9447d566f6e36fd5baedb1ea34c3952c5cc63076d1",
-                        sha256(ARCHITECTURE_SOURCE)),
+                        ARCHITECTURE_PREFIX_SHA256,
+                        sha256(architectureBytes, 0, ARCHITECTURE_PREFIX_LENGTH)),
+                () -> assertEquals(
+                        ARCHITECTURE_FINAL_SHA256,
+                        sha256(architectureBytes, 0, architectureBytes.length)),
                 () -> assertEquals(33_649L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
                 () -> assertEquals(
                         "14f4c6bec9a069216b0e9c941de44cd8bfa696014987d165a7009c5394c4d0d1",
@@ -980,11 +990,28 @@ final class P8S2BoundaryTest {
     }
 
     private static String sha256(Path path) {
+        var bytes = readBytes(path);
+        return sha256(bytes, 0, bytes.length);
+    }
+
+    private static String sha256(byte[] bytes, int offset, int length) {
+        if (offset < 0 || length < 0 || offset > bytes.length - length) {
+            throw new AssertionError("invalid SHA-256 byte range");
+        }
         try {
             var digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(Files.readAllBytes(path)));
-        } catch (IOException | NoSuchAlgorithmException exception) {
-            throw new AssertionError("unable to hash source: " + path, exception);
+            digest.update(bytes, offset, length);
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException exception) {
+            throw new AssertionError("unable to create SHA-256 digest", exception);
+        }
+    }
+
+    private static byte[] readBytes(Path path) {
+        try {
+            return Files.readAllBytes(path);
+        } catch (IOException exception) {
+            throw new AssertionError("unable to read source bytes: " + path, exception);
         }
     }
 
