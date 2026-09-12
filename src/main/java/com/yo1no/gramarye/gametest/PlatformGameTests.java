@@ -1,9 +1,12 @@
 package com.yo1no.gramarye.gametest;
 
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import com.mojang.serialization.Dynamic;
 import com.mojang.serialization.JsonOps;
 import com.yo1no.gramarye.Gramarye;
+import com.yo1no.gramarye.magic.action.type.ActionPayload;
+import com.yo1no.gramarye.magic.action.type.ActionType;
 import com.yo1no.gramarye.magic.api.registry.MagicRegistries;
 import com.yo1no.gramarye.magic.definition.action.UnknownActionDefinition;
 import com.yo1no.gramarye.magic.definition.codec.ActionDefinitionCodec;
@@ -15,6 +18,9 @@ import com.yo1no.gramarye.magic.definition.lookup.RegistryTriggerTypeLookup;
 import com.yo1no.gramarye.magic.definition.migration.DescriptorMigrationAudit;
 import com.yo1no.gramarye.magic.definition.trigger.UnknownTriggerDefinition;
 import com.yo1no.gramarye.magic.presentation.api.ProfileChannel;
+import com.yo1no.gramarye.magic.trigger.type.TriggerPayload;
+import com.yo1no.gramarye.magic.trigger.type.TriggerType;
+import java.util.Set;
 import net.minecraft.core.DefaultedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -44,14 +50,8 @@ public final class PlatformGameTests {
         helper.assertTrue(
                 MagicRegistries.ACTION_TYPE_REGISTRY_KEY.location().equals(registryLocation("action_type")),
                 "Action descriptor registry key must be gramarye:action_type");
-        assertCurrentDescriptorRegistryState(
-                helper,
-                MagicRegistries.TRIGGER_TYPE_REGISTRY_KEY,
-                MagicRegistries.triggerTypeRegistry());
-        assertCurrentDescriptorRegistryState(
-                helper,
-                MagicRegistries.ACTION_TYPE_REGISTRY_KEY,
-                MagicRegistries.actionTypeRegistry());
+        assertCanonicalTriggerRegistryState(helper);
+        assertCanonicalActionRegistryState(helper);
         assertCurrentProfileRegistryState(helper);
         helper.succeed();
     }
@@ -92,7 +92,65 @@ public final class PlatformGameTests {
         helper.succeed();
     }
 
-    private static void assertCurrentDescriptorRegistryState(
+    private static void assertCanonicalTriggerRegistryState(GameTestHelper helper) {
+        var activeCast = registryLocation("active_cast");
+        var effectHit = registryLocation("effect_hit");
+        var registry = MagicRegistries.triggerTypeRegistry();
+        assertDescriptorRegistryShell(
+                helper, MagicRegistries.TRIGGER_TYPE_REGISTRY_KEY, registry);
+        helper.assertTrue(
+                Set.copyOf(registry.keySet()).equals(Set.of(activeCast, effectHit)),
+                "Trigger registry must contain exactly the canonical P9 entries");
+
+        assertTriggerPayload(
+                helper,
+                registry.getOptional(activeCast).orElseThrow(),
+                "com.yo1no.gramarye.P9ActiveCastTriggerType",
+                "com.yo1no.gramarye.P9ActiveCastTriggerPayloadV0",
+                new JsonObject());
+        var hitPayload = new JsonObject();
+        hitPayload.add("source_node_index", new JsonPrimitive(0));
+        hitPayload.add("source_output_ordinal", new JsonPrimitive(0));
+        hitPayload.add("include_derived", new JsonPrimitive(true));
+        assertTriggerPayload(
+                helper,
+                registry.getOptional(effectHit).orElseThrow(),
+                "com.yo1no.gramarye.P9EffectHitTriggerType",
+                "com.yo1no.gramarye.P9EffectHitTriggerPayloadV0",
+                hitPayload);
+    }
+
+    private static void assertCanonicalActionRegistryState(GameTestHelper helper) {
+        var spawnProjectile = registryLocation("spawn_projectile");
+        var damage = registryLocation("damage");
+        var registry = MagicRegistries.actionTypeRegistry();
+        assertDescriptorRegistryShell(
+                helper, MagicRegistries.ACTION_TYPE_REGISTRY_KEY, registry);
+        helper.assertTrue(
+                Set.copyOf(registry.keySet()).equals(Set.of(spawnProjectile, damage)),
+                "Action registry must contain exactly the canonical P9 entries");
+
+        var spawnPayload = new JsonObject();
+        spawnPayload.add("profile_code", new JsonPrimitive(0));
+        spawnPayload.add("mana_cost", new JsonPrimitive(0));
+        assertActionPayload(
+                helper,
+                registry.getOptional(spawnProjectile).orElseThrow(),
+                "com.yo1no.gramarye.P9SpawnProjectileActionType",
+                "com.yo1no.gramarye.P9SpawnProjectileActionPayloadV0",
+                spawnPayload);
+        var damagePayload = new JsonObject();
+        damagePayload.add("magnitude", new JsonPrimitive(4_000));
+        damagePayload.add("mana_cost", new JsonPrimitive(0));
+        assertActionPayload(
+                helper,
+                registry.getOptional(damage).orElseThrow(),
+                "com.yo1no.gramarye.P9DamageActionType",
+                "com.yo1no.gramarye.P9DamageActionPayloadV0",
+                damagePayload);
+    }
+
+    private static void assertDescriptorRegistryShell(
             GameTestHelper helper,
             ResourceKey<? extends Registry<?>> registryKey,
             Registry<?> formalRegistry) {
@@ -100,10 +158,88 @@ public final class PlatformGameTests {
 
         helper.assertTrue(registry.key().equals(registryKey), "Descriptor registry has the wrong registry key");
         helper.assertTrue(registry == formalRegistry, "Lookup adapter must expose the formally registered registry");
-        // This is a phase-state assertion. Update it when the first production descriptor is introduced.
-        helper.assertTrue(registry.size() == 0, "P2-B currently has no production descriptor entries");
         helper.assertFalse(registry instanceof DefaultedRegistry<?>, "Descriptor registry must not have a default entry");
         helper.assertFalse(registry.doesSync(), "Descriptor registry must not sync numeric IDs");
+    }
+
+    private static void assertTriggerPayload(
+            GameTestHelper helper,
+            TriggerType<?> descriptor,
+            String expectedDescriptorClass,
+            String expectedPayloadClass,
+            JsonObject expectedPayload) {
+        assertTriggerPayloadCaptured(
+                helper,
+                descriptor,
+                expectedDescriptorClass,
+                expectedPayloadClass,
+                expectedPayload);
+    }
+
+    private static <P extends TriggerPayload> void assertTriggerPayloadCaptured(
+            GameTestHelper helper,
+            TriggerType<P> descriptor,
+            String expectedDescriptorClass,
+            String expectedPayloadClass,
+            JsonObject expectedPayload) {
+        helper.assertTrue(
+                descriptor.getClass().getName().equals(expectedDescriptorClass),
+                "Trigger descriptor class identity differs from the P9 authority");
+        helper.assertTrue(
+                descriptor.currentPayloadSchemaVersion() == 0,
+                "Trigger descriptor schema must be zero");
+        P payload = descriptor.payloadCodec().codec()
+                .parse(JsonOps.INSTANCE, expectedPayload)
+                .getOrThrow();
+        helper.assertTrue(
+                payload.getClass().getName().equals(expectedPayloadClass),
+                "Trigger payload class identity differs from the P9 authority");
+        helper.assertTrue(
+                descriptor.payloadCodec().codec()
+                        .encodeStart(JsonOps.INSTANCE, payload)
+                        .getOrThrow()
+                        .equals(expectedPayload),
+                "Trigger payload must round-trip through the registered descriptor");
+    }
+
+    private static void assertActionPayload(
+            GameTestHelper helper,
+            ActionType<?> descriptor,
+            String expectedDescriptorClass,
+            String expectedPayloadClass,
+            JsonObject expectedPayload) {
+        assertActionPayloadCaptured(
+                helper,
+                descriptor,
+                expectedDescriptorClass,
+                expectedPayloadClass,
+                expectedPayload);
+    }
+
+    private static <P extends ActionPayload> void assertActionPayloadCaptured(
+            GameTestHelper helper,
+            ActionType<P> descriptor,
+            String expectedDescriptorClass,
+            String expectedPayloadClass,
+            JsonObject expectedPayload) {
+        helper.assertTrue(
+                descriptor.getClass().getName().equals(expectedDescriptorClass),
+                "Action descriptor class identity differs from the P9 authority");
+        helper.assertTrue(
+                descriptor.currentPayloadSchemaVersion() == 0,
+                "Action descriptor schema must be zero");
+        P payload = descriptor.payloadCodec().codec()
+                .parse(JsonOps.INSTANCE, expectedPayload)
+                .getOrThrow();
+        helper.assertTrue(
+                payload.getClass().getName().equals(expectedPayloadClass),
+                "Action payload class identity differs from the P9 authority");
+        helper.assertTrue(
+                descriptor.payloadCodec().codec()
+                        .encodeStart(JsonOps.INSTANCE, payload)
+                        .getOrThrow()
+                        .equals(expectedPayload),
+                "Action payload must round-trip through the registered descriptor");
     }
 
     private static void assertCurrentProfileRegistryState(GameTestHelper helper) {

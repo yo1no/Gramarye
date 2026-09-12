@@ -43,6 +43,7 @@ public final class Gramarye {
             throw new IllegalArgumentException("unexpected mod container");
         }
         var exactFacade = new P4E2QualificationFacade();
+        P9StarterSkillContent.registerDefinitionTypes();
         MagicRegistries.register(modBus);
         new DescriptorMigrationAudit().register(modBus);
         playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus);
