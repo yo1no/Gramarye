@@ -606,6 +606,7 @@ final class P4E2LifecycleOrderingTest {
             return stream.filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                     .filter(path -> {
                         try {
                             return withoutCommentsAndLiterals(Files.readString(path))
@@ -629,6 +630,7 @@ final class P4E2LifecycleOrderingTest {
             for (var path : stream.filter(candidate -> candidate.toString().endsWith(".java"))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                     .toList()) {
                 text.append(withoutCommentsAndLiterals(Files.readString(path))).append('\n');
             }

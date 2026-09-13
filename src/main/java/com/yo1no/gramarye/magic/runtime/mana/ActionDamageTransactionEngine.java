@@ -23,11 +23,11 @@ final class ActionDamageTransactionEngine {
     }
 
     ActionDamageTransactionResult execute(
-            DamageActionInvocation input,
+            ActionInvocation input,
             ManaAccountAccess account,
             int suppliedChildIntentCapacity,
             EffectExecutionGuard guard,
-            DamageEffectCommitPort commitPort) {
+            EffectCommitPort commitPort) {
         if (input == null) {
             return withoutMana(effects.rejectBeforePreparation(
                     EffectRejectReason.INVALID_REQUEST));
@@ -54,7 +54,7 @@ final class ActionDamageTransactionEngine {
                     P6ExecutionInvariantCode.INVALID_ACTION_EXECUTOR_OUTCOME);
         }
 
-        DamageEffectRequest request = produced.request();
+        EffectRequest request = produced.request();
         EffectExecutionPreparation preparation = effects.prepare(
                 request,
                 suppliedChildIntentCapacity,
@@ -166,13 +166,35 @@ final class ActionDamageTransactionEngine {
     }
 
     private static boolean matchesInput(
-            DamageEffectRequest request, DamageActionInvocation input) {
-        return request.requestId().equals(input.requestId())
-                && request.sourceEventId().equals(input.sourceEventId())
-                && request.target().equals(input.target())
-                && request.magnitude() == input.magnitude()
-                && request.manaCost() == input.manaCost()
-                && request.compensationPolicy() == input.compensationPolicy();
+            EffectRequest request, ActionInvocation input) {
+        if (request instanceof SpawnProjectileRequest spawnRequest
+                && input instanceof SpawnProjectileActionInvocation spawnInput) {
+            return spawnRequest.requestId().equals(spawnInput.requestId())
+                    && spawnRequest.sourceEventId().equals(spawnInput.sourceEventId())
+                    && spawnRequest.dimension().equals(spawnInput.dimension())
+                    && Double.doubleToLongBits(spawnRequest.originX())
+                            == Double.doubleToLongBits(spawnInput.originX())
+                    && Double.doubleToLongBits(spawnRequest.originY())
+                            == Double.doubleToLongBits(spawnInput.originY())
+                    && Double.doubleToLongBits(spawnRequest.originZ())
+                            == Double.doubleToLongBits(spawnInput.originZ())
+                    && spawnRequest.directionXQ15() == spawnInput.directionXQ15()
+                    && spawnRequest.directionYQ15() == spawnInput.directionYQ15()
+                    && spawnRequest.directionZQ15() == spawnInput.directionZQ15()
+                    && spawnRequest.profileCode() == spawnInput.profileCode()
+                    && spawnRequest.manaCost() == spawnInput.manaCost()
+                    && spawnRequest.compensationPolicy() == spawnInput.compensationPolicy();
+        }
+        if (request instanceof DamageEffectRequest damageRequest
+                && input instanceof DamageActionInvocation damageInput) {
+            return damageRequest.requestId().equals(damageInput.requestId())
+                    && damageRequest.sourceEventId().equals(damageInput.sourceEventId())
+                    && damageRequest.target().equals(damageInput.target())
+                    && damageRequest.magnitude() == damageInput.magnitude()
+                    && damageRequest.manaCost() == damageInput.manaCost()
+                    && damageRequest.compensationPolicy() == damageInput.compensationPolicy();
+        }
+        return false;
     }
 
     private static void validateDebit(

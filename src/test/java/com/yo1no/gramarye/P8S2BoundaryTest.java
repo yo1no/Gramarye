@@ -71,6 +71,8 @@ final class P8S2BoundaryTest {
             ROOT_PACKAGE.resolve("P6RuntimeExecutionPortAdapter.java");
     private static final Path HANDOFF_SOURCE =
             ROOT_PACKAGE.resolve("P8AppliedFactHandoff.java");
+    private static final Path P8_S3_GAME_TEST_SOURCE =
+            ROOT_PACKAGE.resolve("P8S3PresentationGameTests.java");
     private static final Path PRESENTATION_RUNTIME_SOURCE =
             ROOT_PACKAGE.resolve("P8PresentationRuntime.java");
     private static final Path SUBMISSION_SOURCE = ROOT_PACKAGE.resolve(
@@ -578,6 +580,7 @@ final class P8S2BoundaryTest {
         var bridge = read(P6_BRIDGE_SOURCE);
         var adapter = read(P6_ADAPTER_SOURCE);
         var handoff = read(HANDOFF_SOURCE);
+        var p8S3GameTests = read(P8_S3_GAME_TEST_SOURCE);
         var service = read(SERVICE_SOURCE);
         var offer = P8ServerPresentationService.class.getDeclaredMethod(
                 "offerApplied",
@@ -603,9 +606,12 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(1, occurrences(bridge, "public enum AppliedTerminal")),
                 () -> assertEquals(2, matches(
                         Pattern.compile("AppliedFactObserver\\s+observer\\s*\\)"), bridge)),
-                () -> assertEquals(1, occurrences(
+                () -> assertEquals(0, occurrences(
                         adapter,
                         "new P8AppliedFactHandoff(presentationService, event, context)")),
+                () -> assertEquals(1, occurrences(adapter, "ignoredFact ->")),
+                () -> assertEquals(3, occurrences(
+                        p8S3GameTests, "new P8AppliedFactHandoff(service,")),
                 () -> assertEquals(1, occurrences(
                         handoff,
                         "implements P6RuntimeExecutionBridge.AppliedFactObserver")),
@@ -817,9 +823,9 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
-                () -> assertEquals(114_627L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
+                () -> assertEquals(117_975L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
                 () -> assertEquals(
-                        "3cda7ec71eebbbb40ad828950e9e311cfb0a0ad797dd805fc3b20ad0d95f6c72",
+                        "c7199845f9fff63c1d3bd3eb440bbc7f2116065b099c3f56f4724151d8f6e10d",
                         sha256(P7_LOGIN_ISOLATION_SOURCE)));
     }
 

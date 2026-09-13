@@ -631,6 +631,7 @@ class P4B2AApiGateTest {
         return sources.stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(MAIN_JAVA::relativize)
                 .map(Path::toString)
@@ -642,6 +643,7 @@ class P4B2AApiGateTest {
         return sources.stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
@@ -651,6 +653,7 @@ class P4B2AApiGateTest {
         return sources.stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                 .filter(path -> pattern.matcher(
                         withoutCommentsAndLiterals(read(path))).find())
                 .map(MAIN_JAVA::relativize)

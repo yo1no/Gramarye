@@ -45,7 +45,7 @@ interface EffectResolver {
 final class DamageEffectResolver implements EffectResolver {
     @Override
     public EffectResolution resolve(EffectRequest request, int suppliedChildIntentCapacity) {
-        if (request == null || !(request instanceof DamageEffectRequest damageRequest)) {
+        if (request == null) {
             return new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST);
         }
         if (suppliedChildIntentCapacity < 0
@@ -53,12 +53,31 @@ final class DamageEffectResolver implements EffectResolver {
                         > P6EffectBounds.MAX_CHILD_INTENTS_PER_EXECUTION) {
             return new RejectedEffectResolution(EffectRejectReason.BOUND_EXCEEDED);
         }
-        DamageEffectStep step = new DamageEffectStep(
-                0,
-                damageRequest.target(),
-                damageRequest.magnitude(),
-                1,
-                0);
+        EffectStep step;
+        if (request instanceof SpawnProjectileRequest spawnRequest) {
+            step = new SpawnProjectileStep(
+                    0,
+                    spawnRequest.dimension(),
+                    spawnRequest.originX(),
+                    spawnRequest.originY(),
+                    spawnRequest.originZ(),
+                    spawnRequest.directionXQ15(),
+                    spawnRequest.directionYQ15(),
+                    spawnRequest.directionZQ15(),
+                    spawnRequest.profileCode(),
+                    1,
+                    0);
+        } else if (request instanceof DamageEffectRequest damageRequest) {
+            step = new DamageEffectStep(
+                    0,
+                    damageRequest.target(),
+                    damageRequest.magnitude(),
+                    1,
+                    0);
+        } else {
+            throw new P6ExecutionInvariantException(
+                    P6ExecutionInvariantCode.INVALID_TRANSACTION_RESULT);
+        }
         return new AcceptedEffectResolution(
                 new EffectCommitPlan(List.of(step), suppliedChildIntentCapacity));
     }

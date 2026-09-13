@@ -35,12 +35,19 @@ final class P9S1BoundaryTest {
     private static final Path ROOT_MAIN = PROJECT_ROOT.resolve(
             "src/main/java/com/yo1no/gramarye");
     private static final Path MAIN_RESOURCES = PROJECT_ROOT.resolve("src/main/resources");
+    private static final Path ACCESS_TRANSFORMER =
+            MAIN_RESOURCES.resolve("META-INF/accesstransformer.cfg");
     private static final Path ROOT_CLASSES = PROJECT_ROOT.resolve(
             "build/classes/java/main/com/yo1no/gramarye");
     private static final Path CONTENT_SOURCE = ROOT_MAIN.resolve("P9StarterSkillContent.java");
     private static final Path GRAMARYE_SOURCE = ROOT_MAIN.resolve("Gramarye.java");
+    private static final Path PROJECTILE_SOURCE = ROOT_MAIN.resolve("P9StarterProjectile.java");
+    private static final Path HANDOFF_SOURCE = ROOT_MAIN.resolve("P9WorldEffectHandoff.java");
+    private static final Path ADAPTER_SOURCE =
+            ROOT_MAIN.resolve("P6RuntimeExecutionPortAdapter.java");
+    private static final Path SERVICE_SOURCE = ROOT_MAIN.resolve("SkillRuntimeService.java");
 
-    private static final Set<String> P9_S1_SOURCE_FILES = Set.of(
+    private static final Set<String> P9_CONTENT_SOURCE_FILES = Set.of(
             "P9ActiveCastTriggerPayloadV0.java",
             "P9ActiveCastTriggerType.java",
             "P9DamageActionPayloadV0.java",
@@ -50,6 +57,21 @@ final class P9S1BoundaryTest {
             "P9SpawnProjectileActionPayloadV0.java",
             "P9SpawnProjectileActionType.java",
             "P9StarterSkillContent.java");
+    private static final Set<String> P9_CURRENT_SOURCE_FILES = Set.of(
+            "P9ActiveCastTriggerPayloadV0.java",
+            "P9ActiveCastTriggerType.java",
+            "P9DamageActionPayloadV0.java",
+            "P9DamageActionType.java",
+            "P9EffectHitTriggerPayloadV0.java",
+            "P9EffectHitTriggerType.java",
+            "P9S3ProjectileGameTests.java",
+            "P9SpawnProjectileActionPayloadV0.java",
+            "P9SpawnProjectileActionType.java",
+            "P9StarterProjectile.java",
+            "P9StarterProjectileClientEvents.java",
+            "P9StarterProjectileRegistration.java",
+            "P9StarterSkillContent.java",
+            "P9WorldEffectHandoff.java");
     private static final Map<String, Set<String>> TOP_LEVEL_TYPES = Map.ofEntries(
             Map.entry(
                     "P9ActiveCastTriggerPayloadV0.java",
@@ -62,14 +84,29 @@ final class P9S1BoundaryTest {
                     Set.of("P9EffectHitTriggerPayloadV0")),
             Map.entry("P9EffectHitTriggerType.java", Set.of("P9EffectHitTriggerType")),
             Map.entry(
+                    "P9S3ProjectileGameTests.java",
+                    Set.of("P9S3ProjectileGameTests")),
+            Map.entry(
                     "P9SpawnProjectileActionPayloadV0.java",
                     Set.of("P9SpawnProjectileActionPayloadV0")),
             Map.entry(
                     "P9SpawnProjectileActionType.java",
                     Set.of("P9SpawnProjectileActionType")),
             Map.entry(
+                    "P9StarterProjectile.java",
+                    Set.of("P9StarterProjectile")),
+            Map.entry(
+                    "P9StarterProjectileClientEvents.java",
+                    Set.of("P9StarterProjectileClientEvents")),
+            Map.entry(
+                    "P9StarterProjectileRegistration.java",
+                    Set.of("P9StarterProjectileRegistration")),
+            Map.entry(
                     "P9StarterSkillContent.java",
-                    Set.of("P9StarterSkillContent", "StarterGameplayFingerprintV0")));
+                    Set.of("P9StarterSkillContent", "StarterGameplayFingerprintV0")),
+            Map.entry(
+                    "P9WorldEffectHandoff.java",
+                    Set.of("P9WorldEffectHandoff")));
     private static final Pattern TOP_LEVEL_TYPE = Pattern.compile(
             "(?m)^(?:public\\s+)?(?:(?:final|sealed|non-sealed|abstract)\\s+)*"
                     + "(?:class|interface|record|enum)\\s+([A-Za-z_$][A-Za-z0-9_$]*)\\b");
@@ -79,7 +116,7 @@ final class P9S1BoundaryTest {
     private static final Pattern REGISTRATION_CALL = Pattern.compile(
             "\\bP9StarterSkillContent\\s*\\.\\s*registerDefinitionTypes\\s*"
                     + "\\(\\s*\\)\\s*;");
-    private static final Set<String> P9_S1_CLASS_AFTER_SET = Set.of(
+    private static final Set<String> P9_CURRENT_CLASS_AFTER_SET = Set.of(
             "P9ActiveCastTriggerPayloadV0.class",
             "P9ActiveCastTriggerType.class",
             "P9DamageActionPayloadV0.class",
@@ -88,16 +125,29 @@ final class P9S1BoundaryTest {
             "P9EffectHitTriggerType.class",
             "P9RuntimeCleanupDisposition.class",
             "P9RuntimeDiagnosticStage.class",
+            "P9S3ProjectileGameTests.class",
+            "P9S3ProjectileGameTests$OneShotProjectileImpactCancellation.class",
+            "P9S3ProjectileGameTests$OneShotProjectileJoinCancellation.class",
+            "P9S3ProjectileGameTests$OneShotProjectileJoinFailure.class",
+            "P9S3ProjectileGameTests$ProductionScenario.class",
+            "P9S3ProjectileGameTests$RecordingProductionPort.class",
+            "P9S3ProjectileGameTests$ReplacedActorTransferPort.class",
+            "P9S3ProjectileGameTests$TerminalImpact.class",
+            "P9S3ProjectileGameTests$WrongLoadedObjectTransferPort.class",
             "P9SpawnProjectileActionPayloadV0.class",
             "P9SpawnProjectileActionType.class",
+            "P9StarterProjectile.class",
+            "P9StarterProjectileClientEvents.class",
+            "P9StarterProjectileRegistration.class",
             "P9StarterSkillContent.class",
             "P9StarterSkillContent$1.class",
             "P9StarterSkillContent$2.class",
             "P9StarterSkillContent$3.class",
+            "P9WorldEffectHandoff.class",
             "StarterGameplayFingerprintV0.class");
 
     @Test
-    void exactS1SourceFamiliesExistWithNoPublicP9TopLevelType() throws IOException {
+    void exactCurrentSourceFamiliesPermitOnlyThePublicGameTestHolder() throws IOException {
         Set<String> actualFiles;
         try (var paths = Files.list(ROOT_MAIN)) {
             actualFiles = paths.filter(Files::isRegularFile)
@@ -123,9 +173,12 @@ final class P9S1BoundaryTest {
                 .toList();
 
         assertAll(
-                () -> assertEquals(P9_S1_SOURCE_FILES, actualFiles),
+                () -> assertEquals(P9_CURRENT_SOURCE_FILES, actualFiles),
                 () -> assertEquals(TOP_LEVEL_TYPES, actualTypes),
-                () -> assertEquals(List.of(), publicP9Types));
+                () -> assertEquals(
+                        List.of("src/main/java/com/yo1no/gramarye/"
+                                + "P9S3ProjectileGameTests.java"),
+                        publicP9Types));
     }
 
     @Test
@@ -138,7 +191,151 @@ final class P9S1BoundaryTest {
                             || name.startsWith("StarterGameplayFingerprintV0"))
                     .collect(Collectors.toUnmodifiableSet());
         }
-        assertEquals(P9_S1_CLASS_AFTER_SET, actualClasses);
+        assertEquals(P9_CURRENT_CLASS_AFTER_SET, actualClasses);
+    }
+
+    @Test
+    void serverProjectileAndHandoffRepeatLiveOriginAndPreserveFaultOwnership() {
+        var projectile = read(PROJECTILE_SOURCE);
+        var handoff = read(HANDOFF_SOURCE);
+        var adapter = read(ADAPTER_SOURCE);
+        var service = read(SERVICE_SOURCE);
+        var accessTransformer = read(ACCESS_TRANSFORMER);
+        var construction = handoff.indexOf("projectile = new P9StarterProjectile(");
+        var immediateLiveRecheck = handoff.indexOf(
+                "if (!liveSpawnOrigin(geometry))", construction);
+        var insertion = handoff.indexOf("level.addFreshEntity(projectile)", construction);
+        var hasBeenShotGuard = projectile.indexOf("if (!this.hasBeenShot)");
+        var shootEvent = projectile.indexOf(
+                "this.gameEvent(GameEvent.PROJECTILE_SHOOT, this.getOwner())",
+                hasBeenShotGuard);
+        var markShot = projectile.indexOf("this.hasBeenShot = true", shootEvent);
+        var leftOwnerGuard = projectile.indexOf("if (!this.leftOwner)", markShot);
+        var checkLeftOwner = projectile.indexOf(
+                "this.leftOwner = this.checkLeftOwner()", leftOwnerGuard);
+        var baseTick = projectile.indexOf("baseTick();");
+        var motionCapture = projectile.indexOf(
+                "var movement = getDeltaMovement();", baseTick);
+        var rangeClamp = projectile.indexOf(
+                "var remaining = 64.0 - accumulatedTravelDistance;", motionCapture);
+        var clampedMotion = projectile.indexOf(
+                "setDeltaMovement(movement);", rangeClamp);
+        var sweep = projectile.indexOf("ProjectileUtil.getHitResultOnMoveVector(", baseTick);
+        var impactHook = projectile.indexOf("EventHooks.onProjectileImpact(this, hit)", sweep);
+        var entityDispatch = projectile.indexOf("onHitEntity(entityHit);", impactHook);
+        var blockDispatch = projectile.indexOf("onHitBlock(blockHit);", entityDispatch);
+        var movement = projectile.indexOf("setPos(endpoint);", blockDispatch);
+        var runtimeCleanup = service.substring(
+                service.indexOf("private static int closeAllIndexedContinuations("),
+                service.indexOf("private static void terminalizeRemainingP9("));
+        var errorOrdinaryCleanup = Pattern.compile(
+                "catch \\(Error failure\\) \\{"
+                        + "(?:(?!throw failure;).)*"
+                        + "(?:bestEffortClose|bestEffortDiscard|closeWithoutHit)",
+                Pattern.DOTALL);
+
+        assertAll(
+                () -> assertTrue(projectile.contains("var origin = BlockPos.containing(")),
+                () -> assertTrue(projectile.contains("!level.isInWorldBounds(origin)")),
+                () -> assertTrue(projectile.contains("!level.isLoaded(origin)")),
+                () -> assertTrue(projectile.contains(
+                        "!level.getWorldBorder().isWithinBounds(")),
+                () -> assertTrue(projectile.contains(
+                        "level.getWorldBorder().isWithinBounds(position.x, position.z)")),
+                () -> assertEquals(
+                        "public net.minecraft.client.particle.ParticleEngine spriteSets\n"
+                                + "protected net.minecraft.world.entity.projectile.Projectile hasBeenShot\n"
+                                + "protected net.minecraft.world.entity.projectile.Projectile leftOwner\n"
+                                + "protected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z\n",
+                        accessTransformer),
+                () -> assertTrue(
+                        hasBeenShotGuard >= 0
+                                && hasBeenShotGuard < shootEvent
+                                && shootEvent < markShot
+                                && markShot < leftOwnerGuard
+                                && leftOwnerGuard < checkLeftOwner
+                                && checkLeftOwner < baseTick,
+                        "server flight must reproduce the locked Projectile.tick shoot and owner-grace prelude before baseTick"),
+                () -> assertEquals(1, occurrences(projectile, "this.hasBeenShot = true")),
+                () -> assertEquals(
+                        1,
+                        occurrences(
+                                projectile,
+                                "this.leftOwner = this.checkLeftOwner()")),
+                () -> assertTrue(
+                        baseTick >= 0
+                                && baseTick < motionCapture
+                                && motionCapture < rangeClamp
+                                && rangeClamp < clampedMotion
+                                && clampedMotion < sweep
+                                && sweep < impactHook
+                                && impactHook < entityDispatch
+                                && entityDispatch < blockDispatch
+                                && blockDispatch < movement,
+                        "server flight must perform exactly one hook-first sweep before direct typed dispatch and movement"),
+                () -> assertEquals(
+                        1,
+                        occurrences(
+                                projectile,
+                                "ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity)")),
+                () -> assertEquals(
+                        1,
+                        occurrences(projectile, "EventHooks.onProjectileImpact(this, hit)")),
+                () -> assertEquals(1, occurrences(projectile, "super.tick();")),
+                () -> assertFalse(projectile.contains("hitTargetOrDeflectSelf")),
+                () -> assertFalse(Pattern.compile("\\.onHit\\s*\\(")
+                        .matcher(projectile)
+                        .find()),
+                () -> assertFalse(projectile.contains(".deflect(")),
+                () -> assertTrue(projectile.contains(
+                        "var drag = isInWater() ? 0.8 : 0.99;")),
+                () -> assertTrue(projectile.contains("applyGravity();")),
+                () -> assertTrue(projectile.indexOf("if (tickCount > 100)") < baseTick),
+                () -> assertTrue(projectile.contains(
+                        "var remaining = 64.0 - accumulatedTravelDistance;")),
+                () -> assertEquals(5, occurrences(projectile, "@Override")),
+                () -> assertEquals(2, occurrences(projectile, "P9StarterProjectile(")),
+                () -> assertEquals(
+                        2,
+                        Arrays.stream(P9StarterProjectile.class.getDeclaredFields())
+                                .filter(field -> !field.isSynthetic())
+                                .filter(field -> !Modifier.isFinal(field.getModifiers()))
+                                .count()),
+                () -> assertEquals(2, P9StarterProjectile.class.getDeclaredConstructors().length),
+                () -> assertEquals(
+                        Set.of(
+                                "hasAuthenticatedCasterIdentity",
+                                "hasContinuationPermitIdentity"),
+                        Arrays.stream(P9StarterProjectile.class.getDeclaredMethods())
+                                .filter(method -> !method.isSynthetic())
+                                .filter(method -> !Modifier.isPrivate(method.getModifiers()))
+                                .filter(method -> !Modifier.isPublic(method.getModifiers()))
+                                .filter(method -> !Modifier.isProtected(method.getModifiers()))
+                                .map(java.lang.reflect.Method::getName)
+                                .collect(Collectors.toUnmodifiableSet())),
+                () -> assertEquals(2, occurrences(handoff, "liveSpawnOrigin(geometry)")),
+                () -> assertTrue(
+                        construction >= 0
+                                && construction < immediateLiveRecheck
+                                && immediateLiveRecheck < insertion,
+                        "the world predicates must be repeated immediately before insertion"),
+                () -> assertTrue(adapter.contains(
+                        "isAdapterOwnedReservationState(\n"
+                                + "                            opened.orElseThrow().permit().state)")),
+                () -> assertTrue(adapter.contains(
+                        "return state == RuntimeProjectileContinuationPermit.State.RESERVED;")),
+                () -> assertTrue(handoff.contains(
+                        "if (opened.permit().state\n"
+                                + "                    != RuntimeProjectileContinuationPermit.State.OPEN)")),
+                () -> assertTrue(handoff.contains(
+                        "catch (Error failure) {\n            throw failure;\n        }")),
+                () -> assertFalse(errorOrdinaryCleanup.matcher(
+                                projectile + "\n" + handoff + "\n" + adapter)
+                        .find()),
+                () -> assertTrue(runtimeCleanup.indexOf("loadedProjectile(server, permit)")
+                        < runtimeCleanup.indexOf("permit.closeWithoutHit(server, reason)")),
+                () -> assertTrue(runtimeCleanup.indexOf("permit.closeWithoutHit(server, reason)")
+                        < runtimeCleanup.indexOf("projectile.discard()")));
     }
 
     @Test
@@ -275,7 +472,7 @@ final class P9S1BoundaryTest {
 
     @Test
     void contentRemainsOutsideLaterSliceRuntimeAndResourceOwnership() throws IOException {
-        var contentSources = P9_S1_SOURCE_FILES.stream()
+        var contentSources = P9_CONTENT_SOURCE_FILES.stream()
                 .sorted()
                 .map(name -> read(ROOT_MAIN.resolve(name)))
                 .collect(Collectors.joining("\n"));

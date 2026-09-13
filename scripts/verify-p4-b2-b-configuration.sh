@@ -587,7 +587,9 @@ verify_b2_build_contracts() {
         ": name == 'p8S2ReloadGameTestServer'" \
         "? p8S2GameTestMod" \
         ": name == 'p8S5ClientRuntimeHarness'" \
-        "? p8S5ClientHarnessMod : productionMod" \
+        "? p8S5ClientHarnessMod" \
+        ": name == 'p9S3ClientRuntimeHarness'" \
+        "? p9S3ClientHarnessMod : productionMod" \
         "sourceSets.create('p8S5ClientHarness')" \
         "tasks.register('prepareP8S5ClientRuntimeHarness', Delete)" \
         "mods.named('p8S5ClientRuntimeHarness')" \
@@ -596,6 +598,14 @@ verify_b2_build_contracts() {
         'dependsOn(verifyP8S5ClientRuntimeResultParser)' \
         "tasks.named(p8S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
         "add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)" \
+        "sourceSets.create('p9S3ClientHarness')" \
+        "tasks.register('prepareP9S3ClientRuntimeHarness', Delete)" \
+        "mods.named('p9S3ClientRuntimeHarness')" \
+        "tasks.named('runP9S3ClientRuntimeHarness', JavaExec)" \
+        "tasks.register('verifyP9S3ClientRuntimeResultParser')" \
+        'dependsOn(verifyP9S3ClientRuntimeResultParser)' \
+        "tasks.named(p9S3ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
+        "add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)" \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)' \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)' \
         'add(p4B2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)' \
@@ -620,6 +630,12 @@ verify_b2_build_contracts() {
     require_ere_count build.gradle \
         'verifyP8S5ClientRuntimeResultParser' 4 \
         'P8-S5 parser task must remain bound to its definition, run, and required test paths'
+    require_ere_count build.gradle \
+        'tasks\.named\(p9S3ClientHarnessSourceSet\.classesTaskName\)' 2 \
+        'P9-S3 harness classes must remain in both the run and required test paths'
+    require_ere_count build.gradle \
+        'verifyP9S3ClientRuntimeResultParser' 4 \
+        'P9-S3 parser task must remain bound to its definition, run, and required test paths'
     forbid_fixed \
         build.gradle \
         "name.startsWith('p4E0R2QCase')" \
@@ -1021,6 +1037,9 @@ verify_b2_sources_and_outputs() {
     local p8_client_lifecycle='src/main/java/com/yo1no/gramarye/P8ClientPresentationLifecycle.java'
     local p8_client_renderer='src/main/java/com/yo1no/gramarye/P8ClientTrailRenderer.java'
     local p8_client_backend='src/main/java/com/yo1no/gramarye/MinecraftP8ClientPresentationBackend.java'
+    local p6_runtime_adapter='src/main/java/com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java'
+    local p9_projectile='src/main/java/com/yo1no/gramarye/P9StarterProjectile.java'
+    local p9_world_handoff='src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java'
 
     PRODUCTION_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-b2-production.XXXXXX")" \
         || fail 'P4-B2-B verifier could not create its production source list'
@@ -1226,11 +1245,16 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p8_client_lifecycle}" \
                 || "${source}" == "${p8_client_renderer}" \
                 || "${source}" == "${p8_client_backend}" \
+                || "${source}" == "${p6_runtime_adapter}" \
+                || "${source}" == "${p9_projectile}" \
+                || "${source}" == "${p9_world_handoff}" \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]] \
                 || bash scripts/verify-p7-s4-source-contracts.sh \
-                    --is-p8-harness "${source}"; then
+                    --is-p8-harness "${source}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh \
+                    --is-p9-s3-harness "${source}"; then
             continue
         fi
         forbid_ere \
@@ -1256,13 +1280,13 @@ verify_b2_sources_and_outputs() {
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
-        13 \
-        'SkillRuntimeService must contain exactly its thirteen reviewed Error cleanup catches'
+        19 \
+        'SkillRuntimeService must contain exactly its nineteen reviewed Error cleanup catches'
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error[[:space:]]+primary[[:space:]]*\)' \
-        6 \
-        'SkillRuntimeService must contain exactly six same-identity primary Error catches'
+        8 \
+        'SkillRuntimeService must contain exactly eight same-identity primary Error catches'
     require_ere_count \
         "${runtime_service}" \
         '^[[:space:]]*clearSlotAfterError\(slot\);$' \
@@ -1282,6 +1306,50 @@ verify_b2_sources_and_outputs() {
         '    private static int minimum(int first, int... remaining) {' \
         'catch (RuntimeException | Error ignoredDiagnosticFailure) {' 1 \
         'P9 Error cleanup must have exactly one targeted diagnostic-isolation catch'
+    require_ere_count "${p6_runtime_adapter}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error' 2 \
+        'P9-S3 P6 adapter must retain one primary and one isolated cleanup Error catch'
+    require_ere_count "${p6_runtime_adapter}" \
+        'catch[[:space:]]*\(Error failure\)' 1 \
+        'P9-S3 P6 adapter must preserve its exact Error failure identity'
+    require_fixed_count_in_range "${p6_runtime_adapter}" \
+        '        } catch (Error failure) {' '        }' \
+        'bestEffortCloseOpened(' 0 \
+        'P9-S3 P6 adapter Error branch must not invoke ordinary continuation cleanup'
+    require_fixed_count_in_range "${p6_runtime_adapter}" \
+        '        } catch (Error failure) {' '        }' \
+        'throw failure;' 1 \
+        'P9-S3 P6 adapter Error branch must rethrow the same failure'
+    require_ere_count "${p6_runtime_adapter}" \
+        'catch[[:space:]]*\(RuntimeException \| Error ignoredCleanupFailure\)' 1 \
+        'P9-S3 P6 adapter must isolate exactly one continuation cleanup failure'
+    require_ere_count "${p9_projectile}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error' 7 \
+        'P9-S3 projectile must retain five primary and two isolated cleanup Error catches'
+    require_ere_count "${p9_projectile}" \
+        'catch[[:space:]]*\(Error failure\)' 5 \
+        'P9-S3 projectile must preserve exactly five Error-only primary identities'
+    require_ere_count "${p9_projectile}" \
+        'catch[[:space:]]*\(RuntimeException \| Error failure\)' 0 \
+        'P9-S3 projectile must keep primary RuntimeException and Error identities separate'
+    require_ere_count "${p9_projectile}" \
+        'catch[[:space:]]*\(RuntimeException \| Error ignoredCleanupFailure\)' 2 \
+        'P9-S3 projectile must isolate exactly two cleanup failures'
+    require_ere_count "${p9_world_handoff}" \
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error' 3 \
+        'P9-S3 world handoff must retain one primary and two isolated cleanup Error catches'
+    require_ere_count "${p9_world_handoff}" \
+        'catch[[:space:]]*\(Error failure\)' 1 \
+        'P9-S3 world handoff must preserve its exact Error-only primary identity'
+    require_ere_count "${p9_world_handoff}" \
+        'catch[[:space:]]*\(RuntimeException \| Error ignoredCleanupFailure\)' 2 \
+        'P9-S3 world handoff must isolate exactly two cleanup failures'
+    for source in "${p6_runtime_adapter}" "${p9_projectile}" "${p9_world_handoff}"; do
+        forbid_ere \
+            "${source}" \
+            'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
+            "P9-S3 Error owner must not catch Throwable: ${source}"
+    done
     require_ere_count \
         "${p7_network_handler}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \

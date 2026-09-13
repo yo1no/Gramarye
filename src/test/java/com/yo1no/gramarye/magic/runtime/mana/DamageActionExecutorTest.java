@@ -26,7 +26,8 @@ final class DamageActionExecutorTest {
         ProducedActionRequest produced = assertInstanceOf(
                 ProducedActionRequest.class,
                 new DamageActionExecutor().execute(input));
-        DamageEffectRequest request = produced.request();
+        DamageEffectRequest request = assertInstanceOf(
+                DamageEffectRequest.class, produced.request());
 
         assertSame(input.requestId(), request.requestId());
         assertSame(input.sourceEventId(), request.sourceEventId());
@@ -45,18 +46,37 @@ final class DamageActionExecutorTest {
     }
 
     @Test
-    void invalidSupportedInputProducesTypedNoRequest() {
+    void nullCrossVariantAndMismatchedKeyProduceTypedNoRequest() {
         DamageActionExecutor executor = new DamageActionExecutor();
 
         assertSame(NoActionRequest.INSTANCE, executor.execute(null));
-        for (DamageActionInvocation invalid : new DamageActionInvocation[] {
-            invocation(0L, 0L),
-            invocation(P6EffectBounds.MAX_EFFECT_MAGNITUDE + 1L, 0L),
-            invocation(1L, -1L),
-            invocation(1L, P6EffectBounds.MAX_MANA_OPERATION_AMOUNT + 1L)
-        }) {
-            assertSame(NoActionRequest.INSTANCE, executor.execute(invalid));
-        }
+        assertSame(
+                NoActionRequest.INSTANCE,
+                executor.execute(new SpawnProjectileActionInvocation(
+                        ResourceLocation.fromNamespaceAndPath(
+                                "gramarye", "spawn_projectile"),
+                        new EffectRequestId(1L),
+                        new SourceEventId(1L),
+                        ResourceLocation.fromNamespaceAndPath("minecraft", "overworld"),
+                        0.0,
+                        0.0,
+                        0.0,
+                        32_767,
+                        0,
+                        0,
+                        0,
+                        0L,
+                        CompensationPolicy.REFUND_IF_NO_PRIMARY_MUTATION)));
+        assertSame(
+                NoActionRequest.INSTANCE,
+                executor.execute(new DamageActionInvocation(
+                        ResourceLocation.fromNamespaceAndPath("gramarye", "other"),
+                        new EffectRequestId(1L),
+                        new SourceEventId(1L),
+                        target(),
+                        1L,
+                        0L,
+                        CompensationPolicy.REFUND_IF_NO_PRIMARY_MUTATION)));
     }
 
     @Test
@@ -108,7 +128,7 @@ final class DamageActionExecutorTest {
         for (String forbidden : Set.of(
                 "ManaTransactionService",
                 "ManaAccountAccess",
-                "DamageEffectCommitPort",
+                "EffectCommitPort",
                 "net.minecraft.world",
                 "RuntimeExecutionPort",
                 "getData(",

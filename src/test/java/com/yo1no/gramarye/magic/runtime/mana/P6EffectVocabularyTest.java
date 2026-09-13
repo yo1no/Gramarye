@@ -125,11 +125,11 @@ final class P6EffectVocabularyTest {
                         outcomeTypes),
                 () -> assertEquals(1, producedComponents.length),
                 () -> assertEquals("request", producedComponents[0].getName()),
-                () -> assertEquals(DamageEffectRequest.class,
+                () -> assertEquals(EffectRequest.class,
                         producedComponents[0].getType()),
                 () -> assertEquals(1, producedFields.size()),
                 () -> assertEquals("request", producedFields.getFirst().getName()),
-                () -> assertEquals(DamageEffectRequest.class,
+                () -> assertEquals(EffectRequest.class,
                         producedFields.getFirst().getType()),
                 () -> assertEquals(1L, requestComponents),
                 () -> assertEquals(1L, requestFields),
@@ -137,13 +137,13 @@ final class P6EffectVocabularyTest {
                 () -> assertEquals(1L, maximumConstructorRequestParameters),
                 () -> assertTrue(maximumFactoryRequestParameters <= 1L),
                 () -> assertFalse(ProducedActionRequest.class
-                        .getDeclaredConstructor(DamageEffectRequest.class)
+                        .getDeclaredConstructor(EffectRequest.class)
                         .isVarArgs()),
                 () -> assertThrows(
                         NoSuchMethodException.class,
                         () -> ProducedActionRequest.class.getDeclaredConstructor(
-                                DamageEffectRequest.class,
-                                DamageEffectRequest.class),
+                                EffectRequest.class,
+                                EffectRequest.class),
                         "STRUCTURALLY_UNREPRESENTABLE_ONE_OVER"),
                 () -> assertEquals(0L,
                         Arrays.stream(NoActionRequest.class.getDeclaredFields())
@@ -173,6 +173,24 @@ final class P6EffectVocabularyTest {
 
     @Test
     void closedVocabulariesHaveExactValues() {
+        assertTrue(ActionInvocation.class.isSealed());
+        assertEquals(
+                Set.of(SpawnProjectileActionInvocation.class, DamageActionInvocation.class),
+                Set.copyOf(Arrays.asList(ActionInvocation.class.getPermittedSubclasses())));
+        assertTrue(EffectRequest.class.isSealed());
+        assertEquals(
+                Set.of(SpawnProjectileRequest.class, DamageEffectRequest.class),
+                Set.copyOf(Arrays.asList(EffectRequest.class.getPermittedSubclasses())));
+        assertTrue(EffectStep.class.isSealed());
+        assertEquals(
+                Set.of(DamageEffectStep.class, SpawnProjectileStep.class),
+                Set.copyOf(Arrays.asList(EffectStep.class.getPermittedSubclasses())));
+        assertArrayEquals(
+                new EffectStepKind[] {
+                    EffectStepKind.DAMAGE,
+                    EffectStepKind.SPAWN_PROJECTILE
+                },
+                EffectStepKind.values());
         assertArrayEquals(
                 new EffectTerminalStatus[] {
                     EffectTerminalStatus.SUCCEEDED,

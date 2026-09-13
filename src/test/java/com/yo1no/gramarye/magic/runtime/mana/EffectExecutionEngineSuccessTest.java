@@ -80,7 +80,7 @@ final class EffectExecutionEngineSuccessTest {
     private static EffectExecutionResult execute(
             EffectCommitPlan plan,
             EffectExecutionGuard guard,
-            DamageEffectCommitPort port) {
+            EffectCommitPort port) {
         return new EffectExecutionEngine().execute(
                 EffectTestFixtures.request(),
                 EffectTestFixtures.resolverFor(plan),

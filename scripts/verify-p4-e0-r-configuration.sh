@@ -491,6 +491,30 @@ is_approved_p6_s3_changed_path() {
     esac
 }
 
+is_approved_p9_s3_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectile.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectileClientEvents.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectileRegistration.java | \
+        src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java | \
+        src/p9S3ClientHarness/java/com/yo1no/gramarye/P9S3ClientRuntimeHarness.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionInvocation.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionInvocation.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPortTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPortTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionExecutorTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_e1a_changed_path() {
     case "$1" in
         docs/architecture/P4-0-persistence-boundary.md | \
@@ -882,6 +906,8 @@ is_approved_p8_s5_test_path() {
 verify_p8_s5_access_transformer() {
     local resource='src/main/resources/META-INF/accesstransformer.cfg'
     local expected='public net.minecraft.client.particle.ParticleEngine spriteSets'
+    local exact=$'public net.minecraft.client.particle.ParticleEngine spriteSets\nprotected net.minecraft.world.entity.projectile.Projectile hasBeenShot\nprotected net.minecraft.world.entity.projectile.Projectile leftOwner\nprotected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z'
+    local actual=''
     local bytes=''
     local lines=''
     local matches=0
@@ -893,14 +919,17 @@ verify_p8_s5_access_transformer() {
         || fail 'wc failed while checking P8-S5 access-transformer bytes'
     lines="$(LC_ALL=C wc -l < "${resource}")" \
         || fail 'wc failed while checking P8-S5 access-transformer lines'
+    actual="$(< "${resource}")" \
+        || fail 'read failed while checking the exact P9-S3 access-transformer content'
     matches="$(LC_ALL=C grep -Fxc -- "${expected}" "${resource}")" || status=$?
     case "${status}" in
         0) ;;
         1) matches=0 ;;
         *) fail "grep failed while checking ${resource} (exit ${status})" ;;
     esac
-    [[ "${bytes}" -eq 63 && "${lines}" -eq 1 && "${matches}" -eq 1 ]] \
-        || fail 'P8-S5 access transformer must be the exact one-line 63-byte ParticleEngine spriteSets rule'
+    [[ "${bytes}" -eq 280 && "${lines}" -eq 4 && "${matches}" -eq 1 \
+            && "${actual}" == "${exact}" ]] \
+        || fail 'P8-S5/P9-S3 access transformer must be the exact ordered four-line 280-byte rule set'
     is_approved_p8_s5_resource_path "${resource}" \
         || fail 'P8-S5 resource allowlist rejected its exact access transformer'
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
@@ -926,6 +955,7 @@ is_reviewed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
     is_approved_p6_s3_changed_path "$1" && return 0
+    is_approved_p9_s3_changed_path "$1" && return 0
     is_approved_p6_s4_r1_changed_path "$1" && return 0
     is_approved_p7_s1_changed_path "$1" && return 0
     is_approved_p7_s2_changed_path "$1" && return 0
@@ -1234,7 +1264,9 @@ verify_build_contract() {
         ": name == 'p8S2ReloadGameTestServer'" \
         '? p8S2GameTestMod' \
         ": name == 'p8S5ClientRuntimeHarness'" \
-        '? p8S5ClientHarnessMod : productionMod' \
+        '? p8S5ClientHarnessMod' \
+        ": name == 'p9S3ClientRuntimeHarness'" \
+        '? p9S3ClientHarnessMod : productionMod' \
         "sourceSets.create('p8S5ClientHarness')" \
         "tasks.register('prepareP8S5ClientRuntimeHarness', Delete)" \
         "mods.named('p8S5ClientRuntimeHarness')" \
@@ -1242,7 +1274,15 @@ verify_build_contract() {
         "tasks.register('verifyP8S5ClientRuntimeResultParser')" \
         'dependsOn(verifyP8S5ClientRuntimeResultParser)' \
         "tasks.named(p8S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
-        "add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
+        "add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)" \
+        "sourceSets.create('p9S3ClientHarness')" \
+        "tasks.register('prepareP9S3ClientRuntimeHarness', Delete)" \
+        "mods.named('p9S3ClientRuntimeHarness')" \
+        "tasks.named('runP9S3ClientRuntimeHarness', JavaExec)" \
+        "tasks.register('verifyP9S3ClientRuntimeResultParser')" \
+        'dependsOn(verifyP9S3ClientRuntimeResultParser)' \
+        "tasks.named(p9S3ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
+        "add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
         require_fixed scripts/verify-p4-b2-b-configuration.sh "${marker}" \
             "P4-E0-R1 exact B2 runtime allowlist is missing ${marker}"
     done
@@ -1252,6 +1292,12 @@ verify_build_contract() {
     require_fixed_count build.gradle \
         'verifyP8S5ClientRuntimeResultParser' 4 \
         'P8-S5 result parser escaped its exact definition/run/test topology'
+    require_fixed_count build.gradle \
+        'tasks.named(p9S3ClientHarnessSourceSet.classesTaskName)' 2 \
+        'P9-S3 harness classes escaped the exact run plus required-test topology'
+    require_fixed_count build.gradle \
+        'verifyP9S3ClientRuntimeResultParser' 4 \
+        'P9-S3 result parser escaped its exact definition/run/test topology'
     forbid_fixed build.gradle "name.startsWith('p4E0R2QCase')" \
         'P4-E0-R2Q formal cases must use exact generated loaded-mod membership'
     forbid_fixed build.gradle "name.startsWith('p4E0R2Q')" \

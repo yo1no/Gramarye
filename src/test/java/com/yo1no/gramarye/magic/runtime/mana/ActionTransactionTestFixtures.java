@@ -9,7 +9,7 @@ import net.minecraft.resources.ResourceLocation;
 
 final class ActionTransactionTestFixtures {
     static final ResourceLocation DAMAGE_ACTION_KEY =
-            ResourceLocation.fromNamespaceAndPath("gramarye", "test_damage");
+            ResourceLocation.fromNamespaceAndPath("gramarye", "damage");
     static final UUID ACCOUNT_ID =
             UUID.fromString("70000000-0000-4000-8000-000000000001");
 
@@ -214,7 +214,7 @@ final class ActionTransactionTestFixtures {
         }
     }
 
-    static final class TransactionRecordingPort implements DamageEffectCommitPort {
+    static final class TransactionRecordingPort extends DamageOnlyEffectCommitPort {
         private final boolean available;
         private final List<EffectStepOutcome> outcomes;
         private final List<Integer> committedIndexes = new ArrayList<>();
@@ -246,7 +246,8 @@ final class ActionTransactionTestFixtures {
         }
 
         @Override
-        public EffectStepOutcome commitDamage(DamageEffectStep step) {
+        public EffectStepOutcome commitDamage(
+                            DamageEffectRequest request, DamageEffectStep step) {
             int invocation = committedIndexes.size();
             committedIndexes.add(step.index());
             order.add("port-step-" + step.index());

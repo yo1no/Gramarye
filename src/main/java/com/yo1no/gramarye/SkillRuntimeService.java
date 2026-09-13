@@ -27,9 +27,14 @@ import java.util.OptionalLong;
 import java.util.PriorityQueue;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
@@ -350,7 +355,269 @@ final class SkillRuntimeService {
         }
         recordP9Stage(slot, instance, P9RuntimeDiagnosticStage.CONTINUATION_OPENED);
         return new RuntimeProjectileContinuationOpenResult.Opened(
-                permit, plannedProjectileId);
+                permit, plannedProjectileId, this);
+    }
+
+    RuntimePermitTransferDisposition transferSpawnedProjectile(
+            MinecraftServer server,
+            RuntimeProjectileContinuationPermit permit,
+            UUID plannedProjectileId,
+            P9StarterProjectile projectile) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(permit, "permit");
+        Objects.requireNonNull(plannedProjectileId, "plannedProjectileId");
+        Objects.requireNonNull(projectile, "projectile");
+        if (!server.isSameThread()) {
+            return RuntimePermitTransferDisposition.REJECTED;
+        }
+        var slot = slots.get(server);
+        if (slot == null
+                || permit.mode != RuntimeProjectileContinuationPermit.Mode.REAL
+                || !permit.serverSlotToken.equals(slot.token)
+                || !permit.plannedProjectileId.equals(plannedProjectileId)
+                || slot.activeProjectileContinuations.get(permit.permitId) != permit) {
+            return RuntimePermitTransferDisposition.REJECTED;
+        }
+        var instance = slot.instances.get(permit.skillInstanceId);
+        var level = levelForDimension(server, permit.dimension);
+        if (instance == null
+                || instance.activeProjectileContinuation != permit
+                || level == null
+                || level.getEntity(plannedProjectileId) != projectile
+                || !projectile.isAddedToLevel()
+                || !projectile.getUUID().equals(plannedProjectileId)
+                || !projectile.hasContinuationPermitIdentity(permit)) {
+            return RuntimePermitTransferDisposition.REJECTED;
+        }
+        var attribution = slot.attributions.get(permit.budgetAttribution);
+        var detachedAndCurrentReservationCount = slot.currentReservationCount + 1;
+        var actor = currentP9Actor(server, instance, permit.dimension);
+        if (slot.state != ServerSlot.State.RUNNING
+                || !server.isRunning()
+                || server.isStopped()
+                || p9ReloadCloseRequested.get()
+                || !slot.dispatching
+                || slot.currentEvent == null
+                || permit.state != RuntimeProjectileContinuationPermit.State.RESERVED
+                || attribution == null
+                || instance.terminal
+                || instance.cancellationRequested
+                || !instance.inFlight
+                || !slot.currentEvent.skillInstanceId().equals(instance.id)
+                || !slot.currentEvent.eventId().equals(permit.sourceFamily.sourceEventId())
+                || slot.currentEvent.nodeIndex() != 0
+                || !(slot.currentEvent.executionData()
+                        instanceof CastGeometryExecutionDataV0 geometry)
+                || !geometry.dimension().equals(permit.dimension)
+                || !slot.currentEvent.skillReference().equals(permit.exactReference)
+                || slot.currentEvent.deadlineRuntimeTick() != permit.deadlineRuntimeTick
+                || instance.lease.pin.isClosed()
+                || !instance.lease.reference.equals(permit.exactReference)
+                || slot.currentReservationCount < 0
+                || (slot.currentReservationCount == 0
+                        ? slot.currentReservationOwner != null
+                        : !instance.id.equals(slot.currentReservationOwner))
+                || instance.reservedPending != detachedAndCurrentReservationCount
+                || attribution.reservedPending < detachedAndCurrentReservationCount
+                || slot.reservedPending < detachedAndCurrentReservationCount
+                || slot.runtimeTick >= permit.deadlineRuntimeTick
+                || actor == null
+                || projectile.level() != level
+                || projectile.isRemoved()
+                || !projectile.isAlive()
+                || projectile.getOwner() != actor
+                || !projectile.hasAuthenticatedCasterIdentity(actor)) {
+            recordP9SpawnResult(
+                    slot, instance, RuntimePermitTransferDisposition.REJECTED);
+            return RuntimePermitTransferDisposition.REJECTED;
+        }
+
+        // The entity already owns the exact actor witness.  Publish OPEN before
+        // clearing P5 so there is never a stable zero-custodian interval.
+        permit.state = RuntimeProjectileContinuationPermit.State.OPEN;
+        instance.clearP9AuthenticatedActorWitness();
+        recordP9SpawnResult(
+                slot, instance, RuntimePermitTransferDisposition.TRANSFERRED);
+        return RuntimePermitTransferDisposition.TRANSFERRED;
+    }
+
+    RuntimePermitClaimDisposition claimProjectileHit(
+            MinecraftServer server,
+            RuntimeProjectileContinuationPermit permit,
+            ProjectileHitCandidateV0 candidate) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(permit, "permit");
+        Objects.requireNonNull(candidate, "candidate");
+        if (!server.isSameThread()) {
+            return RuntimePermitClaimDisposition.REJECTED;
+        }
+        var slot = slots.get(server);
+        if (slot == null) {
+            return RuntimePermitClaimDisposition.REJECTED;
+        }
+        try {
+            return claimProjectileHitInSlot(server, slot, permit, candidate);
+        } catch (RuntimeException primary) {
+            throw preserveRuntimeFault(slot, primary);
+        } catch (Error primary) {
+            slot.p9ErrorCleanup.prepare(server);
+            throw preserveErrorFault(slot, primary);
+        }
+    }
+
+    private RuntimePermitClaimDisposition claimProjectileHitInSlot(
+            MinecraftServer server,
+            ServerSlot slot,
+            RuntimeProjectileContinuationPermit permit,
+            ProjectileHitCandidateV0 candidate) {
+        var instance = slot.instances.get(permit.skillInstanceId);
+        if (slot.state != ServerSlot.State.RUNNING
+                || !server.isRunning()
+                || server.isStopped()
+                || p9ReloadCloseRequested.get()
+                || slot.dispatching
+                || slot.currentEvent != null
+                || permit.mode != RuntimeProjectileContinuationPermit.Mode.REAL
+                || permit.state != RuntimeProjectileContinuationPermit.State.OPEN
+                || !permit.serverSlotToken.equals(slot.token)
+                || slot.activeProjectileContinuations.get(permit.permitId) != permit) {
+            return rejectClaimAndClose(server, slot, instance, permit, candidate);
+        }
+        var attribution = slot.attributions.get(permit.budgetAttribution);
+        if (instance == null
+                || attribution == null
+                || instance.activeProjectileContinuation != permit
+                || instance.terminal
+                || instance.cancellationRequested
+                || instance.inFlight
+                || instance.lease.pin.isClosed()
+                || !instance.lease.reference.equals(permit.exactReference)
+                || instance.reservedPending != 1
+                || attribution.reservedPending < 1
+                || slot.reservedPending < 1
+                || slot.runtimeTick >= permit.deadlineRuntimeTick
+                || instance.lifetimeEvents >= slot.limits.eventsPerSkillInstance()
+                || slot.eventIndex.containsKey(permit.heldChildEventId)
+                || permit.heldChildEventId.value() > slot.eventSequenceHighWater
+                || !permit.sourceFamily.skillInstanceId().equals(instance.id)
+                || permit.sourceFamily.producerNodeIndex() != 0
+                || permit.sourceFamily.outputOrdinal() != 0
+                || permit.sourceDerivationDepth != 0) {
+            return rejectClaimAndClose(server, slot, instance, permit, candidate);
+        }
+        var level = levelForDimension(server, permit.dimension);
+        var loadedProjectile = level == null
+                ? null
+                : level.getEntity(permit.plannedProjectileId);
+        var target = level == null ? null : level.getEntity(candidate.targetId());
+        var hitPosition = BlockPos.containing(
+                candidate.hitX(), candidate.hitY(), candidate.hitZ());
+        var actor = currentP9EntityActor(server, instance, loadedProjectile, permit);
+        if (!(loadedProjectile instanceof P9StarterProjectile projectile)
+                || !(target instanceof LivingEntity livingTarget)
+                || actor == null
+                || candidate.projectileId().equals(candidate.targetId())
+                || !candidate.projectileId().equals(permit.plannedProjectileId)
+                || !candidate.dimension().equals(permit.dimension)
+                || projectile.level() != level
+                || projectile.isRemoved()
+                || !projectile.isAlive()
+                || !projectile.hasContinuationPermitIdentity(permit)
+                || livingTarget == actor
+                || livingTarget.level() != level
+                || livingTarget.isRemoved()
+                || !livingTarget.isAlive()
+                || !level.isInWorldBounds(hitPosition)
+                || !level.isLoaded(hitPosition)
+                || !level.getWorldBorder().isWithinBounds(
+                        candidate.hitX(), candidate.hitZ())) {
+            return rejectClaimAndClose(server, slot, instance, permit, candidate);
+        }
+
+        var hitData = new ProjectileHitExecutionDataV0(
+                permit.permitId,
+                permit.plannedProjectileId,
+                permit.sourceFamily,
+                permit.sourceDerivationDepth,
+                permit.dimension,
+                candidate.targetId(),
+                candidate.hitX(),
+                candidate.hitY(),
+                candidate.hitZ(),
+                candidate.directionXQ15(),
+                candidate.directionYQ15(),
+                candidate.directionZQ15());
+        var childSpec = new RuntimeChildSpec(
+                1,
+                0,
+                0,
+                new PlayerOrigin(
+                        slot.token,
+                        level.dimension(),
+                        ((PlayerRuntimeBudgetAttribution) instance.attribution).playerId()),
+                Optional.of(new EntityTarget(
+                        slot.token,
+                        level.dimension(),
+                        new RuntimeEntityId(candidate.targetId()),
+                        RuntimeEntityKind.LIVING_ENTITY)),
+                new ChildTriggerCause(new TriggerEventKind(P9StarterSkillContent.EFFECT_HIT_ID)),
+                hitData);
+        if (validateChildShape(instance.lease.definition, instance.attribution, childSpec)
+                .isPresent()) {
+            return rejectClaimAndClose(server, slot, instance, permit, candidate);
+        }
+        var child = new RuntimeEvent(
+                permit.heldChildEventId,
+                instance.id,
+                instance.sequence,
+                new RuntimeCancellationToken(slot.token, instance.id),
+                Optional.of(permit.sourceFamily.sourceEventId()),
+                permit.exactReference,
+                1,
+                slot.runtimeTick,
+                slot.runtimeTick,
+                permit.deadlineRuntimeTick,
+                1,
+                1,
+                RuntimeSchedulePersistence.MEMORY_ONLY,
+                instance.attribution,
+                childSpec.origin(),
+                childSpec.target(),
+                childSpec.triggerCause(),
+                hitData);
+
+        addCommittedEvent(slot, instance, attribution, child);
+        instance.reservedPending--;
+        attribution.reservedPending--;
+        slot.reservedPending--;
+        instance.lifetimeEvents++;
+        permit.state = RuntimeProjectileContinuationPermit.State.CLAIMED_PENDING_DAMAGE;
+        recordP9HitClaimResult(
+                slot, instance, permit, candidate, RuntimePermitClaimDisposition.QUEUED);
+        return RuntimePermitClaimDisposition.QUEUED;
+    }
+
+    private RuntimePermitClaimDisposition rejectClaimAndClose(
+            MinecraftServer server,
+            ServerSlot slot,
+            ServerSlot.InstanceState instance,
+            RuntimeProjectileContinuationPermit permit,
+            ProjectileHitCandidateV0 candidate) {
+        recordP9HitClaimResult(
+                slot, instance, permit, candidate, RuntimePermitClaimDisposition.REJECTED);
+        var close = closeProjectileContinuation(
+                server,
+                permit,
+                permit.serverSlotToken,
+                permit.skillInstanceId,
+                permit.budgetAttribution,
+                permit.permitId,
+                ProjectileClosureReason.CLAIM_REJECTED);
+        if (close != RuntimePermitCloseDisposition.CLOSED
+                && close != RuntimePermitCloseDisposition.ALREADY_CLOSED) {
+            return RuntimePermitClaimDisposition.REJECTED;
+        }
+        return RuntimePermitClaimDisposition.REJECTED;
     }
 
     RuntimePermitCloseDisposition closeProjectileContinuation(
@@ -425,6 +692,17 @@ final class SkillRuntimeService {
         if (slot == null || !slot.token.equals(serverSlotToken)) {
             return RuntimePermitCloseDisposition.REJECTED;
         }
+        if (permit.mode != RuntimeProjectileContinuationPermit.Mode.REAL
+                || !permit.serverSlotToken.equals(serverSlotToken)
+                || !permit.skillInstanceId.equals(skillInstanceId)
+                || !permit.budgetAttribution.equals(budgetAttribution)
+                || !permit.permitId.equals(permitId)) {
+            return RuntimePermitCloseDisposition.REJECTED;
+        }
+        if (permit.state == RuntimeProjectileContinuationPermit.State.CLOSED_NO_HIT
+                || permit.state == RuntimeProjectileContinuationPermit.State.CLOSED_AFTER_HIT) {
+            return RuntimePermitCloseDisposition.ALREADY_CLOSED;
+        }
         var instance = slot.instances.get(skillInstanceId);
         var indexed = slot.p9BatchContinuationCloseInProgress
                 ? permit
@@ -443,14 +721,31 @@ final class SkillRuntimeService {
             return RuntimePermitCloseDisposition.REJECTED;
         }
         var attribution = slot.attributions.get(budgetAttribution);
+        var claimed = permit.state
+                == RuntimeProjectileContinuationPermit.State.CLAIMED_PENDING_DAMAGE;
         if (instance == null
                 || attribution == null
                 || instance.activeProjectileContinuation != permit
                 || !instance.attribution.equals(budgetAttribution)
-                || instance.reservedPending <= 0
-                || attribution.reservedPending <= 0
-                || (!errorDeindexedRecovery && slot.reservedPending <= 0)) {
+                || !claimed && (instance.reservedPending <= 0
+                        || attribution.reservedPending <= 0
+                        || !errorDeindexedRecovery && slot.reservedPending <= 0)) {
             throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        if (!claimed
+                && permit.state == RuntimeProjectileContinuationPermit.State.RESERVED
+                && reason == ProjectileClosureReason.SPAWN_NOT_APPLIED) {
+            recordP9SpawnResult(
+                    slot, instance, RuntimePermitTransferDisposition.REJECTED);
+        }
+        if (claimed) {
+            var child = slot.eventIndex.get(permit.heldChildEventId);
+            if (child != null && slot.currentEvent != child) {
+                if (!removeExactQueuedOrDeferred(slot, child)) {
+                    throw kernel(RuntimeKernelException.Code.EVENT_INDEX_INVARIANT);
+                }
+                removeCommittedEvent(slot, child);
+            }
         }
         if (!slot.p9BatchContinuationCloseInProgress
                 && !errorDeindexedRecovery
@@ -458,10 +753,15 @@ final class SkillRuntimeService {
             throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
         }
         instance.activeProjectileContinuation = null;
-        instance.reservedPending--;
-        attribution.reservedPending--;
-        if (!errorDeindexedRecovery) {
-            slot.reservedPending--;
+        if (claimed) {
+            permit.state = RuntimeProjectileContinuationPermit.State.CLOSED_AFTER_HIT;
+        } else {
+            instance.reservedPending--;
+            attribution.reservedPending--;
+            if (!errorDeindexedRecovery) {
+                slot.reservedPending--;
+            }
+            permit.state = RuntimeProjectileContinuationPermit.State.CLOSED_NO_HIT;
         }
         instance.clearP9AuthenticatedActorWitness();
         if (!errorDeindexedRecovery
@@ -475,6 +775,62 @@ final class SkillRuntimeService {
     private static RuntimeProjectileContinuationOpenResult continuationRejected(
             RuntimeProjectileContinuationOpenRejectionReason reason) {
         return new RuntimeProjectileContinuationOpenResult.Rejected(reason);
+    }
+
+    boolean ownsOpenedContinuation(
+            RuntimeProjectileContinuationPermit permit, UUID plannedProjectileId) {
+        Objects.requireNonNull(permit, "permit");
+        Objects.requireNonNull(plannedProjectileId, "plannedProjectileId");
+        if (permit.mode != RuntimeProjectileContinuationPermit.Mode.REAL
+                || !permit.plannedProjectileId.equals(plannedProjectileId)) {
+            return false;
+        }
+        for (var slot : slots.values()) {
+            if (slot.activeProjectileContinuations.get(permit.permitId) == permit) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    boolean isOwningPermitServerThread(
+            MinecraftServer server, RuntimeProjectileContinuationPermit permit) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(permit, "permit");
+        var slot = slots.get(server);
+        return server.isSameThread()
+                && slot != null
+                && slot.token.equals(permit.serverSlotToken);
+    }
+
+    private static void closeActiveP9ContinuationAndDiscard(
+            MinecraftServer server,
+            ServerSlot slot,
+            ServerSlot.InstanceState instance,
+            ProjectileClosureReason reason) {
+        var permit = instance.activeProjectileContinuation;
+        if (permit == null) {
+            return;
+        }
+        var projectile = loadedProjectile(server, permit);
+        var close = permit.closeWithoutHit(server, reason);
+        if (close != RuntimePermitCloseDisposition.CLOSED
+                && close != RuntimePermitCloseDisposition.ALREADY_CLOSED) {
+            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        if (projectile != null && !projectile.isRemoved()) {
+            projectile.discard();
+        }
+    }
+
+    private static P9StarterProjectile loadedProjectile(
+            MinecraftServer server, RuntimeProjectileContinuationPermit permit) {
+        var level = levelForDimension(server, permit.dimension);
+        if (level == null) {
+            return null;
+        }
+        var loaded = level.getEntity(permit.plannedProjectileId);
+        return loaded instanceof P9StarterProjectile projectile ? projectile : null;
     }
 
     private static ProjectileClosureReason terminalReasonForOutcome(
@@ -545,6 +901,138 @@ final class SkillRuntimeService {
                 && level.dimension().location().equals(dimension)
                 && candidate.connection != null
                 && candidate.connection.isAcceptingMessages();
+    }
+
+    private static ServerPlayer currentP9Actor(
+            MinecraftServer server,
+            ServerSlot.InstanceState instance,
+            ResourceLocation dimension) {
+        if (!(instance.attribution instanceof PlayerRuntimeBudgetAttribution player)) {
+            return null;
+        }
+        var candidate = server.getPlayerList().getPlayer(player.playerId().value());
+        return isCurrentP9AuthenticatedActor(server, instance, candidate, dimension)
+                ? candidate
+                : null;
+    }
+
+    private static ServerPlayer currentP9EntityActor(
+            MinecraftServer server,
+            ServerSlot.InstanceState instance,
+            Entity loadedProjectile,
+            RuntimeProjectileContinuationPermit permit) {
+        if (!(loadedProjectile instanceof P9StarterProjectile projectile)
+                || !(instance.attribution instanceof PlayerRuntimeBudgetAttribution player)) {
+            return null;
+        }
+        var candidate = server.getPlayerList().getPlayer(player.playerId().value());
+        if (!server.isSameThread()
+                || !server.isRunning()
+                || server.isStopped()
+                || candidate == null
+                || !candidate.getUUID().equals(player.playerId().value())
+                || server.getPlayerList().getPlayer(candidate.getUUID()) != candidate
+                || candidate.getServer() != server
+                || candidate.serverLevel().getServer() != server
+                || !candidate.serverLevel().dimension().location().equals(permit.dimension)
+                || candidate.isRemoved()
+                || !candidate.isAlive()
+                || candidate.connection == null
+                || !candidate.connection.isAcceptingMessages()
+                || projectile.getOwner() != candidate
+                || projectile.level() != candidate.serverLevel()
+                || !projectile.hasAuthenticatedCasterIdentity(candidate)
+                || !projectile.hasContinuationPermitIdentity(permit)) {
+            return null;
+        }
+        return candidate;
+    }
+
+    private static net.minecraft.server.level.ServerLevel levelForDimension(
+            MinecraftServer server, ResourceLocation dimension) {
+        for (var level : server.getAllLevels()) {
+            if (level.dimension().location().equals(dimension)) {
+                return level;
+            }
+        }
+        return null;
+    }
+
+    private static ServerPlayer currentP9ChildActor(
+            MinecraftServer server, RuntimeEvent event) {
+        if (!(event.origin() instanceof PlayerOrigin origin)) {
+            return null;
+        }
+        return server.getPlayerList().getPlayer(origin.player().value());
+    }
+
+    private static Entity currentP9ChildTarget(
+            MinecraftServer server, RuntimeEvent event) {
+        if (!(event.executionData() instanceof ProjectileHitExecutionDataV0 hit)) {
+            return null;
+        }
+        var level = levelForDimension(server, hit.dimension());
+        return level == null ? null : level.getEntity(hit.targetId());
+    }
+
+    private static boolean validClaimedP9Child(
+            MinecraftServer server,
+            ServerSlot slot,
+            ServerSlot.InstanceState instance,
+            RuntimeEvent event) {
+        if (!(event.executionData() instanceof ProjectileHitExecutionDataV0 hit)
+                || event.nodeIndex() != 1
+                || event.depth() != 1
+                || event.childSequence() != 1
+                || event.parentEventId().isEmpty()
+                || !event.parentEventId().orElseThrow().equals(
+                        hit.sourceFamily().sourceEventId())
+                || event.scheduledRuntimeTick() != event.createdRuntimeTick()
+                || event.deadlineRuntimeTick() < event.scheduledRuntimeTick()
+                || !event.skillReference().equals(instance.lease.reference)
+                || !event.skillInstanceId().equals(instance.id)
+                || !hit.sourceFamily().skillInstanceId().equals(instance.id)
+                || hit.sourceDerivationDepth() != 0) {
+            return false;
+        }
+        var permit = slot.activeProjectileContinuations.get(hit.permitId());
+        if (permit == null
+                || permit.mode != RuntimeProjectileContinuationPermit.Mode.REAL
+                || permit.state
+                        != RuntimeProjectileContinuationPermit.State.CLAIMED_PENDING_DAMAGE
+                || instance.activeProjectileContinuation != permit
+                || !permit.serverSlotToken.equals(slot.token)
+                || !permit.skillInstanceId.equals(instance.id)
+                || !permit.exactReference.equals(event.skillReference())
+                || !permit.heldChildEventId.equals(event.eventId())
+                || !permit.plannedProjectileId.equals(hit.projectileId())
+                || !permit.sourceFamily.matches(
+                        hit.sourceFamily(),
+                        permit.exactReference,
+                        event.skillReference(),
+                        hit.sourceDerivationDepth(),
+                        false)
+                || permit.deadlineRuntimeTick != event.deadlineRuntimeTick()
+                || !permit.dimension.equals(hit.dimension())
+                || instance.lease.pin.isClosed()
+                || slot.runtimeTick > permit.deadlineRuntimeTick) {
+            return false;
+        }
+        var level = levelForDimension(server, permit.dimension);
+        var loadedProjectile = level == null ? null : level.getEntity(hit.projectileId());
+        var target = level == null ? null : level.getEntity(hit.targetId());
+        var actor = currentP9EntityActor(server, instance, loadedProjectile, permit);
+        return loadedProjectile instanceof P9StarterProjectile projectile
+                && target instanceof LivingEntity livingTarget
+                && actor != null
+                && projectile.level() == level
+                && !projectile.isRemoved()
+                && projectile.isAlive()
+                && projectile.hasContinuationPermitIdentity(permit)
+                && livingTarget != actor
+                && livingTarget.level() == level
+                && !livingTarget.isRemoved()
+                && livingTarget.isAlive();
     }
 
     RuntimeAdmissionResult admitRoot(MinecraftServer server, RuntimeRootEventSpec spec) {
@@ -763,6 +1251,7 @@ final class SkillRuntimeService {
         } catch (RuntimeException primary) {
             throw preserveRuntimeFault(slot, primary);
         } catch (Error primary) {
+            slot.p9ErrorCleanup.prepare(server);
             throw preserveErrorFault(slot, primary);
         }
     }
@@ -903,6 +1392,8 @@ final class SkillRuntimeService {
             var owner = slot.instances.get(indexed.skillInstanceId());
             removeCommittedEvent(slot, indexed);
             if (owner != null && isP9ExecutionData(indexed.executionData())) {
+                closeActiveP9ContinuationAndDiscard(
+                        server, slot, owner, ProjectileClosureReason.OWNER_INVALIDATED);
                 owner.clearP9AuthenticatedActorWitness();
             }
             maybeRemoveInstance(slot, token.skillInstanceId());
@@ -917,6 +1408,7 @@ final class SkillRuntimeService {
         } catch (RuntimeException primary) {
             throw preserveRuntimeFault(slot, primary);
         } catch (Error primary) {
+            slot.p9ErrorCleanup.prepare(server);
             throw preserveErrorFault(slot, primary);
         }
     }
@@ -961,6 +1453,86 @@ final class SkillRuntimeService {
         }
         resetTickState(slot);
         drain(server, slot);
+        if (slot.state == ServerSlot.State.RUNNING) {
+            try {
+                sweepActiveProjectileContinuations(server, slot);
+            } catch (RuntimeException primary) {
+                throw preserveRuntimeFault(slot, primary);
+            } catch (Error primary) {
+                slot.p9ErrorCleanup.prepare(server);
+                throw preserveErrorFault(slot, primary);
+            }
+        }
+    }
+
+    private static void sweepActiveProjectileContinuations(
+            MinecraftServer server, ServerSlot slot) {
+        if (slot.dispatching || slot.p9BatchContinuationCloseInProgress) {
+            throw kernel(RuntimeKernelException.Code.NESTED_DRAIN);
+        }
+        var workUnits = slot.activeProjectileContinuations.size();
+        if (workUnits > 128) {
+            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        var observed = 0;
+        var permits = slot.activeProjectileContinuations.entrySet().iterator();
+        while (permits.hasNext()) {
+            var indexed = permits.next();
+            observed++;
+            var permit = indexed.getValue();
+            if (!indexed.getKey().equals(permit.permitId)
+                    || permit.mode != RuntimeProjectileContinuationPermit.Mode.REAL
+                    || !permit.serverSlotToken.equals(slot.token)) {
+                throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+            }
+            if (permit.state == RuntimeProjectileContinuationPermit.State.RESERVED) {
+                continue;
+            }
+            if (permit.state == RuntimeProjectileContinuationPermit.State.CLOSED_NO_HIT
+                    || permit.state
+                            == RuntimeProjectileContinuationPermit.State.CLOSED_AFTER_HIT) {
+                throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+            }
+            var instance = slot.instances.get(permit.skillInstanceId);
+            if (instance == null || instance.activeProjectileContinuation != permit) {
+                throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+            }
+            var projectile = loadedProjectile(server, permit);
+            var actor = currentP9EntityActor(server, instance, projectile, permit);
+            var expired = permit.state == RuntimeProjectileContinuationPermit.State.OPEN
+                    ? slot.runtimeTick >= permit.deadlineRuntimeTick
+                    : slot.runtimeTick > permit.deadlineRuntimeTick;
+            var claimedChildMissing = permit.state
+                            == RuntimeProjectileContinuationPermit.State.CLAIMED_PENDING_DAMAGE
+                    && slot.eventIndex.get(permit.heldChildEventId) == null;
+            if (!expired && projectile != null && actor != null && !claimedChildMissing) {
+                continue;
+            }
+            var reason = expired
+                    ? ProjectileClosureReason.DEADLINE_REACHED
+                    : projectile == null
+                            ? ProjectileClosureReason.ENTITY_OR_LEVEL_REMOVED
+                            : actor == null
+                                    ? ProjectileClosureReason.OWNER_INVALIDATED
+                                    : ProjectileClosureReason.RUNTIME_FAULT;
+            slot.p9BatchContinuationCloseInProgress = true;
+            try {
+                var close = permit.closeWithoutHit(server, reason);
+                if (close != RuntimePermitCloseDisposition.CLOSED) {
+                    throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+                }
+                permits.remove();
+            } finally {
+                slot.p9BatchContinuationCloseInProgress = false;
+            }
+            if (projectile != null && !projectile.isRemoved()) {
+                projectile.discard();
+            }
+            maybeRemoveInstance(slot, instance.id);
+        }
+        if (observed != workUnits) {
+            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
     }
 
     private void handleRuntimeStopping(ServerStoppingEvent event) {
@@ -1069,6 +1641,7 @@ final class SkillRuntimeService {
         } catch (RuntimeException primary) {
             throw preserveRuntimeFault(slot, primary);
         } catch (Error primary) {
+            slot.p9ErrorCleanup.prepare(server);
             throw preserveErrorFault(slot, primary);
         }
     }
@@ -1079,7 +1652,8 @@ final class SkillRuntimeService {
             var instance = iterator.next().getValue();
             if (instance.committedPending != 0
                     || instance.reservedPending != 0
-                    || instance.inFlight) {
+                    || instance.inFlight
+                    || instance.activeProjectileContinuation != null) {
                 continue;
             }
             instance.clearP9AuthenticatedActorWitness();
@@ -1128,6 +1702,11 @@ final class SkillRuntimeService {
                 if (instance.terminal) {
                     removeCommittedEvent(slot, event);
                     if (isP9ExecutionData(event.executionData())) {
+                        closeActiveP9ContinuationAndDiscard(
+                                server,
+                                slot,
+                                instance,
+                                ProjectileClosureReason.OWNER_INVALIDATED);
                         instance.clearP9AuthenticatedActorWitness();
                     }
                     maybeRemoveInstance(slot, instance.id);
@@ -1137,6 +1716,11 @@ final class SkillRuntimeService {
                 if (instance.cancellationRequested) {
                     removeCommittedEvent(slot, event);
                     if (isP9ExecutionData(event.executionData())) {
+                        closeActiveP9ContinuationAndDiscard(
+                                server,
+                                slot,
+                                instance,
+                                ProjectileClosureReason.OWNER_INVALIDATED);
                         instance.clearP9AuthenticatedActorWitness();
                     }
                     maybeRemoveInstance(slot, instance.id);
@@ -1150,6 +1734,11 @@ final class SkillRuntimeService {
                             : null;
                     removeCommittedEvent(slot, event);
                     if (p9DeadlineOwner != null) {
+                        closeActiveP9ContinuationAndDiscard(
+                                server,
+                                slot,
+                                p9DeadlineOwner,
+                                ProjectileClosureReason.DEADLINE_REACHED);
                         p9DeadlineOwner.clearP9AuthenticatedActorWitness();
                     }
                     maybeRemoveInstance(slot, instance.id);
@@ -1184,6 +1773,7 @@ final class SkillRuntimeService {
         } catch (RuntimeException primary) {
             throw preserveRuntimeFault(slot, primary);
         } catch (Error primary) {
+            slot.p9ErrorCleanup.prepare(server);
             throw preserveErrorFault(slot, primary);
         } finally {
             slot.dispatching = false;
@@ -1230,6 +1820,10 @@ final class SkillRuntimeService {
         }
         if (slot.currentEvent != event) {
             throw kernel(RuntimeKernelException.Code.EVENT_INDEX_INVARIANT);
+        }
+        if (event.executionData() instanceof ProjectileHitExecutionDataV0) {
+            closeActiveP9ContinuationAndDiscard(
+                    server, slot, instance, ProjectileClosureReason.DAMAGE_TERMINAL);
         }
         if (isP9ExecutionData(event.executionData())
                 && instance.activeProjectileContinuation == null) {
@@ -1310,6 +1904,16 @@ final class SkillRuntimeService {
                 }
                 guardedP9Actor = playerOrigin.player();
                 guardedP9Dimension = geometry.dimension();
+            } else if (event.executionData() instanceof ProjectileHitExecutionDataV0
+                    && (!validClaimedP9Child(server, slot, instance, event)
+                            || !(resolvedReferences.origin()
+                                    instanceof ResolvedPlayerOrigin playerOrigin)
+                            || !(resolvedReferences.target()
+                                    instanceof ResolvedEntityTarget entityTarget)
+                            || playerOrigin.player() != currentP9ChildActor(server, event)
+                            || entityTarget.entity() != currentP9ChildTarget(server, event))) {
+                return new TerminalInvocation(
+                        new RuntimeExecutionOutcome.OwnerInstanceUnavailable());
             }
             var reservation = reserveForPort(slot, instance, attribution, event);
             var node = lease.definition.nodes().get(event.nodeIndex());
@@ -1334,6 +1938,10 @@ final class SkillRuntimeService {
                                         instance,
                                         actorForGuard,
                                         dimensionForGuard)) {
+                            return RuntimeExecutionGuardDecision.CANCELLED;
+                        }
+                        if (event.executionData() instanceof ProjectileHitExecutionDataV0
+                                && !validClaimedP9Child(server, slot, instance, event)) {
                             return RuntimeExecutionGuardDecision.CANCELLED;
                         }
                         return runtimeExecutionGuardDecision(slot, instance, event);
@@ -1911,15 +2519,22 @@ final class SkillRuntimeService {
             return new RuntimeCancellationResult.AlreadyCancelled();
         }
         instance.cancellationRequested = true;
+        var removedContinuationWork = 0;
         if (instance.activeProjectileContinuation != null) {
-            var disposition = instance.activeProjectileContinuation.closeWithoutHit(
+            var permit = instance.activeProjectileContinuation;
+            var projectile = loadedProjectile(server, permit);
+            var disposition = permit.closeWithoutHit(
                     server, ProjectileClosureReason.OWNER_INVALIDATED);
-            if (disposition != RuntimePermitCloseDisposition.CLOSED
-                    && disposition != RuntimePermitCloseDisposition.ALREADY_CLOSED) {
+            if (disposition != RuntimePermitCloseDisposition.CLOSED) {
                 throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
             }
+            removedContinuationWork = 1;
+            if (projectile != null && !projectile.isRemoved()) {
+                projectile.discard();
+            }
             if (slot.instances.get(instanceId) != instance) {
-                return new RuntimeCancellationResult.NotPending();
+                return new RuntimeCancellationResult.CancelledSkillInstance(
+                        removedContinuationWork);
             }
         }
         var inFlight = slot.currentEvent != null
@@ -1930,8 +2545,10 @@ final class SkillRuntimeService {
         }
         var removed = removeInstanceQueuedAndDeferred(slot, instanceId);
         if (inFlight) {
-            return new RuntimeCancellationResult.CancellationRequested(removed);
+            return new RuntimeCancellationResult.CancellationRequested(
+                    Math.addExact(removed, removedContinuationWork));
         }
+        removed = Math.addExact(removed, removedContinuationWork);
         instance.terminal = true;
         instance.clearP9AuthenticatedActorWitness();
         maybeRemoveInstance(slot, instanceId);
@@ -2172,7 +2789,8 @@ final class SkillRuntimeService {
         if (instance == null
                 || instance.committedPending != 0
                 || instance.reservedPending != 0
-                || instance.inFlight) {
+                || instance.inFlight
+                || instance.activeProjectileContinuation != null) {
             return;
         }
         instance.clearP9AuthenticatedActorWitness();
@@ -2377,6 +2995,42 @@ final class SkillRuntimeService {
         trace.record(stage, slot.runtimeTick);
     }
 
+    private static void recordP9SpawnResult(
+            ServerSlot slot,
+            ServerSlot.InstanceState instance,
+            RuntimePermitTransferDisposition result) {
+        var trace = instance.p9Diagnostic;
+        if (trace == null || trace.terminalPublished) {
+            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        trace.recordSpawnResult(result, slot.runtimeTick);
+    }
+
+    private static void recordP9HitClaimResult(
+            ServerSlot slot,
+            ServerSlot.InstanceState instance,
+            RuntimeProjectileContinuationPermit permit,
+            ProjectileHitCandidateV0 candidate,
+            RuntimePermitClaimDisposition result) {
+        if (instance == null
+                || permit.mode != RuntimeProjectileContinuationPermit.Mode.REAL
+                || !permit.serverSlotToken.equals(slot.token)
+                || slot.activeProjectileContinuations.get(permit.permitId) != permit
+                || instance.activeProjectileContinuation != permit) {
+            return;
+        }
+        var trace = instance.p9Diagnostic;
+        if (trace == null || trace.terminalPublished) {
+            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        trace.recordHitClaimResult(
+                permit.permitId.getMostSignificantBits(),
+                permit.permitId.getLeastSignificantBits(),
+                candidate,
+                result,
+                slot.runtimeTick);
+    }
+
     private static void recordP9Terminal(
             ServerSlot slot,
             ServerSlot.InstanceState instance,
@@ -2417,6 +3071,20 @@ final class SkillRuntimeService {
                 trace.directionYQ15,
                 trace.directionZQ15,
                 trace.profileCode,
+                trace.spawnCommitResultCode,
+                trace.hitPermitIdMostSignificantBits,
+                trace.hitPermitIdLeastSignificantBits,
+                trace.hitProjectileIdMostSignificantBits,
+                trace.hitProjectileIdLeastSignificantBits,
+                trace.hitTargetIdMostSignificantBits,
+                trace.hitTargetIdLeastSignificantBits,
+                trace.hitXBits,
+                trace.hitYBits,
+                trace.hitZBits,
+                trace.hitDirectionXQ15,
+                trace.hitDirectionYQ15,
+                trace.hitDirectionZQ15,
+                trace.hitClaimResultCode,
                 trace.stageCount,
                 Arrays.copyOf(trace.stageCodes, trace.stageCodes.length),
                 Arrays.copyOf(trace.stageTicks, trace.stageTicks.length),
@@ -2555,7 +3223,8 @@ final class SkillRuntimeService {
             ValidatedSkillDefinition definition,
             RuntimeBudgetAttribution inheritedAttribution,
             RuntimeChildSpec child) {
-        if (!(child.executionData() instanceof NoRuntimeExecutionData)) {
+        var p9Hit = child.executionData() instanceof ProjectileHitExecutionDataV0;
+        if (!(child.executionData() instanceof NoRuntimeExecutionData) && !p9Hit) {
             return Optional.of(InvalidEventReason.INVALID_EXECUTION_DATA);
         }
         if (child.nodeIndex() < 0 || child.nodeIndex() >= definition.nodes().size()) {
@@ -2568,6 +3237,22 @@ final class SkillRuntimeService {
         }
         var capabilities = definition.nodes().get(child.nodeIndex())
                 .trigger().descriptor().capabilities();
+        if (p9Hit) {
+            var hit = (ProjectileHitExecutionDataV0) child.executionData();
+            if (child.nodeIndex() != 1
+                    || !P9StarterSkillContent.hasCanonicalGameplayFingerprint(definition)
+                    || !(child.origin() instanceof PlayerOrigin playerOrigin)
+                    || !(child.target().orElse(null) instanceof EntityTarget entityTarget)
+                    || entityTarget.expectedKind() != RuntimeEntityKind.LIVING_ENTITY
+                    || !child.triggerCause().eventKind().key().equals(
+                            P9StarterSkillContent.EFFECT_HIT_ID)
+                    || !playerOrigin.dimension().location().equals(hit.dimension())
+                    || !entityTarget.dimension().location().equals(hit.dimension())
+                    || !entityTarget.entity().value().equals(hit.targetId())
+                    || hit.sourceDerivationDepth() != 0) {
+                return Optional.of(InvalidEventReason.INVALID_EXECUTION_DATA);
+            }
+        }
         if (!capabilities.eventKinds().contains(child.triggerCause().eventKind())) {
             return Optional.of(InvalidEventReason.INVALID_TRIGGER_CAUSE);
         }
@@ -2768,11 +3453,16 @@ final class SkillRuntimeService {
             }
             slot.p9BatchContinuationCloseInProgress = true;
             try {
-                var close = indexed.getValue().closeWithoutHit(server, reason);
+                var permit = indexed.getValue();
+                var projectile = loadedProjectile(server, permit);
+                var close = permit.closeWithoutHit(server, reason);
                 if (close != RuntimePermitCloseDisposition.CLOSED) {
                     throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
                 }
                 permits.remove();
+                if (projectile != null && !projectile.isRemoved()) {
+                    projectile.discard();
+                }
                 closedWorkUnits++;
             } finally {
                 slot.p9BatchContinuationCloseInProgress = false;
@@ -2794,10 +3484,16 @@ final class SkillRuntimeService {
         for (var instance : slot.instances.values()) {
             var errorRetainedPermit = instance.activeProjectileContinuation;
             if (errorRetainedPermit != null) {
+                var projectile = server == null
+                        ? null
+                        : loadedProjectile(server, errorRetainedPermit);
                 if (server == null
                         || errorRetainedPermit.closeWithoutHit(server, reason)
                                 != RuntimePermitCloseDisposition.CLOSED) {
                     throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+                }
+                if (projectile != null && !projectile.isRemoved()) {
+                    projectile.discard();
                 }
             }
             instance.clearP9AuthenticatedActorWitness();
@@ -2899,6 +3595,14 @@ final class SkillRuntimeService {
                 }
             }
         }
+        try {
+            slot.activeProjectileContinuations.forEach(slot.p9ErrorCleanup);
+        } catch (RuntimeException | Error ignoredCleanupFailure) {
+            // The preallocated best effort must not mask the already-caught Error.
+        } finally {
+            slot.p9ErrorCleanup.clear();
+        }
+        slot.instances.forEach(slot.p9InstanceErrorCleanup);
         slot.queue.clear();
         slot.eventIndex.clear();
         slot.p9ActiveIndexInvalidatedAfterError = true;
@@ -2984,6 +3688,75 @@ final class SkillRuntimeService {
             implements DetachedInvocation {
         NullBatchInvocation {
             Objects.requireNonNull(reservation, "reservation");
+        }
+    }
+
+    /** Preallocated, non-retaining best-effort visitor for the outer Error path. */
+    static final class P9ErrorCleanup
+            implements BiConsumer<UUID, RuntimeProjectileContinuationPermit> {
+        private final ServerSlot slot;
+        private transient MinecraftServer server;
+
+        P9ErrorCleanup(ServerSlot slot) {
+            this.slot = Objects.requireNonNull(slot, "slot");
+        }
+
+        void prepare(MinecraftServer server) {
+            this.server = server;
+        }
+
+        void clear() {
+            server = null;
+        }
+
+        @Override
+        public void accept(UUID permitId, RuntimeProjectileContinuationPermit permit) {
+            if (permit == null
+                    || permitId == null
+                    || !permitId.equals(permit.permitId)) {
+                return;
+            }
+            P9StarterProjectile projectile = null;
+            try {
+                if (server != null) {
+                    projectile = loadedProjectile(server, permit);
+                }
+            } catch (RuntimeException | Error ignoredLookupFailure) {
+                // Primitive permit invalidation below is independent of entity lookup.
+            }
+            try {
+                permit.state = permit.state
+                                == RuntimeProjectileContinuationPermit.State.CLAIMED_PENDING_DAMAGE
+                        ? RuntimeProjectileContinuationPermit.State.CLOSED_AFTER_HIT
+                        : RuntimeProjectileContinuationPermit.State.CLOSED_NO_HIT;
+                var instance = slot.instances.get(permit.skillInstanceId);
+                if (instance != null && instance.activeProjectileContinuation == permit) {
+                    instance.activeProjectileContinuation = null;
+                    instance.clearP9AuthenticatedActorWitness();
+                }
+            } catch (RuntimeException | Error ignoredPrimitiveFailure) {
+                // Continue to the bounded entity discard without masking its primary.
+            }
+            try {
+                if (projectile != null && !projectile.isRemoved()) {
+                    projectile.discard();
+                }
+            } catch (RuntimeException | Error ignoredDiscardFailure) {
+                // The already-caught Error remains authoritative.
+            }
+        }
+    }
+
+    /** Preallocated primitive witness clearer for every bounded retained instance. */
+    static final class P9InstanceErrorCleanup
+            implements BiConsumer<SkillInstanceId, ServerSlot.InstanceState> {
+        @Override
+        public void accept(
+                SkillInstanceId ignoredInstanceId,
+                ServerSlot.InstanceState instance) {
+            if (instance != null) {
+                instance.clearP9AuthenticatedActorWitness();
+            }
         }
     }
 
@@ -3080,16 +3853,23 @@ sealed abstract class RuntimeProjectileContinuationOpenResult
     static final class Opened extends RuntimeProjectileContinuationOpenResult {
         private final RuntimeProjectileContinuationPermit permit;
         private final UUID plannedProjectileId;
+        private final SkillRuntimeService owner;
+        private boolean transferConsumed;
 
         Opened(
                 RuntimeProjectileContinuationPermit permit,
-                UUID plannedProjectileId) {
+                UUID plannedProjectileId,
+                SkillRuntimeService owner) {
             this.permit = Objects.requireNonNull(permit, "permit");
             this.plannedProjectileId = Objects.requireNonNull(
                     plannedProjectileId, "plannedProjectileId");
+            this.owner = Objects.requireNonNull(owner, "owner");
             if (plannedProjectileId.getMostSignificantBits() == 0L
                     && plannedProjectileId.getLeastSignificantBits() == 0L) {
                 throw new IllegalArgumentException("planned projectile identity must be nonzero");
+            }
+            if (!owner.ownsOpenedContinuation(permit, plannedProjectileId)) {
+                throw new IllegalArgumentException("opened continuation is not owned by this service");
             }
         }
 
@@ -3099,6 +3879,19 @@ sealed abstract class RuntimeProjectileContinuationOpenResult
 
         UUID plannedProjectileId() {
             return plannedProjectileId;
+        }
+
+        RuntimePermitTransferDisposition transferAfterAppliedSpawn(
+                MinecraftServer server,
+                P9StarterProjectile projectile) {
+            Objects.requireNonNull(server, "server");
+            Objects.requireNonNull(projectile, "projectile");
+            if (transferConsumed) {
+                return RuntimePermitTransferDisposition.ALREADY_TRANSFERRED;
+            }
+            transferConsumed = true;
+            return owner.transferSpawnedProjectile(
+                    server, permit, plannedProjectileId, projectile);
         }
     }
 
@@ -3124,18 +3917,36 @@ enum RuntimeProjectileContinuationOpenRejectionReason {
 /** P5-owned capability for one held future projectile continuation. */
 final class RuntimeProjectileContinuationPermit {
     private final SkillRuntimeService owner;
-    private final RuntimeServerToken serverSlotToken;
-    private final SkillInstanceId skillInstanceId;
-    private final RuntimeBudgetAttribution budgetAttribution;
-    private final SkillReference exactReference;
-    private final ResourceLocation dimension;
-    private final SourceFamilyKey sourceFamily;
-    private final int sourceDerivationDepth;
-    private final EventId heldChildEventId;
-    private final long deadlineRuntimeTick;
-    private final UUID permitId;
-    private final UUID plannedProjectileId;
-    private State state = State.RESERVED;
+    final Mode mode;
+    final RuntimeServerToken serverSlotToken;
+    final SkillInstanceId skillInstanceId;
+    final RuntimeBudgetAttribution budgetAttribution;
+    final SkillReference exactReference;
+    final ResourceLocation dimension;
+    final SourceFamilyKey sourceFamily;
+    final int sourceDerivationDepth;
+    final EventId heldChildEventId;
+    final long deadlineRuntimeTick;
+    final UUID permitId;
+    final UUID plannedProjectileId;
+    State state;
+
+    RuntimeProjectileContinuationPermit() {
+        owner = null;
+        mode = Mode.UNAVAILABLE;
+        serverSlotToken = null;
+        skillInstanceId = null;
+        budgetAttribution = null;
+        exactReference = null;
+        dimension = null;
+        sourceFamily = null;
+        sourceDerivationDepth = 0;
+        heldChildEventId = null;
+        deadlineRuntimeTick = 0L;
+        permitId = null;
+        plannedProjectileId = null;
+        state = State.CLOSED_NO_HIT;
+    }
 
     RuntimeProjectileContinuationPermit(
             SkillRuntimeService owner,
@@ -3151,6 +3962,7 @@ final class RuntimeProjectileContinuationPermit {
             UUID permitId,
             UUID plannedProjectileId) {
         this.owner = Objects.requireNonNull(owner, "owner");
+        this.mode = Mode.REAL;
         this.serverSlotToken = Objects.requireNonNull(serverSlotToken, "serverSlotToken");
         this.skillInstanceId = Objects.requireNonNull(skillInstanceId, "skillInstanceId");
         this.budgetAttribution = Objects.requireNonNull(
@@ -3165,6 +3977,7 @@ final class RuntimeProjectileContinuationPermit {
         this.permitId = Objects.requireNonNull(permitId, "permitId");
         this.plannedProjectileId = Objects.requireNonNull(
                 plannedProjectileId, "plannedProjectileId");
+        this.state = State.RESERVED;
         if (serverSlotToken.value() <= 0L
                 || !sourceFamily.skillInstanceId().equals(skillInstanceId)
                 || sourceDerivationDepth != 0
@@ -3179,11 +3992,36 @@ final class RuntimeProjectileContinuationPermit {
         }
     }
 
+    RuntimePermitClaimDisposition claimLoadedEntityHit(
+            MinecraftServer server,
+            ProjectileHitCandidateV0 candidate) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(candidate, "candidate");
+        if (mode != Mode.REAL) {
+            return RuntimePermitClaimDisposition.REJECTED;
+        }
+        if (!owner.isOwningPermitServerThread(server, this)) {
+            return RuntimePermitClaimDisposition.REJECTED;
+        }
+        if (state == State.CLAIMED_PENDING_DAMAGE
+                || state == State.CLOSED_NO_HIT
+                || state == State.CLOSED_AFTER_HIT) {
+            return RuntimePermitClaimDisposition.DUPLICATE_OR_LATE;
+        }
+        if (state != State.OPEN) {
+            return RuntimePermitClaimDisposition.REJECTED;
+        }
+        return owner.claimProjectileHit(server, this, candidate);
+    }
+
     RuntimePermitCloseDisposition closeWithoutHit(
             MinecraftServer server,
             ProjectileClosureReason reason) {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(reason, "reason");
+        if (mode != Mode.REAL) {
+            return RuntimePermitCloseDisposition.REJECTED;
+        }
         var disposition = owner.closeProjectileContinuation(
                 server,
                 this,
@@ -3192,20 +4030,33 @@ final class RuntimeProjectileContinuationPermit {
                 budgetAttribution,
                 permitId,
                 reason);
-        if (disposition == RuntimePermitCloseDisposition.CLOSED
-                || disposition == RuntimePermitCloseDisposition.ALREADY_CLOSED) {
-            state = State.CLOSED_NO_HIT;
-        }
         return disposition;
     }
 
-    private enum State {
+    enum Mode {
+        REAL,
+        UNAVAILABLE
+    }
+
+    enum State {
         RESERVED,
         OPEN,
         CLAIMED_PENDING_DAMAGE,
         CLOSED_NO_HIT,
         CLOSED_AFTER_HIT
     }
+}
+
+enum RuntimePermitTransferDisposition {
+    TRANSFERRED,
+    REJECTED,
+    ALREADY_TRANSFERRED
+}
+
+enum RuntimePermitClaimDisposition {
+    QUEUED,
+    REJECTED,
+    DUPLICATE_OR_LATE
 }
 
 enum ProjectileClosureReason {
@@ -3272,6 +4123,10 @@ final class ServerSlot {
     final Map<SkillInstanceId, InstanceState> instances = new HashMap<>(171);
     final Map<UUID, RuntimeProjectileContinuationPermit> activeProjectileContinuations =
             new HashMap<>(171);
+    final SkillRuntimeService.P9ErrorCleanup p9ErrorCleanup =
+            new SkillRuntimeService.P9ErrorCleanup(this);
+    final SkillRuntimeService.P9InstanceErrorCleanup p9InstanceErrorCleanup =
+            new SkillRuntimeService.P9InstanceErrorCleanup();
     final Map<RuntimeBudgetAttribution, AttributionState> attributions = new HashMap<>(256);
     final Map<SkillReference, RuntimeRevisionLease> leases = new HashMap<>(171);
     final RuntimeEvent[] deferred =
@@ -3358,6 +4213,20 @@ final class ServerSlot {
         final int profileCode;
         final int[] stageCodes = new int[16];
         final long[] stageTicks = new long[16];
+        int spawnCommitResultCode;
+        long hitPermitIdMostSignificantBits;
+        long hitPermitIdLeastSignificantBits;
+        long hitProjectileIdMostSignificantBits;
+        long hitProjectileIdLeastSignificantBits;
+        long hitTargetIdMostSignificantBits;
+        long hitTargetIdLeastSignificantBits;
+        long hitXBits;
+        long hitYBits;
+        long hitZBits;
+        int hitDirectionXQ15;
+        int hitDirectionYQ15;
+        int hitDirectionZQ15;
+        int hitClaimResultCode;
         int stageCount;
         int lastStageOrdinal = -1;
         ProjectileClosureReason terminalReason;
@@ -3378,6 +4247,74 @@ final class ServerSlot {
             directionYQ15 = geometry.directionYQ15();
             directionZQ15 = geometry.directionZQ15();
             profileCode = geometry.profileCode();
+        }
+
+        void recordSpawnResult(
+                RuntimePermitTransferDisposition result, long runtimeTick) {
+            Objects.requireNonNull(result, "result");
+            if (result == RuntimePermitTransferDisposition.ALREADY_TRANSFERRED) {
+                throw new IllegalArgumentException(
+                        "duplicate transfer is not a spawn commit result");
+            }
+            var recordsProjectileActive = result
+                    == RuntimePermitTransferDisposition.TRANSFERRED;
+            var requiredSlots = recordsProjectileActive ? 3 : 2;
+            var spawnResolvedOrdinal = P9RuntimeDiagnosticStage.SPAWN_RESOLVED.ordinal();
+            if (spawnCommitResultCode != 0
+                    || stageCount > stageCodes.length - requiredSlots
+                    || spawnResolvedOrdinal <= lastStageOrdinal) {
+                throw new IllegalStateException("invalid P9 spawn diagnostic transition");
+            }
+            // Closed scalar coding of P6 CommitDisposition: 1 APPLIED, 2 NOT_APPLIED.
+            spawnCommitResultCode = recordsProjectileActive ? 1 : 2;
+            record(P9RuntimeDiagnosticStage.SPAWN_RESOLVED, runtimeTick);
+            record(P9RuntimeDiagnosticStage.SPAWN_COMMIT_RESULT, runtimeTick);
+            if (recordsProjectileActive) {
+                record(P9RuntimeDiagnosticStage.PROJECTILE_ACTIVE, runtimeTick);
+            }
+        }
+
+        void recordHitClaimResult(
+                long permitIdMostSignificantBits,
+                long permitIdLeastSignificantBits,
+                ProjectileHitCandidateV0 candidate,
+                RuntimePermitClaimDisposition result,
+                long runtimeTick) {
+            Objects.requireNonNull(candidate, "candidate");
+            Objects.requireNonNull(result, "result");
+            if ((permitIdMostSignificantBits == 0L
+                            && permitIdLeastSignificantBits == 0L)
+                    || result == RuntimePermitClaimDisposition.DUPLICATE_OR_LATE) {
+                throw new IllegalArgumentException(
+                        "invalid authoritative hit diagnostic identity or result");
+            }
+            var recordsQueuedChild = result == RuntimePermitClaimDisposition.QUEUED;
+            var requiredSlots = recordsQueuedChild ? 2 : 1;
+            var hitClaimOrdinal = P9RuntimeDiagnosticStage.HIT_CLAIM_RESULT.ordinal();
+            if (hitClaimResultCode != 0
+                    || stageCount > stageCodes.length - requiredSlots
+                    || hitClaimOrdinal <= lastStageOrdinal) {
+                throw new IllegalStateException("invalid P9 hit diagnostic transition");
+            }
+            hitPermitIdMostSignificantBits = permitIdMostSignificantBits;
+            hitPermitIdLeastSignificantBits = permitIdLeastSignificantBits;
+            hitProjectileIdMostSignificantBits =
+                    candidate.projectileId().getMostSignificantBits();
+            hitProjectileIdLeastSignificantBits =
+                    candidate.projectileId().getLeastSignificantBits();
+            hitTargetIdMostSignificantBits = candidate.targetId().getMostSignificantBits();
+            hitTargetIdLeastSignificantBits = candidate.targetId().getLeastSignificantBits();
+            hitXBits = Double.doubleToRawLongBits(candidate.hitX());
+            hitYBits = Double.doubleToRawLongBits(candidate.hitY());
+            hitZBits = Double.doubleToRawLongBits(candidate.hitZ());
+            hitDirectionXQ15 = candidate.directionXQ15();
+            hitDirectionYQ15 = candidate.directionYQ15();
+            hitDirectionZQ15 = candidate.directionZQ15();
+            hitClaimResultCode = result.ordinal() + 1;
+            record(P9RuntimeDiagnosticStage.HIT_CLAIM_RESULT, runtimeTick);
+            if (recordsQueuedChild) {
+                record(P9RuntimeDiagnosticStage.NODE1_QUEUED, runtimeTick);
+            }
         }
 
         void record(P9RuntimeDiagnosticStage stage, long runtimeTick) {
@@ -3444,6 +4381,20 @@ final class ServerSlot {
             int directionYQ15,
             int directionZQ15,
             int profileCode,
+            int spawnCommitResultCode,
+            long hitPermitIdMostSignificantBits,
+            long hitPermitIdLeastSignificantBits,
+            long hitProjectileIdMostSignificantBits,
+            long hitProjectileIdLeastSignificantBits,
+            long hitTargetIdMostSignificantBits,
+            long hitTargetIdLeastSignificantBits,
+            long hitXBits,
+            long hitYBits,
+            long hitZBits,
+            int hitDirectionXQ15,
+            int hitDirectionYQ15,
+            int hitDirectionZQ15,
+            int hitClaimResultCode,
             int stageCount,
             int[] stageCodes,
             long[] stageTicks,

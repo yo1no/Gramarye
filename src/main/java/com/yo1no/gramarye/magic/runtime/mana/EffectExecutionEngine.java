@@ -13,7 +13,7 @@ record PreparedEffectExecution(
         EffectCommitPlan plan,
         int suppliedChildIntentCapacity,
         EffectExecutionGuard guard,
-        DamageEffectCommitPort commitPort,
+        EffectCommitPort commitPort,
         List<EffectTraceEntry> tracePrefix) implements EffectExecutionPreparation {
     PreparedEffectExecution {
         Objects.requireNonNull(request, "request");
@@ -207,7 +207,7 @@ final class EffectExecutionEngine {
             EffectRequest request,
             EffectResolver resolver,
             EffectExecutionGuard guard,
-            DamageEffectCommitPort commitPort) {
+            EffectCommitPort commitPort) {
         return execute(request, 0, resolver, guard, commitPort);
     }
 
@@ -216,7 +216,7 @@ final class EffectExecutionEngine {
             int suppliedChildIntentCapacity,
             EffectResolver resolver,
             EffectExecutionGuard guard,
-            DamageEffectCommitPort commitPort) {
+            EffectCommitPort commitPort) {
         EffectExecutionPreparation preparation = prepare(
                 request,
                 suppliedChildIntentCapacity,
@@ -237,7 +237,7 @@ final class EffectExecutionEngine {
             int suppliedChildIntentCapacity,
             EffectResolver resolver,
             EffectExecutionGuard guard,
-            DamageEffectCommitPort commitPort) {
+            EffectCommitPort commitPort) {
         Objects.requireNonNull(resolver, "resolver");
         Objects.requireNonNull(guard, "guard");
         Objects.requireNonNull(commitPort, "commitPort");
@@ -336,11 +336,17 @@ final class EffectExecutionEngine {
                         trace);
             }
 
-            if (!(step instanceof DamageEffectStep damageStep)) {
+            EffectStepOutcome outcome;
+            if (prepared.request() instanceof SpawnProjectileRequest spawnRequest
+                    && step instanceof SpawnProjectileStep spawnStep) {
+                outcome = prepared.commitPort().commitSpawn(spawnRequest, spawnStep);
+            } else if (prepared.request() instanceof DamageEffectRequest damageRequest
+                    && step instanceof DamageEffectStep damageStep) {
+                outcome = prepared.commitPort().commitDamage(damageRequest, damageStep);
+            } else {
                 throw new P6ExecutionInvariantException(
                         P6ExecutionInvariantCode.UNSUPPORTED_COMMIT_STEP);
             }
-            EffectStepOutcome outcome = prepared.commitPort().commitDamage(damageStep);
             if (outcome == null) {
                 throw new P6ExecutionInvariantException(
                         P6ExecutionInvariantCode.PORT_RETURNED_NULL);
@@ -568,11 +574,43 @@ final class EffectExecutionEngine {
     }
 
     private static boolean validRequestShape(EffectRequest request) {
-        return request != null
-                && request.requestId() != null
-                && request.sourceEventId() != null
-                && request.target() != null
-                && request.compensationPolicy() != null;
+        if (request == null
+                || request.requestId() == null
+                || request.sourceEventId() == null
+                || request.compensationPolicy() == null
+                || request.manaCost() < 0
+                || request.manaCost() > P6EffectBounds.MAX_MANA_OPERATION_AMOUNT) {
+            return false;
+        }
+        if (request instanceof SpawnProjectileRequest spawn) {
+            return spawn.dimension() != null
+                    && Double.isFinite(spawn.originX())
+                    && Double.isFinite(spawn.originY())
+                    && Double.isFinite(spawn.originZ())
+                    && spawn.originX() >= -30_000_000.0
+                    && spawn.originX() < 30_000_000.0
+                    && spawn.originY() >= -20_000_000.0
+                    && spawn.originY() < 20_000_000.0
+                    && spawn.originZ() >= -30_000_000.0
+                    && spawn.originZ() < 30_000_000.0
+                    && spawn.directionXQ15() >= -32_767
+                    && spawn.directionXQ15() <= 32_767
+                    && spawn.directionYQ15() >= -32_767
+                    && spawn.directionYQ15() <= 32_767
+                    && spawn.directionZQ15() >= -32_767
+                    && spawn.directionZQ15() <= 32_767
+                    && (spawn.directionXQ15() != 0
+                            || spawn.directionYQ15() != 0
+                            || spawn.directionZQ15() != 0)
+                    && spawn.profileCode() == 0;
+        }
+        if (request instanceof DamageEffectRequest damage) {
+            return damage.target() != null
+                    && damage.magnitude() > 0
+                    && damage.magnitude() <= P6EffectBounds.MAX_EFFECT_MAGNITUDE;
+        }
+        throw new P6ExecutionInvariantException(
+                P6ExecutionInvariantCode.INVALID_TRANSACTION_RESULT);
     }
 
     private static EffectGuardDecision checkGuard(

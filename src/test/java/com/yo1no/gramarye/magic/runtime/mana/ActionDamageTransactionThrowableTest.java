@@ -295,7 +295,7 @@ final class ActionDamageTransactionThrowableTest {
         AVAILABILITY
     }
 
-    private static final class ThrowablePort implements DamageEffectCommitPort {
+    private static final class ThrowablePort extends DamageOnlyEffectCommitPort {
         private final Throwable availabilityFailure;
         private final Throwable commitFailure;
         private final List<EffectStepOutcome> outcomes;
@@ -333,7 +333,8 @@ final class ActionDamageTransactionThrowableTest {
         }
 
         @Override
-        public EffectStepOutcome commitDamage(DamageEffectStep step) {
+        public EffectStepOutcome commitDamage(
+                            DamageEffectRequest request, DamageEffectStep step) {
             int invocation = commitCalls++;
             if (commitFailure != null) {
                 throwSame(commitFailure);

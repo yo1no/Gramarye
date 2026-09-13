@@ -238,7 +238,58 @@ record SourceFamilyKey(
     }
 }
 
-/** Closed-vocabulary P9 hit data; product construction begins only in P9-S3. */
+/** Immutable server-collision snapshot accepted only by the owning P5 permit. */
+record ProjectileHitCandidateV0(
+        UUID projectileId,
+        UUID targetId,
+        ResourceLocation dimension,
+        double hitX,
+        double hitY,
+        double hitZ,
+        int directionXQ15,
+        int directionYQ15,
+        int directionZQ15) {
+    ProjectileHitCandidateV0 {
+        Objects.requireNonNull(projectileId, "projectileId");
+        Objects.requireNonNull(targetId, "targetId");
+        Objects.requireNonNull(dimension, "dimension");
+        if (zeroUuid(projectileId) || zeroUuid(targetId)) {
+            throw new IllegalArgumentException("P9 hit candidate identities must be nonzero");
+        }
+        if (!validStaticPosition(hitX, hitY, hitZ)) {
+            throw new IllegalArgumentException("P9 hit candidate position is outside the static domain");
+        }
+        if (!legalQ15(directionXQ15, directionYQ15, directionZQ15)) {
+            throw new IllegalArgumentException("P9 hit candidate direction is not a legal Q15 tuple");
+        }
+    }
+
+    private static boolean zeroUuid(UUID value) {
+        return value.getMostSignificantBits() == 0L
+                && value.getLeastSignificantBits() == 0L;
+    }
+
+    private static boolean validStaticPosition(double x, double y, double z) {
+        return Double.isFinite(x)
+                && Double.isFinite(y)
+                && Double.isFinite(z)
+                && x >= -30_000_000.0
+                && x < 30_000_000.0
+                && y >= -20_000_000.0
+                && y < 20_000_000.0
+                && z >= -30_000_000.0
+                && z < 30_000_000.0;
+    }
+
+    private static boolean legalQ15(int x, int y, int z) {
+        return x >= -32_767 && x <= 32_767
+                && y >= -32_767 && y <= 32_767
+                && z >= -32_767 && z <= 32_767
+                && (x != 0 || y != 0 || z != 0);
+    }
+}
+
+/** Closed-vocabulary P9 hit data constructed only by the owning P5 permit. */
 record ProjectileHitExecutionDataV0(
         UUID permitId,
         UUID projectileId,

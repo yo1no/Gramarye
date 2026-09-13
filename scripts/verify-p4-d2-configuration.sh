@@ -204,7 +204,8 @@ require_only_ere_owner() {
     local status=0
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
             continue
         fi
         status=0
@@ -263,7 +264,8 @@ require_only_fixed_owner() {
     local status=0
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
             continue
         fi
         status=0

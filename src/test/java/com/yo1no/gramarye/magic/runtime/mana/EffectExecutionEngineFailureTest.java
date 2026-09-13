@@ -1,11 +1,54 @@
 package com.yo1no.gramarye.magic.runtime.mana;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 final class EffectExecutionEngineFailureTest {
+    @Test
+    void requestStepCrossVariantsFailWithUnsupportedCommitInvariant() {
+        EffectCommitPort port = new EffectCommitPort() {
+            @Override
+            public boolean isAvailable() {
+                return true;
+            }
+
+            @Override
+            public EffectStepOutcome commitSpawn(
+                    SpawnProjectileRequest request, SpawnProjectileStep step) {
+                throw new AssertionError("cross-variant pair must not reach spawn commit");
+            }
+
+            @Override
+            public EffectStepOutcome commitDamage(
+                    DamageEffectRequest request, DamageEffectStep step) {
+                throw new AssertionError("cross-variant pair must not reach damage commit");
+            }
+        };
+
+        P6ExecutionInvariantException damageWithSpawn = assertThrows(
+                P6ExecutionInvariantException.class,
+                () -> new EffectExecutionEngine().execute(
+                        EffectTestFixtures.request(),
+                        EffectTestFixtures.resolverFor(new EffectCommitPlan(
+                                List.of(EffectTestFixtures.spawnStep(0)), 0)),
+                        RecordingEffectGuard.allowing(),
+                        port));
+        P6ExecutionInvariantException spawnWithDamage = assertThrows(
+                P6ExecutionInvariantException.class,
+                () -> new EffectExecutionEngine().execute(
+                        EffectTestFixtures.spawnRequest(),
+                        EffectTestFixtures.resolverFor(EffectTestFixtures.plan(1)),
+                        RecordingEffectGuard.allowing(),
+                        port));
+
+        assertEquals(P6ExecutionInvariantCode.UNSUPPORTED_COMMIT_STEP,
+                damageWithSpawn.code());
+        assertEquals(P6ExecutionInvariantCode.UNSUPPORTED_COMMIT_STEP,
+                spawnWithDamage.code());
+    }
     @Test
     void firstNotAppliedFailsAndStopsWithoutMutationOrRetry() {
         RecordingDamageCommitPort port = new RecordingDamageCommitPort(

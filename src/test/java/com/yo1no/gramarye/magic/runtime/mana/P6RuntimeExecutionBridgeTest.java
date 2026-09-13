@@ -40,13 +40,9 @@ final class P6RuntimeExecutionBridgeTest {
                 "execute",
                 P6RuntimeExecutionCapability.class,
                 ServerPlayer.class,
-                ResourceLocation.class,
-                long.class,
-                long.class,
-                UUID.class,
-                long.class,
-                long.class,
+                P6RuntimeExecutionBridge.Invocation.class,
                 P6RuntimeExecutionBridge.GuardPort.class,
+                P6RuntimeExecutionBridge.WorldCommitPort.class,
                 P6RuntimeExecutionBridge.AppliedFactObserver.class);
         Set<String> nested = Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredClasses())
                 .filter(type -> Modifier.isPublic(type.getModifiers()))
@@ -63,6 +59,13 @@ final class P6RuntimeExecutionBridgeTest {
                         "GuardPort",
                         "GuardPoint",
                         "GuardDecision",
+                        "Invocation",
+                        "SpawnProjectileInvocation",
+                        "DamageInvocation",
+                        "WorldCommitPort",
+                        "SpawnCommit",
+                        "DamageCommit",
+                        "CommitDisposition",
                         "AppliedFactObserver",
                         "AppliedFact",
                         "AppliedStep",
@@ -93,6 +96,25 @@ final class P6RuntimeExecutionBridgeTest {
     }
 
     @Test
+    void productionRegistryContainsExactlyTheTwoAuthorizedTypedActions()
+            throws Exception {
+        Field field = P6RuntimeExecutionBridge.class.getDeclaredField(
+                "PRODUCTION_EXECUTORS");
+        assertTrue(field.trySetAccessible());
+        ActionExecutorRegistry registry = (ActionExecutorRegistry) field.get(null);
+
+        assertEquals(2, registry.size());
+        assertTrue(registry.find(ResourceLocation.fromNamespaceAndPath(
+                "gramarye", "spawn_projectile")).orElseThrow()
+                instanceof SpawnProjectileActionExecutor);
+        assertTrue(registry.find(ResourceLocation.fromNamespaceAndPath(
+                "gramarye", "damage")).orElseThrow()
+                instanceof DamageActionExecutor);
+        assertTrue(registry.find(ResourceLocation.fromNamespaceAndPath(
+                "gramarye", "other")).isEmpty());
+    }
+
+    @Test
     void nullCapabilityFailsBeforeActorArgumentsGuardAndCore() {
         AtomicInteger guardCalls = new AtomicInteger();
         P6ExecutionInvariantException failure = assertThrows(
@@ -101,15 +123,11 @@ final class P6RuntimeExecutionBridgeTest {
                         null,
                         null,
                         null,
-                        0,
-                        0,
-                        null,
-                        0,
-                        -1,
                         (point, index) -> {
                             guardCalls.incrementAndGet();
                             throw new AssertionError("guard must not be called");
                         },
+                        null,
                         null));
 
         assertEquals(P6ExecutionInvariantCode.INVALID_TRANSACTION_RESULT, failure.code());
@@ -118,15 +136,17 @@ final class P6RuntimeExecutionBridgeTest {
 
     @Test
     void invocationSeamAcceptsExactScalarBoundsAndFixedCompensation() {
-        DamageActionInvocation minimum = P6RuntimeExecutionBridge.invocation(
-                KEY, 1, 1, TARGET_ID, 1, 0);
-        DamageActionInvocation maximum = P6RuntimeExecutionBridge.invocation(
-                KEY,
-                Long.MAX_VALUE,
-                Long.MAX_VALUE,
-                TARGET_ID,
-                P6EffectBounds.MAX_EFFECT_MAGNITUDE,
-                P6EffectBounds.MAX_MANA_OPERATION_AMOUNT);
+        DamageActionInvocation minimum = (DamageActionInvocation)
+                P6RuntimeExecutionBridge.invocation(new P6RuntimeExecutionBridge.DamageInvocation(
+                        KEY, 1, 1, TARGET_ID, 1, 0));
+        DamageActionInvocation maximum = (DamageActionInvocation)
+                P6RuntimeExecutionBridge.invocation(new P6RuntimeExecutionBridge.DamageInvocation(
+                        KEY,
+                        Long.MAX_VALUE,
+                        Long.MAX_VALUE,
+                        TARGET_ID,
+                        P6EffectBounds.MAX_EFFECT_MAGNITUDE,
+                        P6EffectBounds.MAX_MANA_OPERATION_AMOUNT));
 
         assertEquals(1, minimum.requestId().value());
         assertEquals(1, minimum.sourceEventId().value());
@@ -155,6 +175,38 @@ final class P6RuntimeExecutionBridgeTest {
         assertInvocationRejected(
                 KEY, 1, 1, TARGET_ID, 1,
                 P6EffectBounds.MAX_MANA_OPERATION_AMOUNT + 1);
+    }
+
+    @Test
+    void spawnInvocationMapsToTheExactInternalTypedVariant() {
+        var publicInput = new P6RuntimeExecutionBridge.SpawnProjectileInvocation(
+                ResourceLocation.fromNamespaceAndPath("gramarye", "spawn_projectile"),
+                501L,
+                501L,
+                ResourceLocation.fromNamespaceAndPath("minecraft", "overworld"),
+                -30_000_000.0,
+                -20_000_000.0,
+                29_999_999.5,
+                -32_767,
+                0,
+                32_767,
+                0,
+                0L);
+        SpawnProjectileActionInvocation internal = (SpawnProjectileActionInvocation)
+                P6RuntimeExecutionBridge.invocation(publicInput);
+
+        assertEquals(publicInput.actionTypeKey(), internal.actionRegistryKey());
+        assertEquals(publicInput.requestId(), internal.requestId().value());
+        assertEquals(publicInput.sourceEventId(), internal.sourceEventId().value());
+        assertEquals(publicInput.dimension(), internal.dimension());
+        assertEquals(publicInput.originX(), internal.originX());
+        assertEquals(publicInput.originY(), internal.originY());
+        assertEquals(publicInput.originZ(), internal.originZ());
+        assertEquals(publicInput.directionXQ15(), internal.directionXQ15());
+        assertEquals(publicInput.directionYQ15(), internal.directionYQ15());
+        assertEquals(publicInput.directionZQ15(), internal.directionZQ15());
+        assertEquals(publicInput.profileCode(), internal.profileCode());
+        assertEquals(publicInput.manaCost(), internal.manaCost());
     }
 
     @Test
@@ -209,6 +261,56 @@ final class P6RuntimeExecutionBridgeTest {
         assertSame(error, assertThrows(
                 Error.class,
                 () -> errorGuard.check(EffectGuardPoint.beforeStep(0))));
+    }
+
+    @Test
+    void worldCommitAdapterBuildsExactTypedCommandsAndMapsClosedDisposition() {
+        List<P6RuntimeExecutionBridge.SpawnCommit> spawns = new ArrayList<>();
+        List<P6RuntimeExecutionBridge.DamageCommit> damages = new ArrayList<>();
+        EffectCommitPort port = P6RuntimeExecutionBridge.adaptCommitPort(
+                new P6RuntimeExecutionBridge.WorldCommitPort() {
+                    @Override
+                    public P6RuntimeExecutionBridge.CommitDisposition commitSpawn(
+                            P6RuntimeExecutionBridge.SpawnCommit command) {
+                        spawns.add(command);
+                        return P6RuntimeExecutionBridge.CommitDisposition.APPLIED;
+                    }
+
+                    @Override
+                    public P6RuntimeExecutionBridge.CommitDisposition commitDamage(
+                            P6RuntimeExecutionBridge.DamageCommit command) {
+                        damages.add(command);
+                        return P6RuntimeExecutionBridge.CommitDisposition.NOT_APPLIED;
+                    }
+                });
+
+        SpawnProjectileRequest spawnRequest = EffectTestFixtures.spawnRequest();
+        SpawnProjectileStep spawnStep = EffectTestFixtures.spawnStep(0);
+        assertEquals(EffectStepOutcome.applied(1),
+                port.commitSpawn(spawnRequest, spawnStep));
+        DamageEffectRequest damageRequest = EffectTestFixtures.request();
+        DamageEffectStep damageStep = EffectTestFixtures.step(0);
+        assertEquals(EffectStepOutcome.notApplied(),
+                port.commitDamage(damageRequest, damageStep));
+
+        assertEquals(List.of(new P6RuntimeExecutionBridge.SpawnCommit(
+                spawnRequest.requestId().value(),
+                spawnRequest.sourceEventId().value(),
+                spawnRequest.dimension(),
+                spawnRequest.originX(),
+                spawnRequest.originY(),
+                spawnRequest.originZ(),
+                spawnRequest.directionXQ15(),
+                spawnRequest.directionYQ15(),
+                spawnRequest.directionZQ15(),
+                spawnRequest.profileCode(),
+                spawnRequest.manaCost())), spawns);
+        assertEquals(List.of(new P6RuntimeExecutionBridge.DamageCommit(
+                damageRequest.requestId().value(),
+                damageRequest.sourceEventId().value(),
+                damageRequest.target().value(),
+                damageRequest.magnitude(),
+                damageRequest.manaCost())), damages);
     }
 
     @Test
@@ -459,7 +561,7 @@ final class P6RuntimeExecutionBridgeTest {
                     throw new AssertionError("guard called");
                 },
                 engine,
-                new DamageEffectCommitPort() {
+                new DamageOnlyEffectCommitPort() {
                     @Override
                     public boolean isAvailable() {
                         portCalls.incrementAndGet();
@@ -467,7 +569,8 @@ final class P6RuntimeExecutionBridgeTest {
                     }
 
                     @Override
-                    public EffectStepOutcome commitDamage(DamageEffectStep step) {
+                    public EffectStepOutcome commitDamage(
+                                        DamageEffectRequest request, DamageEffectStep step) {
                         portCalls.incrementAndGet();
                         throw new AssertionError("port called");
                     }
@@ -631,14 +734,15 @@ final class P6RuntimeExecutionBridgeTest {
     @Test
     void compensationFailedThrowsInvariantThroughCore() {
         var account = new ActionTransactionTestFixtures.RecordingManaAccount(100);
-        DamageEffectCommitPort port = new DamageEffectCommitPort() {
+        EffectCommitPort port = new DamageOnlyEffectCommitPort() {
             @Override
             public boolean isAvailable() {
                 return true;
             }
 
             @Override
-            public EffectStepOutcome commitDamage(DamageEffectStep step) {
+            public EffectStepOutcome commitDamage(
+                                DamageEffectRequest request, DamageEffectStep step) {
                 account.setAvailability(ManaAvailability.UNAVAILABLE);
                 return EffectStepOutcome.notApplied();
             }
@@ -724,10 +828,6 @@ final class P6RuntimeExecutionBridgeTest {
                                         + "P6RuntimeExecutionBridge#PRODUCTION_EXECUTORS",
                                 "com.yo1no.gramarye.magic.runtime.mana."
                                         + "P6RuntimeExecutionBridge#PRODUCTION_ENGINE",
-                                "com.yo1no.gramarye.magic.runtime.mana."
-                                        + "P6RuntimeExecutionBridge#PRODUCTION_DAMAGE_PORT",
-                                "com.yo1no.gramarye.magic.runtime.mana."
-                                        + "UnavailableProductionDamageEffectCommitPort#INSTANCE",
                                 "com.yo1no.gramarye.P6RuntimeExecutionCapability#INSTANCE",
                                 "com.yo1no.gramarye."
                                         + "ProductionP6RuntimeExecutionInputMapper#INSTANCE"),
@@ -949,18 +1049,6 @@ final class P6RuntimeExecutionBridgeTest {
                         "Throwable"));
     }
 
-    @Test
-    void unavailableProductionDamagePortIsFinalStatelessAndFailClosed() {
-        var port = UnavailableProductionDamageEffectCommitPort.INSTANCE;
-
-        assertTrue(Modifier.isFinal(
-                UnavailableProductionDamageEffectCommitPort.class.getModifiers()));
-        assertFalse(port.isAvailable());
-        assertThrows(
-                P6ExecutionInvariantException.class,
-                () -> port.commitDamage(ActionTransactionTestFixtures.step(0)));
-    }
-
     private static final class CountingAllowingGuardPort
             implements P6RuntimeExecutionBridge.GuardPort {
         private int calls;
@@ -977,26 +1065,28 @@ final class P6RuntimeExecutionBridgeTest {
         }
     }
 
-    private static final class SuccessfulDamagePort implements DamageEffectCommitPort {
+    private static final class SuccessfulDamagePort extends DamageOnlyEffectCommitPort {
         @Override
         public boolean isAvailable() {
             return true;
         }
 
         @Override
-        public EffectStepOutcome commitDamage(DamageEffectStep step) {
+        public EffectStepOutcome commitDamage(
+                            DamageEffectRequest request, DamageEffectStep step) {
             return EffectStepOutcome.applied(1);
         }
     }
 
-    private static final class ThrowingDamagePort implements DamageEffectCommitPort {
+    private static final class ThrowingDamagePort extends DamageOnlyEffectCommitPort {
         @Override
         public boolean isAvailable() {
             return true;
         }
 
         @Override
-        public EffectStepOutcome commitDamage(DamageEffectStep step) {
+        public EffectStepOutcome commitDamage(
+                            DamageEffectRequest request, DamageEffectStep step) {
             throw new ProbeRuntimeException(step);
         }
     }
@@ -1025,13 +1115,6 @@ final class P6RuntimeExecutionBridgeTest {
                         "com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge",
                         "PRODUCTION_ENGINE"),
                 new StaticRoot(
-                        "com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge",
-                        "PRODUCTION_DAMAGE_PORT"),
-                new StaticRoot(
-                        "com.yo1no.gramarye.magic.runtime.mana."
-                                + "UnavailableProductionDamageEffectCommitPort",
-                        "INSTANCE"),
-                new StaticRoot(
                         "com.yo1no.gramarye.P6RuntimeExecutionCapability",
                         "INSTANCE"),
                 new StaticRoot(
@@ -1041,10 +1124,10 @@ final class P6RuntimeExecutionBridgeTest {
                 ActionExecutorRegistry.class.getName(),
                 ActionDamageTransactionEngine.class.getName(),
                 DamageActionExecutor.class.getName(),
+                SpawnProjectileActionExecutor.class.getName(),
                 DamageEffectResolver.class.getName(),
                 EffectExecutionEngine.class.getName(),
                 ManaTransactionService.class.getName(),
-                UnavailableProductionDamageEffectCommitPort.class.getName(),
                 P6RuntimeExecutionCapability.class.getName(),
                 SuccessfulDamagePort.class.getName(),
                 ThrowingDamagePort.class.getName(),
@@ -1218,8 +1301,9 @@ final class P6RuntimeExecutionBridgeTest {
     }
 
     private static DamageActionInvocation invocation(long manaCost) {
-        return P6RuntimeExecutionBridge.invocation(
-                KEY, 101, 303, TARGET_ID, 25, manaCost);
+        return (DamageActionInvocation) P6RuntimeExecutionBridge.invocation(
+                new P6RuntimeExecutionBridge.DamageInvocation(
+                        KEY, 101, 303, TARGET_ID, 25, manaCost));
     }
 
     private static void assertInvocationRejected(
@@ -1232,7 +1316,13 @@ final class P6RuntimeExecutionBridgeTest {
         assertThrows(
                 P6ExecutionInvariantException.class,
                 () -> P6RuntimeExecutionBridge.invocation(
-                        key, requestId, sourceEventId, targetId, magnitude, manaCost));
+                        new P6RuntimeExecutionBridge.DamageInvocation(
+                                key,
+                                requestId,
+                                sourceEventId,
+                                targetId,
+                                magnitude,
+                                manaCost)));
     }
 
     private static List<P6RuntimeExecutionBridge.AppliedFact> coreFacts(

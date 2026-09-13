@@ -11,12 +11,18 @@ record DamageActionInvocation(
         DamageTargetReference target,
         long magnitude,
         long manaCost,
-        CompensationPolicy compensationPolicy) {
+        CompensationPolicy compensationPolicy) implements ActionInvocation {
     DamageActionInvocation {
         Objects.requireNonNull(actionRegistryKey, "actionRegistryKey");
         Objects.requireNonNull(requestId, "requestId");
         Objects.requireNonNull(sourceEventId, "sourceEventId");
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(compensationPolicy, "compensationPolicy");
+        if (magnitude <= 0 || magnitude > P6EffectBounds.MAX_EFFECT_MAGNITUDE) {
+            throw new IllegalArgumentException("magnitude is outside the P6 V0 bound");
+        }
+        if (manaCost < 0 || manaCost > P6EffectBounds.MAX_MANA_OPERATION_AMOUNT) {
+            throw new IllegalArgumentException("mana cost is outside the P6 V0 bound");
+        }
     }
 }

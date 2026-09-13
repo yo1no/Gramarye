@@ -45,6 +45,7 @@ public final class Gramarye {
         var exactFacade = new P4E2QualificationFacade();
         P9StarterSkillContent.registerDefinitionTypes();
         MagicRegistries.register(modBus);
+        P9StarterProjectileRegistration.register(modBus);
         new DescriptorMigrationAudit().register(modBus);
         playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus);
         p8ServerPresentationService = P8ServerPresentationService.create();

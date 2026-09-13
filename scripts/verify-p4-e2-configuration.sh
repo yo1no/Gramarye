@@ -191,7 +191,8 @@ require_only_owner() {
     local status=0
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
             continue
         fi
         status=0
@@ -222,7 +223,8 @@ require_exact_two_owners() {
     local status=0
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
             continue
         fi
         status=0
@@ -486,6 +488,42 @@ is_approved_p6_s3_changed_path() {
         src/test/java/com/yo1no/gramarye/magic/runtime/mana/P6S3BoundaryTest.java | \
         src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionTransactionTestFixtures.java | \
         src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p9_s3_deletion_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPort.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPortTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+is_approved_p9_s3_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectile.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectileClientEvents.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectileRegistration.java | \
+        src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java | \
+        src/p9S3ClientHarness/java/com/yo1no/gramarye/P9S3ClientRuntimeHarness.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionInvocation.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionInvocation.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPortTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPortTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionExecutorTest.java)
             return 0
             ;;
         *)
@@ -780,6 +818,8 @@ is_approved_p8_s5_test_path() {
 verify_p8_s5_access_transformer() {
     local resource='src/main/resources/META-INF/accesstransformer.cfg'
     local expected='public net.minecraft.client.particle.ParticleEngine spriteSets'
+    local exact=$'public net.minecraft.client.particle.ParticleEngine spriteSets\nprotected net.minecraft.world.entity.projectile.Projectile hasBeenShot\nprotected net.minecraft.world.entity.projectile.Projectile leftOwner\nprotected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z'
+    local actual=''
     local bytes=''
     local lines=''
     local matches=0
@@ -791,14 +831,17 @@ verify_p8_s5_access_transformer() {
         || fail 'wc failed while checking P8-S5 access-transformer bytes'
     lines="$(LC_ALL=C wc -l < "${resource}")" \
         || fail 'wc failed while checking P8-S5 access-transformer lines'
+    actual="$(< "${resource}")" \
+        || fail 'read failed while checking the exact P9-S3 access-transformer content'
     matches="$(LC_ALL=C grep -Fxc -- "${expected}" "${resource}")" || status=$?
     case "${status}" in
         0) ;;
         1) matches=0 ;;
         *) fail "grep failed while checking ${resource} (exit ${status})" ;;
     esac
-    [[ "${bytes}" -eq 63 && "${lines}" -eq 1 && "${matches}" -eq 1 ]] \
-        || fail 'P8-S5 access transformer must be the exact one-line 63-byte ParticleEngine spriteSets rule'
+    [[ "${bytes}" -eq 280 && "${lines}" -eq 4 && "${matches}" -eq 1 \
+            && "${actual}" == "${exact}" ]] \
+        || fail 'P8-S5/P9-S3 access transformer must be the exact ordered four-line 280-byte rule set'
     is_approved_p8_s5_resource_path "${resource}" \
         || fail 'P8-S5 resource allowlist rejected its exact access transformer'
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
@@ -824,6 +867,7 @@ is_allowed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
     is_approved_p6_s3_changed_path "$1" && return 0
+    is_approved_p9_s3_changed_path "$1" && return 0
     is_approved_p6_s4_r1_changed_path "$1" && return 0
     is_approved_p7_s1_changed_path "$1" && return 0
     is_approved_p7_s2_changed_path "$1" && return 0
@@ -932,7 +976,8 @@ verify_changed_paths() {
             is_allowed_changed_path "${path}" \
                 || fail "changed path is outside the exact P4-E2 allowlist: ${path}"
             candidate="${REPOSITORY_ROOT}/${path}"
-            if is_approved_p6_s3_relocation_deletion_path "${path}"; then
+            if is_approved_p6_s3_relocation_deletion_path "${path}" \
+                    || is_approved_p9_s3_deletion_path "${path}"; then
                 [[ ! -e "${candidate}" && ! -L "${candidate}" ]] \
                     || fail "approved P6-S1 relocation source still exists: ${path}"
                 continue

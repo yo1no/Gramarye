@@ -541,7 +541,8 @@ final class P4E2ApiGateTest {
                 () -> assertEquals(12, totalGameTestCount
                         - manaGameTestCount
                         - com.yo1no.gramarye.P7GameTestInventory.s4Count()
-                        - com.yo1no.gramarye.P7GameTestInventory.p8Count()),
+                        - com.yo1no.gramarye.P7GameTestInventory.p8Count()
+                        - com.yo1no.gramarye.P7GameTestInventory.p9S3Count()),
                 () -> assertEquals(7, manaGameTestCount),
                 () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount));
     }
@@ -606,6 +607,7 @@ final class P4E2ApiGateTest {
             return stream.filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                     .filter(path -> {
                         try {
                             return Files.readString(path).contains(token);

@@ -182,6 +182,28 @@ final class P5RuntimeVocabularyTest {
                         "outputOrdinal"),
                 List.of(SkillInstanceId.class, EventId.class, int.class, int.class));
         assertRecordComponents(
+                ProjectileHitCandidateV0.class,
+                List.of(
+                        "projectileId",
+                        "targetId",
+                        "dimension",
+                        "hitX",
+                        "hitY",
+                        "hitZ",
+                        "directionXQ15",
+                        "directionYQ15",
+                        "directionZQ15"),
+                List.of(
+                        UUID.class,
+                        UUID.class,
+                        ResourceLocation.class,
+                        double.class,
+                        double.class,
+                        double.class,
+                        int.class,
+                        int.class,
+                        int.class));
+        assertRecordComponents(
                 ProjectileHitExecutionDataV0.class,
                 List.of(
                         "permitId",
@@ -310,6 +332,39 @@ final class P5RuntimeVocabularyTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new SourceFamilyKey(instanceId, new EventId(17), 0, 1));
+
+        var candidate = new ProjectileHitCandidateV0(
+                P9_TEST_PROJECTILE_ID,
+                P9_TEST_TARGET_ID,
+                P9_TEST_DIMENSION,
+                -30_000_000.0,
+                -20_000_000.0,
+                Math.nextDown(30_000_000.0),
+                -32_767,
+                0,
+                32_767);
+        assertEquals(P9_TEST_PROJECTILE_ID, candidate.projectileId());
+        assertEquals(P9_TEST_TARGET_ID, candidate.targetId());
+        assertThrows(
+                NullPointerException.class,
+                () -> new ProjectileHitCandidateV0(
+                        null, P9_TEST_TARGET_ID, P9_TEST_DIMENSION,
+                        0.0, 0.0, 0.0, 1, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ProjectileHitCandidateV0(
+                        new UUID(0L, 0L), P9_TEST_TARGET_ID, P9_TEST_DIMENSION,
+                        0.0, 0.0, 0.0, 1, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ProjectileHitCandidateV0(
+                        P9_TEST_PROJECTILE_ID, P9_TEST_TARGET_ID, P9_TEST_DIMENSION,
+                        Double.NaN, 0.0, 0.0, 1, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ProjectileHitCandidateV0(
+                        P9_TEST_PROJECTILE_ID, P9_TEST_TARGET_ID, P9_TEST_DIMENSION,
+                        0.0, 0.0, 0.0, 0, 0, 0));
 
         var hit = projectileHit(
                 family,
@@ -831,6 +886,7 @@ final class P5RuntimeVocabularyTest {
                 P5RuntimeConfigurationException.class,
                 CastGeometryExecutionDataV0.class,
                 SourceFamilyKey.class,
+                ProjectileHitCandidateV0.class,
                 ProjectileHitExecutionDataV0.class)) {
             assertFalse(Modifier.isPublic(type.getModifiers()), type.getName());
         }

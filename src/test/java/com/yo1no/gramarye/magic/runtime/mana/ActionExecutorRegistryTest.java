@@ -203,15 +203,16 @@ final class ActionExecutorRegistryTest {
         };
     }
 
-    private static DamageEffectCommitPort forbiddenPort() {
-        return new DamageEffectCommitPort() {
+    private static EffectCommitPort forbiddenPort() {
+        return new DamageOnlyEffectCommitPort() {
             @Override
             public boolean isAvailable() {
                 throw new AssertionError("commit port must not be accessed");
             }
 
             @Override
-            public EffectStepOutcome commitDamage(DamageEffectStep step) {
+            public EffectStepOutcome commitDamage(
+                                DamageEffectRequest request, DamageEffectStep step) {
                 throw new AssertionError("commit port must not be accessed");
             }
         };

@@ -176,7 +176,7 @@ final class ActionDamageTransactionCompensationTest {
             long manaCost,
             RecordingManaAccount account,
             EffectExecutionGuard guard,
-            DamageEffectCommitPort port) {
+            EffectCommitPort port) {
         return engine(resolverFor(plan(1)))
                 .execute(invocation(manaCost), account, 0, guard, port);
     }
@@ -226,7 +226,7 @@ final class ActionDamageTransactionCompensationTest {
         assertEquals(expectedBalanceReads, account.balanceReads());
     }
 
-    private static final class HookedOutcomePort implements DamageEffectCommitPort {
+    private static final class HookedOutcomePort extends DamageOnlyEffectCommitPort {
         private final Runnable beforeOutcome;
         private final EffectStepOutcome outcome;
         private int commitCalls;
@@ -242,7 +242,8 @@ final class ActionDamageTransactionCompensationTest {
         }
 
         @Override
-        public EffectStepOutcome commitDamage(DamageEffectStep step) {
+        public EffectStepOutcome commitDamage(
+                            DamageEffectRequest request, DamageEffectStep step) {
             commitCalls++;
             beforeOutcome.run();
             return outcome;

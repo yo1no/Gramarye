@@ -342,6 +342,15 @@ final class P5RuntimeStaticGateTest {
                 () -> assertEquals(void.class, postOwner.getReturnType()),
                 () -> assertEquals(0, postOwner.getExceptionTypes().length),
                 () -> assertTrue(post.contains("advanceRuntimeTick(slot)")),
+                () -> assertInOrder(
+                        post,
+                        "drain(server, slot)",
+                        "sweepActiveProjectileContinuations(server, slot)",
+                        "catch (RuntimeException primary)",
+                        "throw preserveRuntimeFault(slot, primary)",
+                        "catch (Error primary)",
+                        "slot.p9ErrorCleanup.prepare(server)",
+                        "throw preserveErrorFault(slot, primary)"),
                 () -> assertTrue(advance.contains("RuntimeTickAdvanceResult.EXHAUSTED")),
                 () -> assertFalse(source.contains("ServerTickEvent.Pre")));
     }
@@ -457,7 +466,58 @@ record SourceFamilyKey(
     }
 }
 
-/** Closed-vocabulary P9 hit data; product construction begins only in P9-S3. */
+/** Immutable server-collision snapshot accepted only by the owning P5 permit. */
+record ProjectileHitCandidateV0(
+        UUID projectileId,
+        UUID targetId,
+        ResourceLocation dimension,
+        double hitX,
+        double hitY,
+        double hitZ,
+        int directionXQ15,
+        int directionYQ15,
+        int directionZQ15) {
+    ProjectileHitCandidateV0 {
+        Objects.requireNonNull(projectileId, "projectileId");
+        Objects.requireNonNull(targetId, "targetId");
+        Objects.requireNonNull(dimension, "dimension");
+        if (zeroUuid(projectileId) || zeroUuid(targetId)) {
+            throw new IllegalArgumentException("P9 hit candidate identities must be nonzero");
+        }
+        if (!validStaticPosition(hitX, hitY, hitZ)) {
+            throw new IllegalArgumentException("P9 hit candidate position is outside the static domain");
+        }
+        if (!legalQ15(directionXQ15, directionYQ15, directionZQ15)) {
+            throw new IllegalArgumentException("P9 hit candidate direction is not a legal Q15 tuple");
+        }
+    }
+
+    private static boolean zeroUuid(UUID value) {
+        return value.getMostSignificantBits() == 0L
+                && value.getLeastSignificantBits() == 0L;
+    }
+
+    private static boolean validStaticPosition(double x, double y, double z) {
+        return Double.isFinite(x)
+                && Double.isFinite(y)
+                && Double.isFinite(z)
+                && x >= -30_000_000.0
+                && x < 30_000_000.0
+                && y >= -20_000_000.0
+                && y < 20_000_000.0
+                && z >= -30_000_000.0
+                && z < 30_000_000.0;
+    }
+
+    private static boolean legalQ15(int x, int y, int z) {
+        return x >= -32_767 && x <= 32_767
+                && y >= -32_767 && y <= 32_767
+                && z >= -32_767 && z <= 32_767
+                && (x != 0 || y != 0 || z != 0);
+    }
+}
+
+/** Closed-vocabulary P9 hit data constructed only by the owning P5 permit. */
 record ProjectileHitExecutionDataV0(
         UUID permitId,
         UUID projectileId,
@@ -562,6 +622,7 @@ record ProjectileHitExecutionDataV0(
                 () -> assertTrue(List.of(
                                 CastGeometryExecutionDataV0.class,
                                 SourceFamilyKey.class,
+                                ProjectileHitCandidateV0.class,
                                 ProjectileHitExecutionDataV0.class)
                         .stream()
                         .allMatch(type -> type.isRecord()
@@ -586,6 +647,18 @@ record ProjectileHitExecutionDataV0(
                                 "int producerNodeIndex",
                                 "int outputOrdinal"),
                         recordComponentSignatures(SourceFamilyKey.class)),
+                () -> assertEquals(
+                        List.of(
+                                "java.util.UUID projectileId",
+                                "java.util.UUID targetId",
+                                "net.minecraft.resources.ResourceLocation dimension",
+                                "double hitX",
+                                "double hitY",
+                                "double hitZ",
+                                "int directionXQ15",
+                                "int directionYQ15",
+                                "int directionZQ15"),
+                        recordComponentSignatures(ProjectileHitCandidateV0.class)),
                 () -> assertEquals(
                         List.of(
                                 "java.util.UUID permitId",
@@ -624,7 +697,7 @@ record ProjectileHitExecutionDataV0(
     }
 
     @Test
-    void p9S2OpenerResultPermitAndDispositionInventoriesAreExact() throws Exception {
+    void p9S3OpenerResultPermitAndDispositionInventoriesAreExact() throws Exception {
         var openerFields = declaredFieldSignatures(RuntimeProjectileContinuationOpener.class);
         var openerMethods = Arrays.stream(
                         RuntimeProjectileContinuationOpener.class.getDeclaredMethods())
@@ -679,7 +752,9 @@ record ProjectileHitExecutionDataV0(
         var opened = RuntimeProjectileContinuationOpenResult.Opened.class;
         var rejected = RuntimeProjectileContinuationOpenResult.Rejected.class;
         var openedConstructor = opened.getDeclaredConstructor(
-                RuntimeProjectileContinuationPermit.class, UUID.class);
+                RuntimeProjectileContinuationPermit.class,
+                UUID.class,
+                SkillRuntimeService.class);
         var rejectedConstructor = rejected.getDeclaredConstructor(
                 RuntimeProjectileContinuationOpenRejectionReason.class);
         assertAll(
@@ -697,18 +772,28 @@ record ProjectileHitExecutionDataV0(
                 () -> assertEquals(
                         Set.of(
                                 "com.yo1no.gramarye.RuntimeProjectileContinuationPermit permit",
-                                "java.util.UUID plannedProjectileId"),
+                                "java.util.UUID plannedProjectileId",
+                                "com.yo1no.gramarye.SkillRuntimeService owner",
+                                "boolean transferConsumed"),
                         declaredFieldSignatures(opened)),
-                () -> assertTrue(Arrays.stream(opened.getDeclaredFields()).allMatch(field ->
-                        Modifier.isPrivate(field.getModifiers())
-                                && Modifier.isFinal(field.getModifiers()))),
+                () -> assertTrue(Arrays.stream(opened.getDeclaredFields())
+                        .allMatch(field -> Modifier.isPrivate(field.getModifiers()))),
+                () -> assertTrue(Arrays.stream(opened.getDeclaredFields())
+                        .filter(field -> !field.getName().equals("transferConsumed"))
+                        .allMatch(field -> Modifier.isFinal(field.getModifiers()))),
+                () -> assertFalse(Modifier.isFinal(opened
+                        .getDeclaredField("transferConsumed").getModifiers())),
                 () -> assertEquals(1, opened.getDeclaredConstructors().length),
                 () -> assertTrue(isPackagePrivate(openedConstructor.getModifiers())),
                 () -> assertEquals(
                         Set.of(
                                 "com.yo1no.gramarye.RuntimeProjectileContinuationPermit "
                                         + "permit()",
-                                "java.util.UUID plannedProjectileId()"),
+                                "java.util.UUID plannedProjectileId()",
+                                "com.yo1no.gramarye.RuntimePermitTransferDisposition "
+                                        + "transferAfterAppliedSpawn("
+                                        + "net.minecraft.server.MinecraftServer,"
+                                        + "com.yo1no.gramarye.P9StarterProjectile)"),
                         declaredMethodSignatures(opened)),
                 () -> assertTrue(Arrays.stream(opened.getDeclaredMethods())
                         .filter(method -> !method.isSynthetic())
@@ -760,6 +845,7 @@ record ProjectileHitExecutionDataV0(
                 () -> assertEquals(
                         Set.of(
                                 "com.yo1no.gramarye.SkillRuntimeService owner",
+                                "com.yo1no.gramarye.RuntimeProjectileContinuationPermit$Mode mode",
                                 "com.yo1no.gramarye.RuntimeServerToken serverSlotToken",
                                 "com.yo1no.gramarye.magic.api.id.SkillInstanceId "
                                         + "skillInstanceId",
@@ -777,8 +863,8 @@ record ProjectileHitExecutionDataV0(
                                 "com.yo1no.gramarye.RuntimeProjectileContinuationPermit$State "
                                         + "state"),
                         declaredFieldSignatures(permit)),
-                () -> assertTrue(Arrays.stream(permit.getDeclaredFields())
-                        .allMatch(field -> Modifier.isPrivate(field.getModifiers()))),
+                () -> assertTrue(Modifier.isPrivate(
+                        permit.getDeclaredField("owner").getModifiers())),
                 () -> assertTrue(Arrays.stream(permit.getDeclaredFields())
                         .filter(field -> !field.getName().equals("state"))
                         .allMatch(field -> Modifier.isFinal(field.getModifiers()))),
@@ -787,16 +873,21 @@ record ProjectileHitExecutionDataV0(
                 () -> assertEquals(1, Arrays.stream(permit.getDeclaredFields())
                         .filter(field -> field.getType() == SkillRuntimeService.class)
                         .count()),
-                () -> assertEquals(1, permit.getDeclaredConstructors().length),
+                () -> assertEquals(2, permit.getDeclaredConstructors().length),
                 () -> assertTrue(isPackagePrivate(permitConstructor.getModifiers())),
                 () -> assertEquals(
-                        Set.of("com.yo1no.gramarye.RuntimePermitCloseDisposition "
-                                + "closeWithoutHit(net.minecraft.server.MinecraftServer,"
-                                + "com.yo1no.gramarye.ProjectileClosureReason)"),
+                        Set.of(
+                                "com.yo1no.gramarye.RuntimePermitClaimDisposition "
+                                        + "claimLoadedEntityHit("
+                                        + "net.minecraft.server.MinecraftServer,"
+                                        + "com.yo1no.gramarye.ProjectileHitCandidateV0)",
+                                "com.yo1no.gramarye.RuntimePermitCloseDisposition "
+                                        + "closeWithoutHit(net.minecraft.server.MinecraftServer,"
+                                        + "com.yo1no.gramarye.ProjectileClosureReason)"),
                         declaredMethodSignatures(permit)),
-                () -> assertEquals(1, permit.getDeclaredClasses().length),
+                () -> assertEquals(2, permit.getDeclaredClasses().length),
                 () -> assertTrue(permitState.isEnum()),
-                () -> assertTrue(Modifier.isPrivate(permitState.getModifiers())),
+                () -> assertTrue(isPackagePrivate(permitState.getModifiers())),
                 () -> assertEquals(
                         List.of(
                                 "RESERVED",
@@ -828,11 +919,21 @@ record ProjectileHitExecutionDataV0(
                         List.of("CLOSED", "ALREADY_CLOSED", "REJECTED"),
                         Arrays.stream(RuntimePermitCloseDisposition.values())
                                 .map(Enum::name)
+                                .toList()),
+                () -> assertEquals(
+                        List.of("TRANSFERRED", "REJECTED", "ALREADY_TRANSFERRED"),
+                        Arrays.stream(RuntimePermitTransferDisposition.values())
+                                .map(Enum::name)
+                                .toList()),
+                () -> assertEquals(
+                        List.of("QUEUED", "REJECTED", "DUPLICATE_OR_LATE"),
+                        Arrays.stream(RuntimePermitClaimDisposition.values())
+                                .map(Enum::name)
                                 .toList()));
     }
 
     @Test
-    void p9S2OwnerIndexReloadDiagnosticsAndDeferredS3SurfaceAreExact()
+    void p9S3OwnerIndexReloadDiagnosticsAndLiveContinuationSurfaceAreExact()
             throws Exception {
         var serviceFields = Arrays.asList(SkillRuntimeService.class.getDeclaredFields());
         var reloadFields = serviceFields.stream()
@@ -924,6 +1025,59 @@ record ProjectileHitExecutionDataV0(
                 source,
                 "private RuntimeExecutionOutcome processCompletedPlan(",
                 "private ChildReservation reserveForPort(");
+        var transferSource = section(
+                source,
+                "RuntimePermitTransferDisposition transferSpawnedProjectile(",
+                "RuntimePermitClaimDisposition claimProjectileHit(");
+        var claimSource = section(
+                source,
+                "RuntimePermitClaimDisposition claimProjectileHit(",
+                "private RuntimePermitClaimDisposition rejectClaimAndClose(");
+        var rejectClaimSource = section(
+                source,
+                "private RuntimePermitClaimDisposition rejectClaimAndClose(",
+                "RuntimePermitCloseDisposition closeProjectileContinuation(");
+        var continuationCloseSource = section(
+                source,
+                "private RuntimePermitCloseDisposition "
+                        + "closeProjectileContinuationOnObservedThread(",
+                "private static RuntimeProjectileContinuationOpenResult "
+                        + "continuationRejected(");
+        var sweepSource = section(
+                source,
+                "private static void sweepActiveProjectileContinuations(",
+                "private void handleRuntimeStopping(");
+        var cancelInstanceSource = section(
+                source,
+                "private static RuntimeCancellationResult cancelInstance(",
+                "private static int removeInstanceQueuedAndDeferred(");
+        var openedSource = section(
+                source,
+                "static final class Opened extends RuntimeProjectileContinuationOpenResult {",
+                "static final class Rejected extends RuntimeProjectileContinuationOpenResult {");
+        var activeDiagnosticSource = section(
+                source,
+                "static final class P9ActiveDiagnostic {",
+                "record P9TerminalDiagnostic(");
+        var spawnDiagnosticSource = section(
+                source,
+                "private static void recordP9SpawnResult(",
+                "private static void recordP9HitClaimResult(");
+        var hitDiagnosticSource = section(
+                source,
+                "private static void recordP9HitClaimResult(",
+                "private static void recordP9Terminal(");
+        var activeSpawnRecorder = ServerSlot.P9ActiveDiagnostic.class.getDeclaredMethod(
+                "recordSpawnResult",
+                RuntimePermitTransferDisposition.class,
+                long.class);
+        var activeHitRecorder = ServerSlot.P9ActiveDiagnostic.class.getDeclaredMethod(
+                "recordHitClaimResult",
+                long.class,
+                long.class,
+                ProjectileHitCandidateV0.class,
+                RuntimePermitClaimDisposition.class,
+                long.class);
         assertAll(
                 () -> assertEquals(
                         "void requestP9ReloadInvalidation() {\n"
@@ -949,19 +1103,30 @@ record ProjectileHitExecutionDataV0(
                                 + "% slot.p9TerminalRing.length",
                         "if (slot.p9TerminalCount < slot.p9TerminalRing.length)",
                         "slot.p9TerminalCount++"),
+                () -> assertInOrder(
+                        source,
+                        "trace.profileCode,",
+                        "trace.spawnCommitResultCode,",
+                        "trace.hitPermitIdMostSignificantBits,",
+                        "trace.hitProjectileIdMostSignificantBits,",
+                        "trace.hitTargetIdMostSignificantBits,",
+                        "trace.hitXBits,",
+                        "trace.hitDirectionXQ15,",
+                        "trace.hitClaimResultCode,",
+                        "trace.stageCount,"),
                 () -> assertEquals(1, occurrences(
                         source, "P9RuntimeDiagnosticStage.CONTINUATION_OPENED")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(2, occurrences(
                         source, "P9RuntimeDiagnosticStage.SPAWN_RESOLVED")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(1, occurrences(
                         source, "P9RuntimeDiagnosticStage.SPAWN_COMMIT_RESULT")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(1, occurrences(
                         source, "P9RuntimeDiagnosticStage.PROJECTILE_ACTIVE")),
                 () -> assertEquals(0, occurrences(
                         source, "P9RuntimeDiagnosticStage.CAST_PRESENTATION_OFFERED")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(2, occurrences(
                         source, "P9RuntimeDiagnosticStage.HIT_CLAIM_RESULT")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(1, occurrences(
                         source, "P9RuntimeDiagnosticStage.NODE1_QUEUED")),
                 () -> assertEquals(0, occurrences(
                         source, "P9RuntimeDiagnosticStage.NODE1_MATCHED")),
@@ -971,19 +1136,125 @@ record ProjectileHitExecutionDataV0(
                         source, "P9RuntimeDiagnosticStage.DAMAGE_COMMIT_RESULT")),
                 () -> assertEquals(0, occurrences(
                         source, "P9RuntimeDiagnosticStage.HIT_PRESENTATION_OFFERED")),
-                () -> assertFalse(production.contains("ProjectileHitCandidateV0")),
-                () -> assertFalse(production.contains("P9StarterProjectile")),
-                () -> assertFalse(production.contains("RuntimePermitTransferDisposition")),
-                () -> assertFalse(production.contains("RuntimePermitClaimDisposition")),
-                () -> assertFalse(production.contains("transferAfterAppliedSpawn(")),
-                () -> assertFalse(production.contains("claimLoadedEntityHit(")),
+                () -> assertTrue(production.contains("ProjectileHitCandidateV0")),
+                () -> assertTrue(production.contains("P9StarterProjectile")),
+                () -> assertTrue(production.contains("RuntimePermitTransferDisposition")),
+                () -> assertTrue(production.contains("RuntimePermitClaimDisposition")),
+                () -> assertTrue(production.contains("transferAfterAppliedSpawn(")),
+                () -> assertTrue(production.contains("claimLoadedEntityHit(")),
                 () -> assertFalse(p5SourceText().contains(".addFreshEntity(")),
                 () -> assertEquals(
-                        0, occurrences(production, "new ProjectileHitExecutionDataV0(")),
+                        1, occurrences(production, "new ProjectileHitExecutionDataV0(")),
                 () -> assertTrue(childValidationSource.contains(
-                        "if (!(child.executionData() instanceof NoRuntimeExecutionData))")),
+                        "var p9Hit = child.executionData() instanceof "
+                                + "ProjectileHitExecutionDataV0")),
                 () -> assertFalse(childPublicationSource.contains(
-                        "ProjectileHitExecutionDataV0")));
+                        "ProjectileHitExecutionDataV0")),
+                () -> assertInOrder(
+                        openedSource,
+                        "if (transferConsumed)",
+                        "return RuntimePermitTransferDisposition.ALREADY_TRANSFERRED",
+                        "transferConsumed = true",
+                        "return owner.transferSpawnedProjectile("),
+                () -> assertTrue(transferSource.contains(
+                        "var detachedAndCurrentReservationCount = "
+                                + "slot.currentReservationCount + 1;")),
+                () -> assertTrue(transferSource.contains(
+                        "instance.reservedPending != detachedAndCurrentReservationCount")),
+                () -> assertTrue(transferSource.contains(
+                        "attribution.reservedPending < detachedAndCurrentReservationCount")),
+                () -> assertTrue(transferSource.contains(
+                        "slot.reservedPending < detachedAndCurrentReservationCount")),
+                () -> assertInOrder(
+                        transferSource,
+                        "levelForDimension(server, permit.dimension)",
+                        "level.getEntity(plannedProjectileId) != projectile",
+                        "!projectile.isAddedToLevel()"),
+                () -> assertInOrder(
+                        transferSource,
+                        "permit.state = RuntimeProjectileContinuationPermit.State.OPEN",
+                        "instance.clearP9AuthenticatedActorWitness()",
+                        "recordP9SpawnResult(",
+                        "RuntimePermitTransferDisposition.TRANSFERRED"),
+                () -> assertInOrder(
+                        activeDiagnosticSource,
+                        "spawnCommitResultCode = recordsProjectileActive ? 1 : 2",
+                        "record(P9RuntimeDiagnosticStage.SPAWN_RESOLVED, runtimeTick)",
+                        "record(P9RuntimeDiagnosticStage.SPAWN_COMMIT_RESULT, runtimeTick)",
+                        "record(P9RuntimeDiagnosticStage.PROJECTILE_ACTIVE, runtimeTick)"),
+                () -> assertInOrder(
+                        continuationCloseSource,
+                        "reason == ProjectileClosureReason.SPAWN_NOT_APPLIED",
+                        "recordP9SpawnResult(",
+                        "RuntimePermitTransferDisposition.REJECTED"),
+                () -> assertFalse(spawnDiagnosticSource.contains("catch (")),
+                () -> assertFalse(hitDiagnosticSource.contains("catch (")),
+                () -> assertEquals(
+                        0,
+                        activeSpawnRecorder.getModifiers()
+                                & (Modifier.PUBLIC | Modifier.PROTECTED | Modifier.PRIVATE)),
+                () -> assertEquals(
+                        0,
+                        activeHitRecorder.getModifiers()
+                                & (Modifier.PUBLIC | Modifier.PROTECTED | Modifier.PRIVATE)),
+                () -> assertTrue(claimSource.contains(
+                        "slot.runtimeTick >= permit.deadlineRuntimeTick")),
+                () -> assertInOrder(
+                        claimSource,
+                        "if (!server.isSameThread())",
+                        "return RuntimePermitClaimDisposition.REJECTED",
+                        "return claimProjectileHitInSlot(",
+                        "catch (RuntimeException primary)",
+                        "throw preserveRuntimeFault(slot, primary)",
+                        "catch (Error primary)",
+                        "slot.p9ErrorCleanup.prepare(server)",
+                        "throw preserveErrorFault(slot, primary)"),
+                () -> assertInOrder(
+                        claimSource,
+                        "BlockPos.containing(",
+                        "level.isInWorldBounds(hitPosition)",
+                        "level.isLoaded(hitPosition)",
+                        "level.getWorldBorder().isWithinBounds("),
+                () -> assertInOrder(
+                        claimSource,
+                        "validateChildShape(",
+                        ".isPresent()",
+                        "return rejectClaimAndClose(server, slot, instance, permit, candidate)",
+                        "addCommittedEvent(slot, instance, attribution, child)"),
+                () -> assertInOrder(
+                        rejectClaimSource,
+                        "recordP9HitClaimResult(",
+                        "RuntimePermitClaimDisposition.REJECTED",
+                        "closeProjectileContinuation("),
+                () -> assertInOrder(
+                        activeDiagnosticSource,
+                        "hitPermitIdMostSignificantBits = permitIdMostSignificantBits",
+                        "hitProjectileIdMostSignificantBits =",
+                        "hitTargetIdMostSignificantBits =",
+                        "hitXBits = Double.doubleToRawLongBits(candidate.hitX())",
+                        "hitClaimResultCode = result.ordinal() + 1",
+                        "record(P9RuntimeDiagnosticStage.HIT_CLAIM_RESULT, runtimeTick)",
+                        "record(P9RuntimeDiagnosticStage.NODE1_QUEUED, runtimeTick)"),
+                () -> assertTrue(sweepSource.contains(
+                        "? slot.runtimeTick >= permit.deadlineRuntimeTick")),
+                () -> assertTrue(sweepSource.contains(
+                        ": slot.runtimeTick > permit.deadlineRuntimeTick")),
+                () -> assertInOrder(
+                        sweepSource,
+                        "permit.closeWithoutHit(server, reason)",
+                        "permits.remove()",
+                        "projectile.discard()",
+                        "maybeRemoveInstance(slot, instance.id)"),
+                () -> assertInOrder(
+                        cancelInstanceSource,
+                        "var removedContinuationWork = 0",
+                        "permit.closeWithoutHit(",
+                        "removedContinuationWork = 1",
+                        "new RuntimeCancellationResult.CancellationRequested("
+                                + "\n                    Math.addExact(removed, "
+                                + "removedContinuationWork))",
+                        "removed = Math.addExact(removed, removedContinuationWork)",
+                        "new RuntimeCancellationResult.CancelledSkillInstance(removed)"));
     }
 
     @Test
@@ -1021,6 +1292,8 @@ record ProjectileHitExecutionDataV0(
                         .map(field -> type.getName() + "#" + field.getName()))
                 .toList();
         var permitOwner = RuntimeProjectileContinuationPermit.class.getDeclaredField("owner");
+        var entityWitness = P9StarterProjectile.class.getDeclaredField(
+                "authenticatedCasterIdentity");
         var serviceSlots = SkillRuntimeService.class.getDeclaredField("slots");
         var slotInstances = ServerSlot.class.getDeclaredField("instances");
         var externalWitnessCallsites = new ArrayList<String>();
@@ -1065,6 +1338,10 @@ record ProjectileHitExecutionDataV0(
                 () -> assertEquals(SkillRuntimeService.class, permitOwner.getType()),
                 () -> assertTrue(Modifier.isPrivate(permitOwner.getModifiers())),
                 () -> assertTrue(Modifier.isFinal(permitOwner.getModifiers())),
+                () -> assertEquals(ServerPlayer.class, entityWitness.getType()),
+                () -> assertTrue(Modifier.isPrivate(entityWitness.getModifiers())),
+                () -> assertTrue(Modifier.isFinal(entityWitness.getModifiers())),
+                () -> assertTrue(Modifier.isTransient(entityWitness.getModifiers())),
                 () -> assertEquals(
                         "java.util.IdentityHashMap<net.minecraft.server.MinecraftServer, "
                                 + "com.yo1no.gramarye.ServerSlot>",
@@ -1103,8 +1380,6 @@ record ProjectileHitExecutionDataV0(
                 () -> assertTrue(Arrays.stream(instanceType.getDeclaredMethods())
                         .noneMatch(method -> method.getName().matches(
                                 "(?i).*(get|set|bind|replace).*P9AuthenticatedActor.*"))),
-                () -> assertEquals(0, occurrences(productionJavaSource(),
-                        "authenticatedCasterIdentity")),
                 () -> assertTrue(Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredFields())
                         .noneMatch(field -> field.getType() == ServerPlayer.class)),
                 () -> assertTrue(Arrays.stream(P6RuntimeExecutionPortAdapter.class
@@ -1172,7 +1447,7 @@ record ProjectileHitExecutionDataV0(
                 () -> assertEquals(0, actorAdmissionMethod.getExceptionTypes().length),
                 () -> assertTrue(actorAdmission.contains("p9AuthenticatedActorWitness")),
                 () -> assertTrue(actorAdmission.contains("resolvedP9Actor")),
-                () -> assertEquals(5, occurrences(
+                () -> assertEquals(6, occurrences(
                         serviceSource, "isCurrentP9AuthenticatedActor(")),
                 () -> assertInOrder(
                         predicateSource,
@@ -1231,8 +1506,10 @@ record ProjectileHitExecutionDataV0(
                 () -> assertFalse(predicateSource.contains("clearP9AuthenticatedActorWitness")),
                 () -> assertFalse(serviceSource.contains(
                         "new P9StarterProjectile(")),
-                () -> assertFalse(serviceSource.contains("transferAfterAppliedSpawn(")),
-                () -> assertFalse(serviceSource.contains("claimLoadedEntityHit(")));
+                () -> assertEquals(1, occurrences(
+                        serviceSource, "transferAfterAppliedSpawn(")),
+                () -> assertEquals(1, occurrences(
+                        serviceSource, "claimLoadedEntityHit(")));
     }
 
     @Test
@@ -1558,7 +1835,8 @@ record ProjectileHitExecutionDataV0(
                 RuntimeEvent.class,
                 RuntimeChildSpec.class,
                 RuntimeCircuitBreakerSummary.class,
-                ServerSlot.BreakerDiagnostic.class);
+                ServerSlot.BreakerDiagnostic.class,
+                ServerSlot.P9TerminalDiagnostic.class);
         for (var carrier : carriers) {
             assertTrue(Arrays.stream(carrier.getRecordComponents())
                     .noneMatch(component -> forbiddenLiveTypes.stream()
@@ -1582,6 +1860,20 @@ record ProjectileHitExecutionDataV0(
         assertTrue(p5Types.stream().flatMap(type -> Arrays.stream(type.getDeclaredFields()))
                 .noneMatch(field -> Throwable.class.isAssignableFrom(field.getType())),
                 "P5 retains a Throwable field");
+        assertTrue(Arrays.stream(ServerSlot.P9ActiveDiagnostic.class.getDeclaredFields())
+                .noneMatch(field -> Entity.class.isAssignableFrom(field.getType())
+                        || ServerPlayer.class.isAssignableFrom(field.getType())
+                        || Throwable.class.isAssignableFrom(field.getType())
+                        || java.util.Collection.class.isAssignableFrom(field.getType())
+                        || Map.class.isAssignableFrom(field.getType())),
+                "P9 active diagnostic retains a forbidden live or variable collection field");
+        assertTrue(Arrays.stream(ServerSlot.P9TerminalDiagnostic.class.getRecordComponents())
+                .noneMatch(component -> Entity.class.isAssignableFrom(component.getType())
+                        || ServerPlayer.class.isAssignableFrom(component.getType())
+                        || Throwable.class.isAssignableFrom(component.getType())
+                        || java.util.Collection.class.isAssignableFrom(component.getType())
+                        || Map.class.isAssignableFrom(component.getType())),
+                "P9 terminal diagnostic retains a forbidden live or variable collection value");
 
         var forbiddenServiceRetention = Set.of(
                 P5ServerRuntimeConfig.class,

@@ -223,6 +223,7 @@ verify_exact_sources_and_registration() {
     local mana_game_tests="${mana_path}/ManaLifecycleGameTests.java"
     local p8_client='src/main/java/com/yo1no/gramarye/GramaryeClient.java'
     local p8_client_factories='src/main/java/com/yo1no/gramarye/magic/api/registry/P8BuiltInClientProfileFactories.java'
+    local p9_entity_registration='src/main/java/com/yo1no/gramarye/P9StarterProjectileRegistration.java'
     local serialize_line=''
     local death_line=''
 
@@ -253,6 +254,8 @@ verify_exact_sources_and_registration() {
         'P6-S2-R3 public mana Attachment definition bridge is missing'
     require_regular_file "${mana_game_tests}" \
         'P6-S2 mana lifecycle GameTest holder is missing'
+    require_regular_file "${p9_entity_registration}" \
+        'P9-S3 exact projectile EntityType registration owner is missing'
     require_fixed "${admission_source}" \
         'public sealed abstract class PlayerSkillAttachmentAdmissionSource<I, P>' \
         'P4-E1-A.1 sealed Attachment admission declaration drifted'
@@ -335,13 +338,21 @@ verify_exact_sources_and_registration() {
         "${mana_bridge}" 'Attachment definition surface escaped the exact three-file allowlist'
     for literal in \
         'DeferredRegister<AttachmentType<?>>' \
-        'DeferredHolder' \
         'NeoForgeRegistries.Keys.ATTACHMENT_TYPES' \
         'ATTACHMENT_TYPES.register('; do
         forbid_fixed_outside \
             "${PRODUCTION_SOURCE_LIST}" "${literal}" "${registration}" '' '' \
             'Attachment registry mutation surface escaped its unique owner'
     done
+    forbid_fixed_outside \
+        "${PRODUCTION_SOURCE_LIST}" 'DeferredHolder' "${registration}" \
+        "${p9_entity_registration}" '' \
+        'DeferredHolder surface escaped the exact Attachment and P9 EntityType owners'
+    require_fixed "${p9_entity_registration}" \
+        'DeferredHolder<EntityType<?>, EntityType<P9StarterProjectile>>' \
+        'P9-S3 projectile registration lost its exact typed DeferredHolder'
+    forbid_fixed "${p9_entity_registration}" 'AttachmentType' \
+        'P9-S3 EntityType registration must not acquire Attachment ownership'
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" '.copyOnDeath()' "${registration}" \
         "${mana_definition}" '' \

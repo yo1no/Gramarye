@@ -37,14 +37,30 @@ final class DamageEffectResolverTest {
     }
 
     @Test
-    void absentAndUnsupportedRequestUseClosedInvalidRequestRejection() {
+    void absentRequestUsesClosedInvalidRequestRejection() {
         assertEquals(
                 new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST),
                 resolver.resolve(null, 0));
-        UnsupportedRequest unsupported = new UnsupportedRequest(EffectTestFixtures.request());
-        assertEquals(
-                new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST),
-                resolver.resolve(unsupported, 0));
+    }
+
+    @Test
+    void acceptsSpawnRequestWithExactSingleSpawnStep() {
+        SpawnProjectileRequest request = EffectTestFixtures.spawnRequest();
+        EffectCommitPlan plan = ((AcceptedEffectResolution) resolver.resolve(request, 0)).plan();
+        SpawnProjectileStep step = (SpawnProjectileStep) plan.steps().getFirst();
+
+        assertEquals(0, step.index());
+        assertEquals(EffectStepKind.SPAWN_PROJECTILE, step.kind());
+        assertEquals(request.dimension(), step.dimension());
+        assertEquals(request.originX(), step.originX());
+        assertEquals(request.originY(), step.originY());
+        assertEquals(request.originZ(), step.originZ());
+        assertEquals(request.directionXQ15(), step.directionXQ15());
+        assertEquals(request.directionYQ15(), step.directionYQ15());
+        assertEquals(request.directionZQ15(), step.directionZQ15());
+        assertEquals(request.profileCode(), step.profileCode());
+        assertEquals(1, step.declaredPrimaryMutationUpperBound());
+        assertEquals(0, step.declaredChildIntentUpperBound());
     }
 
     @Test
@@ -148,25 +164,4 @@ final class DamageEffectResolverTest {
         assertEquals(P6ExecutionInvariantCode.INVALID_ACCEPTED_PLAN, failure.code());
     }
 
-    private record UnsupportedRequest(DamageEffectRequest delegate) implements EffectRequest {
-        @Override
-        public EffectRequestId requestId() {
-            return delegate.requestId();
-        }
-
-        @Override
-        public SourceEventId sourceEventId() {
-            return delegate.sourceEventId();
-        }
-
-        @Override
-        public DamageTargetReference target() {
-            return delegate.target();
-        }
-
-        @Override
-        public CompensationPolicy compensationPolicy() {
-            return delegate.compensationPolicy();
-        }
-    }
 }

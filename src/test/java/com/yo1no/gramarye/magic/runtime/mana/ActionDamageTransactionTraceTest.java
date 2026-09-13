@@ -233,7 +233,7 @@ final class ActionDamageTransactionTraceTest {
     private static ActionDamageTransactionResult execute(
             long manaCost,
             RecordingManaAccount account,
-            DamageEffectCommitPort port) {
+            EffectCommitPort port) {
         return engine(resolverFor(plan(1)))
                 .execute(
                         invocation(manaCost),
@@ -268,7 +268,7 @@ final class ActionDamageTransactionTraceTest {
         assertTrue(entries.get(entries.size() - 1).stage().isTerminal());
     }
 
-    private static final class AvailabilityChangingPort implements DamageEffectCommitPort {
+    private static final class AvailabilityChangingPort extends DamageOnlyEffectCommitPort {
         private final RecordingManaAccount account;
 
         private AvailabilityChangingPort(RecordingManaAccount account) {
@@ -281,7 +281,8 @@ final class ActionDamageTransactionTraceTest {
         }
 
         @Override
-        public EffectStepOutcome commitDamage(DamageEffectStep step) {
+        public EffectStepOutcome commitDamage(
+                            DamageEffectRequest request, DamageEffectStep step) {
             account.setAvailability(ManaAvailability.UNAVAILABLE);
             return EffectStepOutcome.notApplied();
         }

@@ -355,6 +355,40 @@ is_approved_p6_s3_production_path() {
     esac
 }
 
+is_approved_p9_s3_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java | \
+        src/main/java/com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java | \
+        src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
+        src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectile.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectileClientEvents.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectileRegistration.java | \
+        src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java | \
+        src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionEngine.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionInvocation.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionInvocation.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionEngine.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectRequest.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectResolution.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectStep.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/P6RuntimeExecutionBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionInvocation.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_approved_p6_s4_r1_production_path() {
     case "$1" in
         src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java | \
@@ -564,6 +598,8 @@ is_approved_p8_s5_test_path() {
 verify_p8_s5_access_transformer() {
     local resource='src/main/resources/META-INF/accesstransformer.cfg'
     local expected='public net.minecraft.client.particle.ParticleEngine spriteSets'
+    local exact=$'public net.minecraft.client.particle.ParticleEngine spriteSets\nprotected net.minecraft.world.entity.projectile.Projectile hasBeenShot\nprotected net.minecraft.world.entity.projectile.Projectile leftOwner\nprotected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z'
+    local actual=''
     local bytes=''
     local lines=''
     local matches=0
@@ -575,14 +611,17 @@ verify_p8_s5_access_transformer() {
         || fail 'wc failed while checking P8-S5 access-transformer bytes'
     lines="$(LC_ALL=C wc -l < "${resource}")" \
         || fail 'wc failed while checking P8-S5 access-transformer lines'
+    actual="$(< "${resource}")" \
+        || fail 'read failed while checking the exact P9-S3 access-transformer content'
     matches="$(LC_ALL=C grep -Fxc -- "${expected}" "${resource}")" || status=$?
     case "${status}" in
         0) ;;
         1) matches=0 ;;
         *) fail "grep failed while checking ${resource} (exit ${status})" ;;
     esac
-    [[ "${bytes}" -eq 63 && "${lines}" -eq 1 && "${matches}" -eq 1 ]] \
-        || fail 'P8-S5 access transformer must be the exact one-line 63-byte ParticleEngine spriteSets rule'
+    [[ "${bytes}" -eq 280 && "${lines}" -eq 4 && "${matches}" -eq 1 \
+            && "${actual}" == "${exact}" ]] \
+        || fail 'P8-S5/P9-S3 access transformer must be the exact ordered four-line 280-byte rule set'
     is_approved_p8_s5_resource_path "${resource}" \
         || fail 'P8-S5 resource allowlist rejected its exact access transformer'
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
@@ -594,6 +633,7 @@ is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p4e3_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
     is_approved_p6_s3_production_path "$1" && return 0
+    is_approved_p9_s3_production_path "$1" && return 0
     is_approved_p6_s4_r1_production_path "$1" && return 0
     is_approved_p7_s1_production_path "$1" && return 0
     is_approved_p7_s2_production_path "$1" && return 0

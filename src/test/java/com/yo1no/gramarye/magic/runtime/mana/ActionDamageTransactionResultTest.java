@@ -219,7 +219,7 @@ final class ActionDamageTransactionResultTest {
                         || Throwable.class.isAssignableFrom(field.getType())
                         || field.getType() == ManaReceipt.class
                         || field.getType() == ManaAccountAccess.class
-                        || field.getType() == DamageEffectCommitPort.class));
+                        || field.getType() == EffectCommitPort.class));
 
         ActionDamageTransactionResult result = result(
                 noManaSucceeded(), new ManaNotRequired(), 0, Optional.empty());

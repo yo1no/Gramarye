@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.resources.ResourceLocation;
 
 final class EffectTestFixtures {
     private static final UUID TARGET_ID = UUID.fromString(
@@ -23,6 +24,42 @@ final class EffectTestFixtures {
                 magnitude,
                 manaCost,
                 CompensationPolicy.REFUND_IF_NO_PRIMARY_MUTATION);
+    }
+
+    static SpawnProjectileRequest spawnRequest() {
+        return spawnRequest(0L);
+    }
+
+    static SpawnProjectileRequest spawnRequest(long manaCost) {
+        return new SpawnProjectileRequest(
+                new EffectRequestId(11L),
+                new SourceEventId(29L),
+                ResourceLocation.fromNamespaceAndPath("minecraft", "overworld"),
+                1.25,
+                64.5,
+                -2.75,
+                32_767,
+                0,
+                0,
+                0,
+                manaCost,
+                CompensationPolicy.REFUND_IF_NO_PRIMARY_MUTATION);
+    }
+
+    static SpawnProjectileStep spawnStep(int index) {
+        SpawnProjectileRequest request = spawnRequest();
+        return new SpawnProjectileStep(
+                index,
+                request.dimension(),
+                request.originX(),
+                request.originY(),
+                request.originZ(),
+                request.directionXQ15(),
+                request.directionYQ15(),
+                request.directionZQ15(),
+                request.profileCode(),
+                1,
+                0);
     }
 
     static DamageEffectStep step(int index) {

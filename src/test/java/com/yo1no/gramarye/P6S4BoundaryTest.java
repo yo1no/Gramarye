@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.junit.jupiter.api.Test;
@@ -74,13 +73,9 @@ final class P6S4BoundaryTest {
                 "execute",
                 capability,
                 ServerPlayer.class,
-                ResourceLocation.class,
-                long.class,
-                long.class,
-                java.util.UUID.class,
-                long.class,
-                long.class,
+                P6RuntimeExecutionBridge.Invocation.class,
                 P6RuntimeExecutionBridge.GuardPort.class,
+                P6RuntimeExecutionBridge.WorldCommitPort.class,
                 P6RuntimeExecutionBridge.AppliedFactObserver.class);
         var nested = Arrays.stream(bridge.getDeclaredClasses())
                 .map(Class::getSimpleName)
@@ -110,6 +105,13 @@ final class P6S4BoundaryTest {
                                 "GuardPort",
                                 "GuardPoint",
                                 "GuardDecision",
+                                "Invocation",
+                                "SpawnProjectileInvocation",
+                                "DamageInvocation",
+                                "WorldCommitPort",
+                                "SpawnCommit",
+                                "DamageCommit",
+                                "CommitDisposition",
                                 "AppliedFactObserver",
                                 "AppliedFact",
                                 "AppliedStep",
@@ -164,9 +166,13 @@ final class P6S4BoundaryTest {
                 () -> assertEquals(1, occurrences(
                         adapter, "P6RuntimeExecutionBridge::execute")),
                 () -> assertEquals(1, occurrences(adapter, "bridgeInvoker.execute(")),
+                () -> assertEquals(0, occurrences(adapter, "new P8AppliedFactHandoff(")),
+                () -> assertEquals(1, occurrences(adapter, "ignoredFact ->")),
                 () -> assertEquals(1, occurrences(
-                        adapter, "new P8AppliedFactHandoff(presentationService, event, context)")),
-                () -> assertFalse(adapter.contains("catch (")));
+                        adapter, "catch (RuntimeException failure)")),
+                () -> assertEquals(1, occurrences(adapter, "catch (Error failure)")),
+                () -> assertTrue(adapter.contains(
+                        "catch (Error failure) {\n            throw failure;")));
     }
 
     @Test
@@ -176,13 +182,14 @@ final class P6S4BoundaryTest {
         var registries = read(ROOT_MAIN.resolve("magic/api/registry/MagicRegistries.java"));
 
         assertAll(
-                () -> assertEquals(
-                        1, occurrences(bridge, "new ActionExecutorRegistry(List.of())")),
-                () -> assertEquals(0, occurrences(bridge, "new ActionExecutorRegistration(")),
-                () -> assertEquals(0, occurrences(bridge, "new DamageActionExecutor(")),
+                () -> assertEquals(2, occurrences(bridge, "new ActionExecutorRegistration(")),
+                () -> assertEquals(1, occurrences(bridge, "new DamageActionExecutor(")),
+                () -> assertEquals(1, occurrences(
+                        bridge, "new SpawnProjectileActionExecutor(")),
                 () -> assertEquals(0, occurrences(registries, "ACTION_TYPES.register(\"")),
-                () -> assertEquals(0, occurrences(adapter, "new P6RuntimeExecutionInput(")),
-                () -> assertTrue(adapter.contains("withoutAuthorizedScalars(")),
+                () -> assertEquals(1, occurrences(adapter, "new P6RuntimeExecutionInput(")),
+                () -> assertTrue(adapter.contains(
+                        "P9-S4 owns the real node-1 damage mapping")),
                 () -> assertTrue(adapter.contains("return Optional.empty();")),
                 () -> assertEquals(1, occurrences(
                         adapter, "new RuntimePortOutcome.Completed()")),
@@ -279,8 +286,7 @@ final class P6S4BoundaryTest {
                 "java.util.Random",
                 "java.lang.reflect",
                 "@SuppressWarnings",
-                "catch (RuntimeException",
-                "catch (Error")) {
+                "java.lang.reflect")) {
             assertFalse(s4Source.contains(forbidden), forbidden);
         }
         assertAll(

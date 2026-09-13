@@ -247,6 +247,7 @@ final class P4D1ApiGateTest {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
@@ -257,6 +258,7 @@ final class P4D1ApiGateTest {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(MAIN_JAVA::relativize)
                 .map(path -> path.toString().replace('\\', '/'))

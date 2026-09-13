@@ -85,6 +85,8 @@ class P4C2AApiGateTest {
                 "com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java";
         var manaBridgeRelative =
                 "com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java";
+        var p9EntityRegistrationRelative =
+                "com/yo1no/gramarye/P9StarterProjectileRegistration.java";
         var manaDefinition = withoutCommentsAndLiterals(
                 read(MAIN_JAVA.resolve(manaDefinitionRelative)));
         var manaBridgeSource = withoutCommentsAndLiterals(
@@ -153,9 +155,12 @@ class P4C2AApiGateTest {
                 () -> assertEquals(Set.of(registrationRelative),
                         relativeFilesContaining(
                                 production, "DeferredRegister<AttachmentType<?>>")),
-                () -> assertEquals(Set.of(registrationRelative),
+                () -> assertEquals(
+                        Set.of(registrationRelative, p9EntityRegistrationRelative),
                         relativeFilesContaining(production, "DeferredHolder")),
-                () -> assertEquals(Set.of(registrationRelative), registryMutationOwners),
+                () -> assertEquals(
+                        Set.of(registrationRelative, p9EntityRegistrationRelative),
+                        registryMutationOwners),
                 () -> assertEquals(Set.of(registrationRelative, manaDefinitionRelative),
                         relativeFilesContaining(production, ".copyOnDeath()")),
                 () -> assertEquals(Set.of(manaDefinitionRelative),
@@ -398,7 +403,8 @@ class P4C2AApiGateTest {
                 () -> assertEquals(12, totalCount
                         - manaCount
                         - com.yo1no.gramarye.P7GameTestInventory.s4Count()
-                        - com.yo1no.gramarye.P7GameTestInventory.p8Count()),
+                        - com.yo1no.gramarye.P7GameTestInventory.p8Count()
+                        - com.yo1no.gramarye.P7GameTestInventory.p9S3Count()),
                 () -> assertEquals(7, manaCount),
                 () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalCount));
     }
@@ -617,6 +623,7 @@ class P4C2AApiGateTest {
         return sources.stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(P4C2AApiGateTest::relative)
                 .collect(Collectors.toSet());

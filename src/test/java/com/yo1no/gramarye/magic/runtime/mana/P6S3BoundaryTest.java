@@ -34,7 +34,7 @@ final class P6S3BoundaryTest {
             "(?m)^\\s*@Test\\s*\\R\\s*void\\s+"
                     + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(");
     private static final List<String> S1_PRODUCTION_FILES = List.of(
-            "DamageEffectCommitPort.java",
+            "EffectCommitPort.java",
             "EffectCommitPlan.java",
             "EffectExecutionEngine.java",
             "EffectExecutionGuard.java",
@@ -47,7 +47,7 @@ final class P6S3BoundaryTest {
             "P6EffectBounds.java",
             "P6ExecutionInvariantException.java");
     private static final List<String> S1_TEST_FILES = List.of(
-            "DamageEffectCommitPortTest.java",
+            "EffectCommitPortTest.java",
             "DamageEffectRequestTest.java",
             "DamageEffectResolverTest.java",
             "EffectCommitPlanTest.java",
@@ -73,9 +73,13 @@ final class P6S3BoundaryTest {
             "ActionDamageTransactionResult.java",
             "ActionExecutor.java",
             "ActionExecutorRegistry.java",
+            "ActionInvocation.java",
             "DamageActionExecutor.java",
-            "DamageActionInvocation.java");
+            "DamageActionInvocation.java",
+            "SpawnProjectileActionExecutor.java",
+            "SpawnProjectileActionInvocation.java");
     private static final List<Class<?>> S3_TYPES = List.of(
+            ActionInvocation.class,
             ActionExecutor.class,
             ActionExecutorOutcome.class,
             ProducedActionRequest.class,
@@ -84,6 +88,8 @@ final class P6S3BoundaryTest {
             ActionExecutorRegistry.class,
             DamageActionInvocation.class,
             DamageActionExecutor.class,
+            SpawnProjectileActionInvocation.class,
+            SpawnProjectileActionExecutor.class,
             ManaExecutionSummaryKind.class,
             ManaExecutionSummary.class,
             ManaReceiptSnapshot.class,
@@ -114,9 +120,9 @@ final class P6S3BoundaryTest {
         assertTrue(s1Production.stream().allMatch(Files::isRegularFile));
         assertEquals(14, s1Tests.size());
         assertTrue(s1Tests.stream().allMatch(Files::isRegularFile));
-        assertEquals(93L, testCount(s1Tests));
+        assertEquals(96L, testCount(s1Tests));
         assertEquals(70L, testCount(s2Tests));
-        assertEquals(6, s3Production.size());
+        assertEquals(9, s3Production.size());
         assertTrue(s3Production.stream().allMatch(Files::isRegularFile));
         assertTrue(!Files.exists(EFFECT_MAIN) || javaSources(EFFECT_MAIN).isEmpty());
         assertTrue(!Files.exists(EFFECT_TEST) || javaSources(EFFECT_TEST).isEmpty());
@@ -258,6 +264,7 @@ final class P6S3BoundaryTest {
                         && !Modifier.isStatic(field.getModifiers())));
         assertEquals(0, EffectExecutionEngine.class.getDeclaredFields().length);
         assertEquals(0, DamageActionExecutor.class.getDeclaredFields().length);
+        assertEquals(0, SpawnProjectileActionExecutor.class.getDeclaredFields().length);
     }
 
     @Test
@@ -271,7 +278,11 @@ final class P6S3BoundaryTest {
         assertEquals(1, occurrences(
                 s1Source, "for (EffectStep step : prepared.plan().steps())"));
         assertEquals(1, occurrences(
-                s1Source, "prepared.commitPort().commitDamage(damageStep)"));
+                s1Source,
+                "prepared.commitPort().commitDamage(damageRequest, damageStep)"));
+        assertEquals(1, occurrences(
+                s1Source,
+                "prepared.commitPort().commitSpawn(spawnRequest, spawnStep)"));
         assertEquals(1, occurrences(
                 manaSource, "private static final AttachmentType<ManaState> PLAYER_MANA"));
         assertEquals(1, occurrences(manaSource, ".getData(PLAYER_MANA)"));

@@ -9,7 +9,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
-final class DamageEffectCommitPortTest {
+/** Direct contract checks for the generalized effect commit port. */
+final class EffectCommitPortTest {
     @Test
     void unavailablePortRejectsAndMakesZeroStepCalls() {
         RecordingDamageCommitPort port = new RecordingDamageCommitPort(false, List.of());
@@ -25,7 +26,7 @@ final class DamageEffectCommitPortTest {
     @Test
     void availabilityIsCheckedBeforePreCommitGuard() {
         List<String> order = new ArrayList<>();
-        DamageEffectCommitPort port = new DamageEffectCommitPort() {
+        EffectCommitPort port = new DamageOnlyEffectCommitPort() {
             @Override
             public boolean isAvailable() {
                 order.add("availability");
@@ -33,7 +34,8 @@ final class DamageEffectCommitPortTest {
             }
 
             @Override
-            public EffectStepOutcome commitDamage(DamageEffectStep step) {
+            public EffectStepOutcome commitDamage(
+                                DamageEffectRequest request, DamageEffectStep step) {
                 order.add("commit");
                 return EffectStepOutcome.applied(1);
             }
@@ -50,7 +52,7 @@ final class DamageEffectCommitPortTest {
 
     @Test
     void nullPortOutcomeIsInvariantFailure() {
-        DamageEffectCommitPort port = availablePort(step -> null);
+        EffectCommitPort port = availablePort(step -> null);
         P6ExecutionInvariantException failure = assertThrows(
                 P6ExecutionInvariantException.class,
                 () -> execute(port));
@@ -59,13 +61,46 @@ final class DamageEffectCommitPortTest {
 
     @Test
     void actualAboveDeclaredIsInvariantFailure() {
-        DamageEffectCommitPort port = availablePort(step -> EffectStepOutcome.applied(2));
+        EffectCommitPort port = availablePort(step -> EffectStepOutcome.applied(2));
         P6ExecutionInvariantException failure = assertThrows(
                 P6ExecutionInvariantException.class,
                 () -> execute(port));
         assertEquals(
                 P6ExecutionInvariantCode.ACTUAL_MUTATION_EXCEEDS_DECLARED,
                 failure.code());
+    }
+
+    @Test
+    void spawnRequestAndStepReachOnlyTheSpawnCommitOperation() {
+        List<String> calls = new ArrayList<>();
+        EffectCommitPort port = new EffectCommitPort() {
+            @Override
+            public boolean isAvailable() {
+                return true;
+            }
+
+            @Override
+            public EffectStepOutcome commitSpawn(
+                    SpawnProjectileRequest request, SpawnProjectileStep step) {
+                calls.add(request.requestId().value() + ":" + step.kind().name());
+                return EffectStepOutcome.applied(1);
+            }
+
+            @Override
+            public EffectStepOutcome commitDamage(
+                    DamageEffectRequest request, DamageEffectStep step) {
+                throw new AssertionError("damage commit must not receive a spawn pair");
+            }
+        };
+
+        EffectExecutionResult result = new EffectExecutionEngine().execute(
+                EffectTestFixtures.spawnRequest(),
+                new DamageEffectResolver(),
+                RecordingEffectGuard.allowing(),
+                port);
+
+        assertEquals(EffectTerminalStatus.SUCCEEDED, result.status());
+        assertEquals(List.of("11:SPAWN_PROJECTILE"), calls);
     }
 
     @Test
@@ -85,11 +120,11 @@ final class DamageEffectCommitPortTest {
         Error errorFailure = new AssertionError("port-test-error");
         AtomicInteger runtimeCalls = new AtomicInteger();
         AtomicInteger errorCalls = new AtomicInteger();
-        DamageEffectCommitPort runtimePort = availablePort(step -> {
+        EffectCommitPort runtimePort = availablePort(step -> {
             runtimeCalls.incrementAndGet();
             throw runtimeFailure;
         });
-        DamageEffectCommitPort errorPort = availablePort(step -> {
+        EffectCommitPort errorPort = availablePort(step -> {
             errorCalls.incrementAndGet();
             throw errorFailure;
         });
@@ -109,14 +144,15 @@ final class DamageEffectCommitPortTest {
     void availabilityThrowablePropagatesAsSameObjectWithoutCommit() {
         RuntimeException failure = new RuntimeException("availability-test");
         AtomicInteger commits = new AtomicInteger();
-        DamageEffectCommitPort port = new DamageEffectCommitPort() {
+        EffectCommitPort port = new DamageOnlyEffectCommitPort() {
             @Override
             public boolean isAvailable() {
                 throw failure;
             }
 
             @Override
-            public EffectStepOutcome commitDamage(DamageEffectStep step) {
+            public EffectStepOutcome commitDamage(
+                                DamageEffectRequest request, DamageEffectStep step) {
                 commits.incrementAndGet();
                 return EffectStepOutcome.applied(1);
             }
@@ -158,12 +194,12 @@ final class DamageEffectCommitPortTest {
         assertEquals(P6ExecutionInvariantCode.RESOLVER_RETURNED_NULL, nullFailure.code());
     }
 
-    private static EffectExecutionResult execute(DamageEffectCommitPort port) {
+    private static EffectExecutionResult execute(EffectCommitPort port) {
         return execute(RecordingEffectGuard.allowing(), port);
     }
 
     private static EffectExecutionResult execute(
-            EffectExecutionGuard guard, DamageEffectCommitPort port) {
+            EffectExecutionGuard guard, EffectCommitPort port) {
         return new EffectExecutionEngine().execute(
                 EffectTestFixtures.request(),
                 EffectTestFixtures.resolverFor(EffectTestFixtures.plan(1)),
@@ -171,16 +207,17 @@ final class DamageEffectCommitPortTest {
                 port);
     }
 
-    private static DamageEffectCommitPort availablePort(
+    private static EffectCommitPort availablePort(
             java.util.function.Function<DamageEffectStep, EffectStepOutcome> commit) {
-        return new DamageEffectCommitPort() {
+        return new DamageOnlyEffectCommitPort() {
             @Override
             public boolean isAvailable() {
                 return true;
             }
 
             @Override
-            public EffectStepOutcome commitDamage(DamageEffectStep step) {
+            public EffectStepOutcome commitDamage(
+                                DamageEffectRequest request, DamageEffectStep step) {
                 return commit.apply(step);
             }
         };

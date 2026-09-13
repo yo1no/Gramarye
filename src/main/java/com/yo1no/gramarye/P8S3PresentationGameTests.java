@@ -82,45 +82,10 @@ public final class P8S3PresentationGameTests {
             RuntimeExecutionContext context = runtimeContext(
                     injectedContext, runtimeTick, player);
             RuntimeFixture prior = runtimeFixture(context, player, 1L, ACTIVE_CAST);
-            P6RuntimeExecutionCapability capability =
-                    P6RuntimeExecutionCapability.forRuntimeAdapter();
-            boolean[] invoked = {false};
-            var adapter = new P6RuntimeExecutionPortAdapter(
-                    capability,
-                    service,
-                    (actualCapability,
-                                    actor,
-                                    actionTypeKey,
-                                    requestId,
-                                    sourceEventId,
-                                    targetId,
-                                    magnitude,
-                                    manaCost,
-                                    guard,
-                                    observer) -> {
-                        helper.assertTrue(actualCapability == capability,
-                                "adapter must hand the exact capability to the P6 bridge");
-                        helper.assertTrue(observer != null,
-                                "adapter must install the call-scoped applied-fact observer");
-                        invoked[0] = true;
-                        observer.observe(ONE_APPLIED);
-                    },
-                    (ignoredEvent, ignoredContext) -> Optional.empty());
-            RuntimeExecutionBatch adapterBatch = adapter.executeMapped(
-                    prior.event(),
-                    context,
-                    new P6RuntimeExecutionInput(
-                            player,
-                            id("p8_fixture_action"),
-                            player.getUUID(),
-                            1L,
-                            0L));
-            helper.assertTrue(invoked[0]
-                            && adapterBatch.outcome() instanceof RuntimePortOutcome.Completed
-                            && adapterBatch.children() == RuntimeChildPlan.EMPTY,
-                    "adapter must complete with the exact empty child plan after observer handoff");
+            new P8AppliedFactHandoff(service, prior.event(), context)
+                    .observe(ONE_APPLIED);
             helper.assertTrue(sequences(service).equals(List.of(1L)),
-                    "adapter observer handoff must buffer the controlled prior entry");
+                    "observer handoff must buffer the controlled prior entry");
 
             RuntimeFixture first = runtimeFixture(context, player, 2L, ACTIVE_CAST);
             transport.failSecondCaptureWith(CaptureFailure.RUNTIME_EXCEPTION);

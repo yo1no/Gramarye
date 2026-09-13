@@ -350,7 +350,8 @@ final class P4D3AApiGateTest {
                 () -> assertEquals(12, totalGameTestCount
                         - manaGameTestCount
                         - com.yo1no.gramarye.P7GameTestInventory.s4Count()
-                        - com.yo1no.gramarye.P7GameTestInventory.p8Count()),
+                        - com.yo1no.gramarye.P7GameTestInventory.p8Count()
+                        - com.yo1no.gramarye.P7GameTestInventory.p9S3Count()),
                 () -> assertEquals(7, manaGameTestCount),
                 () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount));
     }
@@ -543,6 +544,7 @@ final class P4D3AApiGateTest {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
@@ -553,6 +555,7 @@ final class P4D3AApiGateTest {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(MAIN_JAVA::relativize)
                 .map(path -> path.toString().replace('\\', '/'))
@@ -563,6 +566,7 @@ final class P4D3AApiGateTest {
         return javaSources(MAIN_JAVA).stream()
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
                 .filter(path -> containsInvocation(
                         withoutCommentsAndLiterals(read(path)), methodName))
                 .map(path -> path.getFileName().toString())

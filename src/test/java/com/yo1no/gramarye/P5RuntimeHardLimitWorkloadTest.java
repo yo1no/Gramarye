@@ -153,7 +153,7 @@ final class P5RuntimeHardLimitWorkloadTest {
                 () -> assertEquals(1, occurrences(cleanupSource, "permits.next()")),
                 () -> assertEquals(1, occurrences(cleanupSource, "permits.remove()")),
                 () -> assertEquals(1, occurrences(
-                        cleanupSource, "indexed.getValue().closeWithoutHit(server, reason)")),
+                        cleanupSource, "permit.closeWithoutHit(server, reason)")),
                 () -> assertEquals(1, occurrences(
                         cleanupSource,
                         "slot.p9BatchContinuationCloseInProgress = true")),

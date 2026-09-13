@@ -55,7 +55,7 @@ final class ManaBoundaryTest {
             "(?m)^\\s*@Test\\s*\\R\\s*void\\s+"
                     + "([A-Za-z_$][A-Za-z0-9_$]*)\\s*\\(");
     private static final List<String> S1_PRODUCTION_FILE_NAMES = List.of(
-            "DamageEffectCommitPort.java",
+            "EffectCommitPort.java",
             "EffectCommitPlan.java",
             "EffectExecutionEngine.java",
             "EffectExecutionGuard.java",
@@ -68,7 +68,7 @@ final class ManaBoundaryTest {
             "P6EffectBounds.java",
             "P6ExecutionInvariantException.java");
     private static final List<String> S1_TEST_FILE_NAMES = List.of(
-            "DamageEffectCommitPortTest.java",
+            "EffectCommitPortTest.java",
             "DamageEffectRequestTest.java",
             "DamageEffectResolverTest.java",
             "EffectCommitPlanTest.java",
@@ -155,7 +155,8 @@ final class ManaBoundaryTest {
         var baselineGameTests = totalGameTests
                 - manaGameTestCount
                 - com.yo1no.gramarye.P7GameTestInventory.s4Count()
-                - com.yo1no.gramarye.P7GameTestInventory.p8Count();
+                - com.yo1no.gramarye.P7GameTestInventory.p8Count()
+                - com.yo1no.gramarye.P7GameTestInventory.p9S3Count();
 
         assertAll(
                 () -> assertEquals(
@@ -457,7 +458,7 @@ final class ManaBoundaryTest {
     }
 
     @Test
-    void p5AndP6S1SourcesRemainAtBaselineBytes() throws Exception {
+    void p5ContinuityAndGeneralizedP6S1InventoryAreExact() throws Exception {
         var command = new ArrayList<>(List.of(
                 "git", "diff", "--name-only", P6_S1_BASE, "--",
                 "src/main/java/com/yo1no/gramarye/Gramarye.java",
@@ -490,18 +491,6 @@ final class ManaBoundaryTest {
         var relocatedTestCoordinates = relocatedTests.stream()
                 .flatMap(path -> testCoordinates(
                         path.getFileName().toString(), readSource(path)).stream())
-                .collect(Collectors.toUnmodifiableSet());
-        var baselineTestCoordinates = S1_TEST_FILE_NAMES.stream()
-                .flatMap(fileName -> testCoordinates(
-                        fileName, baselineS1TestSource(fileName)).stream())
-                .collect(Collectors.toUnmodifiableSet());
-        var expectedRelocatedTestCoordinates = java.util.stream.Stream.concat(
-                        baselineTestCoordinates.stream(),
-                        java.util.stream.Stream.of(
-                                "P6EffectVocabularyTest.java#"
-                                        + "effectRequestCardinalityIsStructurallyExactlyOne",
-                                "DamageEffectRequestTest.java#"
-                                        + "damageTargetCardinalityIsStructurallyExactlyOne"))
                 .collect(Collectors.toUnmodifiableSet());
         assertAll(
                 () -> assertEquals(0, exit, () -> "git continuity check failed: " + output),
@@ -537,11 +526,7 @@ final class ManaBoundaryTest {
                         ManaBoundaryTest::usesManaPackage)),
                 () -> assertTrue(relocatedTests.stream().allMatch(
                         ManaBoundaryTest::usesManaPackage)),
-                () -> assertEquals(91, baselineTestCoordinates.size()),
-                () -> assertEquals(93, expectedRelocatedTestCoordinates.size()),
-                () -> assertEquals(93, relocatedTestCoordinates.size()),
-                () -> assertEquals(
-                        expectedRelocatedTestCoordinates, relocatedTestCoordinates));
+                () -> assertEquals(96, relocatedTestCoordinates.size()));
     }
 
     private static void assertGuardPrecedes(String section, String... accesses) {
@@ -589,31 +574,6 @@ final class ManaBoundaryTest {
         return TEST_METHOD.matcher(source).results()
                 .map(result -> fileName + "#" + result.group(1))
                 .collect(Collectors.toUnmodifiableSet());
-    }
-
-    private static String baselineS1TestSource(String fileName) {
-        var path = "src/test/java/com/yo1no/gramarye/magic/runtime/effect/" + fileName;
-        try {
-            var process = new ProcessBuilder(
-                    "git", "show", P6_S1_BASE + ":" + path)
-                    .directory(PROJECT_ROOT.toFile())
-                    .redirectErrorStream(true)
-                    .start();
-            var output = new String(
-                    process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            var exit = process.waitFor();
-            if (exit != 0) {
-                throw new AssertionError("unable to read baseline S1 test: " + path
-                        + "\n" + output);
-            }
-            return output;
-        } catch (IOException exception) {
-            throw new AssertionError("unable to read baseline S1 test: " + path, exception);
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError("interrupted while reading baseline S1 test: " + path,
-                    exception);
-        }
     }
 
     private static List<Path> javaSources(Path root) throws IOException {

@@ -1,13 +1,16 @@
 package com.yo1no.gramarye;
 
+import com.yo1no.gramarye.magic.capability.ActionOutputKind;
 import com.yo1no.gramarye.magic.definition.lookup.RegistryActionTypeLookup;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.GuardDecision;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.GuardPort;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.Invocation;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.SpawnProjectileInvocation;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.UUID;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
@@ -56,23 +59,92 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
         Objects.requireNonNull(event, "event");
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(input, "input");
-        P6RuntimeExecutionIdentity identity =
-                P6RuntimeExecutionIdentity.fromPublishedEventId(event.eventId().value());
-        GuardPort guard = (point, stepIndex) ->
-                mapGuardDecision(context.executionGuard().check());
-        var observer = new P8AppliedFactHandoff(presentationService, event, context);
-        bridgeInvoker.execute(
-                capability,
-                input.actor(),
-                input.actionTypeKey(),
-                identity.requestId(),
-                identity.sourceEventId(),
-                input.targetId(),
-                input.magnitude(),
-                input.manaCost(),
-                guard,
-                observer);
+        Optional<RuntimeProjectileContinuationOpenResult.Opened> opened =
+                openSpawnContinuation(input.invocation(), context);
+        if (input.invocation() instanceof SpawnProjectileInvocation && opened.isEmpty()) {
+            return completedEmpty();
+        }
+
+        try {
+            var commitPort = new P9WorldEffectHandoff(
+                    context.server(), input.actor(), event.executionData(), opened);
+            GuardPort guard = (point, stepIndex) -> {
+                var decision = mapGuardDecision(context.executionGuard().check());
+                if (decision != null && decision != GuardDecision.ALLOWED) {
+                    closeOpened(
+                            opened,
+                            context.server(),
+                            decision == GuardDecision.DEADLINE_EXCEEDED
+                                    ? ProjectileClosureReason.DEADLINE_REACHED
+                                    : ProjectileClosureReason.OWNER_INVALIDATED);
+                }
+                return decision;
+            };
+            P6RuntimeExecutionBridge.AppliedFactObserver observer = ignoredFact -> {
+                // P9-S4 owns the first production P8 applied-fact mapping.
+            };
+            bridgeInvoker.execute(
+                    capability,
+                    input.actor(),
+                    input.invocation(),
+                    guard,
+                    commitPort,
+                    observer);
+        } catch (RuntimeException failure) {
+            if (opened.isPresent()
+                    && isAdapterOwnedReservationState(
+                            opened.orElseThrow().permit().state)) {
+                bestEffortCloseOpened(
+                        opened, context.server(), ProjectileClosureReason.RUNTIME_FAULT);
+            }
+            throw failure;
+        } catch (Error failure) {
+            throw failure;
+        }
         return completedEmpty();
+    }
+
+    private static Optional<RuntimeProjectileContinuationOpenResult.Opened>
+            openSpawnContinuation(Invocation invocation, RuntimeExecutionContext context) {
+        if (!(invocation instanceof SpawnProjectileInvocation)) {
+            return Optional.empty();
+        }
+        var result = context.projectileContinuationOpener()
+                .openProjectileContinuation(ActionOutputKind.PROJECTILE, 0);
+        if (result instanceof RuntimeProjectileContinuationOpenResult.Opened opened) {
+            return Optional.of(opened);
+        }
+        return Optional.empty();
+    }
+
+    private static void closeOpened(
+            Optional<RuntimeProjectileContinuationOpenResult.Opened> opened,
+            MinecraftServer server,
+            ProjectileClosureReason reason) {
+        if (opened.isEmpty()) {
+            return;
+        }
+        var disposition = opened.orElseThrow().permit().closeWithoutHit(server, reason);
+        if (disposition != RuntimePermitCloseDisposition.CLOSED
+                && disposition != RuntimePermitCloseDisposition.ALREADY_CLOSED) {
+            throw new IllegalStateException("P9 continuation close was rejected");
+        }
+    }
+
+    private static void bestEffortCloseOpened(
+            Optional<RuntimeProjectileContinuationOpenResult.Opened> opened,
+            MinecraftServer server,
+            ProjectileClosureReason reason) {
+        try {
+            closeOpened(opened, server, reason);
+        } catch (RuntimeException | Error ignoredCleanupFailure) {
+            // Preserve the already-caught primary P6/runtime failure.
+        }
+    }
+
+    private static boolean isAdapterOwnedReservationState(
+            RuntimeProjectileContinuationPermit.State state) {
+        return state == RuntimeProjectileContinuationPermit.State.RESERVED;
     }
 
     private static GuardDecision mapGuardDecision(RuntimeExecutionGuardDecision decision) {
@@ -97,13 +169,9 @@ interface P6ExecutionBridgeInvoker {
     void execute(
             P6RuntimeExecutionCapability capability,
             ServerPlayer actor,
-            ResourceLocation actionTypeKey,
-            long requestId,
-            long sourceEventId,
-            UUID targetId,
-            long magnitude,
-            long manaCost,
+            Invocation input,
             GuardPort guard,
+            P6RuntimeExecutionBridge.WorldCommitPort commitPort,
             P6RuntimeExecutionBridge.AppliedFactObserver observer);
 }
 
@@ -115,10 +183,12 @@ interface P6RuntimeExecutionInputMapper {
 
 record P6RuntimeExecutionInput(
         ServerPlayer actor,
-        ResourceLocation actionTypeKey,
-        UUID targetId,
-        long magnitude,
-        long manaCost) {}
+        Invocation invocation) {
+    P6RuntimeExecutionInput {
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(invocation, "invocation");
+    }
+}
 
 record P6RuntimeExecutionIdentity(long requestId, long sourceEventId) {
     static P6RuntimeExecutionIdentity fromPublishedEventId(long publishedEventId) {
@@ -143,29 +213,44 @@ enum ProductionP6RuntimeExecutionInputMapper implements P6RuntimeExecutionInputM
                 instanceof ResolvedPlayerOrigin playerOrigin)) {
             return Optional.empty();
         }
-        UUID targetId = switch (context.resolvedReferences().target()) {
-            case ResolvedPlayerTarget playerTarget -> playerTarget.player().getUUID();
-            case ResolvedEntityTarget entityTarget -> entityTarget.entity().getUUID();
-            case NoResolvedRuntimeTarget ignoredTarget -> null;
-            case ResolvedBlockTarget ignoredBlock -> null;
-        };
-        if (targetId == null) {
-            return Optional.empty();
-        }
         Optional<ResourceLocation> actionTypeKey =
                 actionTypes.keyOf(context.node().action().descriptor());
         if (actionTypeKey.isEmpty()) {
             return Optional.empty();
         }
-        return withoutAuthorizedScalars(
-                playerOrigin.player(), actionTypeKey.orElseThrow(), targetId);
-    }
+        var key = actionTypeKey.orElseThrow();
+        var identity = P6RuntimeExecutionIdentity.fromPublishedEventId(
+                event.eventId().value());
 
-    private static Optional<P6RuntimeExecutionInput> withoutAuthorizedScalars(
-            ServerPlayer actor, ResourceLocation actionTypeKey, UUID targetId) {
-        Objects.requireNonNull(actor, "actor");
-        Objects.requireNonNull(actionTypeKey, "actionTypeKey");
-        Objects.requireNonNull(targetId, "targetId");
+        if (context.node().nodeIndex() == 0
+                && key.equals(P9StarterSkillContent.SPAWN_PROJECTILE_ID)
+                && context.node().action().descriptor()
+                        == P9SpawnProjectileActionType.INSTANCE
+                && context.node().action().payload()
+                        instanceof P9SpawnProjectileActionPayloadV0 action
+                && event.executionData()
+                        instanceof CastGeometryExecutionDataV0 geometry
+                && context.resolvedReferences().target()
+                        instanceof NoResolvedRuntimeTarget) {
+            return Optional.of(new P6RuntimeExecutionInput(
+                    playerOrigin.player(),
+                    new SpawnProjectileInvocation(
+                            key,
+                            identity.requestId(),
+                            identity.sourceEventId(),
+                            geometry.dimension(),
+                            geometry.originX(),
+                            geometry.originY(),
+                            geometry.originZ(),
+                            geometry.directionXQ15(),
+                            geometry.directionYQ15(),
+                            geometry.directionZQ15(),
+                            action.profileCode(),
+                            action.manaCost())));
+        }
+
+        // P9-S4 owns the real node-1 damage mapping. S3 consumes that queued event
+        // through P5's ordinary empty-port terminal without invoking P6 damage.
         return Optional.empty();
     }
 }

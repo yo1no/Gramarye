@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 
 final class P6RuntimeExecutionCapabilityTest {
     private static final Path MAIN_JAVA = projectRoot().resolve("src/main/java");
+    private static final Path P9_S3_GAME_TEST = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/P9S3ProjectileGameTests.java");
     private static final Pattern CAPABILITY_ACQUISITION = Pattern.compile(
             "\\bP6RuntimeExecutionCapability\\s*\\.\\s*forRuntimeAdapter\\s*\\(");
 
@@ -31,6 +33,10 @@ final class P6RuntimeExecutionCapabilityTest {
                 "forRuntimeAdapter");
         var callers = new HashSet<String>();
         var callCount = 0L;
+        var gameTestCallCount = CAPABILITY_ACQUISITION.matcher(
+                        Files.readString(P9_S3_GAME_TEST))
+                .results()
+                .count();
         try (var paths = Files.walk(MAIN_JAVA)) {
             for (var path : paths.filter(Files::isRegularFile)
                     .filter(candidate -> candidate.toString().endsWith(".java"))
@@ -38,6 +44,7 @@ final class P6RuntimeExecutionCapabilityTest {
                             "com/yo1no/gramarye/P7S4LoginManaGameTests.java")))
                     .filter(candidate -> !candidate.equals(MAIN_JAVA.resolve(
                             "com/yo1no/gramarye/P8S3PresentationGameTests.java")))
+                    .filter(candidate -> !candidate.equals(P9_S3_GAME_TEST))
                     .toList()) {
                 var matches = CAPABILITY_ACQUISITION.matcher(Files.readString(path))
                         .results()
@@ -63,7 +70,8 @@ final class P6RuntimeExecutionCapabilityTest {
                 () -> assertEquals(
                         Set.of("com/yo1no/gramarye/Gramarye.java"),
                         callers),
-                () -> assertEquals(1, exactCallCount));
+                () -> assertEquals(1, exactCallCount),
+                () -> assertEquals(1, gameTestCallCount));
     }
 
     @Test
@@ -99,15 +107,11 @@ final class P6RuntimeExecutionCapabilityTest {
                         null,
                         null,
                         null,
-                        Long.MIN_VALUE,
-                        Long.MIN_VALUE,
-                        null,
-                        Long.MIN_VALUE,
-                        Long.MIN_VALUE,
                         (point, stepIndex) -> {
                             guardCalls.incrementAndGet();
                             return GuardDecision.ALLOWED;
                         },
+                        null,
                         null));
 
         assertAll(
@@ -126,15 +130,11 @@ final class P6RuntimeExecutionCapabilityTest {
                         P6RuntimeExecutionCapability.forRuntimeAdapter(),
                         null,
                         null,
-                        0,
-                        0,
-                        null,
-                        0,
-                        -1,
                         (point, stepIndex) -> {
                             guardCalls.incrementAndGet();
                             return GuardDecision.ALLOWED;
                         },
+                        null,
                         null));
 
         assertAll(

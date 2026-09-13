@@ -211,7 +211,14 @@ def p4E0ResearchGameTestSourceSet = sourceSets.create('p4E0ResearchGameTest')
 def p8S2GameTestSourceSet = sourceSets.create('p8S2GameTest')
 // P8-S5's actual-client qualification harness is process-isolated and never packaged.
 def p8S5ClientHarnessSourceSet = sourceSets.create('p8S5ClientHarness')
+// P9-S3's tracked-projectile client harness is process-isolated and never packaged.
+def p9S3ClientHarnessSourceSet = sourceSets.create('p9S3ClientHarness')
 def p8S5ClientHarnessJvmArgs = [
+        '-Xms512m',
+        '-Xmx1536m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
+def p9S3ClientHarnessJvmArgs = [
         '-Xms512m',
         '-Xmx1536m',
         '-XX:+ExitOnOutOfMemoryError',
@@ -574,6 +581,29 @@ def prepareP8S5ClientRuntimeHarness =
         tasks.register('prepareP8S5ClientRuntimeHarness', Delete) {
     delete(p8S5ClientRuntimeRoot)
 }
+def p9S3ClientRuntimeRoot = layout.buildDirectory.dir('p9-s3-client-runtime')
+def p9S3ClientRuntimeGameDirectory = p9S3ClientRuntimeRoot.map { it.dir('game') }
+def p9S3ClientRuntimeResult = p9S3ClientRuntimeRoot.map { it.file('result.txt') }
+def p9S3ClientRuntimeExpectedMarkers = [
+        '01 STARTUP_ENTITY_TYPE_REGISTERED',
+        '02 FRESH_FIXED_SEED_WORLD_REQUESTED',
+        '03 WORLD_AND_INTEGRATED_PLAYER_READY',
+        '04 CANONICAL_CONTENT_AND_DIRECT_RUNTIME_READY',
+        '05 AUTHENTICATED_ROOT_ADMITTED',
+        '06 SERVER_PROJECTILE_SPAWNED_EXACT_TYPE',
+        '07 CLIENT_ENTITY_RECEIVED_EXACT_TYPE',
+        '08 REGISTERED_THROWN_ITEM_RENDERER_SELECTED',
+        '09 AFTER_ENTITIES_RENDER_STAGE_WITH_TRACKED_ENTITY',
+        '10 SERVER_AUTHORITATIVE_ENTITY_HIT_OBSERVED',
+        '11 NEXT_DRAIN_TERMINAL_SERVER_REMOVAL_OBSERVED',
+        '12 CLIENT_TRACKING_REMOVAL_OBSERVED',
+        '13 HEALTH_UNCHANGED_AND_DAMAGE_UNAVAILABLE',
+        '14 TERMINAL_PASS',
+]
+def prepareP9S3ClientRuntimeHarness =
+        tasks.register('prepareP9S3ClientRuntimeHarness', Delete) {
+    delete(p9S3ClientRuntimeRoot)
+}
 
 neoForge {
     // Specify the version of NeoForge to use.
@@ -594,6 +624,7 @@ neoForge {
     addModdingDependenciesTo(p4E0ResearchGameTestSourceSet)
     addModdingDependenciesTo(p8S2GameTestSourceSet)
     addModdingDependenciesTo(p8S5ClientHarnessSourceSet)
+    addModdingDependenciesTo(p9S3ClientHarnessSourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -668,6 +699,13 @@ neoForge {
             sourceSet(sourceSets.main)
             sourceSet(p8S5ClientHarnessSourceSet)
         }
+
+        // One finite actual-client tracked-projectile cohort. The controller remains outside
+        // main while exercising the production P5/P6/entity/renderer path.
+        p9S3ClientRuntimeHarness {
+            sourceSet(sourceSets.main)
+            sourceSet(p9S3ClientHarnessSourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
@@ -680,6 +718,7 @@ neoForge {
     def p4E0ResearchMod = mods.named('p4E0ResearchHarness').get()
     def p8S2GameTestMod = mods.named('p8S2ReloadHarness').get()
     def p8S5ClientHarnessMod = mods.named('p8S5ClientRuntimeHarness').get()
+    def p9S3ClientHarnessMod = mods.named('p9S3ClientRuntimeHarness').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -1182,6 +1221,18 @@ neoForge {
             taskBefore(tasks.named(p8S5ClientHarnessSourceSet.classesTaskName))
         }
 
+        p9S3ClientRuntimeHarness {
+            client()
+            sourceSet = p9S3ClientHarnessSourceSet
+            gameDirectory = p9S3ClientRuntimeGameDirectory.get().asFile
+            systemProperty 'gramarye.p9s3.clientHarnessResult',
+                    p9S3ClientRuntimeResult.get().asFile.absolutePath
+            jvmArguments.addAll(p9S3ClientHarnessJvmArgs)
+            disableIdeRun()
+            taskBefore(prepareP9S3ClientRuntimeHarness)
+            taskBefore(tasks.named(p9S3ClientHarnessSourceSet.classesTaskName))
+        }
+
         p4E0R2QFormalCaseIndices.each { formalCaseIndex ->
                 def formalCaseToken = String.format(
                         java.util.Locale.ROOT, '%02d', formalCaseIndex)
@@ -1306,7 +1357,9 @@ neoForge {
                             : name == 'p8S2ReloadGameTestServer'
                                     ? p8S2GameTestMod
                                     : name == 'p8S5ClientRuntimeHarness'
-                                            ? p8S5ClientHarnessMod : productionMod])
+                                            ? p8S5ClientHarnessMod
+                                            : name == 'p9S3ClientRuntimeHarness'
+                                                    ? p9S3ClientHarnessMod : productionMod])
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -1424,11 +1477,89 @@ tasks.named('runP8S5ClientRuntimeHarness', JavaExec).configure {
     }
 }
 
+def validateP9S3ClientRuntimeResultLines = { List<String> resultLines ->
+    if (resultLines.size() != p9S3ClientRuntimeExpectedMarkers.size() + 2
+            || resultLines.first() != 'P9-S3-CLIENT-RUNTIME-HARNESS-V1'
+            || resultLines.last() != 'RESULT=PASS') {
+        throw new GradleException(
+                'P9-S3 client runtime harness result envelope is incomplete')
+    }
+    p9S3ClientRuntimeExpectedMarkers.eachWithIndex { expected, index ->
+        def actual = resultLines[index + 1]
+        if (actual != expected && !actual.startsWith(expected + ' ')) {
+            throw new GradleException(
+                    "P9-S3 client runtime marker ${index + 1} is not exact")
+        }
+    }
+}
+def verifyP9S3ClientRuntimeResultParser =
+        tasks.register('verifyP9S3ClientRuntimeResultParser') {
+    group = 'verification'
+    description = 'Preflights the finite P9-S3 actual-client result parser without a client.'
+    doLast {
+        def accepted = ['P9-S3-CLIENT-RUNTIME-HARNESS-V1']
+        p9S3ClientRuntimeExpectedMarkers.eachWithIndex { expected, index ->
+            accepted << (index % 2 == 0 ? expected : expected + ' detail=preflight')
+        }
+        accepted << 'RESULT=PASS'
+        validateP9S3ClientRuntimeResultLines(accepted)
+
+        def requireRejected = { String mutation, Closure<?> change ->
+            def candidate = new ArrayList<String>(accepted)
+            change(candidate)
+            def rejected = false
+            try {
+                validateP9S3ClientRuntimeResultLines(candidate)
+            } catch (GradleException ignored) {
+                rejected = true
+            }
+            if (!rejected) {
+                throw new GradleException(
+                        "P9-S3 result parser accepted ${mutation}")
+            }
+        }
+        requireRejected('a marker-prefix collision') { candidate ->
+            candidate[1] = candidate[1] + '-collision'
+        }
+        requireRejected('an out-of-order marker') { candidate ->
+            def replacement = candidate[1]
+            candidate[1] = candidate[2]
+            candidate[2] = replacement
+        }
+        requireRejected('an extra result line') { candidate ->
+            candidate.add(candidate.size() - 1, 'EXTRA')
+        }
+        requireRejected('a non-PASS terminal') { candidate ->
+            candidate[candidate.size() - 1] = 'RESULT=FAIL'
+        }
+    }
+}
+
+tasks.named('runP9S3ClientRuntimeHarness', JavaExec).configure {
+    dependsOn(verifyP9S3ClientRuntimeResultParser)
+    timeout.set(java.time.Duration.ofMinutes(10))
+    doLast {
+        def resultFile = p9S3ClientRuntimeResult.get().asFile
+        if (!resultFile.isFile()) {
+            throw new GradleException(
+                    'P9-S3 client runtime harness did not write its result')
+        }
+        if (resultFile.length() < 1L || resultFile.length() > 16_384L) {
+            throw new GradleException(
+                    'P9-S3 client runtime harness result exceeded its fixed file bound')
+        }
+        def resultLines = resultFile.readLines('UTF-8')
+        validateP9S3ClientRuntimeResultLines(resultLines)
+    }
+}
+
 // Full unit/check paths compile the isolated harness without executing a graphical client.
 tasks.named('test').configure {
     dependsOn(
             tasks.named(p8S5ClientHarnessSourceSet.classesTaskName),
-            verifyP8S5ClientRuntimeResultParser)
+            verifyP8S5ClientRuntimeResultParser,
+            tasks.named(p9S3ClientHarnessSourceSet.classesTaskName),
+            verifyP9S3ClientRuntimeResultParser)
 }
 
 // Sets up a dependency configuration called 'localRuntime'.
@@ -1502,6 +1633,7 @@ dependencies {
     add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, commonsCompressCoordinate)
     add(p8S2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
     testImplementation p4C2ProbeSourceSet.output
@@ -3567,6 +3699,9 @@ tasks.named(p8S2GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p8S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p9S3ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4E0ResearchGameTestSourceSet.compileJavaTaskName, JavaCompile).configure {

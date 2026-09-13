@@ -17,7 +17,7 @@ final class EffectSemanticBoundaryTest {
     private static final Path PRODUCTION_ROOT = projectRoot().resolve(
             "src/main/java/com/yo1no/gramarye/magic/runtime/mana");
     private static final List<String> PRODUCTION_FILE_NAMES = List.of(
-            "DamageEffectCommitPort.java",
+            "EffectCommitPort.java",
             "EffectCommitPlan.java",
             "EffectExecutionEngine.java",
             "EffectExecutionGuard.java",
@@ -36,10 +36,12 @@ final class EffectSemanticBoundaryTest {
             SourceEventId.class,
             DamageTargetReference.class,
             CompensationPolicy.class,
+            SpawnProjectileRequest.class,
             DamageEffectRequest.class,
             EffectStep.class,
             EffectStepKind.class,
             DamageEffectStep.class,
+            SpawnProjectileStep.class,
             EffectCommitPlan.class,
             EffectStepOutcomeKind.class,
             EffectStepOutcome.class,
@@ -60,7 +62,7 @@ final class EffectSemanticBoundaryTest {
             EffectGuardPointKind.class,
             EffectGuardPoint.class,
             EffectExecutionGuard.class,
-            DamageEffectCommitPort.class,
+            EffectCommitPort.class,
             P6ExecutionInvariantCode.class,
             P6ExecutionInvariantException.class,
             EffectExecutionPreparation.class,
@@ -105,7 +107,8 @@ final class EffectSemanticBoundaryTest {
             throws IOException {
         String source = allProductionSource();
         for (String forbidden : List.of(
-                "net.minecraft",
+                "net.minecraft.world",
+                "net.minecraft.server",
                 "net.neoforged",
                 "java.util.concurrent",
                 "java.lang.reflect",
@@ -202,8 +205,8 @@ final class EffectSemanticBoundaryTest {
     @Test
     void productionDeclaresExactlyOneCommitPortAndNoImplementation() throws IOException {
         String source = allProductionSource();
-        assertEquals(1, occurrences(source, "interface DamageEffectCommitPort"));
-        assertEquals(0, occurrences(source, "implements DamageEffectCommitPort"));
+        assertEquals(1, occurrences(source, "interface EffectCommitPort"));
+        assertEquals(0, occurrences(source, "implements EffectCommitPort"));
     }
 
     private static String allProductionSource() throws IOException {

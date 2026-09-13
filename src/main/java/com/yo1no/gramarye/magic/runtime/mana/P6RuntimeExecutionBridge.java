@@ -11,83 +11,85 @@ import net.minecraft.server.level.ServerPlayer;
 /** Capability-gated public entry into the package-private P6 transaction core. */
 public final class P6RuntimeExecutionBridge {
     private static final ActionExecutorRegistry PRODUCTION_EXECUTORS =
-            new ActionExecutorRegistry(List.of());
+            new ActionExecutorRegistry(List.of(
+                    new ActionExecutorRegistration(
+                            ResourceLocation.fromNamespaceAndPath(
+                                    "gramarye", "spawn_projectile"),
+                            new SpawnProjectileActionExecutor()),
+                    new ActionExecutorRegistration(
+                            ResourceLocation.fromNamespaceAndPath("gramarye", "damage"),
+                            new DamageActionExecutor())));
     private static final ActionDamageTransactionEngine PRODUCTION_ENGINE =
             new ActionDamageTransactionEngine(
                     PRODUCTION_EXECUTORS,
                     new DamageEffectResolver(),
                     new EffectExecutionEngine(),
                     new ManaTransactionService());
-    private static final DamageEffectCommitPort PRODUCTION_DAMAGE_PORT =
-            UnavailableProductionDamageEffectCommitPort.INSTANCE;
 
     private P6RuntimeExecutionBridge() {}
 
     public static void execute(
             P6RuntimeExecutionCapability capability,
             ServerPlayer actor,
-            ResourceLocation actionTypeKey,
-            long requestId,
-            long sourceEventId,
-            UUID targetId,
-            long magnitude,
-            long manaCost,
+            Invocation input,
             GuardPort guard,
+            WorldCommitPort commitPort,
             AppliedFactObserver observer) {
         if (capability == null) {
             throw invariant();
         }
         if (actor == null
-                || actionTypeKey == null
-                || targetId == null
+                || input == null
                 || guard == null
+                || commitPort == null
                 || observer == null) {
             throw invariant();
         }
 
-        DamageActionInvocation invocation = invocation(
-                actionTypeKey,
-                requestId,
-                sourceEventId,
-                targetId,
-                magnitude,
-                manaCost);
+        ActionInvocation invocation = invocation(input);
         ManaAccountAccess account = new PlayerManaAccountAccess(actor);
         EffectExecutionGuard executionGuard = adaptGuard(guard);
+        EffectCommitPort effectCommitPort = adaptCommitPort(commitPort);
         executeCore(
                 invocation,
                 account,
                 executionGuard,
                 PRODUCTION_ENGINE,
-                PRODUCTION_DAMAGE_PORT,
+                effectCommitPort,
                 observer);
     }
 
-    static DamageActionInvocation invocation(
-            ResourceLocation actionTypeKey,
-            long requestId,
-            long sourceEventId,
-            UUID targetId,
-            long magnitude,
-            long manaCost) {
-        if (actionTypeKey == null
-                || targetId == null
-                || requestId <= 0
-                || sourceEventId <= 0
-                || magnitude <= 0
-                || magnitude > P6EffectBounds.MAX_EFFECT_MAGNITUDE
-                || manaCost < 0
-                || manaCost > P6EffectBounds.MAX_MANA_OPERATION_AMOUNT) {
+    static ActionInvocation invocation(Invocation input) {
+        if (input == null) {
             throw invariant();
         }
-        return new DamageActionInvocation(
-                actionTypeKey,
-                new EffectRequestId(requestId),
-                new SourceEventId(sourceEventId),
-                new DamageTargetReference(targetId),
-                magnitude,
-                manaCost,
-                CompensationPolicy.REFUND_IF_NO_PRIMARY_MUTATION);
+        if (input instanceof SpawnProjectileInvocation spawn) {
+            return new SpawnProjectileActionInvocation(
+                    spawn.actionTypeKey(),
+                    new EffectRequestId(spawn.requestId()),
+                    new SourceEventId(spawn.sourceEventId()),
+                    spawn.dimension(),
+                    spawn.originX(),
+                    spawn.originY(),
+                    spawn.originZ(),
+                    spawn.directionXQ15(),
+                    spawn.directionYQ15(),
+                    spawn.directionZQ15(),
+                    spawn.profileCode(),
+                    spawn.manaCost(),
+                    CompensationPolicy.REFUND_IF_NO_PRIMARY_MUTATION);
+        }
+        if (input instanceof DamageInvocation damage) {
+            return new DamageActionInvocation(
+                    damage.actionTypeKey(),
+                    new EffectRequestId(damage.requestId()),
+                    new SourceEventId(damage.sourceEventId()),
+                    new DamageTargetReference(damage.targetId()),
+                    damage.magnitude(),
+                    damage.manaCost(),
+                    CompensationPolicy.REFUND_IF_NO_PRIMARY_MUTATION);
+        }
+        throw invariant();
     }
 
     static EffectExecutionGuard adaptGuard(GuardPort guard) {
@@ -116,12 +118,67 @@ public final class P6RuntimeExecutionBridge {
         };
     }
 
+    static EffectCommitPort adaptCommitPort(WorldCommitPort port) {
+        if (port == null) {
+            throw invariant();
+        }
+        return new EffectCommitPort() {
+            @Override
+            public boolean isAvailable() {
+                return true;
+            }
+
+            @Override
+            public EffectStepOutcome commitSpawn(
+                    SpawnProjectileRequest request,
+                    SpawnProjectileStep step) {
+                CommitDisposition disposition = port.commitSpawn(new SpawnCommit(
+                        request.requestId().value(),
+                        request.sourceEventId().value(),
+                        step.dimension(),
+                        step.originX(),
+                        step.originY(),
+                        step.originZ(),
+                        step.directionXQ15(),
+                        step.directionYQ15(),
+                        step.directionZQ15(),
+                        step.profileCode(),
+                        request.manaCost()));
+                return outcome(disposition);
+            }
+
+            @Override
+            public EffectStepOutcome commitDamage(
+                    DamageEffectRequest request,
+                    DamageEffectStep step) {
+                CommitDisposition disposition = port.commitDamage(new DamageCommit(
+                        request.requestId().value(),
+                        request.sourceEventId().value(),
+                        step.target().value(),
+                        step.magnitude(),
+                        request.manaCost()));
+                return outcome(disposition);
+            }
+        };
+    }
+
+    private static EffectStepOutcome outcome(CommitDisposition disposition) {
+        if (disposition == null) {
+            throw new P6ExecutionInvariantException(
+                    P6ExecutionInvariantCode.PORT_RETURNED_NULL);
+        }
+        return switch (disposition) {
+            case APPLIED -> EffectStepOutcome.applied(1);
+            case NOT_APPLIED -> EffectStepOutcome.notApplied();
+        };
+    }
+
     static void executeCore(
-            DamageActionInvocation invocation,
+            ActionInvocation invocation,
             ManaAccountAccess account,
             EffectExecutionGuard guard,
             ActionDamageTransactionEngine engine,
-            DamageEffectCommitPort commitPort,
+            EffectCommitPort commitPort,
             AppliedFactObserver observer) {
         if (invocation == null
                 || account == null
@@ -182,9 +239,180 @@ public final class P6RuntimeExecutionBridge {
         }
     }
 
+    private static boolean validOrigin(double x, double y, double z) {
+        return Double.isFinite(x)
+                && Double.isFinite(y)
+                && Double.isFinite(z)
+                && x >= -30_000_000.0
+                && x < 30_000_000.0
+                && y >= -20_000_000.0
+                && y < 20_000_000.0
+                && z >= -30_000_000.0
+                && z < 30_000_000.0;
+    }
+
+    private static boolean validDirection(int x, int y, int z) {
+        return x >= -32_767
+                && x <= 32_767
+                && y >= -32_767
+                && y <= 32_767
+                && z >= -32_767
+                && z <= 32_767
+                && (x != 0 || y != 0 || z != 0);
+    }
+
+    private static boolean nonzero(UUID value) {
+        return value != null
+                && (value.getMostSignificantBits() != 0L
+                        || value.getLeastSignificantBits() != 0L);
+    }
+
+    private static void requireCommon(
+            ResourceLocation actionTypeKey,
+            long requestId,
+            long sourceEventId,
+            long manaCost) {
+        if (actionTypeKey == null
+                || requestId <= 0
+                || sourceEventId <= 0
+                || manaCost < 0
+                || manaCost > P6EffectBounds.MAX_MANA_OPERATION_AMOUNT) {
+            throw invariant();
+        }
+    }
+
+    private static void requireSpawn(
+            ResourceLocation actionTypeKey,
+            long requestId,
+            long sourceEventId,
+            ResourceLocation dimension,
+            double originX,
+            double originY,
+            double originZ,
+            int directionXQ15,
+            int directionYQ15,
+            int directionZQ15,
+            int profileCode,
+            long manaCost) {
+        requireCommon(actionTypeKey, requestId, sourceEventId, manaCost);
+        if (dimension == null
+                || !validOrigin(originX, originY, originZ)
+                || !validDirection(directionXQ15, directionYQ15, directionZQ15)
+                || profileCode != 0) {
+            throw invariant();
+        }
+    }
+
+    private static void requireDamage(
+            ResourceLocation actionTypeKey,
+            long requestId,
+            long sourceEventId,
+            UUID targetId,
+            long magnitude,
+            long manaCost) {
+        requireCommon(actionTypeKey, requestId, sourceEventId, manaCost);
+        if (!nonzero(targetId)
+                || magnitude <= 0
+                || magnitude > P6EffectBounds.MAX_EFFECT_MAGNITUDE) {
+            throw invariant();
+        }
+    }
+
+    private static void requireSpawnCommit(
+            long requestId,
+            long sourceEventId,
+            ResourceLocation dimension,
+            double originX,
+            double originY,
+            double originZ,
+            int directionXQ15,
+            int directionYQ15,
+            int directionZQ15,
+            int profileCode,
+            long manaCost) {
+        if (requestId <= 0
+                || sourceEventId <= 0
+                || dimension == null
+                || !validOrigin(originX, originY, originZ)
+                || !validDirection(directionXQ15, directionYQ15, directionZQ15)
+                || profileCode != 0
+                || manaCost < 0
+                || manaCost > P6EffectBounds.MAX_MANA_OPERATION_AMOUNT) {
+            throw invariant();
+        }
+    }
+
+    private static void requireDamageCommit(
+            long requestId,
+            long sourceEventId,
+            UUID targetId,
+            long magnitude,
+            long manaCost) {
+        if (requestId <= 0
+                || sourceEventId <= 0
+                || !nonzero(targetId)
+                || magnitude <= 0
+                || magnitude > P6EffectBounds.MAX_EFFECT_MAGNITUDE
+                || manaCost < 0
+                || manaCost > P6EffectBounds.MAX_MANA_OPERATION_AMOUNT) {
+            throw invariant();
+        }
+    }
+
     private static P6ExecutionInvariantException invariant() {
         return new P6ExecutionInvariantException(
                 P6ExecutionInvariantCode.INVALID_TRANSACTION_RESULT);
+    }
+
+    public sealed interface Invocation
+            permits SpawnProjectileInvocation, DamageInvocation {}
+
+    public record SpawnProjectileInvocation(
+            ResourceLocation actionTypeKey,
+            long requestId,
+            long sourceEventId,
+            ResourceLocation dimension,
+            double originX,
+            double originY,
+            double originZ,
+            int directionXQ15,
+            int directionYQ15,
+            int directionZQ15,
+            int profileCode,
+            long manaCost) implements Invocation {
+        public SpawnProjectileInvocation {
+            requireSpawn(
+                    actionTypeKey,
+                    requestId,
+                    sourceEventId,
+                    dimension,
+                    originX,
+                    originY,
+                    originZ,
+                    directionXQ15,
+                    directionYQ15,
+                    directionZQ15,
+                    profileCode,
+                    manaCost);
+        }
+    }
+
+    public record DamageInvocation(
+            ResourceLocation actionTypeKey,
+            long requestId,
+            long sourceEventId,
+            UUID targetId,
+            long magnitude,
+            long manaCost) implements Invocation {
+        public DamageInvocation {
+            requireDamage(
+                    actionTypeKey,
+                    requestId,
+                    sourceEventId,
+                    targetId,
+                    magnitude,
+                    manaCost);
+        }
     }
 
     @FunctionalInterface
@@ -202,6 +430,57 @@ public final class P6RuntimeExecutionBridge {
         ALLOWED,
         CANCELLED,
         DEADLINE_EXCEEDED
+    }
+
+    public interface WorldCommitPort {
+        CommitDisposition commitSpawn(SpawnCommit command);
+
+        CommitDisposition commitDamage(DamageCommit command);
+    }
+
+    public record SpawnCommit(
+            long requestId,
+            long sourceEventId,
+            ResourceLocation dimension,
+            double originX,
+            double originY,
+            double originZ,
+            int directionXQ15,
+            int directionYQ15,
+            int directionZQ15,
+            int profileCode,
+            long manaCost) {
+        public SpawnCommit {
+            requireSpawnCommit(
+                    requestId,
+                    sourceEventId,
+                    dimension,
+                    originX,
+                    originY,
+                    originZ,
+                    directionXQ15,
+                    directionYQ15,
+                    directionZQ15,
+                    profileCode,
+                    manaCost);
+        }
+    }
+
+    public record DamageCommit(
+            long requestId,
+            long sourceEventId,
+            UUID targetId,
+            long magnitude,
+            long manaCost) {
+        public DamageCommit {
+            requireDamageCommit(
+                    requestId, sourceEventId, targetId, magnitude, manaCost);
+        }
+    }
+
+    public enum CommitDisposition {
+        APPLIED,
+        NOT_APPLIED
     }
 
     @FunctionalInterface
@@ -271,23 +550,5 @@ public final class P6RuntimeExecutionBridge {
     public enum AppliedTerminal {
         SUCCEEDED,
         PARTIALLY_SUCCEEDED
-    }
-}
-
-final class UnavailableProductionDamageEffectCommitPort implements DamageEffectCommitPort {
-    static final UnavailableProductionDamageEffectCommitPort INSTANCE =
-            new UnavailableProductionDamageEffectCommitPort();
-
-    private UnavailableProductionDamageEffectCommitPort() {}
-
-    @Override
-    public boolean isAvailable() {
-        return false;
-    }
-
-    @Override
-    public EffectStepOutcome commitDamage(DamageEffectStep step) {
-        throw new P6ExecutionInvariantException(
-                P6ExecutionInvariantCode.INVALID_TRANSACTION_RESULT);
     }
 }

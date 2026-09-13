@@ -5,6 +5,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 
+abstract class DamageOnlyEffectCommitPort implements EffectCommitPort {
+    @Override
+    public final EffectStepOutcome commitSpawn(
+            SpawnProjectileRequest request, SpawnProjectileStep step) {
+        throw new AssertionError("spawn commit was not expected by this damage fixture");
+    }
+}
+
 final class RecordingEffectGuard implements EffectExecutionGuard {
     private final Function<EffectGuardPoint, EffectGuardDecision> decisions;
     private final List<EffectGuardPoint> checks = new ArrayList<>();
@@ -28,7 +36,7 @@ final class RecordingEffectGuard implements EffectExecutionGuard {
     }
 }
 
-final class RecordingDamageCommitPort implements DamageEffectCommitPort {
+final class RecordingDamageCommitPort extends DamageOnlyEffectCommitPort {
     private final boolean available;
     private final List<EffectStepOutcome> outcomes;
     private final List<Integer> committedIndexes = new ArrayList<>();
@@ -50,7 +58,8 @@ final class RecordingDamageCommitPort implements DamageEffectCommitPort {
     }
 
     @Override
-    public EffectStepOutcome commitDamage(DamageEffectStep step) {
+    public EffectStepOutcome commitDamage(
+                        DamageEffectRequest request, DamageEffectStep step) {
         int invocation = committedIndexes.size();
         committedIndexes.add(step.index());
         return invocation < outcomes.size()

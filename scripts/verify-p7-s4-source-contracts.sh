@@ -35,31 +35,95 @@ is_s4_path() {
     esac
 }
 
-# Exact P9-S2-R2 pre-commit source projection consumed by the historical
+# Exact P9-S3 pre-commit source projection consumed by the historical
 # configuration verifiers. No directory or prefix admission is intentional.
-is_p9_s2_r2_path() {
+is_p9_s3_path() {
     case "$1" in
+        build.gradle | \
         scripts/verify-p4-b2-b-configuration.sh | \
+        scripts/verify-p4-c2-a-configuration.sh | \
+        scripts/verify-p4-c2-b-configuration.sh | \
+        scripts/verify-p4-d2-configuration.sh | \
+        scripts/verify-p4-d3-a-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
         scripts/verify-p7-s4-source-contracts.sh | \
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
         src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java | \
-        src/main/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngress.java | \
+        src/main/java/com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java | \
         src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java | \
         src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
+        src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectile.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectileClientEvents.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterProjectileRegistration.java | \
+        src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java | \
         src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionEngine.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ActionInvocation.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionInvocation.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionEngine.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectRequest.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectResolution.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/EffectStep.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/P6RuntimeExecutionBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionExecutor.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionInvocation.java | \
+        src/main/resources/META-INF/accesstransformer.cfg | \
+        src/p9S3ClientHarness/java/com/yo1no/gramarye/P9S3ClientRuntimeHarness.java | \
         src/test/java/com/yo1no/gramarye/P5RuntimeHardLimitWorkloadTest.java | \
         src/test/java/com/yo1no/gramarye/P5RuntimeKernelTest.java | \
         src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java | \
         src/test/java/com/yo1no/gramarye/P5RuntimeVocabularyTest.java | \
+        src/test/java/com/yo1no/gramarye/P6RuntimeExecutionAdapterTest.java | \
+        src/test/java/com/yo1no/gramarye/P6RuntimeExecutionCapabilityTest.java | \
         src/test/java/com/yo1no/gramarye/P6S4BoundaryTest.java | \
-        src/test/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngressTest.java | \
         src/test/java/com/yo1no/gramarye/P7GameTestInventory.java | \
         src/test/java/com/yo1no/gramarye/P8S2BoundaryTest.java | \
-        src/test/java/com/yo1no/gramarye/P8S4ServerTransportTest.java | \
         src/test/java/com/yo1no/gramarye/P9S1BoundaryTest.java | \
-        src/test/java/com/yo1no/gramarye/SkillRuntimeAuthenticatedCastIngressTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2AApiGateTest.java | \
         src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandlerTest.java | \
-        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java)
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S2BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S3BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionCompensationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionResultTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionThrowableTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionTraceTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionExecutorRegistryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionTransactionTestFixtures.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageActionExecutorTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectCommitPortTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectResolverTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectCommitPortTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectEngineTestDoubles.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionEngineFailureTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionEngineSuccessTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectExecutionGuardTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectSemanticBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/EffectTestFixtures.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/P6EffectVocabularyTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/P6RuntimeExecutionBridgeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/P6S3BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/SpawnProjectileActionExecutorTest.java)
             return 0 ;;
         *) return 1 ;;
     esac
@@ -75,6 +139,12 @@ verify_game_tests() {
         'P7S4LoginManaGameTests.java:e2LoginPortErrorPropagatesTheSameObject' \
         'P7S4LoginManaGameTests.java:actualP9ReservedContinuationSurvivesRootAndClosesLateWithoutWorldEffects' \
         'P7S4LoginManaGameTests.java:actualP9ActorWitnessRejectsRespawnDimensionAndLogoutBeforeTransfer' \
+        'P9S3ProjectileGameTests.java:cancelledSweepContinuesAndInvalidImpactsTerminal' \
+        'P9S3ProjectileGameTests.java:falseAndThrowingInsertionNeverOpenOrPublish' \
+        'P9S3ProjectileGameTests.java:realSpawnTransferHitAndNextDrainUseTheHeldChild' \
+        'P9S3ProjectileGameTests.java:replacementRemovalAndDeadlineCloseWithoutDamage' \
+        'P9S3ProjectileGameTests.java:reservedClaimAndWrongTransferWitnessesAreOneShot' \
+        'P9S3ProjectileGameTests.java:sixteenthOpenPermitIsThePerPlayerMaximum' \
         'gametest/PlatformGameTests.java:customDescriptorRegistriesLoadEmpty' \
         'gametest/PlatformGameTests.java:dedicatedServerLoads' \
         'gametest/PlatformGameTests.java:descriptorMigrationCoverageAuditPassesAfterRegistryFreeze' \
@@ -97,8 +167,8 @@ verify_game_tests() {
         'magic/runtime/mana/ManaLifecycleGameTests.java:nonDeathCloneCopiesExactManaState' \
         'magic/runtime/mana/ManaLifecycleGameTests.java:validAttachmentSerializesAndLoadsExactly' \
         | LC_ALL=C sort)"
-    [[ "$(printf '%s\n' "${expected_non_p8}" | wc -l | tr -d ' ')" -eq 28 ]] || {
-        printf '%s\n' 'Non-P8 GameTest inventory must remain exact 28' >&2
+    [[ "$(printf '%s\n' "${expected_non_p8}" | wc -l | tr -d ' ')" -eq 34 ]] || {
+        printf '%s\n' 'Non-P8 GameTest inventory must remain exact 34' >&2
         return 1
     }
     actual="$(find src/main/java/com/yo1no/gramarye -type f -name '*.java' \
@@ -164,8 +234,16 @@ case "${1:-}" in
             src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java) exit 0 ;;
             *) exit 1 ;;
         esac ;;
+    --is-p9-s3-harness)
+        [[ "$#" -eq 2 ]]
+        repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+        source_path="${2#"${repository_root}/"}"
+        case "${source_path}" in
+            src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java) exit 0 ;;
+            *) exit 1 ;;
+        esac ;;
     --is-s4-path)
-        [[ "$#" -eq 2 ]] && { is_s4_path "$2" || is_p9_s2_r2_path "$2"; } ;;
+        [[ "$#" -eq 2 ]] && { is_s4_path "$2" || is_p9_s3_path "$2"; } ;;
     --game-test-count) [[ "$#" -eq 1 ]] && verify_game_tests ;;
-    *) printf '%s\n' 'Expected --is-s4-path PATH, --is-s4-harness PATH, --is-p8-harness PATH, or --game-test-count' >&2; exit 2 ;;
+    *) printf '%s\n' 'Expected --is-s4-path PATH, --is-s4-harness PATH, --is-p8-harness PATH, --is-p9-s3-harness PATH, or --game-test-count' >&2; exit 2 ;;
 esac

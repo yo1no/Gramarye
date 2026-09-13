@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -58,6 +59,7 @@ import com.yo1no.gramarye.magic.trigger.type.TriggerPayloadInspector;
 import com.yo1no.gramarye.magic.trigger.type.TriggerType;
 import com.yo1no.gramarye.magic.validation.ValidationContext;
 import com.yo1no.gramarye.magic.validation.ValidationResult;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -581,6 +583,8 @@ final class P5RuntimeKernelTest {
                 () -> assertTrue(slot.eventIndex.isEmpty()),
                 () -> assertTrue(slot.instances.isEmpty()),
                 () -> assertTrue(slot.activeProjectileContinuations.isEmpty()),
+                () -> assertNotNull(slot.p9ErrorCleanup),
+                () -> assertNotNull(slot.p9InstanceErrorCleanup),
                 () -> assertFalse(slot.p9BatchContinuationCloseInProgress),
                 () -> assertFalse(slot.p9ActiveIndexInvalidatedAfterError),
                 () -> assertTrue(slot.attributions.isEmpty()),
@@ -636,6 +640,28 @@ final class P5RuntimeKernelTest {
         trace.record(P9RuntimeDiagnosticStage.INSTANCE_PINNED, 23);
         trace.record(P9RuntimeDiagnosticStage.NODE0_MATCHED, 24);
         trace.record(P9RuntimeDiagnosticStage.CONTINUATION_OPENED, 24);
+        var permitId = new UUID(101, 103);
+        var projectileId = new UUID(107, 109);
+        var targetId = new UUID(113, 127);
+        var hit = new ProjectileHitCandidateV0(
+                projectileId,
+                targetId,
+                dimension,
+                3.25,
+                65.5,
+                -4.75,
+                16_384,
+                -8_192,
+                4_096);
+        recordP9SpawnResult(
+                trace, RuntimePermitTransferDisposition.TRANSFERRED, 25);
+        recordP9HitClaimResult(
+                trace,
+                permitId.getMostSignificantBits(),
+                permitId.getLeastSignificantBits(),
+                hit,
+                RuntimePermitClaimDisposition.QUEUED,
+                27);
         trace.record(P9RuntimeDiagnosticStage.TERMINAL_CAUSE, 29);
         trace.record(P9RuntimeDiagnosticStage.CLEANUP_DISPOSITION, 29);
 
@@ -664,12 +690,12 @@ final class P5RuntimeKernelTest {
                                 .toList()),
                 () -> assertEquals(16, trace.stageCodes.length),
                 () -> assertEquals(16, trace.stageTicks.length),
-                () -> assertEquals(6, trace.stageCount),
+                () -> assertEquals(11, trace.stageCount),
                 () -> assertArrayEquals(
-                        new int[] {1, 2, 3, 4, 15, 16},
+                        new int[] {1, 2, 3, 4, 5, 6, 7, 9, 10, 15, 16},
                         Arrays.copyOf(trace.stageCodes, trace.stageCount)),
                 () -> assertArrayEquals(
-                        new long[] {23, 23, 24, 24, 29, 29},
+                        new long[] {23, 23, 24, 24, 25, 25, 25, 27, 27, 29, 29},
                         Arrays.copyOf(trace.stageTicks, trace.stageCount)),
                 () -> assertTrue(Arrays.stream(trace.stageCodes, trace.stageCount, 16)
                         .allMatch(value -> value == 0)),
@@ -685,9 +711,104 @@ final class P5RuntimeKernelTest {
                 () -> assertEquals(geometry.directionYQ15(), trace.directionYQ15),
                 () -> assertEquals(geometry.directionZQ15(), trace.directionZQ15),
                 () -> assertEquals(geometry.profileCode(), trace.profileCode),
+                () -> assertEquals(1, trace.spawnCommitResultCode),
+                () -> assertEquals(
+                        permitId.getMostSignificantBits(),
+                        trace.hitPermitIdMostSignificantBits),
+                () -> assertEquals(
+                        permitId.getLeastSignificantBits(),
+                        trace.hitPermitIdLeastSignificantBits),
+                () -> assertEquals(
+                        projectileId.getMostSignificantBits(),
+                        trace.hitProjectileIdMostSignificantBits),
+                () -> assertEquals(
+                        projectileId.getLeastSignificantBits(),
+                        trace.hitProjectileIdLeastSignificantBits),
+                () -> assertEquals(
+                        targetId.getMostSignificantBits(),
+                        trace.hitTargetIdMostSignificantBits),
+                () -> assertEquals(
+                        targetId.getLeastSignificantBits(),
+                        trace.hitTargetIdLeastSignificantBits),
+                () -> assertEquals(Double.doubleToRawLongBits(hit.hitX()), trace.hitXBits),
+                () -> assertEquals(Double.doubleToRawLongBits(hit.hitY()), trace.hitYBits),
+                () -> assertEquals(Double.doubleToRawLongBits(hit.hitZ()), trace.hitZBits),
+                () -> assertEquals(hit.directionXQ15(), trace.hitDirectionXQ15),
+                () -> assertEquals(hit.directionYQ15(), trace.hitDirectionYQ15),
+                () -> assertEquals(hit.directionZQ15(), trace.hitDirectionZQ15),
+                () -> assertEquals(
+                        RuntimePermitClaimDisposition.QUEUED.ordinal() + 1,
+                        trace.hitClaimResultCode),
                 () -> assertThrows(
                         IllegalStateException.class,
                         () -> trace.record(P9RuntimeDiagnosticStage.SPAWN_RESOLVED, 30)));
+
+        var rejectedSpawnTrace = new ServerSlot.P9ActiveDiagnostic(event, geometry);
+        rejectedSpawnTrace.record(P9RuntimeDiagnosticStage.CAST_ACCEPTED, 23);
+        rejectedSpawnTrace.record(P9RuntimeDiagnosticStage.INSTANCE_PINNED, 23);
+        rejectedSpawnTrace.record(P9RuntimeDiagnosticStage.NODE0_MATCHED, 24);
+        rejectedSpawnTrace.record(P9RuntimeDiagnosticStage.CONTINUATION_OPENED, 24);
+        recordP9SpawnResult(
+                rejectedSpawnTrace, RuntimePermitTransferDisposition.REJECTED, 25);
+        rejectedSpawnTrace.record(P9RuntimeDiagnosticStage.TERMINAL_CAUSE, 25);
+        rejectedSpawnTrace.record(P9RuntimeDiagnosticStage.CLEANUP_DISPOSITION, 25);
+        assertAll(
+                () -> assertArrayEquals(
+                        new int[] {1, 2, 3, 4, 5, 6, 15, 16},
+                        Arrays.copyOf(
+                                rejectedSpawnTrace.stageCodes,
+                                rejectedSpawnTrace.stageCount)),
+                () -> assertEquals(2, rejectedSpawnTrace.spawnCommitResultCode),
+                () -> assertEquals(0, rejectedSpawnTrace.hitClaimResultCode));
+
+        var rejectedHitTrace = new ServerSlot.P9ActiveDiagnostic(event, geometry);
+        rejectedHitTrace.record(P9RuntimeDiagnosticStage.CAST_ACCEPTED, 23);
+        rejectedHitTrace.record(P9RuntimeDiagnosticStage.INSTANCE_PINNED, 23);
+        rejectedHitTrace.record(P9RuntimeDiagnosticStage.NODE0_MATCHED, 24);
+        rejectedHitTrace.record(P9RuntimeDiagnosticStage.CONTINUATION_OPENED, 24);
+        recordP9SpawnResult(
+                rejectedHitTrace, RuntimePermitTransferDisposition.TRANSFERRED, 25);
+        recordP9HitClaimResult(
+                rejectedHitTrace,
+                permitId.getMostSignificantBits(),
+                permitId.getLeastSignificantBits(),
+                hit,
+                RuntimePermitClaimDisposition.REJECTED,
+                27);
+        var replacementHit = new ProjectileHitCandidateV0(
+                new UUID(131, 137),
+                new UUID(139, 149),
+                dimension,
+                9.0,
+                70.0,
+                11.0,
+                1,
+                2,
+                3);
+        assertAll(
+                () -> assertArrayEquals(
+                        new int[] {1, 2, 3, 4, 5, 6, 7, 9},
+                        Arrays.copyOf(
+                                rejectedHitTrace.stageCodes,
+                                rejectedHitTrace.stageCount)),
+                () -> assertEquals(
+                        RuntimePermitClaimDisposition.REJECTED.ordinal() + 1,
+                        rejectedHitTrace.hitClaimResultCode),
+                () -> assertThrows(
+                        IllegalStateException.class,
+                        () -> recordP9HitClaimResult(
+                                rejectedHitTrace,
+                                151,
+                                157,
+                                replacementHit,
+                                RuntimePermitClaimDisposition.QUEUED,
+                                28)),
+                () -> assertEquals(
+                        projectileId.getMostSignificantBits(),
+                        rejectedHitTrace.hitProjectileIdMostSignificantBits),
+                () -> assertEquals(
+                        targetId.getLeastSignificantBits(),
+                        rejectedHitTrace.hitTargetIdLeastSignificantBits));
 
         var errorTrace = new ServerSlot.P9ActiveDiagnostic(event, geometry);
         errorTrace.record(P9RuntimeDiagnosticStage.CAST_ACCEPTED, 23);
@@ -716,35 +837,35 @@ final class P5RuntimeKernelTest {
     }
 
     @Test
-    void p9PermitSourceKeepsTheClosedFiveStateVocabularyButOnlyTheS2RouteReachable()
+    void p9PermitSourceKeepsTheClosedFiveStateVocabularyAndS3TransitionsReachable()
             throws Exception {
         var serviceSource = Files.readString(RUNTIME_SERVICE_SOURCE);
         var permitSource = sourceBlock(
                 serviceSource, "final class RuntimeProjectileContinuationPermit {");
-        var stateSource = sourceBlock(permitSource, "private enum State {");
+        var stateSource = sourceBlock(permitSource, "enum State {");
         var closeSource = sourceBlock(
                 permitSource,
                 "RuntimePermitCloseDisposition closeWithoutHit(");
 
         assertAll(
                 () -> assertEquals(
-                        "private enum State { RESERVED, OPEN, CLAIMED_PENDING_DAMAGE, "
+                        "enum State { RESERVED, OPEN, CLAIMED_PENDING_DAMAGE, "
                                 + "CLOSED_NO_HIT, CLOSED_AFTER_HIT }",
                         compactSource(stateSource)),
-                () -> assertTrue(permitSource.contains(
-                        "private State state = State.RESERVED;")),
+                () -> assertTrue(permitSource.contains("state = State.RESERVED;")),
                 () -> assertEquals(2, occurrences(permitSource, "state = State.")),
                 () -> assertEquals(1, occurrences(
                         permitSource, "state = State.CLOSED_NO_HIT;")),
                 () -> assertTrue(closeSource.contains(
-                        "disposition == RuntimePermitCloseDisposition.CLOSED")),
-                () -> assertTrue(closeSource.contains(
-                        "disposition == RuntimePermitCloseDisposition.ALREADY_CLOSED")),
-                () -> assertTrue(closeSource.contains("state = State.CLOSED_NO_HIT;")),
-                () -> assertFalse(permitSource.contains("state = State.OPEN")),
-                () -> assertFalse(permitSource.contains(
-                        "state = State.CLAIMED_PENDING_DAMAGE")),
-                () -> assertFalse(permitSource.contains("state = State.CLOSED_AFTER_HIT")),
+                        "return disposition;")),
+                () -> assertTrue(serviceSource.contains(
+                        "permit.state = RuntimeProjectileContinuationPermit.State.OPEN;")),
+                () -> assertTrue(serviceSource.contains(
+                        "permit.state = RuntimeProjectileContinuationPermit.State."
+                                + "CLAIMED_PENDING_DAMAGE;")),
+                () -> assertTrue(serviceSource.contains(
+                        "permit.state = RuntimeProjectileContinuationPermit.State."
+                                + "CLOSED_AFTER_HIT;")),
                 () -> assertFalse(permitSource.contains("transferAfterAppliedSpawn")),
                 () -> assertFalse(permitSource.contains("P9StarterProjectile")));
     }
@@ -791,11 +912,12 @@ final class P5RuntimeKernelTest {
                         "permits.hasNext()",
                         "var indexed = permits.next();",
                         "slot.p9BatchContinuationCloseInProgress = true;",
-                        "indexed.getValue().closeWithoutHit(server, reason)",
+                        "var permit = indexed.getValue();",
+                        "permit.closeWithoutHit(server, reason)",
                         "permits.remove();",
                         "slot.p9BatchContinuationCloseInProgress = false;"),
                 () -> assertTrue(indexedCleanupSource.contains(
-                        "var close = indexed.getValue().closeWithoutHit(server, reason);")),
+                        "var close = permit.closeWithoutHit(server, reason);")),
                 () -> assertTrue(indexedCleanupSource.contains("closedWorkUnits++;")),
                 () -> assertTrue(indexedCleanupSource.contains("return closedWorkUnits;")),
                 () -> assertFalse(indexedCleanupSource.contains("slot.instances.values()")),
@@ -885,6 +1007,10 @@ final class P5RuntimeKernelTest {
                 serviceSource, "private static void recordP9Terminal(");
         var errorCleanupSource = sourceBlock(
                 serviceSource, "static void clearSlotAfterError(");
+        var p9ErrorVisitorSource = sourceBlock(
+                serviceSource, "static final class P9ErrorCleanup");
+        var p9InstanceErrorVisitorSource = sourceBlock(
+                serviceSource, "static final class P9InstanceErrorCleanup");
         var runtimePreservationSource = sourceBlock(
                 serviceSource, "RuntimeException preserveRuntimeFault(");
         var errorPreservationSource = sourceBlock(
@@ -901,11 +1027,33 @@ final class P5RuntimeKernelTest {
                         "try {",
                         "currentInstance.p9Diagnostic.recordErrorDeferredBestEffort(",
                         "catch (RuntimeException | Error ignoredDiagnosticFailure)"),
+                () -> assertTrue(errorCleanupSource.contains(
+                        "slot.instances.forEach(slot.p9InstanceErrorCleanup)")),
                 () -> assertFalse(errorCleanupSource.contains("slot.instances.values()")),
                 () -> assertFalse(errorCleanupSource.contains(".iterator()")),
                 () -> assertFalse(errorCleanupSource.contains("toArray(")),
                 () -> assertFalse(errorCleanupSource.contains("new RuntimeProjectile")),
+                () -> assertFalse(errorCleanupSource.contains("recordP9Terminal(")),
+                () -> assertFalse(errorCleanupSource.contains("materializeP9Terminal(")),
+                () -> assertFalse(errorCleanupSource.contains("p9TerminalRing")),
                 () -> assertFalse(errorCleanupSource.contains("catch (Throwable")),
+                () -> assertOrdered(
+                        errorCleanupSource,
+                        "slot.activeProjectileContinuations.forEach(slot.p9ErrorCleanup)",
+                        "slot.p9ErrorCleanup.clear()",
+                        "slot.instances.forEach(slot.p9InstanceErrorCleanup)",
+                        "slot.activeProjectileContinuations.clear()"),
+                () -> assertOrdered(
+                        p9ErrorVisitorSource,
+                        "projectile = loadedProjectile(server, permit)",
+                        "permit.state = permit.state",
+                        "instance.activeProjectileContinuation = null",
+                        "projectile.discard()"),
+                () -> assertTrue(p9ErrorVisitorSource.contains(
+                        "Primitive permit invalidation below is independent of entity lookup")),
+                () -> assertTrue(p9InstanceErrorVisitorSource.contains(
+                        "instance.clearP9AuthenticatedActorWitness()")),
+                () -> assertFalse(p9InstanceErrorVisitorSource.contains("new ")),
                 () -> assertOrdered(
                         runtimePreservationSource,
                         "enterFaultAfterRuntimeException(",
@@ -1658,6 +1806,66 @@ final class P5RuntimeKernelTest {
                 12_000,
                 12_000,
                 128));
+    }
+
+    private static void recordP9SpawnResult(
+            ServerSlot.P9ActiveDiagnostic trace,
+            RuntimePermitTransferDisposition result,
+            long runtimeTick) {
+        invokeP9Diagnostic(
+                trace,
+                "recordSpawnResult",
+                new Class<?>[] {RuntimePermitTransferDisposition.class, long.class},
+                result,
+                runtimeTick);
+    }
+
+    private static void recordP9HitClaimResult(
+            ServerSlot.P9ActiveDiagnostic trace,
+            long permitIdMostSignificantBits,
+            long permitIdLeastSignificantBits,
+            ProjectileHitCandidateV0 candidate,
+            RuntimePermitClaimDisposition result,
+            long runtimeTick) {
+        invokeP9Diagnostic(
+                trace,
+                "recordHitClaimResult",
+                new Class<?>[] {
+                    long.class,
+                    long.class,
+                    ProjectileHitCandidateV0.class,
+                    RuntimePermitClaimDisposition.class,
+                    long.class
+                },
+                permitIdMostSignificantBits,
+                permitIdLeastSignificantBits,
+                candidate,
+                result,
+                runtimeTick);
+    }
+
+    private static void invokeP9Diagnostic(
+            ServerSlot.P9ActiveDiagnostic trace,
+            String methodName,
+            Class<?>[] parameterTypes,
+            Object... arguments) {
+        try {
+            var method = ServerSlot.P9ActiveDiagnostic.class.getDeclaredMethod(
+                    methodName, parameterTypes);
+            method.setAccessible(true);
+            method.invoke(trace, arguments);
+        } catch (InvocationTargetException failure) {
+            var cause = failure.getCause();
+            if (cause instanceof RuntimeException runtimeFailure) {
+                throw runtimeFailure;
+            }
+            if (cause instanceof Error errorFailure) {
+                throw errorFailure;
+            }
+            throw new AssertionError(cause);
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+        }
     }
 
 }

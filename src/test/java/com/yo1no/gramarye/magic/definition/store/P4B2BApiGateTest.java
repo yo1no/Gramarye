@@ -394,7 +394,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(78, dependencyErrorCatchCount(production)),
+                () -> assertEquals(96, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -617,6 +617,13 @@ class P4B2BApiGateTest {
         var diagnosticIsolation = p5Catches.stream()
                 .filter(block -> block.binding().equals("ignoredDiagnosticFailure"))
                 .toList();
+        var p9ErrorPrimitiveIsolation = p5Catches.stream()
+                .filter(block -> Set.of(
+                                "ignoredLookupFailure",
+                                "ignoredPrimitiveFailure",
+                                "ignoredDiscardFailure")
+                        .contains(block.binding()))
+                .toList();
         var storeCatches = errorCatchBlocks(service);
         var networkCatches = errorCatchBlocks(networkHandler);
         var syncCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
@@ -639,6 +646,24 @@ class P4B2BApiGateTest {
         var p8BackendCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(
                 MAIN_JAVA.resolve(
                         "com/yo1no/gramarye/MinecraftP8ClientPresentationBackend.java"))));
+        var p6AdapterCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(
+                MAIN_JAVA.resolve(
+                        "com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java"))));
+        var p9ProjectileCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(
+                MAIN_JAVA.resolve("com/yo1no/gramarye/P9StarterProjectile.java"))));
+        var p9WorldHandoffCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(
+                MAIN_JAVA.resolve("com/yo1no/gramarye/P9WorldEffectHandoff.java"))));
+        var p9OwnedCatches = List.of(
+                        p6AdapterCatches, p9ProjectileCatches, p9WorldHandoffCatches)
+                .stream()
+                .flatMap(List::stream)
+                .toList();
+        var p9Primary = p9OwnedCatches.stream()
+                .filter(block -> block.binding().equals("failure"))
+                .toList();
+        var p9CleanupIsolation = p9OwnedCatches.stream()
+                .filter(block -> block.binding().equals("ignoredCleanupFailure"))
+                .toList();
         var reviewedP8S5Catches = p8ClientCatches.size() - p8ClientPrimary.size()
                 + p8ExecutionCatches.size()
                 + p8LifecycleCatches.size()
@@ -650,12 +675,19 @@ class P4B2BApiGateTest {
         primary.addAll(syncCatches);
         primary.addAll(p8ClientPrimary);
         primary.addAll(p8ServerCatches);
+        primary.addAll(p9Primary);
         assertAll(
-                () -> assertEquals(13, p5Catches.size()),
-                () -> assertEquals(6, p5Primary.size()),
-                () -> assertEquals(11, primary.size()),
-                () -> assertEquals(5, secondary.size()),
+                () -> assertEquals(19, p5Catches.size()),
+                () -> assertEquals(8, p5Primary.size()),
+                () -> assertEquals(20, primary.size()),
+                () -> assertEquals(6, secondary.size()),
                 () -> assertEquals(2, diagnosticIsolation.size()),
+                () -> assertEquals(3, p9ErrorPrimitiveIsolation.size()),
+                () -> assertEquals(2, p6AdapterCatches.size()),
+                () -> assertEquals(7, p9ProjectileCatches.size()),
+                () -> assertEquals(3, p9WorldHandoffCatches.size()),
+                () -> assertEquals(7, p9Primary.size()),
+                () -> assertEquals(5, p9CleanupIsolation.size()),
                 () -> assertEquals(1, storeCatches.size()),
                 () -> assertEquals(1, networkCatches.size()),
                 () -> assertEquals(1, syncCatches.size()),
@@ -704,14 +736,46 @@ class P4B2BApiGateTest {
                 () -> assertTrue(secondary.stream().allMatch(block -> block.body().isBlank())),
                 () -> assertTrue(diagnosticIsolation.stream()
                         .allMatch(block -> block.body().isBlank())),
+                () -> assertTrue(p9ErrorPrimitiveIsolation.stream()
+                        .allMatch(block -> block.body().isBlank())),
+                () -> assertTrue(p9Primary.stream().allMatch(block ->
+                        block.body().contains("throw failure;"))),
+                () -> assertTrue(p9CleanupIsolation.stream()
+                        .allMatch(block -> block.body().isBlank())),
+                () -> assertEquals(1, p6AdapterCatches.stream().filter(block ->
+                                block.binding().equals("failure")
+                                        && block.body().trim().equals("throw failure;"))
+                        .count()),
+                () -> assertTrue(p6AdapterCatches.stream().filter(block ->
+                                block.binding().equals("failure"))
+                        .allMatch(block -> !block.body().contains(
+                                "bestEffortCloseOpened("))),
+                () -> assertEquals(0, p9ProjectileCatches.stream().filter(block ->
+                                block.binding().equals("failure")
+                                        && block.body().contains("bestEffortDiscard("))
+                        .count()),
+                () -> assertTrue(p9ProjectileCatches.stream().filter(block ->
+                                block.binding().equals("failure"))
+                        .allMatch(block -> !block.body().contains("bestEffortClose("))),
+                () -> assertEquals(2, p9ProjectileCatches.stream().filter(block ->
+                                block.binding().equals("failure")
+                                        && block.body().contains(
+                                                "locallyClaimedOrTerminal = true;")
+                                        && !block.body().contains("bestEffortDiscard("))
+                        .count()),
+                () -> assertTrue(p9WorldHandoffCatches.stream().filter(block ->
+                                block.binding().equals("failure"))
+                        .allMatch(block -> block.body().trim().equals("throw failure;"))),
                 () -> assertEquals(
                         primary.size()
                                 + secondary.size()
                                 + diagnosticIsolation.size()
+                                + p9ErrorPrimitiveIsolation.size()
+                                + p9CleanupIsolation.size()
                                 + lifecycleCatches.size()
                                 + reviewedP8S5Catches,
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(78, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(96, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
                 "permit.releaseAfterEnqueueFailure();", "throw failure;");
         assertOrdered(

@@ -76,6 +76,96 @@ public final class P7S4LoginManaGameTests {
 
     private P7S4LoginManaGameTests() {}
 
+    static P9GameTestFixture openP9GameTestFixture(
+            GameTestHelper helper,
+            ServerPlayer actor,
+            long fixtureId) {
+        Objects.requireNonNull(helper, "helper");
+        Objects.requireNonNull(actor, "actor");
+        if (fixtureId <= 0) {
+            throw new IllegalArgumentException("P9 GameTest fixture identity must be positive");
+        }
+        var server = helper.getLevel().getServer();
+        helper.assertTrue(server.isSameThread()
+                        && actor.getServer() == server
+                        && server.getPlayerList().getPlayer(actor.getUUID()) == actor,
+                "P9 GameTest fixture requires the exact current server actor");
+        var author = unplacedPlayer(
+                server,
+                new UUID(
+                        0x7910000000004000L,
+                        0x8000000000000000L | fixtureId),
+                "p9-s3-author");
+        var fixture = loginFixture(server, (exactServer, exactActor) -> {});
+        try {
+            var reference = submitCanonical(
+                    helper,
+                    fixture,
+                    author,
+                    P9StarterSkillContent.canonicalDraft(new SkillId(new UUID(
+                            0x7900000000004000L,
+                            0x8000000000000000L | fixtureId))));
+            return new P9GameTestFixture(server, actor, fixture, reference);
+        } catch (RuntimeException | Error failure) {
+            try {
+                fixture.close();
+            } catch (RuntimeException | Error cleanup) {
+                if (cleanup != failure) {
+                    failure.addSuppressed(cleanup);
+                }
+            }
+            throw failure;
+        }
+    }
+
+    static final class P9GameTestFixture implements AutoCloseable {
+        private final MinecraftServer server;
+        private final ServerPlayer actor;
+        private final LoginFixture fixture;
+        private final SkillReference reference;
+        private boolean closed;
+
+        private P9GameTestFixture(
+                MinecraftServer server,
+                ServerPlayer actor,
+                LoginFixture fixture,
+                SkillReference reference) {
+            this.server = Objects.requireNonNull(server, "server");
+            this.actor = Objects.requireNonNull(actor, "actor");
+            this.fixture = Objects.requireNonNull(fixture, "fixture");
+            this.reference = Objects.requireNonNull(reference, "reference");
+        }
+
+        ServerPlayer actor() {
+            return actor;
+        }
+
+        SkillReference reference() {
+            return reference;
+        }
+
+        CastGeometryExecutionDataV0 geometry() {
+            return expectedCastGeometry(actor);
+        }
+
+        SkillRuntimeService startRuntime(RuntimeExecutionPort port) {
+            if (closed) {
+                throw new IllegalStateException("P9 GameTest fixture is closed");
+            }
+            var runtime = directRuntime(fixture.store(), port);
+            startDirectRuntime(runtime, server);
+            return runtime;
+        }
+
+        @Override
+        public void close() {
+            if (!closed) {
+                closed = true;
+                fixture.close();
+            }
+        }
+    }
+
     static void withP9CallScopedRuntimeContext(
             GameTestHelper helper,
             MinecraftServer server,
@@ -947,8 +1037,9 @@ public final class P7S4LoginManaGameTests {
                     "retained cancellation must begin from one actual RESERVED permit");
             helper.assertTrue(
                     runtime.cancel(server, port.cancellationToken())
-                            instanceof RuntimeCancellationResult.NotPending,
-                    "lineage cancellation must close the detached-only owner without fabricating a queued removal");
+                            instanceof RuntimeCancellationResult.CancelledSkillInstance cancelled
+                            && cancelled.removedCount() == 1,
+                    "lineage cancellation must report the one detached continuation work unit");
             helper.assertTrue(
                     port.opened().permit().closeWithoutHit(
                                     server, ProjectileClosureReason.OWNER_INVALIDATED)
