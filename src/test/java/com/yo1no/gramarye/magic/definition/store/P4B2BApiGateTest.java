@@ -394,7 +394,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(75, dependencyErrorCatchCount(production)),
+                () -> assertEquals(78, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -614,6 +614,9 @@ class P4B2BApiGateTest {
         var secondary = p5Catches.stream()
                 .filter(block -> block.binding().equals("ignoredCleanupFailure"))
                 .toList();
+        var diagnosticIsolation = p5Catches.stream()
+                .filter(block -> block.binding().equals("ignoredDiagnosticFailure"))
+                .toList();
         var storeCatches = errorCatchBlocks(service);
         var networkCatches = errorCatchBlocks(networkHandler);
         var syncCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
@@ -648,10 +651,11 @@ class P4B2BApiGateTest {
         primary.addAll(p8ClientPrimary);
         primary.addAll(p8ServerCatches);
         assertAll(
-                () -> assertEquals(10, p5Catches.size()),
-                () -> assertEquals(5, p5Primary.size()),
-                () -> assertEquals(10, primary.size()),
+                () -> assertEquals(13, p5Catches.size()),
+                () -> assertEquals(6, p5Primary.size()),
+                () -> assertEquals(11, primary.size()),
                 () -> assertEquals(5, secondary.size()),
+                () -> assertEquals(2, diagnosticIsolation.size()),
                 () -> assertEquals(1, storeCatches.size()),
                 () -> assertEquals(1, networkCatches.size()),
                 () -> assertEquals(1, syncCatches.size()),
@@ -698,13 +702,16 @@ class P4B2BApiGateTest {
                                         "throw preserveErrorFault(slot, "
                                                 + block.binding() + ");"))),
                 () -> assertTrue(secondary.stream().allMatch(block -> block.body().isBlank())),
+                () -> assertTrue(diagnosticIsolation.stream()
+                        .allMatch(block -> block.body().isBlank())),
                 () -> assertEquals(
                         primary.size()
                                 + secondary.size()
+                                + diagnosticIsolation.size()
                                 + lifecycleCatches.size()
                                 + reviewedP8S5Catches,
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(75, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(78, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
                 "permit.releaseAfterEnqueueFailure();", "throw failure;");
         assertOrdered(

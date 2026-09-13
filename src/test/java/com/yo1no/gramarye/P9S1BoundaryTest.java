@@ -86,6 +86,8 @@ final class P9S1BoundaryTest {
             "P9DamageActionType.class",
             "P9EffectHitTriggerPayloadV0.class",
             "P9EffectHitTriggerType.class",
+            "P9RuntimeCleanupDisposition.class",
+            "P9RuntimeDiagnosticStage.class",
             "P9SpawnProjectileActionPayloadV0.class",
             "P9SpawnProjectileActionType.class",
             "P9StarterSkillContent.class",

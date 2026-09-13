@@ -20,6 +20,8 @@ import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
 import com.yo1no.gramarye.magic.definition.validation.ProfileAvailabilityView;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -38,6 +40,9 @@ import net.neoforged.bus.api.BusBuilder;
 import org.junit.jupiter.api.Test;
 
 final class P5RuntimeHardLimitWorkloadTest {
+    private static final Path PROJECT_ROOT = projectRoot();
+    private static final Path RUNTIME_SERVICE_SOURCE = PROJECT_ROOT.resolve(
+            "src/main/java/com/yo1no/gramarye/SkillRuntimeService.java");
     private static final long FNV_OFFSET_BASIS = 0xcbf29ce484222325L;
     private static final long FNV_PRIME = 0x100000001b3L;
     private static final String EXPECTED_DEFAULT_DRAIN_DIGEST = "994d53cb0c302785";
@@ -115,6 +120,62 @@ final class P5RuntimeHardLimitWorkloadTest {
 
         service.stopSlot(physicalSlot);
         assertRealSlotCleanedToZero(physicalSlot);
+    }
+
+    @Test
+    void p9MaximumCleanupTopologyIsOneDirectTransitionPerBoundedActiveEntry()
+            throws Exception {
+        var source = Files.readString(RUNTIME_SERVICE_SOURCE);
+        var openerSource = sourceBlock(
+                source,
+                "RuntimeProjectileContinuationOpenResult openProjectileContinuation(");
+        var cleanupSource = sourceBlock(
+                source,
+                "private static int closeAllIndexedContinuations(");
+        var closeSource = sourceBlock(
+                source,
+                "private RuntimePermitCloseDisposition "
+                        + "closeProjectileContinuationOnObservedThread(");
+
+        assertAll(
+                () -> assertEquals(128, hardLimits().activeSkillInstancesPerServer()),
+                () -> assertTrue(openerSource.contains(
+                        "slot.activeProjectileContinuations.size() >= 128")),
+                () -> assertTrue(openerSource.contains(
+                        "activeContinuationsForAttribution(slot, instance.attribution) >= 16")),
+                () -> assertTrue(cleanupSource.contains(
+                        "var workUnits = slot.activeProjectileContinuations.size();")),
+                () -> assertTrue(cleanupSource.contains(
+                        "workUnits > 128 || workUnits > slot.instances.size()")),
+                () -> assertTrue(cleanupSource.contains(
+                        "slot.activeProjectileContinuations.entrySet().iterator()")),
+                () -> assertEquals(1, occurrences(cleanupSource, "permits.hasNext()")),
+                () -> assertEquals(1, occurrences(cleanupSource, "permits.next()")),
+                () -> assertEquals(1, occurrences(cleanupSource, "permits.remove()")),
+                () -> assertEquals(1, occurrences(
+                        cleanupSource, "indexed.getValue().closeWithoutHit(server, reason)")),
+                () -> assertEquals(1, occurrences(
+                        cleanupSource,
+                        "slot.p9BatchContinuationCloseInProgress = true")),
+                () -> assertEquals(1, occurrences(
+                        cleanupSource,
+                        "slot.p9BatchContinuationCloseInProgress = false")),
+                () -> assertEquals(1, occurrences(cleanupSource, "closedWorkUnits++")),
+                () -> assertTrue(cleanupSource.contains(
+                        "closedWorkUnits != workUnits")),
+                () -> assertTrue(cleanupSource.contains("return closedWorkUnits;")),
+                () -> assertFalse(cleanupSource.contains("toArray(")),
+                () -> assertFalse(cleanupSource.contains("values().iterator().next()")),
+                () -> assertFalse(cleanupSource.contains(
+                        "for (var index = 0; index < workUnits; index++)")),
+                () -> assertFalse(cleanupSource.contains("slot.instances.values()")),
+                () -> assertFalse(cleanupSource.contains(
+                        "slot.activeProjectileContinuations.clear()")),
+                () -> assertEquals(1, occurrences(
+                        closeSource, "slot.instances.get(skillInstanceId)")),
+                () -> assertFalse(closeSource.contains("slot.instances.values()")),
+                () -> assertTrue(closeSource.contains(
+                        "slot.activeProjectileContinuations.remove(permitId, permit)")));
     }
 
     private static P5RuntimeLimits hardLimits() {
@@ -226,6 +287,10 @@ final class P5RuntimeHardLimitWorkloadTest {
                 () -> assertEquals(4_096, slot.cleanupScratch.length),
                 () -> assertEquals(256, slot.diagnostics.breakerRing.length),
                 () -> assertEquals(4, slot.diagnostics.breakerTotals.length),
+                () -> assertTrue(slot.activeProjectileContinuations.isEmpty()),
+                () -> assertEquals(256, slot.p9TerminalRing.length),
+                () -> assertEquals(0, slot.p9TerminalWriteIndex),
+                () -> assertEquals(0, slot.p9TerminalCount),
                 () -> assertEquals(2, MagicSafetyCeilings.MAX_CURRENT_TICK_TOP_OFFENDER_SLOTS));
     }
 
@@ -617,6 +682,7 @@ final class P5RuntimeHardLimitWorkloadTest {
                 () -> assertTrue(slot.queue.isEmpty()),
                 () -> assertTrue(slot.eventIndex.isEmpty()),
                 () -> assertTrue(slot.instances.isEmpty()),
+                () -> assertTrue(slot.activeProjectileContinuations.isEmpty()),
                 () -> assertTrue(slot.attributions.isEmpty()),
                 () -> assertTrue(slot.leases.isEmpty()),
                 () -> assertEquals(0, slot.committedPending),
@@ -630,6 +696,7 @@ final class P5RuntimeHardLimitWorkloadTest {
                         portInvocations, slot.diagnostics.portInvocationsThisTick));
         assertAllCellsNull(slot.deferred);
         assertAllCellsNull(slot.cleanupScratch);
+        assertAllP9DiagnosticsNull(slot);
     }
 
     private static void exerciseBreakerRingOverwrite(
@@ -687,6 +754,7 @@ final class P5RuntimeHardLimitWorkloadTest {
                 () -> assertTrue(slot.queue.isEmpty()),
                 () -> assertTrue(slot.eventIndex.isEmpty()),
                 () -> assertTrue(slot.instances.isEmpty()),
+                () -> assertTrue(slot.activeProjectileContinuations.isEmpty()),
                 () -> assertTrue(slot.attributions.isEmpty()),
                 () -> assertTrue(slot.leases.isEmpty()),
                 () -> assertEquals(0, slot.deferredCount),
@@ -698,15 +766,69 @@ final class P5RuntimeHardLimitWorkloadTest {
                 () -> assertEquals(0, slot.rootAdmissionsThisTick),
                 () -> assertEquals(0, slot.executionsThisTick),
                 () -> assertEquals(0, slot.cancellationsThisTick),
-                () -> assertEquals(0, slot.diagnostics.breakerWriteIndex));
+                () -> assertEquals(0, slot.diagnostics.breakerWriteIndex),
+                () -> assertEquals(0, slot.p9TerminalWriteIndex),
+                () -> assertEquals(0, slot.p9TerminalCount));
         assertAllCellsNull(slot.deferred);
         assertAllCellsNull(slot.cleanupScratch);
+        assertAllP9DiagnosticsNull(slot);
         for (var diagnostic : slot.diagnostics.breakerRing) {
             assertNull(diagnostic);
         }
         for (var total : slot.diagnostics.breakerTotals) {
             assertEquals(0, total);
         }
+    }
+
+    private static void assertAllP9DiagnosticsNull(ServerSlot slot) {
+        assertEquals(256, slot.p9TerminalRing.length);
+        for (var diagnostic : slot.p9TerminalRing) {
+            assertNull(diagnostic);
+        }
+    }
+
+    private static String sourceBlock(String source, String marker) {
+        var markerIndex = source.indexOf(marker);
+        assertTrue(markerIndex >= 0, () -> "missing source marker: " + marker);
+        var openingBrace = source.indexOf('{', markerIndex);
+        assertTrue(openingBrace >= 0, () -> "missing opening brace after: " + marker);
+        var depth = 0;
+        for (var index = openingBrace; index < source.length(); index++) {
+            switch (source.charAt(index)) {
+                case '{' -> depth++;
+                case '}' -> {
+                    depth--;
+                    if (depth == 0) {
+                        return source.substring(markerIndex, index + 1);
+                    }
+                }
+                default -> {
+                    // Source under test has no braces in strings inside these selected blocks.
+                }
+            }
+        }
+        throw new AssertionError("unterminated source block: " + marker);
+    }
+
+    private static int occurrences(String source, String fragment) {
+        var count = 0;
+        var offset = 0;
+        while ((offset = source.indexOf(fragment, offset)) >= 0) {
+            count++;
+            offset += fragment.length();
+        }
+        return count;
+    }
+
+    private static Path projectRoot() {
+        var current = Path.of("").toAbsolutePath().normalize();
+        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle"))) {
+            current = current.getParent();
+        }
+        if (current == null) {
+            throw new IllegalStateException("project root unavailable");
+        }
+        return current;
     }
 
     private enum LineageProfile {

@@ -58,6 +58,8 @@ import com.yo1no.gramarye.magic.trigger.type.TriggerPayloadInspector;
 import com.yo1no.gramarye.magic.trigger.type.TriggerType;
 import com.yo1no.gramarye.magic.validation.ValidationContext;
 import com.yo1no.gramarye.magic.validation.ValidationResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -71,6 +73,9 @@ import org.junit.jupiter.api.Test;
 
 /** Focused pure-Java execution-kernel boundary tests; no Minecraft server is constructed. */
 final class P5RuntimeKernelTest {
+    private static final Path PROJECT_ROOT = projectRoot();
+    private static final Path RUNTIME_SERVICE_SOURCE = PROJECT_ROOT.resolve(
+            "src/main/java/com/yo1no/gramarye/SkillRuntimeService.java");
     private static final RuntimeServerToken SERVER_TOKEN = new RuntimeServerToken(7);
     private static final SkillReference SKILL_REFERENCE = new SkillReference(
             new SkillId(new UUID(17, 23)), new SkillRevision(3));
@@ -460,7 +465,9 @@ final class P5RuntimeKernelTest {
                 () -> assertFalse(slot.dispatching),
                 () -> assertTrue(slot.queue.isEmpty()),
                 () -> assertTrue(slot.eventIndex.isEmpty()),
+                () -> assertTrue(slot.activeProjectileContinuations.isEmpty()),
                 () -> assertEquals(0, slot.committedPending),
+                () -> assertEquals(0, slot.reservedPending),
                 () -> assertEquals(3, slot.executionsThisTick),
                 () -> assertEquals(4, slot.diagnostics.executionAttemptsThisTick));
     }
@@ -539,6 +546,11 @@ final class P5RuntimeKernelTest {
                         .allMatch(value -> value == null)),
                 () -> assertTrue(Arrays.stream(slot.diagnostics.breakerTotals)
                         .allMatch(value -> value == 0)),
+                () -> assertTrue(slot.activeProjectileContinuations.isEmpty()),
+                () -> assertEquals(0, slot.p9TerminalWriteIndex),
+                () -> assertEquals(0, slot.p9TerminalCount),
+                () -> assertTrue(Arrays.stream(slot.p9TerminalRing)
+                        .allMatch(value -> value == null)),
                 () -> assertEquals(0, slot.diagnostics.typedOutcomesThisTick),
                 () -> assertEquals(0, slot.diagnostics.maximumLagTicksThisTick));
     }
@@ -568,8 +580,16 @@ final class P5RuntimeKernelTest {
                 () -> assertTrue(slot.queue.isEmpty()),
                 () -> assertTrue(slot.eventIndex.isEmpty()),
                 () -> assertTrue(slot.instances.isEmpty()),
+                () -> assertTrue(slot.activeProjectileContinuations.isEmpty()),
+                () -> assertFalse(slot.p9BatchContinuationCloseInProgress),
+                () -> assertFalse(slot.p9ActiveIndexInvalidatedAfterError),
                 () -> assertTrue(slot.attributions.isEmpty()),
-                () -> assertTrue(slot.leases.isEmpty()));
+                () -> assertTrue(slot.leases.isEmpty()),
+                () -> assertEquals(256, slot.p9TerminalRing.length),
+                () -> assertEquals(0, slot.p9TerminalWriteIndex),
+                () -> assertEquals(0, slot.p9TerminalCount),
+                () -> assertTrue(Arrays.stream(slot.p9TerminalRing)
+                        .allMatch(value -> value == null)));
 
         slot.queue.add(event);
         slot.eventIndex.put(event.eventId(), event);
@@ -586,14 +606,348 @@ final class P5RuntimeKernelTest {
         assertAll(
                 () -> assertTrue(slot.queue.isEmpty()),
                 () -> assertTrue(slot.eventIndex.isEmpty()),
+                () -> assertTrue(slot.activeProjectileContinuations.isEmpty()),
                 () -> assertNull(slot.deferred[0]),
                 () -> assertNull(slot.cleanupScratch[0]),
+                () -> assertFalse(slot.p9BatchContinuationCloseInProgress),
+                () -> assertTrue(slot.p9ActiveIndexInvalidatedAfterError),
                 () -> assertEquals(0, slot.deferredCount),
                 () -> assertNull(slot.currentEvent),
                 () -> assertEquals(0, slot.currentReservationCount),
                 () -> assertNull(slot.currentReservationOwner),
                 () -> assertEquals(0, slot.committedPending),
-                () -> assertEquals(0, slot.reservedPending));
+                () -> assertEquals(0, slot.reservedPending),
+                () -> assertEquals(0, slot.p9TerminalWriteIndex),
+                () -> assertEquals(0, slot.p9TerminalCount),
+                () -> assertTrue(Arrays.stream(slot.p9TerminalRing)
+                        .allMatch(value -> value == null)));
+    }
+
+    @Test
+    void p9DiagnosticTraceUsesTheFixedMonotonicSixteenStageVocabulary() {
+        var dimension = ResourceLocation.fromNamespaceAndPath(
+                Gramarye.MOD_ID, "p9_diagnostic_dimension");
+        var geometry = new CastGeometryExecutionDataV0(
+                dimension, 1.25, 64.5, -2.75, 32_767, 0, -32_767, 0);
+        var event = p9RootEvent(17, 11, 23, geometry);
+        var trace = new ServerSlot.P9ActiveDiagnostic(event, geometry);
+
+        trace.record(P9RuntimeDiagnosticStage.CAST_ACCEPTED, 23);
+        trace.record(P9RuntimeDiagnosticStage.INSTANCE_PINNED, 23);
+        trace.record(P9RuntimeDiagnosticStage.NODE0_MATCHED, 24);
+        trace.record(P9RuntimeDiagnosticStage.CONTINUATION_OPENED, 24);
+        trace.record(P9RuntimeDiagnosticStage.TERMINAL_CAUSE, 29);
+        trace.record(P9RuntimeDiagnosticStage.CLEANUP_DISPOSITION, 29);
+
+        assertAll(
+                () -> assertEquals(16, P9RuntimeDiagnosticStage.values().length),
+                () -> assertEquals(
+                        List.of(
+                                "CAST_ACCEPTED",
+                                "INSTANCE_PINNED",
+                                "NODE0_MATCHED",
+                                "CONTINUATION_OPENED",
+                                "SPAWN_RESOLVED",
+                                "SPAWN_COMMIT_RESULT",
+                                "PROJECTILE_ACTIVE",
+                                "CAST_PRESENTATION_OFFERED",
+                                "HIT_CLAIM_RESULT",
+                                "NODE1_QUEUED",
+                                "NODE1_MATCHED",
+                                "DAMAGE_RESOLVED",
+                                "DAMAGE_COMMIT_RESULT",
+                                "HIT_PRESENTATION_OFFERED",
+                                "TERMINAL_CAUSE",
+                                "CLEANUP_DISPOSITION"),
+                        Arrays.stream(P9RuntimeDiagnosticStage.values())
+                                .map(Enum::name)
+                                .toList()),
+                () -> assertEquals(16, trace.stageCodes.length),
+                () -> assertEquals(16, trace.stageTicks.length),
+                () -> assertEquals(6, trace.stageCount),
+                () -> assertArrayEquals(
+                        new int[] {1, 2, 3, 4, 15, 16},
+                        Arrays.copyOf(trace.stageCodes, trace.stageCount)),
+                () -> assertArrayEquals(
+                        new long[] {23, 23, 24, 24, 29, 29},
+                        Arrays.copyOf(trace.stageTicks, trace.stageCount)),
+                () -> assertTrue(Arrays.stream(trace.stageCodes, trace.stageCount, 16)
+                        .allMatch(value -> value == 0)),
+                () -> assertEquals(event.skillInstanceId(), trace.skillInstanceId),
+                () -> assertEquals(event.skillInstanceSequence(), trace.sequence),
+                () -> assertEquals(event.eventId(), trace.rootEventId),
+                () -> assertEquals(event.skillReference(), trace.exactReference),
+                () -> assertEquals(dimension, trace.dimension),
+                () -> assertEquals(geometry.originX(), trace.originX),
+                () -> assertEquals(geometry.originY(), trace.originY),
+                () -> assertEquals(geometry.originZ(), trace.originZ),
+                () -> assertEquals(geometry.directionXQ15(), trace.directionXQ15),
+                () -> assertEquals(geometry.directionYQ15(), trace.directionYQ15),
+                () -> assertEquals(geometry.directionZQ15(), trace.directionZQ15),
+                () -> assertEquals(geometry.profileCode(), trace.profileCode),
+                () -> assertThrows(
+                        IllegalStateException.class,
+                        () -> trace.record(P9RuntimeDiagnosticStage.SPAWN_RESOLVED, 30)));
+
+        var errorTrace = new ServerSlot.P9ActiveDiagnostic(event, geometry);
+        errorTrace.record(P9RuntimeDiagnosticStage.CAST_ACCEPTED, 23);
+        errorTrace.record(P9RuntimeDiagnosticStage.INSTANCE_PINNED, 23);
+        errorTrace.record(P9RuntimeDiagnosticStage.NODE0_MATCHED, 24);
+        errorTrace.record(P9RuntimeDiagnosticStage.CONTINUATION_OPENED, 24);
+        errorTrace.recordErrorDeferredBestEffort(31);
+        errorTrace.recordErrorDeferredBestEffort(32);
+        assertAll(
+                () -> assertEquals(6, errorTrace.stageCount),
+                () -> assertArrayEquals(
+                        new int[] {1, 2, 3, 4, 15, 16},
+                        Arrays.copyOf(errorTrace.stageCodes, errorTrace.stageCount)),
+                () -> assertArrayEquals(
+                        new long[] {23, 23, 24, 24, 31, 31},
+                        Arrays.copyOf(errorTrace.stageTicks, errorTrace.stageCount)),
+                () -> assertEquals(
+                        P9RuntimeCleanupDisposition.ERROR_DEFERRED,
+                        errorTrace.cleanupDisposition));
+
+        var duplicateTrace = new ServerSlot.P9ActiveDiagnostic(event, geometry);
+        duplicateTrace.record(P9RuntimeDiagnosticStage.CAST_ACCEPTED, 23);
+        assertThrows(
+                IllegalStateException.class,
+                () -> duplicateTrace.record(P9RuntimeDiagnosticStage.CAST_ACCEPTED, 24));
+    }
+
+    @Test
+    void p9PermitSourceKeepsTheClosedFiveStateVocabularyButOnlyTheS2RouteReachable()
+            throws Exception {
+        var serviceSource = Files.readString(RUNTIME_SERVICE_SOURCE);
+        var permitSource = sourceBlock(
+                serviceSource, "final class RuntimeProjectileContinuationPermit {");
+        var stateSource = sourceBlock(permitSource, "private enum State {");
+        var closeSource = sourceBlock(
+                permitSource,
+                "RuntimePermitCloseDisposition closeWithoutHit(");
+
+        assertAll(
+                () -> assertEquals(
+                        "private enum State { RESERVED, OPEN, CLAIMED_PENDING_DAMAGE, "
+                                + "CLOSED_NO_HIT, CLOSED_AFTER_HIT }",
+                        compactSource(stateSource)),
+                () -> assertTrue(permitSource.contains(
+                        "private State state = State.RESERVED;")),
+                () -> assertEquals(2, occurrences(permitSource, "state = State.")),
+                () -> assertEquals(1, occurrences(
+                        permitSource, "state = State.CLOSED_NO_HIT;")),
+                () -> assertTrue(closeSource.contains(
+                        "disposition == RuntimePermitCloseDisposition.CLOSED")),
+                () -> assertTrue(closeSource.contains(
+                        "disposition == RuntimePermitCloseDisposition.ALREADY_CLOSED")),
+                () -> assertTrue(closeSource.contains("state = State.CLOSED_NO_HIT;")),
+                () -> assertFalse(permitSource.contains("state = State.OPEN")),
+                () -> assertFalse(permitSource.contains(
+                        "state = State.CLAIMED_PENDING_DAMAGE")),
+                () -> assertFalse(permitSource.contains("state = State.CLOSED_AFTER_HIT")),
+                () -> assertFalse(permitSource.contains("transferAfterAppliedSpawn")),
+                () -> assertFalse(permitSource.contains("P9StarterProjectile")));
+    }
+
+    @Test
+    void p9NormalAndRuntimeFaultCleanupUsePermitTransitionsBeforeDiagnostics()
+            throws Exception {
+        var serviceSource = Files.readString(RUNTIME_SERVICE_SOURCE);
+        var closeSource = sourceBlock(
+                serviceSource,
+                "private RuntimePermitCloseDisposition "
+                        + "closeProjectileContinuationOnObservedThread(");
+        var indexedCleanupSource = sourceBlock(
+                serviceSource,
+                "private static int closeAllIndexedContinuations(");
+        var normalCleanupSource = sourceBlock(
+                serviceSource, "private static int clearSlotNormal(");
+        var runtimeCleanupSource = sourceBlock(
+                serviceSource, "private static void clearSlotAfterRuntimeException(");
+
+        assertAll(
+                () -> assertOrdered(
+                        closeSource,
+                        "var indexed = slot.p9BatchContinuationCloseInProgress",
+                        "? permit",
+                        ": slot.activeProjectileContinuations.get(permitId);",
+                        "slot.p9ActiveIndexInvalidatedAfterError",
+                        "slot.activeProjectileContinuations.remove(permitId, permit)",
+                        "instance.activeProjectileContinuation = null;",
+                        "instance.reservedPending--;",
+                        "attribution.reservedPending--;",
+                        "slot.reservedPending--;",
+                        "instance.clearP9AuthenticatedActorWitness();",
+                        "maybeRemoveInstance(slot, instance.id);",
+                        "recordP9Terminal("),
+                () -> assertFalse(closeSource.contains("indexedCleanupTransition")),
+                () -> assertTrue(closeSource.contains(
+                        "reason == ProjectileClosureReason.SERVER_STOPPED")),
+                () -> assertTrue(indexedCleanupSource.contains(
+                        "var workUnits = slot.activeProjectileContinuations.size();")),
+                () -> assertOrdered(
+                        indexedCleanupSource,
+                        "slot.activeProjectileContinuations.entrySet().iterator()",
+                        "permits.hasNext()",
+                        "var indexed = permits.next();",
+                        "slot.p9BatchContinuationCloseInProgress = true;",
+                        "indexed.getValue().closeWithoutHit(server, reason)",
+                        "permits.remove();",
+                        "slot.p9BatchContinuationCloseInProgress = false;"),
+                () -> assertTrue(indexedCleanupSource.contains(
+                        "var close = indexed.getValue().closeWithoutHit(server, reason);")),
+                () -> assertTrue(indexedCleanupSource.contains("closedWorkUnits++;")),
+                () -> assertTrue(indexedCleanupSource.contains("return closedWorkUnits;")),
+                () -> assertFalse(indexedCleanupSource.contains("slot.instances.values()")),
+                () -> assertFalse(indexedCleanupSource.contains("toArray(")),
+                () -> assertFalse(indexedCleanupSource.contains(
+                        "values().iterator().next()")),
+                () -> assertEquals(1, occurrences(
+                        indexedCleanupSource,
+                        "slot.activeProjectileContinuations.entrySet().iterator()")),
+                () -> assertEquals(1, occurrences(
+                        indexedCleanupSource, "permits.next()")),
+                () -> assertEquals(1, occurrences(
+                        indexedCleanupSource, "permits.remove()")),
+                () -> assertFalse(indexedCleanupSource.contains(
+                        "slot.activeProjectileContinuations.clear()")),
+                () -> assertOrdered(
+                        normalCleanupSource,
+                        "closeAllIndexedContinuations(",
+                        "terminalizeRemainingP9("),
+                () -> assertTrue(normalCleanupSource.contains("return closedWorkUnits;")),
+                () -> assertFalse(normalCleanupSource.contains(
+                        "slot.activeProjectileContinuations.clear()")),
+                () -> assertOrdered(
+                        runtimeCleanupSource,
+                        "closeAllIndexedContinuations(",
+                        "terminalizeRemainingP9("),
+                () -> assertFalse(runtimeCleanupSource.contains(
+                        "slot.activeProjectileContinuations.clear()")));
+    }
+
+    @Test
+    void p9WrongThreadNegativeUsesTheSameCloseCoreWithoutNewThreadCoordinates()
+            throws Exception {
+        var serviceSource = Files.readString(RUNTIME_SERVICE_SOURCE);
+        var productWrapper = sourceBlock(
+                serviceSource,
+                "RuntimePermitCloseDisposition closeProjectileContinuation(");
+        var gameTestWrapper = sourceBlock(
+                serviceSource,
+                "RuntimePermitCloseDisposition rejectProjectileContinuationCloseForGameTest(");
+        var core = sourceBlock(
+                serviceSource,
+                "private RuntimePermitCloseDisposition "
+                        + "closeProjectileContinuationOnObservedThread(");
+        var gameTestSource = Files.readString(PROJECT_ROOT.resolve(
+                "src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java"));
+
+        assertAll(
+                () -> assertTrue(productWrapper.contains("server.isSameThread(),")),
+                () -> assertTrue(gameTestWrapper.contains(
+                        "false,\n"
+                                + "                server,\n"
+                                + "                permit,\n"
+                                + "                serverSlotToken,\n"
+                                + "                skillInstanceId,\n"
+                                + "                budgetAttribution,\n"
+                                + "                permitId,\n"
+                                + "                reason")),
+                () -> assertFalse(gameTestWrapper.contains(", null")),
+                () -> assertOrdered(
+                        core,
+                        "if (!observedSameThread)",
+                        "return RuntimePermitCloseDisposition.REJECTED;",
+                        "Objects.requireNonNull(serverSlotToken",
+                        "var slot = slots.get(server)"),
+                () -> assertEquals(3, occurrences(
+                        serviceSource,
+                        "closeProjectileContinuationOnObservedThread(")),
+                () -> assertFalse(productWrapper.contains("Thread.currentThread")),
+                () -> assertFalse(productWrapper.contains("getRunningThread")),
+                () -> assertFalse(gameTestWrapper.contains("Thread.currentThread")),
+                () -> assertFalse(gameTestWrapper.contains("getRunningThread")),
+                () -> assertOrdered(
+                        gameTestSource,
+                        "runtime.rejectProjectileContinuationCloseForGameTest(",
+                        "== RuntimePermitCloseDisposition.REJECTED",
+                        "port.opened().permit().closeWithoutHit(",
+                        "== RuntimePermitCloseDisposition.CLOSED",
+                        "== RuntimePermitCloseDisposition.ALREADY_CLOSED"));
+    }
+
+    @Test
+    void p9DiagnosticFailuresAreTargetedlyIsolatedFromAuthoritativeCleanup()
+            throws Exception {
+        var serviceSource = Files.readString(RUNTIME_SERVICE_SOURCE);
+        var terminalRecordSource = sourceBlock(
+                serviceSource, "private static void recordP9Terminal(");
+        var errorCleanupSource = sourceBlock(
+                serviceSource, "static void clearSlotAfterError(");
+        var runtimePreservationSource = sourceBlock(
+                serviceSource, "RuntimeException preserveRuntimeFault(");
+        var errorPreservationSource = sourceBlock(
+                serviceSource, "Error preserveErrorFault(");
+
+        assertAll(
+                () -> assertTrue(terminalRecordSource.contains(
+                        "catch (RuntimeException | Error ignoredDiagnosticFailure)")),
+                () -> assertFalse(terminalRecordSource.contains("catch (Throwable")),
+                () -> assertOrdered(
+                        errorCleanupSource,
+                        "slot.instances.get(slot.currentEvent.skillInstanceId())",
+                        "currentInstance.clearP9AuthenticatedActorWitness();",
+                        "try {",
+                        "currentInstance.p9Diagnostic.recordErrorDeferredBestEffort(",
+                        "catch (RuntimeException | Error ignoredDiagnosticFailure)"),
+                () -> assertFalse(errorCleanupSource.contains("slot.instances.values()")),
+                () -> assertFalse(errorCleanupSource.contains(".iterator()")),
+                () -> assertFalse(errorCleanupSource.contains("toArray(")),
+                () -> assertFalse(errorCleanupSource.contains("new RuntimeProjectile")),
+                () -> assertFalse(errorCleanupSource.contains("catch (Throwable")),
+                () -> assertOrdered(
+                        runtimePreservationSource,
+                        "enterFaultAfterRuntimeException(",
+                        "return primary;"),
+                () -> assertOrdered(
+                        errorPreservationSource,
+                        "enterFaultAfterError(",
+                        "return primary;"),
+                () -> assertFalse(runtimePreservationSource.contains("addSuppressed(")),
+                () -> assertFalse(errorPreservationSource.contains("addSuppressed(")));
+    }
+
+    @Test
+    void p9ReloadInvalidationUsesTheSharedLinearCloseOwnerAndPreservesPrimaryIdentity()
+            throws Exception {
+        var serviceSource = Files.readString(RUNTIME_SERVICE_SOURCE);
+        var invalidationSource = sourceBlock(
+                serviceSource, "private void invalidateP9Work(");
+        var guardSource = sourceBlock(
+                serviceSource, "private void invalidateP9WorkPreservingPrimary(");
+        var completionSource = sourceBlock(serviceSource, "void completeP9Reload(");
+
+        assertAll(
+                () -> assertTrue(invalidationSource.contains(
+                        "closeAllIndexedContinuations(")),
+                () -> assertFalse(invalidationSource.contains(
+                        "values().iterator().next()")),
+                () -> assertFalse(invalidationSource.contains(
+                        "while (!slot.activeProjectileContinuations.isEmpty())")),
+                () -> assertOrdered(
+                        guardSource,
+                        "invalidateP9Work(server, slot, reason);",
+                        "catch (RuntimeException primary)",
+                        "throw preserveRuntimeFault(slot, primary);",
+                        "catch (Error primary)",
+                        "throw preserveErrorFault(slot, primary);"),
+                () -> assertOrdered(
+                        completionSource,
+                        "invalidateP9WorkPreservingPrimary(",
+                        "p9ReloadCloseRequested.set(false);"),
+                () -> assertFalse(guardSource.contains("addSuppressed(")),
+                () -> assertFalse(guardSource.contains("catch (Throwable")));
     }
 
     @Test
@@ -930,6 +1284,63 @@ final class P5RuntimeKernelTest {
                 NoRuntimeExecutionData.INSTANCE);
     }
 
+    private static String sourceBlock(String source, String marker) {
+        var markerIndex = source.indexOf(marker);
+        assertTrue(markerIndex >= 0, () -> "missing source marker: " + marker);
+        var openingBrace = source.indexOf('{', markerIndex);
+        assertTrue(openingBrace >= 0, () -> "missing opening brace after: " + marker);
+        var depth = 0;
+        for (var index = openingBrace; index < source.length(); index++) {
+            switch (source.charAt(index)) {
+                case '{' -> depth++;
+                case '}' -> {
+                    depth--;
+                    if (depth == 0) {
+                        return source.substring(markerIndex, index + 1);
+                    }
+                }
+                default -> {
+                    // Source under test has no braces in strings inside these selected blocks.
+                }
+            }
+        }
+        throw new AssertionError("unterminated source block: " + marker);
+    }
+
+    private static String compactSource(String source) {
+        return source.replaceAll("\\s+", " ").trim();
+    }
+
+    private static int occurrences(String source, String fragment) {
+        var count = 0;
+        var offset = 0;
+        while ((offset = source.indexOf(fragment, offset)) >= 0) {
+            count++;
+            offset += fragment.length();
+        }
+        return count;
+    }
+
+    private static Path projectRoot() {
+        var current = Path.of("").toAbsolutePath().normalize();
+        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle"))) {
+            current = current.getParent();
+        }
+        if (current == null) {
+            throw new IllegalStateException("project root unavailable");
+        }
+        return current;
+    }
+
+    private static void assertOrdered(String source, String... fragments) {
+        var offset = 0;
+        for (var fragment : fragments) {
+            var next = source.indexOf(fragment, offset);
+            assertTrue(next >= 0, () -> "missing or out-of-order source fragment: " + fragment);
+            offset = next + fragment.length();
+        }
+    }
+
     private static RuntimeEvent rootEvent(
             long eventId,
             long created,
@@ -985,6 +1396,37 @@ final class P5RuntimeKernelTest {
                 Optional.empty(),
                 new RootTriggerCause(EVENT_KIND),
                 NoRuntimeExecutionData.INSTANCE);
+    }
+
+    private static RuntimeEvent p9RootEvent(
+            long eventId,
+            long instanceSequence,
+            long runtimeTick,
+            CastGeometryExecutionDataV0 geometry) {
+        var instanceId = new SkillInstanceId(
+                new UUID(SERVER_TOKEN.value(), instanceSequence));
+        var playerId = new RuntimePlayerId(new UUID(907, 911));
+        return new RuntimeEvent(
+                new EventId(eventId),
+                instanceId,
+                new RuntimeSkillInstanceSequence(instanceSequence),
+                new RuntimeCancellationToken(SERVER_TOKEN, instanceId),
+                Optional.empty(),
+                SKILL_REFERENCE,
+                0,
+                runtimeTick,
+                runtimeTick,
+                runtimeTick + 100,
+                0,
+                0,
+                RuntimeSchedulePersistence.MEMORY_ONLY,
+                new PlayerRuntimeBudgetAttribution(SERVER_TOKEN, playerId),
+                new PlayerOrigin(
+                        SERVER_TOKEN, net.minecraft.world.level.Level.OVERWORLD, playerId),
+                Optional.empty(),
+                new RootTriggerCause(new TriggerEventKind(
+                        P9StarterSkillContent.ACTIVE_CAST_ID)),
+                geometry);
     }
 
     private static RuntimeEvent childEvent(

@@ -373,7 +373,7 @@ final class P8S4ServerTransportTest {
                 () -> assertTrue(gameTest.contains(
                         "connection.setupOutboundProtocol(playProtocol)")),
                 () -> assertTrue(gameTest.contains(
-                        "catalog.packetBytes()\n                                    == payload.bodySize()")),
+                        "catalog.packetBytes()\n                                                == payload.bodySize()")),
                 () -> assertTrue(gameTest.contains("encodedEvent.packetBytes()")
                         && gameTest.contains(".EVENT_PACKET_OVERHEAD_BYTES")));
     }

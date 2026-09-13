@@ -29,6 +29,14 @@ import org.junit.jupiter.api.Test;
 final class P5RuntimeVocabularyTest {
     private static final TriggerEventKind TEST_EVENT_KIND = new TriggerEventKind(
             ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, "p5_vocabulary_test"));
+    private static final ResourceLocation P9_TEST_DIMENSION =
+            ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, "p9_test_dimension");
+    private static final UUID P9_TEST_PERMIT_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000901");
+    private static final UUID P9_TEST_PROJECTILE_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000902");
+    private static final UUID P9_TEST_TARGET_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000903");
 
     @Test
     void resultFamiliesHaveExactlyTheClosedPermitsSets() {
@@ -116,7 +124,10 @@ final class P5RuntimeVocabularyTest {
                 Set.of("RootTriggerCause", "ChildTriggerCause"),
                 permittedSimpleNames(RuntimeTriggerCause.class));
         assertEquals(
-                Set.of("NoRuntimeExecutionData"),
+                Set.of(
+                        "NoRuntimeExecutionData",
+                        "CastGeometryExecutionDataV0",
+                        "ProjectileHitExecutionDataV0"),
                 permittedSimpleNames(RuntimeExecutionData.class));
         assertEquals(
                 Set.of("PlayerRuntimeBudgetAttribution", "NonPlayerRuntimeBudgetAttribution"),
@@ -138,6 +149,264 @@ final class P5RuntimeVocabularyTest {
                         "ResolvedEntityTarget",
                         "ResolvedBlockTarget"),
                 permittedSimpleNames(ResolvedRuntimeTarget.class));
+    }
+
+    @Test
+    void p9ExecutionDataRecordsHaveTheExactClosedScalarShapes() {
+        assertRecordComponents(
+                CastGeometryExecutionDataV0.class,
+                List.of(
+                        "dimension",
+                        "originX",
+                        "originY",
+                        "originZ",
+                        "directionXQ15",
+                        "directionYQ15",
+                        "directionZQ15",
+                        "profileCode"),
+                List.of(
+                        ResourceLocation.class,
+                        double.class,
+                        double.class,
+                        double.class,
+                        int.class,
+                        int.class,
+                        int.class,
+                        int.class));
+        assertRecordComponents(
+                SourceFamilyKey.class,
+                List.of(
+                        "skillInstanceId",
+                        "sourceEventId",
+                        "producerNodeIndex",
+                        "outputOrdinal"),
+                List.of(SkillInstanceId.class, EventId.class, int.class, int.class));
+        assertRecordComponents(
+                ProjectileHitExecutionDataV0.class,
+                List.of(
+                        "permitId",
+                        "projectileId",
+                        "sourceFamily",
+                        "sourceDerivationDepth",
+                        "dimension",
+                        "targetId",
+                        "hitX",
+                        "hitY",
+                        "hitZ",
+                        "directionXQ15",
+                        "directionYQ15",
+                        "directionZQ15"),
+                List.of(
+                        UUID.class,
+                        UUID.class,
+                        SourceFamilyKey.class,
+                        int.class,
+                        ResourceLocation.class,
+                        UUID.class,
+                        double.class,
+                        double.class,
+                        double.class,
+                        int.class,
+                        int.class,
+                        int.class));
+    }
+
+    @Test
+    void castGeometryDataEnforcesPureStaticDomainQ15AndProfileRules() {
+        var minimumAndMaximum = castGeometry(
+                -30_000_000.0,
+                -20_000_000.0,
+                Math.nextDown(30_000_000.0),
+                -32_767,
+                0,
+                32_767,
+                0);
+        assertEquals(P9_TEST_DIMENSION, minimumAndMaximum.dimension());
+
+        assertThrows(
+                NullPointerException.class,
+                () -> new CastGeometryExecutionDataV0(
+                        null, 0.0, 0.0, 0.0, 1, 0, 0, 0));
+        for (var invalidX : List.of(
+                Double.NaN,
+                Double.NEGATIVE_INFINITY,
+                Double.POSITIVE_INFINITY,
+                Math.nextDown(-30_000_000.0),
+                30_000_000.0)) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> castGeometry(invalidX, 0.0, 0.0, 1, 0, 0, 0));
+        }
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> castGeometry(0.0, Math.nextDown(-20_000_000.0), 0.0, 1, 0, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> castGeometry(0.0, 20_000_000.0, 0.0, 1, 0, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> castGeometry(0.0, 0.0, 30_000_000.0, 1, 0, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> castGeometry(0.0, 0.0, 0.0, -32_768, 0, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> castGeometry(0.0, 0.0, 0.0, 0, 32_768, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> castGeometry(0.0, 0.0, 0.0, 0, 0, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> castGeometry(0.0, 0.0, 0.0, 1, 0, 0, 1));
+    }
+
+    @Test
+    void sourceFamilyAndHitDataEnforcePureIdentityDepthAndScalarRules() {
+        var instanceId = new SkillInstanceId(
+                UUID.fromString("00000000-0000-0000-0000-000000000904"));
+        var family = new SourceFamilyKey(instanceId, new EventId(17), 0, 0);
+        var exactReference = reference();
+
+        assertTrue(family.matches(family, exactReference, exactReference, 0, false));
+        assertFalse(family.matches(family, exactReference, exactReference, 1, false));
+        assertTrue(family.matches(family, exactReference, exactReference, 1, true));
+        assertTrue(family.matches(
+                family,
+                exactReference,
+                exactReference,
+                MagicSafetyCeilings.MAX_DEPTH_PER_LINEAGE,
+                true));
+        assertFalse(family.matches(family, exactReference, exactReference, -1, true));
+        assertFalse(family.matches(
+                family,
+                exactReference,
+                exactReference,
+                MagicSafetyCeilings.MAX_DEPTH_PER_LINEAGE + 1,
+                true));
+        assertFalse(family.matches(
+                new SourceFamilyKey(instanceId, new EventId(18), 0, 0),
+                exactReference,
+                exactReference,
+                0,
+                true));
+        assertFalse(family.matches(family, exactReference, reference(), 0, true));
+
+        assertThrows(
+                NullPointerException.class,
+                () -> new SourceFamilyKey(null, new EventId(17), 0, 0));
+        assertThrows(
+                NullPointerException.class,
+                () -> new SourceFamilyKey(instanceId, null, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SourceFamilyKey(
+                        new SkillInstanceId(new UUID(0L, 0L)), new EventId(17), 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SourceFamilyKey(instanceId, new EventId(0), 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SourceFamilyKey(instanceId, new EventId(17), 1, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new SourceFamilyKey(instanceId, new EventId(17), 0, 1));
+
+        var hit = projectileHit(
+                family,
+                0,
+                -30_000_000.0,
+                -20_000_000.0,
+                Math.nextDown(30_000_000.0),
+                -32_767,
+                0,
+                32_767);
+        assertEquals(P9_TEST_PERMIT_ID, hit.permitId());
+        assertEquals(family, hit.sourceFamily());
+        assertThrows(
+                NullPointerException.class,
+                () -> projectileHit(
+                        null,
+                        P9_TEST_PROJECTILE_ID,
+                        family,
+                        P9_TEST_DIMENSION,
+                        P9_TEST_TARGET_ID));
+        assertThrows(
+                NullPointerException.class,
+                () -> projectileHit(
+                        P9_TEST_PERMIT_ID,
+                        null,
+                        family,
+                        P9_TEST_DIMENSION,
+                        P9_TEST_TARGET_ID));
+        assertThrows(
+                NullPointerException.class,
+                () -> projectileHit(
+                        P9_TEST_PERMIT_ID,
+                        P9_TEST_PROJECTILE_ID,
+                        null,
+                        P9_TEST_DIMENSION,
+                        P9_TEST_TARGET_ID));
+        assertThrows(
+                NullPointerException.class,
+                () -> projectileHit(
+                        P9_TEST_PERMIT_ID,
+                        P9_TEST_PROJECTILE_ID,
+                        family,
+                        null,
+                        P9_TEST_TARGET_ID));
+        assertThrows(
+                NullPointerException.class,
+                () -> projectileHit(
+                        P9_TEST_PERMIT_ID,
+                        P9_TEST_PROJECTILE_ID,
+                        family,
+                        P9_TEST_DIMENSION,
+                        null));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(
+                        new UUID(0L, 0L),
+                        P9_TEST_PROJECTILE_ID,
+                        family,
+                        P9_TEST_DIMENSION,
+                        P9_TEST_TARGET_ID));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(
+                        P9_TEST_PERMIT_ID,
+                        new UUID(0L, 0L),
+                        family,
+                        P9_TEST_DIMENSION,
+                        P9_TEST_TARGET_ID));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(
+                        P9_TEST_PERMIT_ID,
+                        P9_TEST_PROJECTILE_ID,
+                        family,
+                        P9_TEST_DIMENSION,
+                        new UUID(0L, 0L)));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(family, -1, 0.0, 0.0, 0.0, 1, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(family, 1, 0.0, 0.0, 0.0, 1, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(family, 0, Double.NaN, 0.0, 0.0, 1, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(family, 0, 0.0, 20_000_000.0, 0.0, 1, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(family, 0, 0.0, 0.0, 30_000_000.0, 1, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(family, 0, 0.0, 0.0, 0.0, 0, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> projectileHit(family, 0, 0.0, 0.0, 0.0, 0, -32_768, 0));
     }
 
     @Test
@@ -559,7 +828,10 @@ final class P5RuntimeVocabularyTest {
                 RuntimeReferenceResolutionOutcome.class,
                 RuntimeExecutionPort.class,
                 RuntimeKernelException.class,
-                P5RuntimeConfigurationException.class)) {
+                P5RuntimeConfigurationException.class,
+                CastGeometryExecutionDataV0.class,
+                SourceFamilyKey.class,
+                ProjectileHitExecutionDataV0.class)) {
             assertFalse(Modifier.isPublic(type.getModifiers()), type.getName());
         }
     }
@@ -577,6 +849,82 @@ final class P5RuntimeVocabularyTest {
 
     private static SkillReference reference() {
         return new SkillReference(new SkillId(UUID.randomUUID()), new SkillRevision(0));
+    }
+
+    private static CastGeometryExecutionDataV0 castGeometry(
+            double originX,
+            double originY,
+            double originZ,
+            int directionXQ15,
+            int directionYQ15,
+            int directionZQ15,
+            int profileCode) {
+        return new CastGeometryExecutionDataV0(
+                P9_TEST_DIMENSION,
+                originX,
+                originY,
+                originZ,
+                directionXQ15,
+                directionYQ15,
+                directionZQ15,
+                profileCode);
+    }
+
+    private static ProjectileHitExecutionDataV0 projectileHit(
+            SourceFamilyKey family,
+            int sourceDerivationDepth,
+            double hitX,
+            double hitY,
+            double hitZ,
+            int directionXQ15,
+            int directionYQ15,
+            int directionZQ15) {
+        return new ProjectileHitExecutionDataV0(
+                P9_TEST_PERMIT_ID,
+                P9_TEST_PROJECTILE_ID,
+                family,
+                sourceDerivationDepth,
+                P9_TEST_DIMENSION,
+                P9_TEST_TARGET_ID,
+                hitX,
+                hitY,
+                hitZ,
+                directionXQ15,
+                directionYQ15,
+                directionZQ15);
+    }
+
+    private static ProjectileHitExecutionDataV0 projectileHit(
+            UUID permitId,
+            UUID projectileId,
+            SourceFamilyKey family,
+            ResourceLocation dimension,
+            UUID targetId) {
+        return new ProjectileHitExecutionDataV0(
+                permitId,
+                projectileId,
+                family,
+                0,
+                dimension,
+                targetId,
+                0.0,
+                0.0,
+                0.0,
+                1,
+                0,
+                0);
+    }
+
+    private static void assertRecordComponents(
+            Class<?> type, List<String> expectedNames, List<Class<?>> expectedTypes) {
+        assertTrue(type.isRecord(), type.getName());
+        var components = Arrays.asList(type.getRecordComponents());
+        assertEquals(
+                expectedNames,
+                components.stream().map(component -> component.getName()).toList());
+        assertEquals(
+                expectedTypes,
+                components.stream().map(component -> component.getType()).toList());
     }
 
     private static Set<String> permittedSimpleNames(Class<?> type) {

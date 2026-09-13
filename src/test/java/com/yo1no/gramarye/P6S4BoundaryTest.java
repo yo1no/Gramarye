@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.yo1no.gramarye.magic.definition.validation.ValidatedNodeDefinition;
+import com.yo1no.gramarye.magic.definition.validation.ValidatedSkillDefinition;
 import com.yo1no.gramarye.magic.runtime.mana.ManaAttachmentDefinitionBridge;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
 import java.io.IOException;
@@ -17,6 +19,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.junit.jupiter.api.Test;
 
@@ -190,15 +193,48 @@ final class P6S4BoundaryTest {
     void p5OwnsOneCallScopedClosedGuardWithoutChangingSchedulerOwnership() {
         var vocabulary = read(VOCABULARY_SOURCE);
         var service = read(SERVICE_SOURCE);
-        var components = Arrays.stream(RuntimeExecutionContext.class.getRecordComponents())
+        var recordComponents = Arrays.asList(
+                RuntimeExecutionContext.class.getRecordComponents());
+        var components = recordComponents.stream()
                 .collect(Collectors.toMap(
                         component -> component.getName(), component -> component.getType()));
         var guardMethods = RuntimeExecutionGuard.class.getDeclaredMethods();
 
         assertAll(
                 () -> assertEquals(
+                        List.of(
+                                "server",
+                                "definition",
+                                "node",
+                                "currentRuntimeTick",
+                                "serverSlotToken",
+                                "resolvedReferences",
+                                "executionBudget",
+                                "executionGuard",
+                                "projectileContinuationOpener"),
+                        recordComponents.stream()
+                                .map(component -> component.getName())
+                                .toList()),
+                () -> assertEquals(
+                        List.of(
+                                MinecraftServer.class,
+                                ValidatedSkillDefinition.class,
+                                ValidatedNodeDefinition.class,
+                                long.class,
+                                RuntimeServerToken.class,
+                                ResolvedRuntimeReferenceContext.class,
+                                RuntimeExecutionBudget.class,
+                                RuntimeExecutionGuard.class,
+                                RuntimeProjectileContinuationOpener.class),
+                        recordComponents.stream()
+                                .map(component -> component.getType())
+                                .toList()),
+                () -> assertEquals(
                         RuntimeExecutionGuard.class, components.get("executionGuard")),
-                () -> assertEquals(8, components.size()),
+                () -> assertEquals(
+                        RuntimeProjectileContinuationOpener.class,
+                        components.get("projectileContinuationOpener")),
+                () -> assertEquals(9, components.size()),
                 () -> assertEquals(1, guardMethods.length),
                 () -> assertEquals(
                         RuntimeExecutionGuardDecision.class,
@@ -211,7 +247,7 @@ final class P6S4BoundaryTest {
                 () -> assertEquals(1, occurrences(
                         vocabulary, "RuntimeExecutionGuard executionGuard")),
                 () -> assertEquals(1, occurrences(
-                        service, "() -> runtimeExecutionGuardDecision(slot, instance, event)")),
+                        service, "runtimeExecutionGuardDecision(slot, instance, event)")),
                 () -> assertTrue(service.indexOf("instance.cancellationRequested")
                         < service.lastIndexOf("return deadlineExpired(slot, event)")),
                 () -> assertEquals(0, occurrences(adapterAndBridge(), "slot.queue")),

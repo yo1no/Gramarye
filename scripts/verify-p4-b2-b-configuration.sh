@@ -1256,13 +1256,13 @@ verify_b2_sources_and_outputs() {
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
-        10 \
-        'SkillRuntimeService must contain exactly its ten reviewed Error cleanup catches'
+        13 \
+        'SkillRuntimeService must contain exactly its thirteen reviewed Error cleanup catches'
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error[[:space:]]+primary[[:space:]]*\)' \
-        5 \
-        'SkillRuntimeService must contain exactly five same-identity primary Error catches'
+        6 \
+        'SkillRuntimeService must contain exactly six same-identity primary Error catches'
     require_ere_count \
         "${runtime_service}" \
         '^[[:space:]]*clearSlotAfterError\(slot\);$' \
@@ -1272,6 +1272,16 @@ verify_b2_sources_and_outputs() {
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
         'SkillRuntimeService must not catch Throwable'
+    require_fixed_count_in_range "${runtime_service}" \
+        '    private static void recordP9Terminal(' \
+        '    private static void materializeP9Terminal(' \
+        'catch (RuntimeException | Error ignoredDiagnosticFailure) {' 1 \
+        'P9 terminal materialization must have exactly one targeted diagnostic-isolation catch'
+    require_fixed_count_in_range "${runtime_service}" \
+        '    static void clearSlotAfterError(ServerSlot slot) {' \
+        '    private static int minimum(int first, int... remaining) {' \
+        'catch (RuntimeException | Error ignoredDiagnosticFailure) {' 1 \
+        'P9 Error cleanup must have exactly one targeted diagnostic-isolation catch'
     require_ere_count \
         "${p7_network_handler}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \

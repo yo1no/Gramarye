@@ -817,9 +817,9 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
-                () -> assertEquals(33_649L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
+                () -> assertEquals(114_627L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
                 () -> assertEquals(
-                        "14f4c6bec9a069216b0e9c941de44cd8bfa696014987d165a7009c5394c4d0d1",
+                        "3cda7ec71eebbbb40ad828950e9e311cfb0a0ad797dd805fc3b20ad0d95f6c72",
                         sha256(P7_LOGIN_ISOLATION_SOURCE)));
     }
 

@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 public final class P7GameTestInventory {
     private static final String MAIN = "src/main/java/com/yo1no/gramarye/";
     private static final String P8_HARNESS = "P8S3PresentationGameTests.java";
-    private static final int NON_P8_COUNT = 26;
+    private static final int NON_P8_COUNT = 28;
     private static final Pattern TEST = Pattern.compile(
             "@GameTest\\s*\\([^)]*\\)\\s*"
                     + "(?:@[A-Za-z_$][A-Za-z0-9_$.]*(?:\\s*\\([^)]*\\))?\\s*)*"
@@ -50,7 +50,9 @@ public final class P7GameTestInventory {
                     "loginPortRejectsNoncurrentPlayerBeforeSessionOpen",
                     "e2NormalAndChangedTerminalsHandoffOnceAndQuarantineNeverHandoffs",
                     "e2LoginPortRuntimeFailurePropagatesTheSameObject",
-                    "e2LoginPortErrorPropagatesTheSameObject"),
+                    "e2LoginPortErrorPropagatesTheSameObject",
+                    "actualP9ReservedContinuationSurvivesRootAndClosesLateWithoutWorldEffects",
+                    "actualP9ActorWitnessRejectsRespawnDimensionAndLogoutBeforeTransfer"),
             "magic/network/P7S4NetworkGameTests.java", Set.of(
                     "actualPostE2LoginOpensOneSessionAndSubmitsOneInitialFullSet",
                     "actualRespawnDimensionAndReconnectPreserveThenReplaceSessionIdentity"));
@@ -115,7 +117,7 @@ public final class P7GameTestInventory {
         var nonP8Count = HISTORICAL.values().stream().mapToInt(Set::size).sum()
                 + s4Count();
         if (nonP8Count != NON_P8_COUNT) {
-            throw new AssertionError("non-P8 GameTest inventory must remain exact 26");
+            throw new AssertionError("non-P8 GameTest inventory must remain exact 28");
         }
         var expected = new java.util.HashMap<>(HISTORICAL);
         expected.putAll(S4);

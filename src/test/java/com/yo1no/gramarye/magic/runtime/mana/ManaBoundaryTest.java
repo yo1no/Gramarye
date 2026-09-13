@@ -513,6 +513,7 @@ final class ManaBoundaryTest {
                                 "src/main/java/com/yo1no/gramarye/SkillRuntimeService.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeHardLimitWorkloadTest.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeKernelTest.java",
+                                "src/test/java/com/yo1no/gramarye/P5RuntimeVocabularyTest.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java"),
                         exactS4P5Changes,
                         () -> "unexpected P5 source drift: " + output),

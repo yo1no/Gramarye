@@ -35,14 +35,46 @@ is_s4_path() {
     esac
 }
 
+# Exact P9-S2-R2 pre-commit source projection consumed by the historical
+# configuration verifiers. No directory or prefix admission is intentional.
+is_p9_s2_r2_path() {
+    case "$1" in
+        scripts/verify-p4-b2-b-configuration.sh | \
+        scripts/verify-p7-s4-source-contracts.sh | \
+        src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java | \
+        src/main/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngress.java | \
+        src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java | \
+        src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
+        src/main/java/com/yo1no/gramarye/SkillRuntimeService.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeHardLimitWorkloadTest.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeKernelTest.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeStaticGateTest.java | \
+        src/test/java/com/yo1no/gramarye/P5RuntimeVocabularyTest.java | \
+        src/test/java/com/yo1no/gramarye/P6S4BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngressTest.java | \
+        src/test/java/com/yo1no/gramarye/P7GameTestInventory.java | \
+        src/test/java/com/yo1no/gramarye/P8S2BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S4ServerTransportTest.java | \
+        src/test/java/com/yo1no/gramarye/P9S1BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/SkillRuntimeAuthenticatedCastIngressTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandlerTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 verify_game_tests() {
-    local expected_non_p8 actual actual_non_p8 p8_actual annotation_count
+    local expected_non_p8 actual actual_non_p8 p8_actual annotation_count source
     expected_non_p8="$(printf '%s\n' \
         'P7S4LoginManaGameTests.java:manaObservationPreservesAvailableAndMalformedAttachmentTruth' \
         'P7S4LoginManaGameTests.java:loginPortRejectsNoncurrentPlayerBeforeSessionOpen' \
         'P7S4LoginManaGameTests.java:e2NormalAndChangedTerminalsHandoffOnceAndQuarantineNeverHandoffs' \
         'P7S4LoginManaGameTests.java:e2LoginPortRuntimeFailurePropagatesTheSameObject' \
         'P7S4LoginManaGameTests.java:e2LoginPortErrorPropagatesTheSameObject' \
+        'P7S4LoginManaGameTests.java:actualP9ReservedContinuationSurvivesRootAndClosesLateWithoutWorldEffects' \
+        'P7S4LoginManaGameTests.java:actualP9ActorWitnessRejectsRespawnDimensionAndLogoutBeforeTransfer' \
         'gametest/PlatformGameTests.java:customDescriptorRegistriesLoadEmpty' \
         'gametest/PlatformGameTests.java:dedicatedServerLoads' \
         'gametest/PlatformGameTests.java:descriptorMigrationCoverageAuditPassesAfterRegistryFreeze' \
@@ -65,8 +97,8 @@ verify_game_tests() {
         'magic/runtime/mana/ManaLifecycleGameTests.java:nonDeathCloneCopiesExactManaState' \
         'magic/runtime/mana/ManaLifecycleGameTests.java:validAttachmentSerializesAndLoadsExactly' \
         | LC_ALL=C sort)"
-    [[ "$(printf '%s\n' "${expected_non_p8}" | wc -l | tr -d ' ')" -eq 26 ]] || {
-        printf '%s\n' 'Non-P8 GameTest inventory must remain exact 26' >&2
+    [[ "$(printf '%s\n' "${expected_non_p8}" | wc -l | tr -d ' ')" -eq 28 ]] || {
+        printf '%s\n' 'Non-P8 GameTest inventory must remain exact 28' >&2
         return 1
     }
     actual="$(find src/main/java/com/yo1no/gramarye -type f -name '*.java' \
@@ -100,6 +132,16 @@ verify_game_tests() {
         | awk '{ sum += $1 } END { print sum + 0 }')"
     [[ "${annotation_count}" -eq "$(printf '%s\n' "${actual}" | wc -l | tr -d ' ')" ]] \
         || { printf '%s\n' 'Unsupported or duplicate GameTest declaration' >&2; return 1; }
+    while IFS= read -r -d '' source; do
+        if LC_ALL=C grep -Eq \
+                'Thread\.(ofPlatform|ofVirtual)|new[[:space:]]+Thread[[:space:]]*\(|\.unstarted[[:space:]]*\(|\.join[[:space:]]*\([[:space:]]*[0-9]|\.isAlive[[:space:]]*\(|\.interrupt[[:space:]]*\(|AtomicReference|(^|[^[:alnum:]_])(Executor|Future|ProcessBuilder)([^[:alnum:]_]|$)' \
+                "${source}"; then
+            printf 'Production-packaged GameTest raw worker/task/process surface: %s\n' \
+                "${source}" >&2
+            return 1
+        fi
+    done < <(find src/main/java/com/yo1no/gramarye -type f -name '*.java' \
+        -exec grep -lZ '@GameTest[[:space:]]*(' {} +)
     printf '%s\n' "${annotation_count}"
 }
 
@@ -122,7 +164,8 @@ case "${1:-}" in
             src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java) exit 0 ;;
             *) exit 1 ;;
         esac ;;
-    --is-s4-path) [[ "$#" -eq 2 ]] && is_s4_path "$2" ;;
+    --is-s4-path)
+        [[ "$#" -eq 2 ]] && { is_s4_path "$2" || is_p9_s2_r2_path "$2"; } ;;
     --game-test-count) [[ "$#" -eq 1 ]] && verify_game_tests ;;
     *) printf '%s\n' 'Expected --is-s4-path PATH, --is-s4-harness PATH, --is-p8-harness PATH, or --game-test-count' >&2; exit 2 ;;
 esac

@@ -1,46 +1,14 @@
 package com.yo1no.gramarye;
 
-import com.mojang.serialization.Codec;
-import com.mojang.serialization.MapCodec;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
-import com.yo1no.gramarye.magic.action.type.ActionPayload;
-import com.yo1no.gramarye.magic.action.type.ActionType;
 import com.yo1no.gramarye.magic.api.id.EventId;
-import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillInstanceId;
-import com.yo1no.gramarye.magic.api.id.SkillRevision;
 import com.yo1no.gramarye.magic.api.registry.MagicRegistries;
-import com.yo1no.gramarye.magic.capability.ActionCapabilities;
-import com.yo1no.gramarye.magic.capability.AppearanceParameterPolicy;
-import com.yo1no.gramarye.magic.capability.ControlClass;
-import com.yo1no.gramarye.magic.capability.SourceRequirement;
-import com.yo1no.gramarye.magic.capability.TargetRequirement;
-import com.yo1no.gramarye.magic.capability.TriggerCapabilities;
 import com.yo1no.gramarye.magic.capability.TriggerEventKind;
-import com.yo1no.gramarye.magic.capability.TriggerGranularity;
-import com.yo1no.gramarye.magic.capability.TriggerSourceScope;
-import com.yo1no.gramarye.magic.definition.action.ResolvedActionDefinition;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
-import com.yo1no.gramarye.magic.definition.inspection.SourceSelection;
-import com.yo1no.gramarye.magic.definition.inspection.TargetSelection;
-import com.yo1no.gramarye.magic.definition.trigger.ResolvedTriggerDefinition;
-import com.yo1no.gramarye.magic.definition.validation.RuntimeNeutralAppearance;
-import com.yo1no.gramarye.magic.definition.validation.RuntimeNeutralAppearanceOverride;
-import com.yo1no.gramarye.magic.definition.validation.ValidatedActionReferenceProjection;
-import com.yo1no.gramarye.magic.definition.validation.ValidatedNodeDefinition;
-import com.yo1no.gramarye.magic.definition.validation.ValidatedNodeReferenceProjection;
-import com.yo1no.gramarye.magic.definition.validation.ValidatedSkillDefinition;
-import com.yo1no.gramarye.magic.definition.validation.ValidatedTriggerReferenceProjection;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
-import com.yo1no.gramarye.magic.trigger.type.TriggerPayload;
-import com.yo1no.gramarye.magic.trigger.type.TriggerType;
-import com.yo1no.gramarye.magic.validation.ValidationContext;
-import com.yo1no.gramarye.magic.validation.ValidationResult;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.util.ReferenceCountUtil;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -77,7 +45,6 @@ import net.neoforged.neoforge.network.registration.NetworkRegistry;
 public final class P8S3PresentationGameTests {
     private static final ResourceLocation ACTIVE_CAST = id("active_cast");
     private static final ResourceLocation CONTROLLED_HIT = id("p8_controlled_hit");
-    private static final RuntimeServerToken SERVER_TOKEN = new RuntimeServerToken(83L);
     private static final P6RuntimeExecutionBridge.AppliedFact ONE_APPLIED =
             new P6RuntimeExecutionBridge.AppliedFact(
                     P6RuntimeExecutionBridge.AppliedTerminal.SUCCEEDED,
@@ -93,11 +60,6 @@ public final class P8S3PresentationGameTests {
                                     0, P6RuntimeExecutionBridge.AppliedStepKind.APPLIED),
                             new P6RuntimeExecutionBridge.AppliedStep(
                                     1, P6RuntimeExecutionBridge.AppliedStepKind.APPLIED)));
-    private static final TriggerType<FixtureTriggerPayload> TRIGGER_TYPE =
-            new FixtureTriggerType();
-    private static final ActionType<FixtureActionPayload> ACTION_TYPE =
-            new FixtureActionType();
-
     private P8S3PresentationGameTests() {}
 
     @GameTest(
@@ -114,8 +76,12 @@ public final class P8S3PresentationGameTests {
         var service = new P8ServerPresentationService(transport);
         try {
             service.startForTesting(server, emptyCatalog());
+            P7S4LoginManaGameTests.withP9CallScopedRuntimeContext(
+                    helper, server, player, 0x8101L, (ignoredRoot, injectedContext) -> {
             long runtimeTick = server.getTickCount();
-            RuntimeFixture prior = runtimeFixture(server, player, 1L, runtimeTick, ACTIVE_CAST);
+            RuntimeExecutionContext context = runtimeContext(
+                    injectedContext, runtimeTick, player);
+            RuntimeFixture prior = runtimeFixture(context, player, 1L, ACTIVE_CAST);
             P6RuntimeExecutionCapability capability =
                     P6RuntimeExecutionCapability.forRuntimeAdapter();
             boolean[] invoked = {false};
@@ -142,7 +108,7 @@ public final class P8S3PresentationGameTests {
                     (ignoredEvent, ignoredContext) -> Optional.empty());
             RuntimeExecutionBatch adapterBatch = adapter.executeMapped(
                     prior.event(),
-                    prior.context(),
+                    context,
                     new P6RuntimeExecutionInput(
                             player,
                             id("p8_fixture_action"),
@@ -156,9 +122,9 @@ public final class P8S3PresentationGameTests {
             helper.assertTrue(sequences(service).equals(List.of(1L)),
                     "adapter observer handoff must buffer the controlled prior entry");
 
-            RuntimeFixture first = runtimeFixture(server, player, 2L, runtimeTick, ACTIVE_CAST);
+            RuntimeFixture first = runtimeFixture(context, player, 2L, ACTIVE_CAST);
             transport.failSecondCaptureWith(CaptureFailure.RUNTIME_EXCEPTION);
-            new P8AppliedFactHandoff(service, first.event(), first.context())
+            new P8AppliedFactHandoff(service, first.event(), context)
                     .observe(TWO_APPLIED);
             helper.assertTrue(sequences(service).equals(List.of(1L)),
                     "observer RuntimeException must publish no call prefix and preserve prior state");
@@ -168,11 +134,11 @@ public final class P8S3PresentationGameTests {
                             P8ServerRuntimeDiagnosticCode.OBSERVER_RUNTIME_EXCEPTION),
                     "observer RuntimeException must record its fixed diagnostic code");
 
-            RuntimeFixture second = runtimeFixture(server, player, 3L, runtimeTick, ACTIVE_CAST);
+            RuntimeFixture second = runtimeFixture(context, player, 3L, ACTIVE_CAST);
             transport.failSecondCaptureWith(CaptureFailure.ERROR);
             Error actual = null;
             try {
-                new P8AppliedFactHandoff(service, second.event(), second.context())
+                new P8AppliedFactHandoff(service, second.event(), context)
                         .observe(TWO_APPLIED);
             } catch (Error failure) {
                 actual = failure;
@@ -185,11 +151,11 @@ public final class P8S3PresentationGameTests {
                     "two-step Error rollback must retain both allocated sequence gaps");
 
             transport.clearCaptureFailure();
-            RuntimeFixture third = runtimeFixture(server, player, 4L, runtimeTick, ACTIVE_CAST);
-            helper.assertTrue(service.offerApplied(third.event(), third.context(), ONE_APPLIED)
+            RuntimeFixture third = runtimeFixture(context, player, 4L, ACTIVE_CAST);
+            helper.assertTrue(service.offerApplied(third.event(), context, ONE_APPLIED)
                             == P8PresentationOfferOutcome.ACCEPTED,
                     "first complete applied fact must retain one distinct event");
-            helper.assertTrue(service.offerApplied(third.event(), third.context(), ONE_APPLIED)
+            helper.assertTrue(service.offerApplied(third.event(), context, ONE_APPLIED)
                             == P8PresentationOfferOutcome.DEGRADED,
                     "same-tick exact identity must coalesce to the earliest event");
             List<PresentationEvent> retained = service.bufferedEventsForTesting();
@@ -207,16 +173,16 @@ public final class P8S3PresentationGameTests {
                             && service.presentationSequenceHighWaterForTesting() == 7L,
                     "activation must clear old-generation events without resetting sequence");
 
-            RuntimeFixture fourth = runtimeFixture(server, player, 5L, runtimeTick, ACTIVE_CAST);
-            helper.assertTrue(service.offerApplied(fourth.event(), fourth.context(), ONE_APPLIED)
+            RuntimeFixture fourth = runtimeFixture(context, player, 5L, ACTIVE_CAST);
+            helper.assertTrue(service.offerApplied(fourth.event(), context, ONE_APPLIED)
                             == P8PresentationOfferOutcome.ACCEPTED,
                     "new generation must admit the next sequence");
-            RuntimeFixture fifth = runtimeFixture(server, player, 6L, runtimeTick, ACTIVE_CAST);
-            helper.assertTrue(service.offerApplied(fifth.event(), fifth.context(), ONE_APPLIED)
+            RuntimeFixture fifth = runtimeFixture(context, player, 6L, ACTIVE_CAST);
+            helper.assertTrue(service.offerApplied(fifth.event(), context, ONE_APPLIED)
                             == P8PresentationOfferOutcome.ACCEPTED,
                     "new generation must admit a second distinct sequence");
-            RuntimeFixture sixth = runtimeFixture(server, player, 7L, runtimeTick, ACTIVE_CAST);
-            helper.assertTrue(service.offerApplied(sixth.event(), sixth.context(), ONE_APPLIED)
+            RuntimeFixture sixth = runtimeFixture(context, player, 7L, ACTIVE_CAST);
+            helper.assertTrue(service.offerApplied(sixth.event(), context, ONE_APPLIED)
                             == P8PresentationOfferOutcome.ACCEPTED,
                     "new generation must admit a third distinct sequence");
             transport.submitModes = List.of(
@@ -238,24 +204,21 @@ public final class P8S3PresentationGameTests {
             helper.assertTrue(service.hasRuntimeDiagnosticForTesting(
                             P8ServerRuntimeDiagnosticCode.EVENT_TRANSPORT_RUNTIME_EXCEPTION),
                     "isolated transport RuntimeException must record its fixed diagnostic code");
-            RuntimeFixture postDrain = runtimeFixture(
-                    server, player, 8L, runtimeTick, ACTIVE_CAST);
+            RuntimeFixture postDrain = runtimeFixture(context, player, 8L, ACTIVE_CAST);
             helper.assertTrue(service.offerApplied(
-                                    postDrain.event(), postDrain.context(), ONE_APPLIED)
+                                    postDrain.event(), context, ONE_APPLIED)
                             == P8PresentationOfferOutcome.DROPPED,
                     "a same-physical-tick offer after drain must be dropped without mutation");
             helper.assertTrue(service.presentationSequenceHighWaterForTesting() == 10L,
                     "post-drain rejection must not allocate another presentation sequence");
+            RuntimeExecutionContext olderContext = runtimeContext(
+                    injectedContext, Math.subtractExact(runtimeTick, 1L), player);
             RuntimeFixture olderTick = runtimeFixture(
-                    server,
-                    player,
-                    9L,
-                    Math.subtractExact(runtimeTick, 1L),
-                    ACTIVE_CAST);
+                    olderContext, player, 9L, ACTIVE_CAST);
             RuntimeException regressionFailure = null;
             try {
                 service.offerApplied(
-                        olderTick.event(), olderTick.context(), ONE_APPLIED);
+                        olderTick.event(), olderContext, ONE_APPLIED);
             } catch (RuntimeException failure) {
                 regressionFailure = failure;
             }
@@ -271,7 +234,8 @@ public final class P8S3PresentationGameTests {
             helper.assertTrue(duplicateDrain instanceof IllegalStateException
                             && service.bufferedEventsForTesting().isEmpty(),
                     "a duplicate physical-tick drain must fail closed without resurrecting work");
-            assertOfferReentryGuards(helper, server, player, runtimeTick);
+            assertOfferReentryGuards(helper, context, player);
+                    });
         } finally {
             service.stopForTesting();
             server.getPlayerList().remove(player);
@@ -305,8 +269,8 @@ public final class P8S3PresentationGameTests {
         var service = new P8ServerPresentationService(transport);
         service.startForTesting(server, emptyCatalog());
         helper.runAfterDelay(10L, () -> {
-            boolean passed = false;
-            String failure = "P8 HIT watcher integration did not complete";
+            boolean[] passed = {false};
+            String[] failure = {"P8 HIT watcher integration did not complete"};
             try {
                 targetLevel.getChunkSource().move(player);
                 var watchers = targetLevel
@@ -314,21 +278,26 @@ public final class P8S3PresentationGameTests {
                         .chunkMap
                         .getPlayersWatching(target);
                 if (!originAdded || !targetAdded) {
-                    failure = "actual server level did not accept the controlled entities";
+                    failure[0] = "actual server level did not accept the controlled entities";
                 } else if (!watchers.contains(player)) {
-                    failure = "actual ChunkMap watcher path did not contain the current player";
+                    failure[0] = "actual ChunkMap watcher path did not contain the current player";
                 } else {
-                    long runtimeTick = server.getTickCount();
-                    RuntimeFixture hit = runtimeFixture(
+                    P7S4LoginManaGameTests.withP9CallScopedRuntimeContext(
+                            helper,
                             server,
                             player,
-                            origin,
-                            target,
+                            0x8102L,
+                            (ignoredRoot, injectedContext) -> {
+                    long runtimeTick = server.getTickCount();
+                    RuntimeExecutionContext context = runtimeContext(
+                            injectedContext, runtimeTick, origin, target);
+                    RuntimeFixture hit = runtimeFixture(
+                            context,
+                            player,
                             1L,
-                            runtimeTick,
                             CONTROLLED_HIT);
                     P8PresentationOfferOutcome outcome = service.offerApplied(
-                            hit.event(), hit.context(), ONE_APPLIED);
+                            hit.event(), context, ONE_APPLIED);
                     List<P8BufferedPresentation> buffered =
                             service.bufferedPresentationsForTesting();
                     if (outcome != P8PresentationOfferOutcome.ACCEPTED
@@ -346,28 +315,29 @@ public final class P8S3PresentationGameTests {
                             || buffered.getFirst().recipients().size() != 1
                             || buffered.getFirst().recipients().getFirst().category()
                                     != PresentationOrdering.RecipientCategory.ORDINARY) {
-                        failure = "actual offerApplied HIT path did not retain the exact applied-step identity";
+                        failure[0] = "actual offerApplied HIT path did not retain the exact applied-step identity";
                     } else {
                         P8BufferedPresentation retained = buffered.getFirst();
                         P8SelectedRecipient selected = retained.recipients().getFirst();
                         if (!P8RecipientSelector.remainsEligible(
                                 server, retained, selected, transport)) {
-                            failure = "current ready watcher was not eligible before drain";
+                            failure[0] = "current ready watcher was not eligible before drain";
                         } else {
                             transport.advanceConnectionEpoch();
                             if (P8RecipientSelector.remainsEligible(
                                     server, retained, selected, transport)) {
-                                failure = "drain eligibility accepted a stale connection epoch";
+                                failure[0] = "drain eligibility accepted a stale connection epoch";
                             } else {
                                 transport.restoreConnectionEpoch();
                                 target.discard();
                                 service.drainPresentationForTesting(server);
-                                passed = service.bufferedEventsForTesting().isEmpty()
+                                passed[0] = service.bufferedEventsForTesting().isEmpty()
                                         && transport.submitAttempts.isEmpty();
-                                failure = "post-tick drain did not revalidate the removed watched target";
+                                failure[0] = "post-tick drain did not revalidate the removed watched target";
                             }
                         }
                     }
+                            });
                 }
             } finally {
                 service.stopForTesting();
@@ -375,10 +345,10 @@ public final class P8S3PresentationGameTests {
                 target.discard();
                 server.getPlayerList().remove(player);
             }
-            if (passed) {
+            if (passed[0]) {
                 helper.succeed();
             } else {
-                helper.fail(failure);
+                helper.fail(failure[0]);
             }
         });
     }
@@ -408,31 +378,38 @@ public final class P8S3PresentationGameTests {
             releaseOutbound(channel);
 
             service.startForTesting(server, emptyCatalog());
-            helper.assertTrue(service.openConnectionForTesting(player).isPresent(),
-                    "current player must receive one P8 connection epoch");
-            long unreadyTick = server.getTickCount();
-            RuntimeFixture unready = runtimeFixture(
-                    server, player, 1L, unreadyTick, ACTIVE_CAST);
-            helper.assertTrue(service.offerApplied(
-                                    unready.event(), unready.context(), ONE_APPLIED)
-                            == P8PresentationOfferOutcome.DROPPED
-                            && service.bufferedEventsForTesting().isEmpty(),
-                    "an unready production recipient must be dropped before buffering");
-            var initialCatalogDrain = service.drainPresentationForTesting(server);
+            P7S4LoginManaGameTests.withP9CallScopedRuntimeContext(
+                    helper, server, player, 0x8103L, (ignoredRoot, injectedContext) -> {
+                        helper.assertTrue(service.openConnectionForTesting(player).isPresent(),
+                                "current player must receive one P8 connection epoch");
+                        long unreadyTick = server.getTickCount();
+                        RuntimeExecutionContext context = runtimeContext(
+                                injectedContext, unreadyTick, player);
+                        RuntimeFixture unready = runtimeFixture(
+                                context, player, 1L, ACTIVE_CAST);
+                        helper.assertTrue(service.offerApplied(
+                                                unready.event(), context, ONE_APPLIED)
+                                        == P8PresentationOfferOutcome.DROPPED
+                                        && service.bufferedEventsForTesting().isEmpty(),
+                                "an unready production recipient must be dropped before buffering");
+                        var initialCatalogDrain = service.drainPresentationForTesting(server);
 
-            EncodedPayload catalog = readOnlyP8Payload(channel, playProtocol);
-            helper.assertTrue(catalog.payload() instanceof ProfileCatalogPayload payload
-                            && payload.catalogGeneration() == 1L
-                            && payload.bodySize()
-                                    == service.activeCatalogBodyBytesForTesting()
-                            && catalog.packetBytes()
-                                    == payload.bodySize()
-                                            + PresentationLimits
-                                                    .PROFILE_CATALOG_PACKET_OVERHEAD_BYTES
-                            && initialCatalogDrain.submissions() == 1
-                            && initialCatalogDrain.chargedBytes() == catalog.packetBytes()
-                            && service.connectionReadyForTesting(player.getUUID()),
-                    "actual PLAY encoder submission must publish and charge the catalog first");
+                        EncodedPayload catalog = readOnlyP8Payload(channel, playProtocol);
+                        helper.assertTrue(
+                                catalog.payload() instanceof ProfileCatalogPayload payload
+                                        && payload.catalogGeneration() == 1L
+                                        && payload.bodySize()
+                                                == service.activeCatalogBodyBytesForTesting()
+                                        && catalog.packetBytes()
+                                                == payload.bodySize()
+                                                        + PresentationLimits
+                                                                .PROFILE_CATALOG_PACKET_OVERHEAD_BYTES
+                                        && initialCatalogDrain.submissions() == 1
+                                        && initialCatalogDrain.chargedBytes()
+                                                == catalog.packetBytes()
+                                        && service.connectionReadyForTesting(player.getUUID()),
+                                "actual PLAY encoder submission must publish and charge the catalog first");
+                    });
 
             helper.runAfterDelay(1L, () -> {
                 try {
@@ -450,29 +427,37 @@ public final class P8S3PresentationGameTests {
                 }
 
                 helper.runAfterDelay(1L, () -> {
-                    boolean passed = false;
-                    String failure = "P8 production event submission did not complete";
+                    boolean[] passed = {false};
+                    String[] failure = {"P8 production event submission did not complete"};
                     try {
-                        releaseOutbound(channel);
-                        long runtimeTick = server.getTickCount();
-                        RuntimeFixture event = runtimeFixture(
-                                server, player, 2L, runtimeTick, ACTIVE_CAST);
-                        if (service.offerApplied(event.event(), event.context(), ONE_APPLIED)
-                                != P8PresentationOfferOutcome.ACCEPTED) {
-                            failure = "actual S3 offer did not enter the production transport";
-                        } else {
+                        P7S4LoginManaGameTests.withP9CallScopedRuntimeContext(
+                                helper,
+                                server,
+                                player,
+                                0x8104L,
+                                (ignoredRoot, injectedContext) -> {
+                            releaseOutbound(channel);
+                            long runtimeTick = server.getTickCount();
+                            RuntimeExecutionContext context = runtimeContext(
+                                    injectedContext, runtimeTick, player);
+                            RuntimeFixture event = runtimeFixture(
+                                    context, player, 2L, ACTIVE_CAST);
+                            if (service.offerApplied(event.event(), context, ONE_APPLIED)
+                                    != P8PresentationOfferOutcome.ACCEPTED) {
+                                failure[0] = "actual S3 offer did not enter the production transport";
+                            } else {
                             service.drainPresentationForTesting(server);
                             EncodedPayload encodedEvent = readOnlyP8Payload(channel, playProtocol);
                             if (!(encodedEvent.payload()
                                     instanceof PresentationEventPayload payload)) {
-                                failure = "actual second submission was not the P8 event payload";
+                                failure[0] = "actual second submission was not the P8 event payload";
                             } else if (payload.catalogGeneration() != 1L
                                     || payload.sequence() != 2L
                                     || encodedEvent.packetBytes()
                                             != payload.bodySize()
                                                     + PresentationLimits
                                                             .EVENT_PACKET_OVERHEAD_BYTES) {
-                                failure = "actual event payload lost its generation, sequence, or charge";
+                                failure[0] = "actual event payload lost its generation, sequence, or charge";
                             } else {
                                 var maximumCatalog = maximumConstructibleCatalogPayload();
                                 int measuredMaximumCatalog =
@@ -492,7 +477,7 @@ public final class P8S3PresentationGameTests {
                                                 PresentationLimits.MAX_EVENT_PACKET_CHARGE_BYTES);
                                 P8PacketSubmission.send(player, maximumEvent);
                                 var encodedMaximumEvent = readOnlyP8Payload(channel, playProtocol);
-                                passed = maximumCatalog.entries().size()
+                                passed[0] = maximumCatalog.entries().size()
                                                 == PresentationLimits.MAX_PROFILE_INSTANCES
                                         && maximumCatalog.bodySize()
                                                 <= PresentationLimits
@@ -512,21 +497,22 @@ public final class P8S3PresentationGameTests {
                                                 == measuredMaximumEvent
                                         && encodedMaximumEvent.payload()
                                                 instanceof PresentationEventPayload;
-                                if (!passed) {
-                                    failure = "maximum legal codec layouts disagreed with actual "
+                                if (!passed[0]) {
+                                    failure[0] = "maximum legal codec layouts disagreed with actual "
                                             + "PLAY PacketEncoder charges";
                                 }
                             }
                         }
+                                });
                     } finally {
                         service.stopForTesting();
                         server.getPlayerList().remove(player);
                         channel.finishAndReleaseAll();
                     }
-                    if (passed) {
+                    if (passed[0]) {
                         helper.succeed();
                     } else {
-                        helper.fail(failure);
+                        helper.fail(failure[0]);
                     }
                 });
             });
@@ -646,24 +632,32 @@ public final class P8S3PresentationGameTests {
 
             helper.runAfterDelay(1L, () -> {
                 try {
+                    P7S4LoginManaGameTests.withP9CallScopedRuntimeContext(
+                            helper,
+                            server,
+                            player,
+                            0x8105L,
+                            (ignoredRoot, injectedContext) -> {
                     helper.assertTrue(retryService.openConnectionForTesting(secondPlayer).isPresent()
                                     && errorService.openConnectionForTesting(thirdPlayer).isPresent()
                                     && retryService.connectionReadyForTesting(player.getUUID())
                                     && errorService.connectionReadyForTesting(player.getUUID()),
                             "later catalog keys must not revoke the already-ready event player");
                     long runtimeTick = server.getTickCount();
+                    RuntimeExecutionContext context = runtimeContext(
+                            injectedContext, runtimeTick, player);
                     RuntimeFixture orderedEvent = runtimeFixture(
-                            server, player, 20L, runtimeTick, ACTIVE_CAST);
+                            context, player, 20L, ACTIVE_CAST);
                     RuntimeFixture errorEvent = runtimeFixture(
-                            server, player, 21L, runtimeTick, ACTIVE_CAST);
+                            context, player, 21L, ACTIVE_CAST);
                     helper.assertTrue(retryService.offerApplied(
                                             orderedEvent.event(),
-                                            orderedEvent.context(),
+                                            context,
                                             ONE_APPLIED)
                                     == P8PresentationOfferOutcome.ACCEPTED
                                     && errorService.offerApplied(
                                                     errorEvent.event(),
-                                                    errorEvent.context(),
+                                                    context,
                                                     ONE_APPLIED)
                                             == P8PresentationOfferOutcome.ACCEPTED,
                             "ready event players must retain both controlled current-tick events");
@@ -713,6 +707,7 @@ public final class P8S3PresentationGameTests {
                                     && unavailableCatalog.canSubmitCalls == 3
                                     && unavailableCatalog.submissionCount == 2,
                             "actual drain must charge the failure, send catalogs first, and clean Error ownership");
+                            });
                 } catch (RuntimeException | Error failure) {
                     stopServicesAndRemovePlayers(server, services, players);
                     throw failure;
@@ -752,19 +747,27 @@ public final class P8S3PresentationGameTests {
 
                     helper.runAfterDelay(1L, () -> {
                         try {
+                            P7S4LoginManaGameTests.withP9CallScopedRuntimeContext(
+                                    helper,
+                                    server,
+                                    player,
+                                    0x8106L,
+                                    (ignoredRoot, injectedContext) -> {
                             long eventTick = server.getTickCount();
+                            RuntimeExecutionContext context = runtimeContext(
+                                    injectedContext, eventTick, player);
                             RuntimeFixture runtimeFailureEvent = runtimeFixture(
-                                    server, player, 22L, eventTick, ACTIVE_CAST);
+                                    context, player, 22L, ACTIVE_CAST);
                             RuntimeFixture nullResultEvent = runtimeFixture(
-                                    server, player, 23L, eventTick, ACTIVE_CAST);
+                                    context, player, 23L, ACTIVE_CAST);
                             helper.assertTrue(retryService.offerApplied(
                                                     runtimeFailureEvent.event(),
-                                                    runtimeFailureEvent.context(),
+                                                    context,
                                                     ONE_APPLIED)
                                             == P8PresentationOfferOutcome.ACCEPTED
                                             && retryService.offerApplied(
                                                             nullResultEvent.event(),
-                                                            nullResultEvent.context(),
+                                                            context,
                                                             ONE_APPLIED)
                                                     == P8PresentationOfferOutcome.ACCEPTED,
                                     "the ready service must retain both event-failure fixtures");
@@ -789,6 +792,7 @@ public final class P8S3PresentationGameTests {
                             retryEvents.submitAttempts.clear();
                             retryEvents.submittedSequences.clear();
                             retryEvents.submitModes = List.of(SubmitMode.ERROR);
+                                    });
                         } catch (RuntimeException | Error failure) {
                             stopServicesAndRemovePlayers(server, services, players);
                             throw failure;
@@ -796,12 +800,20 @@ public final class P8S3PresentationGameTests {
 
                         helper.runAfterDelay(1L, () -> {
                             try {
+                                P7S4LoginManaGameTests.withP9CallScopedRuntimeContext(
+                                        helper,
+                                        server,
+                                        player,
+                                        0x8107L,
+                                        (ignoredRoot, injectedContext) -> {
                                 long eventTick = server.getTickCount();
+                                RuntimeExecutionContext context = runtimeContext(
+                                        injectedContext, eventTick, player);
                                 RuntimeFixture errorEvent = runtimeFixture(
-                                        server, player, 24L, eventTick, ACTIVE_CAST);
+                                        context, player, 24L, ACTIVE_CAST);
                                 helper.assertTrue(retryService.offerApplied(
                                                         errorEvent.event(),
-                                                        errorEvent.context(),
+                                                        context,
                                                         ONE_APPLIED)
                                                 == P8PresentationOfferOutcome.ACCEPTED,
                                         "the event Error fixture must be retained while ready");
@@ -819,6 +831,7 @@ public final class P8S3PresentationGameTests {
                                                 && retryService.connectionReadyForTesting(
                                                         secondPlayer.getUUID()),
                                         "event Error must propagate itself without revoking readiness");
+                                        });
                             } finally {
                                 stopServicesAndRemovePlayers(server, services, players);
                             }
@@ -900,23 +913,23 @@ public final class P8S3PresentationGameTests {
 
     private static void assertOfferReentryGuards(
             GameTestHelper helper,
-            MinecraftServer server,
-            ServerPlayer player,
-            long runtimeTick) {
+            RuntimeExecutionContext context,
+            ServerPlayer player) {
+        MinecraftServer server = context.server();
         RuntimeFixture isCurrentFixture = runtimeFixture(
-                server, player, 10L, runtimeTick, ACTIVE_CAST);
+                context, player, 10L, ACTIVE_CAST);
         var isCurrentTransport = new RecordingTransport(player.getUUID());
         var isCurrentService = new P8ServerPresentationService(isCurrentTransport);
         try {
             isCurrentService.startForTesting(server, emptyCatalog());
             helper.assertTrue(isCurrentService.offerApplied(
                                     isCurrentFixture.event(),
-                                    isCurrentFixture.context(),
+                                    context,
                                     ONE_APPLIED)
                             == P8PresentationOfferOutcome.ACCEPTED,
                     "isCurrent reentry fixture must retain one delivery");
             isCurrentTransport.reenterOnNextIsCurrent(() -> isCurrentService.offerApplied(
-                    isCurrentFixture.event(), isCurrentFixture.context(), ONE_APPLIED));
+                    isCurrentFixture.event(), context, ONE_APPLIED));
             RuntimeException isCurrentFailure = null;
             try {
                 isCurrentService.drainPresentationForTesting(server);
@@ -931,14 +944,14 @@ public final class P8S3PresentationGameTests {
         }
 
         RuntimeFixture submitFixture = runtimeFixture(
-                server, player, 11L, runtimeTick, ACTIVE_CAST);
+                context, player, 11L, ACTIVE_CAST);
         var submitTransport = new RecordingTransport(player.getUUID());
         var submitService = new P8ServerPresentationService(submitTransport);
         try {
             submitService.startForTesting(server, emptyCatalog());
             helper.assertTrue(submitService.offerApplied(
                                     submitFixture.event(),
-                                    submitFixture.context(),
+                                    context,
                                     ONE_APPLIED)
                             == P8PresentationOfferOutcome.ACCEPTED,
                     "submit reentry fixture must retain one delivery");
@@ -946,7 +959,7 @@ public final class P8S3PresentationGameTests {
             submitTransport.reenterOnNextSubmit(() -> {
                 try {
                     submitService.offerApplied(
-                            submitFixture.event(), submitFixture.context(), ONE_APPLIED);
+                            submitFixture.event(), context, ONE_APPLIED);
                 } catch (RuntimeException failure) {
                     observedSubmitReentry[0] = failure;
                     throw failure;
@@ -966,141 +979,81 @@ public final class P8S3PresentationGameTests {
     }
 
     private static RuntimeFixture runtimeFixture(
-            MinecraftServer server,
+            RuntimeExecutionContext context,
             ServerPlayer player,
             long eventId,
-            long runtimeTick,
             ResourceLocation triggerKey) {
-        return runtimeFixture(
-                server,
-                player,
-                new ResolvedPlayerOrigin(player),
-                NoResolvedRuntimeTarget.INSTANCE,
-                eventId,
-                runtimeTick,
-                triggerKey);
-    }
-
-    private static RuntimeFixture runtimeFixture(
-            MinecraftServer server,
-            ServerPlayer player,
-            Entity origin,
-            Entity target,
-            long eventId,
-            long runtimeTick,
-            ResourceLocation triggerKey) {
-        return runtimeFixture(
-                server,
-                player,
-                new ResolvedEntityOrigin(origin),
-                new ResolvedEntityTarget(target),
-                eventId,
-                runtimeTick,
-                triggerKey);
-    }
-
-    private static RuntimeFixture runtimeFixture(
-            MinecraftServer server,
-            ServerPlayer player,
-            ResolvedRuntimeOrigin origin,
-            ResolvedRuntimeTarget target,
-            long eventId,
-            long runtimeTick,
-            ResourceLocation triggerKey) {
-        SkillReference reference = new SkillReference(
-                new SkillId(new UUID(0x8300000000004000L, eventId)),
-                new SkillRevision(1));
-        ValidatedNodeDefinition node = validatedNode();
-        ValidatedSkillDefinition definition = construct(
-                ValidatedSkillDefinition.class,
-                new Class<?>[] {SkillReference.class, List.class, RuntimeNeutralAppearance.class},
-                reference,
-                List.of(node),
-                RuntimeNeutralAppearance.Default.INSTANCE);
+        SkillReference reference = context.definition().reference();
+        RuntimeServerToken serverToken = context.serverSlotToken();
+        long runtimeTick = context.currentRuntimeTick();
         var playerId = new RuntimePlayerId(player.getUUID());
         var instanceId = new SkillInstanceId(new UUID(0x8300000000005000L, eventId));
         var event = new RuntimeEvent(
                 new EventId(eventId),
                 instanceId,
                 new RuntimeSkillInstanceSequence(eventId),
-                new RuntimeCancellationToken(SERVER_TOKEN, instanceId),
+                new RuntimeCancellationToken(serverToken, instanceId),
                 Optional.empty(),
                 reference,
-                0,
+                context.node().nodeIndex(),
                 runtimeTick,
                 runtimeTick,
                 Math.addExact(runtimeTick, 10L),
                 0,
                 0,
                 RuntimeSchedulePersistence.MEMORY_ONLY,
-                new PlayerRuntimeBudgetAttribution(SERVER_TOKEN, playerId),
-                new PlayerOrigin(SERVER_TOKEN, player.serverLevel().dimension(), playerId),
+                new PlayerRuntimeBudgetAttribution(serverToken, playerId),
+                new PlayerOrigin(serverToken, player.serverLevel().dimension(), playerId),
                 Optional.empty(),
                 new RootTriggerCause(new TriggerEventKind(triggerKey)),
                 NoRuntimeExecutionData.INSTANCE);
-        var context = new RuntimeExecutionContext(
-                server,
-                definition,
-                node,
+        return new RuntimeFixture(event);
+    }
+
+    private static RuntimeExecutionContext runtimeContext(
+            RuntimeExecutionContext injected,
+            long runtimeTick,
+            ResolvedRuntimeOrigin origin,
+            ResolvedRuntimeTarget target) {
+        return new RuntimeExecutionContext(
+                injected.server(),
+                injected.definition(),
+                injected.node(),
                 runtimeTick,
-                SERVER_TOKEN,
+                injected.serverSlotToken(),
                 new ResolvedRuntimeReferenceContext(origin, target),
-                new RuntimeExecutionBudget(0, 0, 0, 0, 0, 0, 0, 0, 0),
-                () -> RuntimeExecutionGuardDecision.ALLOWED);
-        return new RuntimeFixture(event, context);
+                injected.executionBudget(),
+                injected.executionGuard(),
+                injected.projectileContinuationOpener());
+    }
+
+    private static RuntimeExecutionContext runtimeContext(
+            RuntimeExecutionContext injected,
+            long runtimeTick,
+            ServerPlayer player) {
+        return runtimeContext(
+                injected,
+                runtimeTick,
+                new ResolvedPlayerOrigin(player),
+                NoResolvedRuntimeTarget.INSTANCE);
+    }
+
+    private static RuntimeExecutionContext runtimeContext(
+            RuntimeExecutionContext injected,
+            long runtimeTick,
+            Entity origin,
+            Entity target) {
+        return runtimeContext(
+                injected,
+                runtimeTick,
+                new ResolvedEntityOrigin(origin),
+                new ResolvedEntityTarget(target));
     }
 
     private static List<Long> sequences(P8ServerPresentationService service) {
         return service.bufferedEventsForTesting().stream()
                 .map(PresentationEvent::sequence)
                 .toList();
-    }
-
-    private static ValidatedNodeDefinition validatedNode() {
-        var trigger = new ResolvedTriggerDefinition<>(
-                TRIGGER_TYPE, 0, new FixtureTriggerPayload(0));
-        var action = new ResolvedActionDefinition<>(
-                ACTION_TYPE, 0, new FixtureActionPayload(0));
-        var triggerReferences = construct(
-                ValidatedTriggerReferenceProjection.class,
-                new Class<?>[] {
-                    SourceSelection.class, TargetSelection.class, boolean.class, List.class
-                },
-                SourceSelection.NONE,
-                TargetSelection.NONE,
-                false,
-                List.of());
-        var actionReferences = construct(
-                ValidatedActionReferenceProjection.class,
-                new Class<?>[] {
-                    SourceSelection.class, TargetSelection.class, List.class, Set.class
-                },
-                SourceSelection.NONE,
-                TargetSelection.NONE,
-                List.of(),
-                Set.of());
-        var references = construct(
-                ValidatedNodeReferenceProjection.class,
-                new Class<?>[] {
-                    ValidatedTriggerReferenceProjection.class,
-                    ValidatedActionReferenceProjection.class
-                },
-                triggerReferences,
-                actionReferences);
-        return construct(
-                ValidatedNodeDefinition.class,
-                new Class<?>[] {
-                    int.class,
-                    ResolvedTriggerDefinition.class,
-                    ResolvedActionDefinition.class,
-                    ValidatedNodeReferenceProjection.class,
-                    RuntimeNeutralAppearanceOverride.class
-                },
-                0,
-                trigger,
-                action,
-                references,
-                RuntimeNeutralAppearanceOverride.None.INSTANCE);
     }
 
     private static P8ServerPresentationService.PreparedCatalog emptyCatalog() {
@@ -1206,31 +1159,11 @@ public final class P8S3PresentationGameTests {
         return result;
     }
 
-    private static <T> T construct(
-            Class<T> type, Class<?>[] parameterTypes, Object... arguments) {
-        try {
-            Constructor<T> constructor = type.getDeclaredConstructor(parameterTypes);
-            constructor.setAccessible(true);
-            return constructor.newInstance(arguments);
-        } catch (InvocationTargetException exception) {
-            Throwable cause = exception.getCause();
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            if (cause instanceof Error error) {
-                throw error;
-            }
-            throw new IllegalStateException("controlled P8 fixture construction failed", cause);
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("controlled P8 fixture construction failed", exception);
-        }
-    }
-
     private static ResourceLocation id(String path) {
         return ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, path);
     }
 
-    private record RuntimeFixture(RuntimeEvent event, RuntimeExecutionContext context) {}
+    private record RuntimeFixture(RuntimeEvent event) {}
 
     private record EncodedPayload(int packetBytes, CustomPacketPayload payload) {}
 
@@ -1410,86 +1343,4 @@ public final class P8S3PresentationGameTests {
         }
     }
 
-    private record FixtureTriggerPayload(int value) implements TriggerPayload {
-        private static final MapCodec<FixtureTriggerPayload> CODEC =
-                RecordCodecBuilder.mapCodec(instance -> instance.group(
-                                Codec.INT.fieldOf("value").forGetter(FixtureTriggerPayload::value))
-                        .apply(instance, FixtureTriggerPayload::new));
-    }
-
-    private record FixtureActionPayload(int value) implements ActionPayload {
-        private static final MapCodec<FixtureActionPayload> CODEC =
-                RecordCodecBuilder.mapCodec(instance -> instance.group(
-                                Codec.INT.fieldOf("value").forGetter(FixtureActionPayload::value))
-                        .apply(instance, FixtureActionPayload::new));
-    }
-
-    private static final class FixtureTriggerType implements TriggerType<FixtureTriggerPayload> {
-        private static final TriggerCapabilities CAPABILITIES = new TriggerCapabilities(
-                SourceRequirement.NONE,
-                TargetRequirement.NONE,
-                false,
-                Set.of(new TriggerEventKind(ACTIVE_CAST)),
-                Set.of(TriggerSourceScope.CURRENT_INSTANCE),
-                Set.of(TriggerGranularity.PER_EVENT));
-
-        @Override
-        public int currentPayloadSchemaVersion() {
-            return 0;
-        }
-
-        @Override
-        public MapCodec<FixtureTriggerPayload> payloadCodec() {
-            return FixtureTriggerPayload.CODEC;
-        }
-
-        @Override
-        public TriggerCapabilities capabilities() {
-            return CAPABILITIES;
-        }
-
-        @Override
-        public ValidationResult validate(
-                FixtureTriggerPayload payload, ValidationContext context) {
-            return ValidationResult.valid();
-        }
-    }
-
-    private static final class FixtureActionType implements ActionType<FixtureActionPayload> {
-        private static final ActionCapabilities CAPABILITIES = new ActionCapabilities(
-                SourceRequirement.NONE,
-                TargetRequirement.NONE,
-                false,
-                Set.of(),
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                ControlClass.NONE,
-                AppearanceParameterPolicy.none());
-
-        @Override
-        public int currentPayloadSchemaVersion() {
-            return 0;
-        }
-
-        @Override
-        public MapCodec<FixtureActionPayload> payloadCodec() {
-            return FixtureActionPayload.CODEC;
-        }
-
-        @Override
-        public ActionCapabilities capabilities() {
-            return CAPABILITIES;
-        }
-
-        @Override
-        public ValidationResult validate(
-                FixtureActionPayload payload, ValidationContext context) {
-            return ValidationResult.valid();
-        }
-    }
 }

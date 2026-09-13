@@ -152,6 +152,14 @@ final class P7AuthenticatedPlayerCastIngressTest {
     void rootBuildsAndInstallsOneIngressFromTheExistingServiceGraph() throws Exception {
         var source = Files.readString(ROOT_SOURCE);
         var ingressSource = Files.readString(INGRESS_SOURCE);
+        var geometrySource = section(
+                ingressSource,
+                "private static Optional<CastGeometryExecutionDataV0> sampleGeometry(",
+                "private static boolean finite(");
+        var q15Source = section(
+                ingressSource,
+                "private static int encodeQ15(",
+                "static P7ServerAuthorizationBoundary.AdmissionDisposition mapAdmission(");
         var runtimeCreation = source.indexOf("skillRuntimeService = SkillRuntimeService.create(");
         var ingressCreation = source.indexOf(
                 "var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(");
@@ -205,7 +213,48 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         "storeService.find(server, reference)",
                         "if (definition.isEmpty())",
                         "targetCheck.validate(server, actor)",
-                        "runtimeService.admitAuthenticatedPlayerCast(server, actor, reference)"),
+                        "var geometry = sampleGeometry(actor)",
+                        "if (geometry.isEmpty())",
+                        "runtimeService.admitAuthenticatedPlayerCast(",
+                        "server, actor, reference, geometry.orElseThrow())"),
+                () -> assertOrdered(
+                        geometrySource,
+                        "var sampledLevel = actor.serverLevel()",
+                        "var dimension = sampledLevel.dimension().location()",
+                        "var eye = actor.getEyePosition()",
+                        "var look = actor.getLookAngle()",
+                        "var lengthSquared = look.x * look.x + look.y * look.y + look.z * look.z",
+                        "StrictMath.sqrt(lengthSquared)",
+                        "var originX = eye.x + directionX * 0.10",
+                        "var originY = eye.y + directionY * 0.10 - 0.10",
+                        "var originZ = eye.z + directionZ * 0.10",
+                        "var directionXQ15 = encodeQ15(directionX)",
+                        "var currentLevel = actor.serverLevel()",
+                        "currentLevel.dimension().location().equals(dimension)",
+                        "var origin = BlockPos.containing(originX, originY, originZ)",
+                        "currentLevel.isInWorldBounds(origin)",
+                        "currentLevel.isLoaded(origin)",
+                        "currentLevel.getWorldBorder().isWithinBounds(originX, originZ)",
+                        "new CastGeometryExecutionDataV0("),
+                () -> assertTrue(geometrySource.contains(
+                        "!finite(eye.x, eye.y, eye.z) || !finite(look.x, look.y, look.z)")),
+                () -> assertTrue(geometrySource.contains(
+                        "!Double.isFinite(lengthSquared) || lengthSquared <= 0.0")),
+                () -> assertTrue(geometrySource.contains(
+                        "originX < -30_000_000.0\n"
+                                + "                || originX >= 30_000_000.0")),
+                () -> assertTrue(geometrySource.contains(
+                        "originY < -20_000_000.0\n"
+                                + "                || originY >= 20_000_000.0")),
+                () -> assertTrue(geometrySource.contains(
+                        "originZ < -30_000_000.0\n"
+                                + "                || originZ >= 30_000_000.0")),
+                () -> assertTrue(geometrySource.contains(
+                        "directionXQ15 == 0 && directionYQ15 == 0 && directionZQ15 == 0")),
+                () -> assertTrue(q15Source.contains(
+                        "StrictMath.rint(component * 32_767.0)")),
+                () -> assertTrue(q15Source.contains("-32_767.0")),
+                () -> assertTrue(q15Source.contains("32_767.0")),
                 () -> assertEquals(
                         1, occurrences(ingressSource, "attachmentService.equippedAt(actor, slot)")),
                 () -> assertEquals(
@@ -220,12 +269,17 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         1,
                         occurrences(
                                 ingressSource,
-                                "runtimeService.admitAuthenticatedPlayerCast(server, actor, reference)")),
+                                "runtimeService.admitAuthenticatedPlayerCast(")),
+                () -> assertTrue(ingressSource.contains(
+                        "server, actor, reference, geometry.orElseThrow()")),
                 () -> assertFalse(ingressSource.contains("latestReference")),
                 () -> assertFalse(ingressSource.contains("Available<?>")),
                 () -> assertTrue(ingressSource.contains("Available<SkillOwnerId>")),
                 () -> assertFalse(ingressSource.contains("catch (")),
-                () -> assertFalse(ingressSource.contains("P6RuntimeExecution")));
+                () -> assertFalse(ingressSource.contains("P6RuntimeExecution")),
+                () -> assertFalse(ingressSource.contains("aimHint")),
+                () -> assertFalse(ingressSource.contains("originHint")),
+                () -> assertFalse(ingressSource.contains("P7CastIntentPayload")));
     }
 
     @Test
@@ -261,6 +315,155 @@ final class P7AuthenticatedPlayerCastIngressTest {
                 package com.yo1no.gramarye.magic.definition.document;
 
                 public final class SkillDocument {
+                }
+                """);
+        var resourceLocationStub = write(sourceRoot,
+                "net/minecraft/resources/ResourceLocation.java", """
+                package net.minecraft.resources;
+
+                public record ResourceLocation(String value) {
+                }
+                """);
+        var resourceKeyStub = write(sourceRoot,
+                "net/minecraft/resources/ResourceKey.java", """
+                package net.minecraft.resources;
+
+                public record ResourceKey<T>(ResourceLocation location) {
+                }
+                """);
+        var blockPosStub = write(sourceRoot,
+                "net/minecraft/core/BlockPos.java", """
+                package net.minecraft.core;
+
+                public record BlockPos(int x, int y, int z) {
+                    public static BlockPos containing(double x, double y, double z) {
+                        return new BlockPos(floor(x), floor(y), floor(z));
+                    }
+
+                    private static int floor(double value) {
+                        var truncated = (int) value;
+                        return value < truncated ? truncated - 1 : truncated;
+                    }
+                }
+                """);
+        var vec3Stub = write(sourceRoot,
+                "net/minecraft/world/phys/Vec3.java", """
+                package net.minecraft.world.phys;
+
+                public final class Vec3 {
+                    public final double x;
+                    public final double y;
+                    public final double z;
+
+                    public Vec3(double x, double y, double z) {
+                        this.x = x;
+                        this.y = y;
+                        this.z = z;
+                    }
+                }
+                """);
+        var levelStub = write(sourceRoot,
+                "net/minecraft/world/level/Level.java", """
+                package net.minecraft.world.level;
+
+                public class Level {
+                }
+                """);
+        var borderStub = write(sourceRoot,
+                "net/minecraft/world/level/border/WorldBorder.java", """
+                package net.minecraft.world.level.border;
+
+                import java.util.List;
+
+                public final class WorldBorder {
+                    private final List<String> calls;
+                    private boolean withinBounds = true;
+
+                    public WorldBorder(List<String> calls) {
+                        this.calls = calls;
+                    }
+
+                    public boolean isWithinBounds(double x, double z) {
+                        calls.add("borderBounds");
+                        return withinBounds;
+                    }
+
+                    public void setWithinBounds(boolean value) {
+                        withinBounds = value;
+                    }
+                }
+                """);
+        var serverLevelStub = write(sourceRoot,
+                "net/minecraft/server/level/ServerLevel.java", """
+                package net.minecraft.server.level;
+
+                import java.util.List;
+                import net.minecraft.core.BlockPos;
+                import net.minecraft.resources.ResourceKey;
+                import net.minecraft.world.level.Level;
+                import net.minecraft.world.level.border.WorldBorder;
+
+                public final class ServerLevel {
+                    private final List<String> calls;
+                    private final ResourceKey<Level> dimension;
+                    private final WorldBorder border;
+                    private boolean inWorldBounds = true;
+                    private boolean loaded = true;
+
+                    public ServerLevel(List<String> calls, ResourceKey<Level> dimension) {
+                        this.calls = calls;
+                        this.dimension = dimension;
+                        border = new WorldBorder(calls);
+                    }
+
+                    public ResourceKey<Level> dimension() {
+                        calls.add("dimension:" + dimension.location().value());
+                        return dimension;
+                    }
+
+                    public boolean isInWorldBounds(BlockPos position) {
+                        calls.add("worldBounds");
+                        return inWorldBounds;
+                    }
+
+                    public boolean isLoaded(BlockPos position) {
+                        calls.add("loaded");
+                        return loaded;
+                    }
+
+                    public WorldBorder getWorldBorder() {
+                        calls.add("border");
+                        return border;
+                    }
+
+                    public void setInWorldBounds(boolean value) {
+                        inWorldBounds = value;
+                    }
+
+                    public void setLoaded(boolean value) {
+                        loaded = value;
+                    }
+
+                    public WorldBorder border() {
+                        return border;
+                    }
+                }
+                """);
+        var geometryStub = write(sourceRoot,
+                "com/yo1no/gramarye/CastGeometryExecutionDataV0.java", """
+                package com.yo1no.gramarye;
+
+                import net.minecraft.resources.ResourceLocation;
+
+                record CastGeometryExecutionDataV0(
+                        ResourceLocation dimension,
+                        double originX,
+                        double originY,
+                        double originZ,
+                        int directionXQ15,
+                        int directionYQ15,
+                        int directionZQ15,
+                        int profileCode) {
                 }
                 """);
         var playerListStub = write(sourceRoot,
@@ -332,12 +535,21 @@ final class P7AuthenticatedPlayerCastIngressTest {
 
                 import java.util.List;
                 import java.util.UUID;
+                import net.minecraft.resources.ResourceKey;
+                import net.minecraft.resources.ResourceLocation;
                 import net.minecraft.server.MinecraftServer;
+                import net.minecraft.world.level.Level;
+                import net.minecraft.world.phys.Vec3;
 
                 public final class ServerPlayer {
                     private final UUID playerId;
                     private final List<String> calls;
                     private MinecraftServer server;
+                    private ServerLevel sampledLevel;
+                    private ServerLevel currentLevel;
+                    private Vec3 eye = new Vec3(10.0, 20.0, 30.0);
+                    private Vec3 look = new Vec3(3.0, 4.0, 0.0);
+                    private int levelCalls;
 
                     public ServerPlayer(
                             MinecraftServer server,
@@ -346,6 +558,10 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         this.server = server;
                         this.playerId = playerId;
                         this.calls = calls;
+                        sampledLevel = new ServerLevel(
+                                calls,
+                                new ResourceKey<Level>(new ResourceLocation("overworld")));
+                        currentLevel = sampledLevel;
                     }
 
                     public MinecraftServer getServer() {
@@ -358,8 +574,40 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         return playerId;
                     }
 
+                    public ServerLevel serverLevel() {
+                        levelCalls++;
+                        calls.add("actorLevel:" + levelCalls);
+                        return levelCalls == 1 ? sampledLevel : currentLevel;
+                    }
+
+                    public Vec3 getEyePosition() {
+                        calls.add("eye");
+                        return eye;
+                    }
+
+                    public Vec3 getLookAngle() {
+                        calls.add("look");
+                        return look;
+                    }
+
                     public void setServer(MinecraftServer value) {
                         server = value;
+                    }
+
+                    public void setEye(double x, double y, double z) {
+                        eye = new Vec3(x, y, z);
+                    }
+
+                    public void setLook(double x, double y, double z) {
+                        look = new Vec3(x, y, z);
+                    }
+
+                    public ServerLevel sampledLevel() {
+                        return sampledLevel;
+                    }
+
+                    public void setCurrentLevel(ServerLevel value) {
+                        currentLevel = value;
                     }
                 }
                 """);
@@ -544,8 +792,12 @@ final class P7AuthenticatedPlayerCastIngressTest {
                 import java.util.List;
                 import java.util.Optional;
                 import java.util.UUID;
+                import net.minecraft.resources.ResourceKey;
+                import net.minecraft.resources.ResourceLocation;
                 import net.minecraft.server.MinecraftServer;
+                import net.minecraft.server.level.ServerLevel;
                 import net.minecraft.server.level.ServerPlayer;
+                import net.minecraft.world.level.Level;
 
                 public final class P7IngressBehaviorHarness {
                     private P7IngressBehaviorHarness() {
@@ -558,6 +810,7 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         verifyAttachmentAndOwnerBranches();
                         verifyExactRevisionBranches();
                         verifyTargetBranchesAndP5Identity();
+                        verifyServerGeometrySnapshotAndInvalidPaths();
                         return "PASS";
                     }
 
@@ -624,6 +877,16 @@ final class P7AuthenticatedPlayerCastIngressTest {
                                     "skillOwner",
                                     "definition",
                                     "target",
+                                    "actorLevel:1",
+                                    "dimension:overworld",
+                                    "eye",
+                                    "look",
+                                    "actorLevel:2",
+                                    "dimension:overworld",
+                                    "worldBounds",
+                                    "loaded",
+                                    "border",
+                                    "borderBounds",
                                     "p5");
                             fixture.expectTerminalCounts(1, 1);
                             check(fixture.runtime.reference == fixture.reference,
@@ -756,6 +1019,8 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         check(valid.runtime.actor == valid.actor, "P5 actor identity");
                         check(valid.runtime.reference == valid.reference,
                                 "P5 exact reference identity");
+                        check(valid.runtime.geometry != null,
+                                "P5 typed geometry presence");
 
                         var runtimeFailure = new Fixture();
                         var runtimeException = new IllegalStateException("runtime failure");
@@ -775,6 +1040,87 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         check(observedError == error, "Error exact identity");
                         errorFailure.expectCallsThrough("p5");
                         errorFailure.expectTerminalCounts(1, 1);
+                    }
+
+                    private static void verifyServerGeometrySnapshotAndInvalidPaths() {
+                        var valid = new Fixture();
+                        check(valid.invoke(target("VALID")) == admission("ACCEPTED"),
+                                "server-derived geometry admission");
+                        valid.expectCallsThrough("p5");
+                        var geometry = valid.runtime.geometry;
+                        check(geometry.dimension().equals(new ResourceLocation("overworld")),
+                                "captured dimension");
+                        check(StrictMath.abs(geometry.originX() - 10.06) < 1.0e-12,
+                                "exact forward X origin");
+                        check(StrictMath.abs(geometry.originY() - 19.98) < 1.0e-12,
+                                "exact forward/down Y origin");
+                        check(StrictMath.abs(geometry.originZ() - 30.0) < 1.0e-12,
+                                "exact forward Z origin");
+                        check(geometry.directionXQ15() == 19_660,
+                                "normalized X Q15");
+                        check(geometry.directionYQ15() == 26_214,
+                                "nearest normalized Y Q15");
+                        check(geometry.directionZQ15() == 0,
+                                "individual zero Q15 component");
+                        check(geometry.profileCode() == 0, "fixed profile code");
+
+                        var negativeEndpoint = new Fixture();
+                        negativeEndpoint.actor.setLook(-1.0, 0.0, 0.0);
+                        check(negativeEndpoint.invoke() == admission("ACCEPTED"),
+                                "negative axis admission");
+                        check(negativeEndpoint.runtime.geometry.directionXQ15() == -32_767,
+                                "negative Q15 endpoint");
+
+                        var nonfiniteEye = new Fixture();
+                        nonfiniteEye.actor.setEye(Double.NaN, 20.0, 30.0);
+                        expectGeometryRejection(nonfiniteEye, "look");
+
+                        var nonfiniteLook = new Fixture();
+                        nonfiniteLook.actor.setLook(Double.POSITIVE_INFINITY, 0.0, 0.0);
+                        expectGeometryRejection(nonfiniteLook, "look");
+
+                        var overflowedLength = new Fixture();
+                        overflowedLength.actor.setLook(
+                                Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE);
+                        expectGeometryRejection(overflowedLength, "look");
+
+                        var zeroLook = new Fixture();
+                        zeroLook.actor.setLook(0.0, 0.0, 0.0);
+                        expectGeometryRejection(zeroLook, "look");
+
+                        var outOfStaticDomain = new Fixture();
+                        outOfStaticDomain.actor.setEye(30_000_000.0, 20.0, 30.0);
+                        outOfStaticDomain.actor.setLook(1.0, 0.0, 0.0);
+                        expectGeometryRejection(outOfStaticDomain, "look");
+
+                        var dimensionChanged = new Fixture();
+                        dimensionChanged.actor.setCurrentLevel(new ServerLevel(
+                                dimensionChanged.calls,
+                                new ResourceKey<Level>(new ResourceLocation("nether"))));
+                        expectGeometryRejection(dimensionChanged, "dimension:nether");
+
+                        var outsideWorld = new Fixture();
+                        outsideWorld.actor.sampledLevel().setInWorldBounds(false);
+                        expectGeometryRejection(outsideWorld, "worldBounds");
+
+                        var unloaded = new Fixture();
+                        unloaded.actor.sampledLevel().setLoaded(false);
+                        expectGeometryRejection(unloaded, "loaded");
+
+                        var outsideBorder = new Fixture();
+                        outsideBorder.actor.sampledLevel().border().setWithinBounds(false);
+                        expectGeometryRejection(outsideBorder, "borderBounds");
+                    }
+
+                    private static void expectGeometryRejection(
+                            Fixture fixture, String finalCall) {
+                        check(fixture.invoke(target("VALID"))
+                                        == admission("P5_ADMISSION_REJECTED"),
+                                "geometry rejection at " + finalCall);
+                        check(fixture.calls.getLast().equals(finalCall),
+                                "geometry terminal expected=" + finalCall
+                                        + " actual=" + fixture.calls);
+                        fixture.expectTerminalCounts(1, 0);
                     }
 
                     private static P7ServerAuthorizationBoundary.AdmissionDisposition admission(
@@ -887,6 +1233,16 @@ final class P7AuthenticatedPlayerCastIngressTest {
                                     "skillOwner",
                                     "definition",
                                     "target",
+                                    "actorLevel:1",
+                                    "dimension:overworld",
+                                    "eye",
+                                    "look",
+                                    "actorLevel:2",
+                                    "dimension:overworld",
+                                    "worldBounds",
+                                    "loaded",
+                                    "border",
+                                    "borderBounds",
                                     "p5");
                             var terminalIndex = full.indexOf(terminal);
                             check(terminalIndex >= 0, "unknown expected terminal " + terminal);
@@ -910,6 +1266,7 @@ final class P7AuthenticatedPlayerCastIngressTest {
                     MinecraftServer server;
                     ServerPlayer actor;
                     SkillReference reference;
+                    CastGeometryExecutionDataV0 geometry;
                     Throwable failure;
 
                     SkillRuntimeService(List<String> callsLog) {
@@ -919,12 +1276,14 @@ final class P7AuthenticatedPlayerCastIngressTest {
                     RuntimeAdmissionResult admitAuthenticatedPlayerCast(
                             MinecraftServer observedServer,
                             ServerPlayer observedActor,
-                            SkillReference observedReference) {
+                            SkillReference observedReference,
+                            CastGeometryExecutionDataV0 observedGeometry) {
                         callsLog.add("p5");
                         calls++;
                         server = observedServer;
                         actor = observedActor;
                         reference = observedReference;
+                        geometry = observedGeometry;
                         if (failure instanceof RuntimeException runtimeFailure) {
                             throw runtimeFailure;
                         }
@@ -1035,6 +1394,14 @@ final class P7AuthenticatedPlayerCastIngressTest {
                     ownerIdStub,
                     referenceStub,
                     documentStub,
+                    resourceLocationStub,
+                    resourceKeyStub,
+                    blockPosStub,
+                    vec3Stub,
+                    levelStub,
+                    borderStub,
+                    serverLevelStub,
+                    geometryStub,
                     playerListStub,
                     serverStub,
                     playerStub,
@@ -1071,6 +1438,14 @@ final class P7AuthenticatedPlayerCastIngressTest {
         var field = P7AuthenticatedPlayerCastIngress.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         return field.get(ingress);
+    }
+
+    private static String section(String source, String start, String end) {
+        var first = source.indexOf(start);
+        var last = source.indexOf(end, first + start.length());
+        assertTrue(first >= 0 && last > first,
+                () -> "source section unavailable: " + start + " -> " + end);
+        return source.substring(first, last);
     }
 
     private static int occurrences(String source, String fragment) {

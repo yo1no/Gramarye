@@ -27,6 +27,9 @@ final class P7CastIntentNetworkHandlerTest {
     private static final Path HANDLER_SOURCE = projectRoot().resolve(
             "src/main/java/com/yo1no/gramarye/magic/network/"
                     + "P7CastIntentNetworkHandler.java");
+    private static final Path CODEC_SOURCE = projectRoot().resolve(
+            "src/main/java/com/yo1no/gramarye/magic/network/"
+                    + "P7PayloadCodecSupport.java");
 
     @TempDir
     Path temporary;
@@ -288,6 +291,7 @@ final class P7CastIntentNetworkHandlerTest {
     void platformEntryCopiesServerPlayerUuidAndNetworkPathAvoidsSemanticOwners()
             throws Exception {
         var source = Files.readString(HANDLER_SOURCE);
+        var decodeAndHandlerSource = Files.readString(CODEC_SOURCE) + source;
 
         assertTrue(source.contains("player instanceof ServerPlayer serverPlayer"));
         assertTrue(source.contains("serverPlayer.getUUID()"));
@@ -302,6 +306,18 @@ final class P7CastIntentNetworkHandlerTest {
         assertFalse(source.contains("CastIntentAdmissionSemantics"));
         assertFalse(source.contains("SkillRuntimeService"));
         assertFalse(source.contains("P6RuntimeExecutionBridge"));
+        for (var forbiddenGeometryRead : List.of(
+                "getEyePosition(",
+                "getLookAngle(",
+                "serverLevel(",
+                ".level()",
+                "ServerLevel",
+                "BlockPos",
+                "Vec3")) {
+            assertFalse(
+                    decodeAndHandlerSource.contains(forbiddenGeometryRead),
+                    forbiddenGeometryRead);
+        }
         assertTrue(source.contains("context.reply(new IntentAckPayload("));
         assertTrue(source.contains("IntentAcknowledgement.Disposition.SERVER_BUSY"));
         assertPlatformEntryBehavior();

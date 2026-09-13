@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.yo1no.gramarye.magic.api.id.SkillInstanceId;
+import com.yo1no.gramarye.magic.capability.ActionOutputKind;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.store.ControlledSkillPin;
 import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
@@ -19,13 +21,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -231,9 +237,9 @@ final class P5RuntimeStaticGateTest {
         assertInOrder(
                 children,
                 "var pendingBreak = pendingBreak(",
-                "childCount > reservation.capacity",
+                "childCount > reservation.capacity()",
                 "var published = new RuntimeEvent[childCount]",
-                "new EventId(Math.addExact(reservation.eventIdStart, index + 1L))",
+                "new EventId(Math.addExact(reservation.eventIdStart(), index + 1L))",
                 "for (var child : published)",
                 "convertReservedChildToCommitted(",
                 "releaseCurrentReservation(slot, instance, attribution)",
@@ -263,7 +269,7 @@ final class P5RuntimeStaticGateTest {
                 publish,
                 "slot.leases.put(lease.reference, lease)",
                 "lease.retain()",
-                "new ServerSlot.InstanceState(");
+                "slot.instances.put(instance.id, instance)");
 
         var removal = section(
                 source, "private static void maybeRemoveInstance(",
@@ -274,7 +280,7 @@ final class P5RuntimeStaticGateTest {
                 "slot.leases.remove(instance.lease.reference)");
 
         var normalClear = section(
-                source, "private static void clearSlotNormal(",
+                source, "private static int clearSlotNormal(",
                 "private static void clearSlotAfterRuntimeException(");
         assertInOrder(normalClear, "for (var lease : slot.leases.values())", "lease.close()",
                 "slot.leases.clear()");
@@ -301,7 +307,7 @@ final class P5RuntimeStaticGateTest {
                 "private RuntimeExecutionOutcome processCompletedPlan(",
                 "private ChildReservation reserveForPort(");
         var pendingBranch = section(
-                children, "if (pendingBreak != null)", "if (childCount > reservation.capacity)");
+                children, "if (pendingBreak != null)", "if (childCount > reservation.capacity())");
         assertInOrder(
                 pendingBranch,
                 "releaseCurrentReservation(slot, instance, attribution)",
@@ -320,15 +326,21 @@ final class P5RuntimeStaticGateTest {
     void postIsTheSoleRuntimeTickClockAndAbsenceCannotAdvanceIt() throws Exception {
         var source = Files.readString(SERVICE_SOURCE);
         var post = section(
-                source, "private void handleRuntimePost(", "private void handleRuntimeStopping(");
+                source, "void handleRuntimePost(", "private void handleRuntimeStopping(");
         var advance = section(
                 source, "static RuntimeTickAdvanceResult advanceRuntimeTick(",
                 "static void observeDrainStop(");
+        var postOwner = SkillRuntimeService.class.getDeclaredMethod(
+                "handleRuntimePost", net.neoforged.neoforge.event.tick.ServerTickEvent.Post.class);
         assertAll(
                 () -> assertEquals(1, occurrences(source, "::handleRuntimePost")),
                 () -> assertEquals(1, occurrences(source, "advanceRuntimeTick(slot)")),
                 () -> assertEquals(1, occurrences(
                         source, "slot.runtimeTick = Math.incrementExact(slot.runtimeTick)")),
+                () -> assertTrue(isPackagePrivate(postOwner.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(postOwner.getModifiers())),
+                () -> assertEquals(void.class, postOwner.getReturnType()),
+                () -> assertEquals(0, postOwner.getExceptionTypes().length),
                 () -> assertTrue(post.contains("advanceRuntimeTick(slot)")),
                 () -> assertTrue(advance.contains("RuntimeTickAdvanceResult.EXHAUSTED")),
                 () -> assertFalse(source.contains("ServerTickEvent.Pre")));
@@ -355,6 +367,151 @@ final class P5RuntimeStaticGateTest {
                 + "interface RuntimeExecutionGuard {\n"
                 + "    RuntimeExecutionGuardDecision check();\n"
                 + "}\n\n";
+        var v1ExecutionDataDeclaration = "sealed interface RuntimeExecutionData "
+                + "permits NoRuntimeExecutionData {}\n\n"
+                + "enum NoRuntimeExecutionData implements RuntimeExecutionData {\n"
+                + "    INSTANCE\n"
+                + "}\n";
+        var s2ExecutionDataDeclaration = """
+sealed interface RuntimeExecutionData
+        permits NoRuntimeExecutionData,
+                CastGeometryExecutionDataV0,
+                ProjectileHitExecutionDataV0 {}
+
+enum NoRuntimeExecutionData implements RuntimeExecutionData {
+    INSTANCE
+}
+
+/** Immutable server-observed cast geometry for the canonical P9 root event. */
+record CastGeometryExecutionDataV0(
+        ResourceLocation dimension,
+        double originX,
+        double originY,
+        double originZ,
+        int directionXQ15,
+        int directionYQ15,
+        int directionZQ15,
+        int profileCode) implements RuntimeExecutionData {
+    CastGeometryExecutionDataV0 {
+        Objects.requireNonNull(dimension, "dimension");
+        if (!Double.isFinite(originX)
+                || !Double.isFinite(originY)
+                || !Double.isFinite(originZ)
+                || originX < -30_000_000.0
+                || originX >= 30_000_000.0
+                || originY < -20_000_000.0
+                || originY >= 20_000_000.0
+                || originZ < -30_000_000.0
+                || originZ >= 30_000_000.0) {
+            throw new IllegalArgumentException("cast origin is outside the static domain");
+        }
+        if (!legalQ15(directionXQ15, directionYQ15, directionZQ15)) {
+            throw new IllegalArgumentException("cast direction is not a legal Q15 tuple");
+        }
+        if (profileCode != 0) {
+            throw new IllegalArgumentException("cast profile code must be zero");
+        }
+    }
+
+    private static boolean legalQ15(int x, int y, int z) {
+        return x >= -32_767 && x <= 32_767
+                && y >= -32_767 && y <= 32_767
+                && z >= -32_767 && z <= 32_767
+                && (x != 0 || y != 0 || z != 0);
+    }
+}
+
+/** Immutable direct-output family identity retained by a P9 continuation. */
+record SourceFamilyKey(
+        SkillInstanceId skillInstanceId,
+        EventId sourceEventId,
+        int producerNodeIndex,
+        int outputOrdinal) {
+    SourceFamilyKey {
+        Objects.requireNonNull(skillInstanceId, "skillInstanceId");
+        Objects.requireNonNull(sourceEventId, "sourceEventId");
+        var instanceValue = skillInstanceId.value();
+        if (instanceValue.getMostSignificantBits() == 0L
+                && instanceValue.getLeastSignificantBits() == 0L
+                || sourceEventId.value() <= 0L
+                || producerNodeIndex != 0
+                || outputOrdinal != 0) {
+            throw new IllegalArgumentException("invalid P9 source family");
+        }
+    }
+
+    boolean matches(
+            SourceFamilyKey candidateFamily,
+            SkillReference exactReference,
+            SkillReference candidateReference,
+            int sourceDerivationDepth,
+            boolean includeDerived) {
+        Objects.requireNonNull(candidateFamily, "candidateFamily");
+        Objects.requireNonNull(exactReference, "exactReference");
+        Objects.requireNonNull(candidateReference, "candidateReference");
+        return sourceDerivationDepth >= 0
+                && sourceDerivationDepth <= MagicSafetyCeilings.MAX_DEPTH_PER_LINEAGE
+                && (includeDerived || sourceDerivationDepth == 0)
+                && equals(candidateFamily)
+                && exactReference.equals(candidateReference);
+    }
+}
+
+/** Closed-vocabulary P9 hit data; product construction begins only in P9-S3. */
+record ProjectileHitExecutionDataV0(
+        UUID permitId,
+        UUID projectileId,
+        SourceFamilyKey sourceFamily,
+        int sourceDerivationDepth,
+        ResourceLocation dimension,
+        UUID targetId,
+        double hitX,
+        double hitY,
+        double hitZ,
+        int directionXQ15,
+        int directionYQ15,
+        int directionZQ15) implements RuntimeExecutionData {
+    ProjectileHitExecutionDataV0 {
+        Objects.requireNonNull(permitId, "permitId");
+        Objects.requireNonNull(projectileId, "projectileId");
+        Objects.requireNonNull(sourceFamily, "sourceFamily");
+        Objects.requireNonNull(dimension, "dimension");
+        Objects.requireNonNull(targetId, "targetId");
+        if (zeroUuid(permitId) || zeroUuid(projectileId) || zeroUuid(targetId)) {
+            throw new IllegalArgumentException("P9 hit identities must be nonzero");
+        }
+        if (sourceDerivationDepth != 0) {
+            throw new IllegalArgumentException("P9 hit source depth must be zero");
+        }
+        if (!Double.isFinite(hitX)
+                || !Double.isFinite(hitY)
+                || !Double.isFinite(hitZ)
+                || hitX < -30_000_000.0
+                || hitX >= 30_000_000.0
+                || hitY < -20_000_000.0
+                || hitY >= 20_000_000.0
+                || hitZ < -30_000_000.0
+                || hitZ >= 30_000_000.0) {
+            throw new IllegalArgumentException("P9 hit position is outside the static domain");
+        }
+        if (!legalQ15(directionXQ15, directionYQ15, directionZQ15)) {
+            throw new IllegalArgumentException("P9 hit direction is not a legal Q15 tuple");
+        }
+    }
+
+    private static boolean zeroUuid(UUID value) {
+        return value.getMostSignificantBits() == 0L
+                && value.getLeastSignificantBits() == 0L;
+    }
+
+    private static boolean legalQ15(int x, int y, int z) {
+        return x >= -32_767 && x <= 32_767
+                && y >= -32_767 && y <= 32_767
+                && z >= -32_767 && z <= 32_767
+                && (x != 0 || y != 0 || z != 0);
+    }
+}
+""";
         var s4Vocabulary = exactDeclarations
                 .replace(
                         "record RuntimeExecutionContext(\n",
@@ -367,11 +524,715 @@ final class P5RuntimeStaticGateTest {
                         "        Objects.requireNonNull(executionBudget, \"executionBudget\");\n",
                         "        Objects.requireNonNull(executionBudget, \"executionBudget\");\n"
                                 + "        Objects.requireNonNull(executionGuard, \"executionGuard\");\n");
+        var s2Vocabulary = s4Vocabulary
+                .replace(v1ExecutionDataDeclaration, s2ExecutionDataDeclaration)
+                .replace(
+                        "        RuntimeExecutionGuard executionGuard) {\n",
+                        "        RuntimeExecutionGuard executionGuard,\n"
+                                + "        RuntimeProjectileContinuationOpener "
+                                + "projectileContinuationOpener) {\n")
+                .replace(
+                        "        Objects.requireNonNull(executionGuard, \"executionGuard\");\n",
+                        "        Objects.requireNonNull(executionGuard, \"executionGuard\");\n"
+                                + "        Objects.requireNonNull(projectileContinuationOpener, "
+                                + "\"projectileContinuationOpener\");\n");
         assertAll(
                 () -> assertEquals(1, occurrences(s4Vocabulary, guardDeclaration)),
                 () -> assertEquals(1, occurrences(
                         s4Vocabulary, "RuntimeExecutionGuard executionGuard")),
-                () -> assertEquals(s4Vocabulary, Files.readString(VOCABULARY_SOURCE)));
+                () -> assertEquals(1, occurrences(
+                        s2Vocabulary, "RuntimeProjectileContinuationOpener "
+                                + "projectileContinuationOpener")),
+                () -> assertEquals(1, occurrences(
+                        s2Vocabulary, s2ExecutionDataDeclaration)),
+                () -> assertEquals(s2Vocabulary, Files.readString(VOCABULARY_SOURCE)));
+    }
+
+    @Test
+    void p9S2ExecutionDataAndNinthContextInventoriesAreExact() {
+        assertAll(
+                () -> assertTrue(RuntimeExecutionData.class.isSealed()),
+                () -> assertTrue(isPackagePrivate(RuntimeExecutionData.class.getModifiers())),
+                () -> assertEquals(
+                        List.of(
+                                NoRuntimeExecutionData.class,
+                                CastGeometryExecutionDataV0.class,
+                                ProjectileHitExecutionDataV0.class),
+                        Arrays.asList(RuntimeExecutionData.class.getPermittedSubclasses())),
+                () -> assertTrue(List.of(
+                                CastGeometryExecutionDataV0.class,
+                                SourceFamilyKey.class,
+                                ProjectileHitExecutionDataV0.class)
+                        .stream()
+                        .allMatch(type -> type.isRecord()
+                                && Modifier.isFinal(type.getModifiers())
+                                && isPackagePrivate(type.getModifiers()))),
+                () -> assertEquals(
+                        List.of(
+                                "net.minecraft.resources.ResourceLocation dimension",
+                                "double originX",
+                                "double originY",
+                                "double originZ",
+                                "int directionXQ15",
+                                "int directionYQ15",
+                                "int directionZQ15",
+                                "int profileCode"),
+                        recordComponentSignatures(CastGeometryExecutionDataV0.class)),
+                () -> assertEquals(
+                        List.of(
+                                "com.yo1no.gramarye.magic.api.id.SkillInstanceId "
+                                        + "skillInstanceId",
+                                "com.yo1no.gramarye.magic.api.id.EventId sourceEventId",
+                                "int producerNodeIndex",
+                                "int outputOrdinal"),
+                        recordComponentSignatures(SourceFamilyKey.class)),
+                () -> assertEquals(
+                        List.of(
+                                "java.util.UUID permitId",
+                                "java.util.UUID projectileId",
+                                "com.yo1no.gramarye.SourceFamilyKey sourceFamily",
+                                "int sourceDerivationDepth",
+                                "net.minecraft.resources.ResourceLocation dimension",
+                                "java.util.UUID targetId",
+                                "double hitX",
+                                "double hitY",
+                                "double hitZ",
+                                "int directionXQ15",
+                                "int directionYQ15",
+                                "int directionZQ15"),
+                        recordComponentSignatures(ProjectileHitExecutionDataV0.class)),
+                () -> assertEquals(
+                        List.of(
+                                "net.minecraft.server.MinecraftServer server",
+                                "com.yo1no.gramarye.magic.definition.validation."
+                                        + "ValidatedSkillDefinition definition",
+                                "com.yo1no.gramarye.magic.definition.validation."
+                                        + "ValidatedNodeDefinition node",
+                                "long currentRuntimeTick",
+                                "com.yo1no.gramarye.RuntimeServerToken serverSlotToken",
+                                "com.yo1no.gramarye.ResolvedRuntimeReferenceContext "
+                                        + "resolvedReferences",
+                                "com.yo1no.gramarye.RuntimeExecutionBudget executionBudget",
+                                "com.yo1no.gramarye.RuntimeExecutionGuard executionGuard",
+                                "com.yo1no.gramarye.RuntimeProjectileContinuationOpener "
+                                        + "projectileContinuationOpener"),
+                        recordComponentSignatures(RuntimeExecutionContext.class)),
+                () -> assertTrue(RuntimeExecutionContext.class.isRecord()),
+                () -> assertTrue(Modifier.isFinal(RuntimeExecutionContext.class.getModifiers())),
+                () -> assertTrue(isPackagePrivate(
+                        RuntimeExecutionContext.class.getModifiers())));
+    }
+
+    @Test
+    void p9S2OpenerResultPermitAndDispositionInventoriesAreExact() throws Exception {
+        var openerFields = declaredFieldSignatures(RuntimeProjectileContinuationOpener.class);
+        var openerMethods = Arrays.stream(
+                        RuntimeProjectileContinuationOpener.class.getDeclaredMethods())
+                .filter(method -> !method.isSynthetic())
+                .toList();
+        var openerConstructor = RuntimeProjectileContinuationOpener.class.getDeclaredConstructor(
+                SkillRuntimeService.class,
+                MinecraftServer.class,
+                ServerSlot.class,
+                RuntimeEvent.class,
+                ChildReservation.class);
+        assertAll(
+                () -> assertTrue(Modifier.isFinal(
+                        RuntimeProjectileContinuationOpener.class.getModifiers())),
+                () -> assertTrue(isPackagePrivate(
+                        RuntimeProjectileContinuationOpener.class.getModifiers())),
+                () -> assertEquals(
+                        Set.of(
+                                "com.yo1no.gramarye.SkillRuntimeService owner",
+                                "net.minecraft.server.MinecraftServer server",
+                                "com.yo1no.gramarye.ServerSlot slot",
+                                "com.yo1no.gramarye.RuntimeEvent sourceEvent",
+                                "com.yo1no.gramarye.ChildReservation reservation",
+                                "boolean consumed"),
+                        openerFields),
+                () -> assertTrue(Arrays.stream(
+                                RuntimeProjectileContinuationOpener.class.getDeclaredFields())
+                        .allMatch(field -> Modifier.isPrivate(field.getModifiers()))),
+                () -> assertTrue(Arrays.stream(
+                                RuntimeProjectileContinuationOpener.class.getDeclaredFields())
+                        .filter(field -> !field.getName().equals("consumed"))
+                        .allMatch(field -> Modifier.isFinal(field.getModifiers()))),
+                () -> assertFalse(Modifier.isFinal(
+                        RuntimeProjectileContinuationOpener.class
+                                .getDeclaredField("consumed").getModifiers())),
+                () -> assertEquals(1,
+                        RuntimeProjectileContinuationOpener.class
+                                .getDeclaredConstructors().length),
+                () -> assertTrue(isPackagePrivate(openerConstructor.getModifiers())),
+                () -> assertEquals(1, openerMethods.size()),
+                () -> assertEquals(
+                        "openProjectileContinuation", openerMethods.getFirst().getName()),
+                () -> assertEquals(
+                        List.of(ActionOutputKind.class, int.class),
+                        Arrays.asList(openerMethods.getFirst().getParameterTypes())),
+                () -> assertEquals(
+                        RuntimeProjectileContinuationOpenResult.class,
+                        openerMethods.getFirst().getReturnType()),
+                () -> assertTrue(isPackagePrivate(openerMethods.getFirst().getModifiers())));
+
+        var result = RuntimeProjectileContinuationOpenResult.class;
+        var opened = RuntimeProjectileContinuationOpenResult.Opened.class;
+        var rejected = RuntimeProjectileContinuationOpenResult.Rejected.class;
+        var openedConstructor = opened.getDeclaredConstructor(
+                RuntimeProjectileContinuationPermit.class, UUID.class);
+        var rejectedConstructor = rejected.getDeclaredConstructor(
+                RuntimeProjectileContinuationOpenRejectionReason.class);
+        assertAll(
+                () -> assertTrue(result.isSealed()),
+                () -> assertTrue(Modifier.isAbstract(result.getModifiers())),
+                () -> assertTrue(isPackagePrivate(result.getModifiers())),
+                () -> assertEquals(
+                        List.of(opened, rejected),
+                        Arrays.asList(result.getPermittedSubclasses())),
+                () -> assertEquals(0, result.getDeclaredFields().length),
+                () -> assertEquals(1, result.getDeclaredConstructors().length),
+                () -> assertTrue(Modifier.isPrivate(
+                        result.getDeclaredConstructors()[0].getModifiers())),
+                () -> assertTrue(Modifier.isFinal(opened.getModifiers())),
+                () -> assertEquals(
+                        Set.of(
+                                "com.yo1no.gramarye.RuntimeProjectileContinuationPermit permit",
+                                "java.util.UUID plannedProjectileId"),
+                        declaredFieldSignatures(opened)),
+                () -> assertTrue(Arrays.stream(opened.getDeclaredFields()).allMatch(field ->
+                        Modifier.isPrivate(field.getModifiers())
+                                && Modifier.isFinal(field.getModifiers()))),
+                () -> assertEquals(1, opened.getDeclaredConstructors().length),
+                () -> assertTrue(isPackagePrivate(openedConstructor.getModifiers())),
+                () -> assertEquals(
+                        Set.of(
+                                "com.yo1no.gramarye.RuntimeProjectileContinuationPermit "
+                                        + "permit()",
+                                "java.util.UUID plannedProjectileId()"),
+                        declaredMethodSignatures(opened)),
+                () -> assertTrue(Arrays.stream(opened.getDeclaredMethods())
+                        .filter(method -> !method.isSynthetic())
+                        .allMatch(method -> isPackagePrivate(method.getModifiers()))),
+                () -> assertTrue(Modifier.isFinal(rejected.getModifiers())),
+                () -> assertEquals(
+                        Set.of("com.yo1no.gramarye."
+                                + "RuntimeProjectileContinuationOpenRejectionReason reason"),
+                        declaredFieldSignatures(rejected)),
+                () -> assertTrue(Arrays.stream(rejected.getDeclaredFields()).allMatch(field ->
+                        Modifier.isPrivate(field.getModifiers())
+                                && Modifier.isFinal(field.getModifiers()))),
+                () -> assertEquals(1, rejected.getDeclaredConstructors().length),
+                () -> assertTrue(isPackagePrivate(rejectedConstructor.getModifiers())),
+                () -> assertEquals(
+                        Set.of("com.yo1no.gramarye."
+                                + "RuntimeProjectileContinuationOpenRejectionReason reason()"),
+                        declaredMethodSignatures(rejected)),
+                () -> assertEquals(
+                        List.of(
+                                "CAPACITY_UNAVAILABLE",
+                                "LIFECYCLE_UNAVAILABLE",
+                                "INVARIANT_REJECTED"),
+                        Arrays.stream(RuntimeProjectileContinuationOpenRejectionReason.values())
+                                .map(Enum::name)
+                                .toList()));
+
+        var permit = RuntimeProjectileContinuationPermit.class;
+        var permitConstructor = permit.getDeclaredConstructor(
+                SkillRuntimeService.class,
+                RuntimeServerToken.class,
+                com.yo1no.gramarye.magic.api.id.SkillInstanceId.class,
+                RuntimeBudgetAttribution.class,
+                SkillReference.class,
+                net.minecraft.resources.ResourceLocation.class,
+                SourceFamilyKey.class,
+                int.class,
+                com.yo1no.gramarye.magic.api.id.EventId.class,
+                long.class,
+                UUID.class,
+                UUID.class);
+        var permitState = Arrays.stream(permit.getDeclaredClasses())
+                .filter(type -> type.getSimpleName().equals("State"))
+                .findFirst()
+                .orElseThrow();
+        assertAll(
+                () -> assertTrue(Modifier.isFinal(permit.getModifiers())),
+                () -> assertTrue(isPackagePrivate(permit.getModifiers())),
+                () -> assertEquals(
+                        Set.of(
+                                "com.yo1no.gramarye.SkillRuntimeService owner",
+                                "com.yo1no.gramarye.RuntimeServerToken serverSlotToken",
+                                "com.yo1no.gramarye.magic.api.id.SkillInstanceId "
+                                        + "skillInstanceId",
+                                "com.yo1no.gramarye.RuntimeBudgetAttribution "
+                                        + "budgetAttribution",
+                                "com.yo1no.gramarye.magic.definition.document.SkillReference "
+                                        + "exactReference",
+                                "net.minecraft.resources.ResourceLocation dimension",
+                                "com.yo1no.gramarye.SourceFamilyKey sourceFamily",
+                                "int sourceDerivationDepth",
+                                "com.yo1no.gramarye.magic.api.id.EventId heldChildEventId",
+                                "long deadlineRuntimeTick",
+                                "java.util.UUID permitId",
+                                "java.util.UUID plannedProjectileId",
+                                "com.yo1no.gramarye.RuntimeProjectileContinuationPermit$State "
+                                        + "state"),
+                        declaredFieldSignatures(permit)),
+                () -> assertTrue(Arrays.stream(permit.getDeclaredFields())
+                        .allMatch(field -> Modifier.isPrivate(field.getModifiers()))),
+                () -> assertTrue(Arrays.stream(permit.getDeclaredFields())
+                        .filter(field -> !field.getName().equals("state"))
+                        .allMatch(field -> Modifier.isFinal(field.getModifiers()))),
+                () -> assertFalse(Modifier.isFinal(
+                        permit.getDeclaredField("state").getModifiers())),
+                () -> assertEquals(1, Arrays.stream(permit.getDeclaredFields())
+                        .filter(field -> field.getType() == SkillRuntimeService.class)
+                        .count()),
+                () -> assertEquals(1, permit.getDeclaredConstructors().length),
+                () -> assertTrue(isPackagePrivate(permitConstructor.getModifiers())),
+                () -> assertEquals(
+                        Set.of("com.yo1no.gramarye.RuntimePermitCloseDisposition "
+                                + "closeWithoutHit(net.minecraft.server.MinecraftServer,"
+                                + "com.yo1no.gramarye.ProjectileClosureReason)"),
+                        declaredMethodSignatures(permit)),
+                () -> assertEquals(1, permit.getDeclaredClasses().length),
+                () -> assertTrue(permitState.isEnum()),
+                () -> assertTrue(Modifier.isPrivate(permitState.getModifiers())),
+                () -> assertEquals(
+                        List.of(
+                                "RESERVED",
+                                "OPEN",
+                                "CLAIMED_PENDING_DAMAGE",
+                                "CLOSED_NO_HIT",
+                                "CLOSED_AFTER_HIT"),
+                        Arrays.stream(permitState.getEnumConstants())
+                                .map(value -> ((Enum<?>) value).name())
+                                .toList()),
+                () -> assertEquals(
+                        List.of(
+                                "SPAWN_NOT_APPLIED",
+                                "BLOCK_OR_INVALID_HIT",
+                                "RANGE_EXHAUSTED",
+                                "AGE_EXHAUSTED",
+                                "DEADLINE_REACHED",
+                                "OWNER_INVALIDATED",
+                                "ENTITY_OR_LEVEL_REMOVED",
+                                "RELOAD_INVALIDATED",
+                                "SERVER_STOPPED",
+                                "RUNTIME_FAULT",
+                                "CLAIM_REJECTED",
+                                "DAMAGE_TERMINAL"),
+                        Arrays.stream(ProjectileClosureReason.values())
+                                .map(Enum::name)
+                                .toList()),
+                () -> assertEquals(
+                        List.of("CLOSED", "ALREADY_CLOSED", "REJECTED"),
+                        Arrays.stream(RuntimePermitCloseDisposition.values())
+                                .map(Enum::name)
+                                .toList()));
+    }
+
+    @Test
+    void p9S2OwnerIndexReloadDiagnosticsAndDeferredS3SurfaceAreExact()
+            throws Exception {
+        var serviceFields = Arrays.asList(SkillRuntimeService.class.getDeclaredFields());
+        var reloadFields = serviceFields.stream()
+                .filter(field -> field.getType() == AtomicBoolean.class)
+                .toList();
+        var requestReload = SkillRuntimeService.class.getDeclaredMethod(
+                "requestP9ReloadInvalidation");
+        var completeReload = SkillRuntimeService.class.getDeclaredMethod(
+                "completeP9Reload", MinecraftServer.class);
+        var activeIndexFields = recursivelyDeclaredTypes(p5TopLevelClasses()).stream()
+                .flatMap(type -> Arrays.stream(type.getDeclaredFields()))
+                .filter(field -> field.getType() == Map.class)
+                .filter(field -> field.getGenericType().getTypeName().equals(
+                        "java.util.Map<java.util.UUID, "
+                                + "com.yo1no.gramarye.RuntimeProjectileContinuationPermit>"))
+                .toList();
+        var terminalRingFields = Arrays.stream(ServerSlot.class.getDeclaredFields())
+                .filter(field -> field.getType()
+                        == ServerSlot.P9TerminalDiagnostic[].class)
+                .toList();
+        assertAll(
+                () -> assertEquals(1, reloadFields.size()),
+                () -> assertEquals("p9ReloadCloseRequested", reloadFields.getFirst().getName()),
+                () -> assertTrue(Modifier.isPrivate(reloadFields.getFirst().getModifiers())),
+                () -> assertTrue(Modifier.isFinal(reloadFields.getFirst().getModifiers())),
+                () -> assertEquals(1, Arrays.stream(SkillRuntimeService.class.getDeclaredMethods())
+                        .filter(method -> method.getName().equals(
+                                "requestP9ReloadInvalidation"))
+                        .count()),
+                () -> assertEquals(1, Arrays.stream(SkillRuntimeService.class.getDeclaredMethods())
+                        .filter(method -> method.getName().equals("completeP9Reload"))
+                        .count()),
+                () -> assertEquals(void.class, requestReload.getReturnType()),
+                () -> assertEquals(void.class, completeReload.getReturnType()),
+                () -> assertTrue(isPackagePrivate(requestReload.getModifiers())),
+                () -> assertTrue(isPackagePrivate(completeReload.getModifiers())),
+                () -> assertEquals(1, activeIndexFields.size()),
+                () -> assertEquals(
+                        "activeProjectileContinuations",
+                        activeIndexFields.getFirst().getName()),
+                () -> assertTrue(Modifier.isFinal(
+                        activeIndexFields.getFirst().getModifiers())),
+                () -> assertEquals(1, terminalRingFields.size()),
+                () -> assertEquals("p9TerminalRing", terminalRingFields.getFirst().getName()),
+                () -> assertTrue(Modifier.isFinal(
+                        terminalRingFields.getFirst().getModifiers())),
+                () -> assertEquals(
+                        List.of(
+                                "CAST_ACCEPTED",
+                                "INSTANCE_PINNED",
+                                "NODE0_MATCHED",
+                                "CONTINUATION_OPENED",
+                                "SPAWN_RESOLVED",
+                                "SPAWN_COMMIT_RESULT",
+                                "PROJECTILE_ACTIVE",
+                                "CAST_PRESENTATION_OFFERED",
+                                "HIT_CLAIM_RESULT",
+                                "NODE1_QUEUED",
+                                "NODE1_MATCHED",
+                                "DAMAGE_RESOLVED",
+                                "DAMAGE_COMMIT_RESULT",
+                                "HIT_PRESENTATION_OFFERED",
+                                "TERMINAL_CAUSE",
+                                "CLEANUP_DISPOSITION"),
+                        Arrays.stream(P9RuntimeDiagnosticStage.values())
+                                .map(Enum::name)
+                                .toList()),
+                () -> assertEquals(
+                        List.of("RELEASED", "ERROR_DEFERRED"),
+                        Arrays.stream(P9RuntimeCleanupDisposition.values())
+                                .map(Enum::name)
+                                .toList()));
+
+        var source = Files.readString(SERVICE_SOURCE);
+        var production = productionJavaSource();
+        var requestSource = section(
+                source,
+                "void requestP9ReloadInvalidation()",
+                "void completeP9Reload(");
+        var completeSource = section(
+                source,
+                "void completeP9Reload(",
+                "RuntimeProjectileContinuationOpenResult openProjectileContinuation(");
+        var childValidationSource = section(
+                source,
+                "private static Optional<InvalidEventReason> validateChildShape(",
+                "private static boolean stableTokensMatch(");
+        var childPublicationSource = section(
+                source,
+                "private RuntimeExecutionOutcome processCompletedPlan(",
+                "private ChildReservation reserveForPort(");
+        assertAll(
+                () -> assertEquals(
+                        "void requestP9ReloadInvalidation() {\n"
+                                + "        p9ReloadCloseRequested.set(true);\n"
+                                + "    }\n\n    ",
+                        requestSource),
+                () -> assertInOrder(
+                        completeSource,
+                        "!server.isSameThread()",
+                        "invalidateP9WorkPreservingPrimary("
+                                + "\n                server, slot, "
+                                + "ProjectileClosureReason.RELOAD_INVALIDATED)",
+                        "p9ReloadCloseRequested.set(false)"),
+                () -> assertEquals(1, occurrences(source, "new int[16]")),
+                () -> assertEquals(1, occurrences(source, "new long[16]")),
+                () -> assertEquals(1,
+                        occurrences(source, "new P9TerminalDiagnostic[256]")),
+                () -> assertInOrder(
+                        source,
+                        "slot.p9TerminalRing[slot.p9TerminalWriteIndex] = "
+                                + "new ServerSlot.P9TerminalDiagnostic(",
+                        "slot.p9TerminalWriteIndex = (slot.p9TerminalWriteIndex + 1) "
+                                + "% slot.p9TerminalRing.length",
+                        "if (slot.p9TerminalCount < slot.p9TerminalRing.length)",
+                        "slot.p9TerminalCount++"),
+                () -> assertEquals(1, occurrences(
+                        source, "P9RuntimeDiagnosticStage.CONTINUATION_OPENED")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.SPAWN_RESOLVED")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.SPAWN_COMMIT_RESULT")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.PROJECTILE_ACTIVE")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.CAST_PRESENTATION_OFFERED")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.HIT_CLAIM_RESULT")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.NODE1_QUEUED")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.NODE1_MATCHED")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.DAMAGE_RESOLVED")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.DAMAGE_COMMIT_RESULT")),
+                () -> assertEquals(0, occurrences(
+                        source, "P9RuntimeDiagnosticStage.HIT_PRESENTATION_OFFERED")),
+                () -> assertFalse(production.contains("ProjectileHitCandidateV0")),
+                () -> assertFalse(production.contains("P9StarterProjectile")),
+                () -> assertFalse(production.contains("RuntimePermitTransferDisposition")),
+                () -> assertFalse(production.contains("RuntimePermitClaimDisposition")),
+                () -> assertFalse(production.contains("transferAfterAppliedSpawn(")),
+                () -> assertFalse(production.contains("claimLoadedEntityHit(")),
+                () -> assertFalse(p5SourceText().contains(".addFreshEntity(")),
+                () -> assertEquals(
+                        0, occurrences(production, "new ProjectileHitExecutionDataV0(")),
+                () -> assertTrue(childValidationSource.contains(
+                        "if (!(child.executionData() instanceof NoRuntimeExecutionData))")),
+                () -> assertFalse(childPublicationSource.contains(
+                        "ProjectileHitExecutionDataV0")));
+    }
+
+    @Test
+    void p9ExactActorWitnessHolderIdentityOperationsAndTransitiveRetentionAreExact()
+            throws Exception {
+        var instanceType = ServerSlot.InstanceState.class;
+        var witness = instanceType.getDeclaredField("p9AuthenticatedActorWitness");
+        var constructor = instanceType.getDeclaredConstructor(
+                SkillInstanceId.class,
+                RuntimeSkillInstanceSequence.class,
+                RuntimeBudgetAttribution.class,
+                RuntimeRevisionLease.class,
+                ServerPlayer.class);
+        var hasWitness = instanceType.getDeclaredMethod(
+                "hasP9AuthenticatedActorWitness", ServerPlayer.class);
+        var clearWitness = instanceType.getDeclaredMethod(
+                "clearP9AuthenticatedActorWitness");
+        var serviceSource = Files.readString(SERVICE_SOURCE);
+        var instanceSource = section(
+                serviceSource,
+                "static final class InstanceState {",
+                "static final class P9ActiveDiagnostic {");
+        var normalizedInstanceSource = instanceSource.replaceAll("\\s+", "");
+
+        var persistentP5Types = List.of(
+                SkillRuntimeService.class,
+                ServerSlot.class,
+                ServerSlot.InstanceState.class,
+                RuntimeProjectileContinuationOpener.class,
+                RuntimeProjectileContinuationOpenResult.Opened.class,
+                RuntimeProjectileContinuationPermit.class);
+        var retainedPlayers = persistentP5Types.stream()
+                .flatMap(type -> Arrays.stream(type.getDeclaredFields())
+                        .filter(field -> field.getType() == ServerPlayer.class)
+                        .map(field -> type.getName() + "#" + field.getName()))
+                .toList();
+        var permitOwner = RuntimeProjectileContinuationPermit.class.getDeclaredField("owner");
+        var serviceSlots = SkillRuntimeService.class.getDeclaredField("slots");
+        var slotInstances = ServerSlot.class.getDeclaredField("instances");
+        var externalWitnessCallsites = new ArrayList<String>();
+        try (var paths = Files.walk(PROJECT_ROOT.resolve("src/main/java"))) {
+            for (var path : paths.filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !path.equals(SERVICE_SOURCE))
+                    .toList()) {
+                var otherSource = Files.readString(path);
+                for (var operation : List.of(
+                        "new ServerSlot.InstanceState(",
+                        "hasP9AuthenticatedActorWitness(",
+                        "clearP9AuthenticatedActorWitness(")) {
+                    if (otherSource.contains(operation)) {
+                        externalWitnessCallsites.add(path + ":" + operation);
+                    }
+                }
+            }
+        }
+
+        assertAll(
+                () -> assertEquals(ServerPlayer.class, witness.getType()),
+                () -> assertTrue(Modifier.isPrivate(witness.getModifiers())),
+                () -> assertFalse(Modifier.isFinal(witness.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(witness.getModifiers())),
+                () -> assertEquals(1, instanceType.getDeclaredConstructors().length),
+                () -> assertTrue(isPackagePrivate(constructor.getModifiers())),
+                () -> assertEquals(0, constructor.getExceptionTypes().length),
+                () -> assertTrue(isPackagePrivate(hasWitness.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(hasWitness.getModifiers())),
+                () -> assertEquals(boolean.class, hasWitness.getReturnType()),
+                () -> assertEquals(0, hasWitness.getExceptionTypes().length),
+                () -> assertTrue(isPackagePrivate(clearWitness.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(clearWitness.getModifiers())),
+                () -> assertEquals(void.class, clearWitness.getReturnType()),
+                () -> assertEquals(0, clearWitness.getParameterCount()),
+                () -> assertEquals(0, clearWitness.getExceptionTypes().length),
+                () -> assertEquals(
+                        List.of("com.yo1no.gramarye.ServerSlot$InstanceState"
+                                + "#p9AuthenticatedActorWitness"),
+                        retainedPlayers),
+                () -> assertEquals(SkillRuntimeService.class, permitOwner.getType()),
+                () -> assertTrue(Modifier.isPrivate(permitOwner.getModifiers())),
+                () -> assertTrue(Modifier.isFinal(permitOwner.getModifiers())),
+                () -> assertEquals(
+                        "java.util.IdentityHashMap<net.minecraft.server.MinecraftServer, "
+                                + "com.yo1no.gramarye.ServerSlot>",
+                        serviceSlots.getGenericType().getTypeName()),
+                () -> assertEquals(
+                        "java.util.Map<com.yo1no.gramarye.magic.api.id.SkillInstanceId, "
+                                + "com.yo1no.gramarye.ServerSlot$InstanceState>",
+                        slotInstances.getGenericType().getTypeName()),
+                () -> assertTrue(externalWitnessCallsites.isEmpty(),
+                        () -> "external witness callsites: " + externalWitnessCallsites),
+                () -> assertEquals(1, occurrences(
+                        serviceSource, "new ServerSlot.InstanceState(")),
+                () -> assertEquals(2, occurrences(
+                        serviceSource, "hasP9AuthenticatedActorWitness(")),
+                () -> assertTrue(normalizedInstanceSource.contains(
+                        "privateServerPlayerp9AuthenticatedActorWitness;")),
+                () -> assertTrue(normalizedInstanceSource.contains(
+                        "ServerPlayerp9AuthenticatedActorWitness){")),
+                () -> assertTrue(normalizedInstanceSource.contains(
+                        "this.p9AuthenticatedActorWitness=p9AuthenticatedActorWitness;")),
+                () -> assertTrue(normalizedInstanceSource.contains(
+                        "booleanhasP9AuthenticatedActorWitness(ServerPlayercandidate){"
+                                + "returncandidate!=null"
+                                + "&&p9AuthenticatedActorWitness==candidate;}")),
+                () -> assertTrue(normalizedInstanceSource.contains(
+                        "voidclearP9AuthenticatedActorWitness(){"
+                                + "p9AuthenticatedActorWitness=null;}")),
+                () -> assertEquals(1, Arrays.stream(instanceType.getDeclaredMethods())
+                        .filter(method -> method.getName().equals(
+                                "hasP9AuthenticatedActorWitness"))
+                        .count()),
+                () -> assertEquals(1, Arrays.stream(instanceType.getDeclaredMethods())
+                        .filter(method -> method.getName().equals(
+                                "clearP9AuthenticatedActorWitness"))
+                        .count()),
+                () -> assertTrue(Arrays.stream(instanceType.getDeclaredMethods())
+                        .noneMatch(method -> method.getName().matches(
+                                "(?i).*(get|set|bind|replace).*P9AuthenticatedActor.*"))),
+                () -> assertEquals(0, occurrences(productionJavaSource(),
+                        "authenticatedCasterIdentity")),
+                () -> assertTrue(Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredFields())
+                        .noneMatch(field -> field.getType() == ServerPlayer.class)),
+                () -> assertTrue(Arrays.stream(P6RuntimeExecutionPortAdapter.class
+                                .getDeclaredFields())
+                        .noneMatch(field -> field.getType() == ServerPlayer.class)));
+    }
+
+    @Test
+    void p9ActorBindingBypassRejectionAndCurrentActorCheckpointsAreClosed()
+            throws Exception {
+        var serviceSource = Files.readString(SERVICE_SOURCE);
+        var genericAdmission = methodSource(
+                serviceSource,
+                "RuntimeAdmissionResult admitRoot(MinecraftServer server, "
+                        + "RuntimeRootEventSpec spec)");
+        var authenticatedIngress = methodSource(
+                serviceSource,
+                "RuntimeAdmissionResult admitAuthenticatedPlayerCast(");
+        var actorAdmission = section(
+                serviceSource,
+                "private RuntimeAdmissionResult admitRootWithP9Actor(",
+                "private RuntimeAdmissionResult acquireAndPublishRoot(");
+        var acquisition = section(
+                serviceSource,
+                "private RuntimeAdmissionResult acquireAndPublishRoot(",
+                "RuntimeCancellationResult cancel(");
+        var publication = methodSource(serviceSource, "private static void publishRoot(");
+        var invocation = section(
+                serviceSource,
+                "private DetachedInvocation invokeRuntimeBoundary(",
+                "private RuntimeExecutionOutcome finishPort(");
+        var opener = section(
+                serviceSource,
+                "RuntimeProjectileContinuationOpenResult openProjectileContinuation(",
+                "RuntimePermitCloseDisposition closeProjectileContinuation(");
+        var predicateSource = methodSource(
+                serviceSource,
+                "private static boolean isCurrentP9AuthenticatedActor(");
+        var predicate = SkillRuntimeService.class.getDeclaredMethod(
+                "isCurrentP9AuthenticatedActor",
+                MinecraftServer.class,
+                ServerSlot.InstanceState.class,
+                ServerPlayer.class,
+                ResourceLocation.class);
+        var actorAdmissionMethod = SkillRuntimeService.class.getDeclaredMethod(
+                "admitRootWithP9Actor",
+                MinecraftServer.class,
+                RuntimeRootEventSpec.class,
+                ServerPlayer.class);
+
+        assertAll(
+                () -> assertTrue(Modifier.isPrivate(predicate.getModifiers())),
+                () -> assertTrue(Modifier.isStatic(predicate.getModifiers())),
+                () -> assertEquals(boolean.class, predicate.getReturnType()),
+                () -> assertEquals(0, predicate.getExceptionTypes().length),
+                () -> assertEquals(1, Arrays.stream(SkillRuntimeService.class
+                                .getDeclaredMethods())
+                        .filter(method -> method.getName().equals(
+                                "isCurrentP9AuthenticatedActor"))
+                        .count()),
+                () -> assertTrue(Modifier.isPrivate(actorAdmissionMethod.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(actorAdmissionMethod.getModifiers())),
+                () -> assertEquals(
+                        RuntimeAdmissionResult.class, actorAdmissionMethod.getReturnType()),
+                () -> assertEquals(0, actorAdmissionMethod.getExceptionTypes().length),
+                () -> assertTrue(actorAdmission.contains("p9AuthenticatedActorWitness")),
+                () -> assertTrue(actorAdmission.contains("resolvedP9Actor")),
+                () -> assertEquals(5, occurrences(
+                        serviceSource, "isCurrentP9AuthenticatedActor(")),
+                () -> assertInOrder(
+                        predicateSource,
+                        "!server.isSameThread()",
+                        "!server.isRunning()",
+                        "server.isStopped()",
+                        "candidate == null",
+                        "instance.attribution instanceof PlayerRuntimeBudgetAttribution player",
+                        "var playerId = player.playerId().value()",
+                        "!candidate.getUUID().equals(playerId)",
+                        "server.getPlayerList().getPlayer(",
+                        "instance.hasP9AuthenticatedActorWitness(candidate)",
+                        "candidate.getServer()",
+                        "var level = candidate.serverLevel()",
+                        "level.getServer()",
+                        "candidate.isRemoved()",
+                        "candidate.isAlive()",
+                        "level.dimension().location()",
+                        "candidate.connection != null",
+                        "candidate.connection.isAcceptingMessages()"),
+                () -> assertInOrder(
+                        genericAdmission,
+                        "spec.executionData() instanceof CastGeometryExecutionDataV0",
+                        "InvalidEventReason.INVALID_EXECUTION_DATA",
+                        "return admitRootWithP9Actor(server, spec, null)"),
+                () -> assertFalse(genericAdmission.contains(
+                        "p9AuthenticatedActorWitness")),
+                () -> assertTrue(authenticatedIngress.contains(
+                        "return admitRootWithP9Actor(")),
+                () -> assertTrue(authenticatedIngress.contains("actor")),
+                () -> assertInOrder(
+                        acquisition,
+                        "new ServerSlot.InstanceState(",
+                        "isCurrentP9AuthenticatedActor(",
+                        "publishRoot("),
+                () -> assertTrue(acquisition.contains("p9AuthenticatedActorWitness")),
+                () -> assertInOrder(
+                        publication,
+                        "slot.instances.put(instance.id, instance)",
+                        "addCommittedEvent("),
+                () -> assertInOrder(
+                        invocation,
+                        "referenceResolver.resolve(server, event)",
+                        "isCurrentP9AuthenticatedActor(",
+                        "reserveForPort(",
+                        "actorForGuard != null",
+                        "isCurrentP9AuthenticatedActor(",
+                        "runtimeExecutionGuardDecision(slot, instance, event)"),
+                () -> assertEquals(2, occurrences(
+                        invocation, "isCurrentP9AuthenticatedActor(")),
+                () -> assertInOrder(
+                        opener,
+                        "isCurrentP9AuthenticatedActor(",
+                        "reservation.attach(permit)"),
+                () -> assertFalse(predicateSource.contains(".equals(candidate)")),
+                () -> assertFalse(predicateSource.contains("clearP9AuthenticatedActorWitness")),
+                () -> assertFalse(serviceSource.contains(
+                        "new P9StarterProjectile(")),
+                () -> assertFalse(serviceSource.contains("transferAfterAppliedSpawn(")),
+                () -> assertFalse(serviceSource.contains("claimLoadedEntityHit(")));
     }
 
     @Test
@@ -388,20 +1249,55 @@ final class P5RuntimeStaticGateTest {
                 }
             }
         }
-        assertEquals(2, callsites, "admitRoot must have one declaration and one tail caller");
+        assertEquals(1, callsites,
+                "generic admitRoot must have only its actor-free declaration");
         assertTrue(Files.readString(SERVICE_SOURCE).contains(
                 "RuntimeAdmissionResult admitRoot(MinecraftServer server, RuntimeRootEventSpec spec)"));
         var serviceSource = Files.readString(SERVICE_SOURCE);
         assertEquals(1, occurrences(
                 serviceSource,
                 "RuntimeAdmissionResult admitAuthenticatedPlayerCast("));
-        assertEquals(1, occurrences(serviceSource, "return admitRoot("));
+        assertEquals(0, occurrences(serviceSource, "return admitRoot("));
+        assertEquals(2, occurrences(serviceSource, "return admitRootWithP9Actor("));
+        var authenticatedIngressSource = section(
+                serviceSource,
+                "RuntimeAdmissionResult admitAuthenticatedPlayerCast(",
+                "void requestP9ReloadInvalidation(");
+        var compactAuthenticatedIngress = authenticatedIngressSource.replaceAll("\\s+", " ");
+        assertAll(
+                () -> assertInOrder(
+                        authenticatedIngressSource,
+                        "Objects.requireNonNull(geometry, \"geometry\")",
+                        "!server.isSameThread()",
+                        "p9ReloadCloseRequested.get()",
+                        "return admitRootWithP9Actor("),
+                () -> assertTrue(compactAuthenticatedIngress.contains(
+                        "new RuntimeScheduleSpec( 0, 100, "
+                                + "RuntimeSchedulePersistence.MEMORY_ONLY)")),
+                () -> assertTrue(authenticatedIngressSource.contains(
+                        "new PlayerOrigin(slot.token, actorLevel.dimension(), "
+                                + "playerId)")),
+                () -> assertInOrder(
+                        authenticatedIngressSource,
+                        "var actorId = actor.getUUID()",
+                        "var actorLevel = actor.serverLevel()",
+                        "actor.getServer() != server",
+                        "server.getPlayerList().getPlayer(actorId) != actor",
+                        "actor.isRemoved()",
+                        "!actor.isAlive()",
+                        "!geometry.dimension().equals(actorLevel.dimension().location())",
+                        "return admitRootWithP9Actor("),
+                () -> assertTrue(authenticatedIngressSource.contains("geometry),")),
+                () -> assertTrue(authenticatedIngressSource.contains("actor);")),
+                () -> assertFalse(authenticatedIngressSource.contains(
+                        "NoRuntimeExecutionData.INSTANCE")));
 
         var authenticatedIngress = SkillRuntimeService.class.getDeclaredMethod(
                 "admitAuthenticatedPlayerCast",
                 MinecraftServer.class,
                 ServerPlayer.class,
-                SkillReference.class);
+                SkillReference.class,
+                CastGeometryExecutionDataV0.class);
         assertFalse(Modifier.isPublic(authenticatedIngress.getModifiers()));
         assertFalse(Modifier.isProtected(authenticatedIngress.getModifiers()));
         assertFalse(Modifier.isPrivate(authenticatedIngress.getModifiers()));
@@ -650,7 +1546,7 @@ final class P5RuntimeStaticGateTest {
     }
 
     @Test
-    void queuedAndDiagnosticStateRetainsNoLiveObjectsThrowableOrConfigProvider()
+    void queuedAndDiagnosticStateRetainsNoUnexpectedLiveObjectsThrowableOrConfigProvider()
             throws Exception {
         var forbiddenLiveTypes = Set.of(
                 MinecraftServer.class,
@@ -760,7 +1656,7 @@ final class P5RuntimeStaticGateTest {
                 "Math.min(parent.deadlineRuntimeTick(), requestedDeadlines[index])",
                 "instance.lifetimeEvents + childCount > slot.limits.eventsPerSkillInstance()",
                 "var pendingBreak = pendingBreak(",
-                "childCount > reservation.capacity",
+                "childCount > reservation.capacity()",
                 "var published = new RuntimeEvent[childCount]",
                 "for (var child : published)",
                 "releaseCurrentReservation(slot, instance, attribution);");
@@ -768,7 +1664,7 @@ final class P5RuntimeStaticGateTest {
                 "child plans must reenter the queue, not recurse");
 
         var cancellation = section(
-                source, "RuntimeCancellationResult cancel(", "private void handleRuntimePost(");
+                source, "RuntimeCancellationResult cancel(", "void handleRuntimePost(");
         assertInOrder(
                 cancellation,
                 "!slot.token.equals(serverToken(handle))",
@@ -813,6 +1709,12 @@ final class P5RuntimeStaticGateTest {
                 () -> assertTrue(attributionSlotCheck >= 0),
                 () -> assertTrue(attributionSlotFailure > attributionSlotCheck,
                         "wrong-slot attribution must map to INVALID_BUDGET_ATTRIBUTION"),
+                () -> assertTrue(stableShape.contains(
+                        "spec.schedule().delayTicks() != 0")),
+                () -> assertTrue(stableShape.contains(
+                        "spec.schedule().deadlineHorizonTicks() != 100")),
+                () -> assertTrue(stableShape.contains(
+                        "spec.schedule().persistence()")),
                 () -> assertTrue(shape >= 0),
                 () -> assertTrue(stableTokens > shape,
                         "generic stable origin/target tokens must follow root shape validation"),
@@ -900,7 +1802,7 @@ final class P5RuntimeStaticGateTest {
         assertTrue(drainErrorCatch.contains("throw preserveErrorFault(slot, primary);"));
 
         var cancellation = section(
-                source, "RuntimeCancellationResult cancel(", "private void handleRuntimePost(");
+                source, "RuntimeCancellationResult cancel(", "void handleRuntimePost(");
         var cancellationRuntimeCatch = section(
                 cancellation, "catch (RuntimeException primary)", "catch (Error primary)");
         var cancellationErrorCatch = cancellation.substring(
@@ -930,11 +1832,11 @@ final class P5RuntimeStaticGateTest {
                 "static void enterFaultAfterError(");
         var errorFault = section(
                 source, "static void enterFaultAfterError(",
-                "static void clearSlotNormal(");
+                "static int clearSlotNormal(");
         assertInOrder(
                 runtimeFault,
                 "slot.state = ServerSlot.State.FAULTED",
-                "clearSlotAfterRuntimeException(slot)");
+                "clearSlotAfterRuntimeException(server, slot)");
         assertInOrder(
                 errorFault,
                 "slot.state = ServerSlot.State.FAULTED",
@@ -982,9 +1884,15 @@ final class P5RuntimeStaticGateTest {
                 "if (!server.isRunning() || server.isStopped())",
                 "if (instance.cancellationRequested)",
                 "resolution instanceof RuntimeReferenceResolutionOutcome.Resolved",
+                "isCurrentP9AuthenticatedActor(",
                 "reserveForPort(slot, instance, attribution, event)",
                 "context = new RuntimeExecutionContext(",
-                "() -> runtimeExecutionGuardDecision(slot, instance, event)",
+                "() -> {",
+                "p9ReloadCloseRequested.get()",
+                "actorForGuard != null",
+                "isCurrentP9AuthenticatedActor(",
+                "return runtimeExecutionGuardDecision(slot, instance, event)",
+                "new RuntimeProjectileContinuationOpener(",
                 "slot.diagnostics.portInvocationsThisTick++",
                 "executionPort.execute(event, context)",
                 "finally {",
@@ -1024,6 +1932,39 @@ final class P5RuntimeStaticGateTest {
 
     private static boolean isRaw(Class<?> erased, Type generic) {
         return erased.getTypeParameters().length > 0 && !(generic instanceof ParameterizedType);
+    }
+
+    private static boolean isPackagePrivate(int modifiers) {
+        return !Modifier.isPublic(modifiers)
+                && !Modifier.isProtected(modifiers)
+                && !Modifier.isPrivate(modifiers);
+    }
+
+    private static List<String> recordComponentSignatures(Class<?> type) {
+        return Arrays.stream(type.getRecordComponents())
+                .map(component -> component.getType().getTypeName() + " " + component.getName())
+                .toList();
+    }
+
+    private static Set<String> declaredFieldSignatures(Class<?> type) {
+        return Arrays.stream(type.getDeclaredFields())
+                .filter(field -> !field.isSynthetic())
+                .map(field -> field.getType().getTypeName() + " " + field.getName())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private static Set<String> declaredMethodSignatures(Class<?> type) {
+        return Arrays.stream(type.getDeclaredMethods())
+                .filter(method -> !method.isSynthetic())
+                .map(method -> method.getReturnType().getTypeName()
+                        + " "
+                        + method.getName()
+                        + "("
+                        + Arrays.stream(method.getParameterTypes())
+                                .map(Class::getTypeName)
+                                .collect(java.util.stream.Collectors.joining(","))
+                        + ")")
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private static List<Class<?>> p5TopLevelClasses() throws Exception {
@@ -1102,6 +2043,23 @@ final class P5RuntimeStaticGateTest {
         assertTrue(first >= 0 && last > first,
                 () -> "source section unavailable: " + start + " -> " + end);
         return source.substring(first, last);
+    }
+
+    private static String methodSource(String source, String signature) {
+        var start = source.indexOf(signature);
+        assertTrue(start >= 0, () -> "source method unavailable: " + signature);
+        var bodyStart = source.indexOf('{', start + signature.length());
+        assertTrue(bodyStart >= 0, () -> "source method body unavailable: " + signature);
+        var depth = 0;
+        for (var index = bodyStart; index < source.length(); index++) {
+            var current = source.charAt(index);
+            if (current == '{') {
+                depth++;
+            } else if (current == '}' && --depth == 0) {
+                return source.substring(start, index + 1);
+            }
+        }
+        throw new AssertionError("unterminated source method: " + signature);
     }
 
     private static int firstIndex(String source, String... candidates) {

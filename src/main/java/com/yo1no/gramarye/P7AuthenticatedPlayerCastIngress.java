@@ -8,6 +8,7 @@ import com.yo1no.gramarye.magic.definition.store.SkillSubsystemResult;
 import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import java.util.Objects;
 import java.util.Optional;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -104,8 +105,85 @@ final class P7AuthenticatedPlayerCastIngress
                 == P7ServerAuthorizationBoundary.TargetDisposition.TARGET_UNAVAILABLE) {
             return P7ServerAuthorizationBoundary.AdmissionDisposition.TARGET_UNAVAILABLE;
         }
+        var geometry = sampleGeometry(actor);
+        if (geometry.isEmpty()) {
+            return P7ServerAuthorizationBoundary.AdmissionDisposition.P5_ADMISSION_REJECTED;
+        }
         return mapAdmission(
-                runtimeService.admitAuthenticatedPlayerCast(server, actor, reference));
+                runtimeService.admitAuthenticatedPlayerCast(
+                        server, actor, reference, geometry.orElseThrow()));
+    }
+
+    private static Optional<CastGeometryExecutionDataV0> sampleGeometry(ServerPlayer actor) {
+        var sampledLevel = actor.serverLevel();
+        var dimension = sampledLevel.dimension().location();
+        var eye = actor.getEyePosition();
+        var look = actor.getLookAngle();
+        if (!finite(eye.x, eye.y, eye.z) || !finite(look.x, look.y, look.z)) {
+            return Optional.empty();
+        }
+
+        var lengthSquared = look.x * look.x + look.y * look.y + look.z * look.z;
+        if (!Double.isFinite(lengthSquared) || lengthSquared <= 0.0) {
+            return Optional.empty();
+        }
+        var inverseLength = 1.0 / StrictMath.sqrt(lengthSquared);
+        var directionX = look.x * inverseLength;
+        var directionY = look.y * inverseLength;
+        var directionZ = look.z * inverseLength;
+        if (!finite(directionX, directionY, directionZ)) {
+            return Optional.empty();
+        }
+
+        var originX = eye.x + directionX * 0.10;
+        var originY = eye.y + directionY * 0.10 - 0.10;
+        var originZ = eye.z + directionZ * 0.10;
+        if (!finite(originX, originY, originZ)
+                || originX < -30_000_000.0
+                || originX >= 30_000_000.0
+                || originY < -20_000_000.0
+                || originY >= 20_000_000.0
+                || originZ < -30_000_000.0
+                || originZ >= 30_000_000.0) {
+            return Optional.empty();
+        }
+        var directionXQ15 = encodeQ15(directionX);
+        var directionYQ15 = encodeQ15(directionY);
+        var directionZQ15 = encodeQ15(directionZ);
+        if (directionXQ15 == 0 && directionYQ15 == 0 && directionZQ15 == 0) {
+            return Optional.empty();
+        }
+
+        var currentLevel = actor.serverLevel();
+        if (!currentLevel.dimension().location().equals(dimension)) {
+            return Optional.empty();
+        }
+        var origin = BlockPos.containing(originX, originY, originZ);
+        if (!currentLevel.isInWorldBounds(origin)
+                || !currentLevel.isLoaded(origin)
+                || !currentLevel.getWorldBorder().isWithinBounds(originX, originZ)) {
+            return Optional.empty();
+        }
+        return Optional.of(new CastGeometryExecutionDataV0(
+                dimension,
+                originX,
+                originY,
+                originZ,
+                directionXQ15,
+                directionYQ15,
+                directionZQ15,
+                0));
+    }
+
+    private static boolean finite(double x, double y, double z) {
+        return Double.isFinite(x) && Double.isFinite(y) && Double.isFinite(z);
+    }
+
+    private static int encodeQ15(double component) {
+        var rounded = StrictMath.rint(component * 32_767.0);
+        return (int) Math.max(
+                -32_767.0,
+                Math.min(32_767.0, rounded));
     }
 
     static P7ServerAuthorizationBoundary.AdmissionDisposition mapAdmission(

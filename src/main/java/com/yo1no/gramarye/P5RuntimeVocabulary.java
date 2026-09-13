@@ -154,10 +154,143 @@ record ChildTriggerCause(TriggerEventKind eventKind) implements RuntimeTriggerCa
     }
 }
 
-sealed interface RuntimeExecutionData permits NoRuntimeExecutionData {}
+sealed interface RuntimeExecutionData
+        permits NoRuntimeExecutionData,
+                CastGeometryExecutionDataV0,
+                ProjectileHitExecutionDataV0 {}
 
 enum NoRuntimeExecutionData implements RuntimeExecutionData {
     INSTANCE
+}
+
+/** Immutable server-observed cast geometry for the canonical P9 root event. */
+record CastGeometryExecutionDataV0(
+        ResourceLocation dimension,
+        double originX,
+        double originY,
+        double originZ,
+        int directionXQ15,
+        int directionYQ15,
+        int directionZQ15,
+        int profileCode) implements RuntimeExecutionData {
+    CastGeometryExecutionDataV0 {
+        Objects.requireNonNull(dimension, "dimension");
+        if (!Double.isFinite(originX)
+                || !Double.isFinite(originY)
+                || !Double.isFinite(originZ)
+                || originX < -30_000_000.0
+                || originX >= 30_000_000.0
+                || originY < -20_000_000.0
+                || originY >= 20_000_000.0
+                || originZ < -30_000_000.0
+                || originZ >= 30_000_000.0) {
+            throw new IllegalArgumentException("cast origin is outside the static domain");
+        }
+        if (!legalQ15(directionXQ15, directionYQ15, directionZQ15)) {
+            throw new IllegalArgumentException("cast direction is not a legal Q15 tuple");
+        }
+        if (profileCode != 0) {
+            throw new IllegalArgumentException("cast profile code must be zero");
+        }
+    }
+
+    private static boolean legalQ15(int x, int y, int z) {
+        return x >= -32_767 && x <= 32_767
+                && y >= -32_767 && y <= 32_767
+                && z >= -32_767 && z <= 32_767
+                && (x != 0 || y != 0 || z != 0);
+    }
+}
+
+/** Immutable direct-output family identity retained by a P9 continuation. */
+record SourceFamilyKey(
+        SkillInstanceId skillInstanceId,
+        EventId sourceEventId,
+        int producerNodeIndex,
+        int outputOrdinal) {
+    SourceFamilyKey {
+        Objects.requireNonNull(skillInstanceId, "skillInstanceId");
+        Objects.requireNonNull(sourceEventId, "sourceEventId");
+        var instanceValue = skillInstanceId.value();
+        if (instanceValue.getMostSignificantBits() == 0L
+                && instanceValue.getLeastSignificantBits() == 0L
+                || sourceEventId.value() <= 0L
+                || producerNodeIndex != 0
+                || outputOrdinal != 0) {
+            throw new IllegalArgumentException("invalid P9 source family");
+        }
+    }
+
+    boolean matches(
+            SourceFamilyKey candidateFamily,
+            SkillReference exactReference,
+            SkillReference candidateReference,
+            int sourceDerivationDepth,
+            boolean includeDerived) {
+        Objects.requireNonNull(candidateFamily, "candidateFamily");
+        Objects.requireNonNull(exactReference, "exactReference");
+        Objects.requireNonNull(candidateReference, "candidateReference");
+        return sourceDerivationDepth >= 0
+                && sourceDerivationDepth <= MagicSafetyCeilings.MAX_DEPTH_PER_LINEAGE
+                && (includeDerived || sourceDerivationDepth == 0)
+                && equals(candidateFamily)
+                && exactReference.equals(candidateReference);
+    }
+}
+
+/** Closed-vocabulary P9 hit data; product construction begins only in P9-S3. */
+record ProjectileHitExecutionDataV0(
+        UUID permitId,
+        UUID projectileId,
+        SourceFamilyKey sourceFamily,
+        int sourceDerivationDepth,
+        ResourceLocation dimension,
+        UUID targetId,
+        double hitX,
+        double hitY,
+        double hitZ,
+        int directionXQ15,
+        int directionYQ15,
+        int directionZQ15) implements RuntimeExecutionData {
+    ProjectileHitExecutionDataV0 {
+        Objects.requireNonNull(permitId, "permitId");
+        Objects.requireNonNull(projectileId, "projectileId");
+        Objects.requireNonNull(sourceFamily, "sourceFamily");
+        Objects.requireNonNull(dimension, "dimension");
+        Objects.requireNonNull(targetId, "targetId");
+        if (zeroUuid(permitId) || zeroUuid(projectileId) || zeroUuid(targetId)) {
+            throw new IllegalArgumentException("P9 hit identities must be nonzero");
+        }
+        if (sourceDerivationDepth != 0) {
+            throw new IllegalArgumentException("P9 hit source depth must be zero");
+        }
+        if (!Double.isFinite(hitX)
+                || !Double.isFinite(hitY)
+                || !Double.isFinite(hitZ)
+                || hitX < -30_000_000.0
+                || hitX >= 30_000_000.0
+                || hitY < -20_000_000.0
+                || hitY >= 20_000_000.0
+                || hitZ < -30_000_000.0
+                || hitZ >= 30_000_000.0) {
+            throw new IllegalArgumentException("P9 hit position is outside the static domain");
+        }
+        if (!legalQ15(directionXQ15, directionYQ15, directionZQ15)) {
+            throw new IllegalArgumentException("P9 hit direction is not a legal Q15 tuple");
+        }
+    }
+
+    private static boolean zeroUuid(UUID value) {
+        return value.getMostSignificantBits() == 0L
+                && value.getLeastSignificantBits() == 0L;
+    }
+
+    private static boolean legalQ15(int x, int y, int z) {
+        return x >= -32_767 && x <= 32_767
+                && y >= -32_767 && y <= 32_767
+                && z >= -32_767 && z <= 32_767
+                && (x != 0 || y != 0 || z != 0);
+    }
 }
 
 enum RuntimeSchedulePersistence {
@@ -999,7 +1132,8 @@ record RuntimeExecutionContext(
         RuntimeServerToken serverSlotToken,
         ResolvedRuntimeReferenceContext resolvedReferences,
         RuntimeExecutionBudget executionBudget,
-        RuntimeExecutionGuard executionGuard) {
+        RuntimeExecutionGuard executionGuard,
+        RuntimeProjectileContinuationOpener projectileContinuationOpener) {
     RuntimeExecutionContext {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(definition, "definition");
@@ -1008,6 +1142,7 @@ record RuntimeExecutionContext(
         Objects.requireNonNull(resolvedReferences, "resolvedReferences");
         Objects.requireNonNull(executionBudget, "executionBudget");
         Objects.requireNonNull(executionGuard, "executionGuard");
+        Objects.requireNonNull(projectileContinuationOpener, "projectileContinuationOpener");
         if (currentRuntimeTick < 0) {
             throw new IllegalArgumentException("current runtime tick must be non-negative");
         }
