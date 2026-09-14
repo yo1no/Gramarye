@@ -1,0 +1,77 @@
+import org.gradle.api.GradleException
+import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
+def enabled = gradle.startParameter.projectProperties['gramarye.rd1.enabled']
+def diagnosticRootText =
+        gradle.startParameter.projectProperties['gramarye.rd1.diagnosticRoot']
+
+if (enabled != 'true') {
+    throw new GradleException('P9-S3-RD1 diagnostics were not explicitly enabled')
+}
+if (diagnosticRootText == null
+        || diagnosticRootText.isBlank()
+        || diagnosticRootText.contains('\n')
+        || diagnosticRootText.contains('\r')) {
+    throw new GradleException('P9-S3-RD1 diagnostic root is absent or malformed')
+}
+
+def diagnosticRoot = new File(diagnosticRootText)
+if (!diagnosticRoot.isAbsolute()
+        || diagnosticRoot.toPath().normalize() != diagnosticRoot.toPath()) {
+    throw new GradleException('P9-S3-RD1 diagnostic root must be absolute and normalized')
+}
+def fatalDirectory = new File(diagnosticRoot, 'fatal')
+if (!fatalDirectory.isDirectory()) {
+    throw new GradleException('P9-S3-RD1 fatal-log directory was not prepared')
+}
+def fatalLogArgument =
+        "-XX:ErrorFile=${new File(fatalDirectory, 'hs_err_pid%p.log').absolutePath}"
+
+def configureDiagnosticLogging = { logging ->
+    logging.events = ([
+            TestLogEvent.STARTED,
+            TestLogEvent.PASSED,
+            TestLogEvent.SKIPPED,
+            TestLogEvent.FAILED,
+            TestLogEvent.STANDARD_OUT,
+            TestLogEvent.STANDARD_ERROR,
+    ] as Set)
+    logging.exceptionFormat = TestExceptionFormat.FULL
+    logging.showExceptions = true
+    logging.showCauses = true
+    logging.showStackTraces = true
+    logging.showStandardStreams = true
+    logging.minGranularity = 0
+    logging.maxGranularity = -1
+    logging.displayGranularity = 0
+    logging.stackTraceFilters.clear()
+}
+
+gradle.beforeProject { project ->
+    if (project == project.rootProject) {
+        def trackedEnabled = project.providers
+                .gradleProperty('gramarye.rd1.enabled').get()
+        def trackedDiagnosticRoot = project.providers
+                .gradleProperty('gramarye.rd1.diagnosticRoot').get()
+        if (trackedEnabled != enabled || trackedDiagnosticRoot != diagnosticRootText) {
+            throw new GradleException(
+                    'P9-S3-RD1 tracked diagnostic inputs do not match start parameters')
+        }
+        project.tasks.withType(Test).configureEach { Test testTask ->
+            if (testTask.path == ':test') {
+                def existingFatalArguments = (testTask.jvmArgs ?: []).findAll { argument ->
+                    argument.toString().startsWith('-XX:ErrorFile=')
+                }
+                if (!existingFatalArguments.isEmpty()) {
+                    throw new GradleException(
+                            'P9-S3-RD1 found an existing Test ErrorFile argument')
+                }
+                testTask.jvmArgs(fatalLogArgument)
+                configureDiagnosticLogging(testTask.testLogging.lifecycle)
+                configureDiagnosticLogging(testTask.testLogging.info)
+            }
+        }
+    }
+}
