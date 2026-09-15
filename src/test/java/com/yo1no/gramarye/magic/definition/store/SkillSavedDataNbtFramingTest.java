@@ -106,6 +106,12 @@ class SkillSavedDataNbtFramingTest {
             throws Exception {
         var exactStoreLength = MagicSafetyCeilings.MAX_SKILL_SAVED_DATA_CARRIER_ENCODED_BYTES
                 - SkillSavedDataPersistenceSchema.INNER_CARRIER_V0_FRAMING_BYTES;
+        assertExactInnerFixturePassesFiniteQuota(exactStoreLength);
+        assertPlusOneInnerFixtureFailsAtCarrierLayer(exactStoreLength);
+    }
+
+    private static void assertExactInnerFixturePassesFiniteQuota(int exactStoreLength)
+            throws Exception {
         var exact = SkillSavedDataTestSupport.canonicalWholeRootWithZeroPayloads(
                 0, exactStoreLength, 0);
         assertEquals(
@@ -118,7 +124,9 @@ class SkillSavedDataNbtFramingTest {
         assertInstanceOf(
                 SkillSavedDataCarrierFailure.StoreLoadFailed.class,
                 failure(exact));
+    }
 
+    private static void assertPlusOneInnerFixtureFailsAtCarrierLayer(int exactStoreLength) {
         var plusOne = SkillSavedDataTestSupport.canonicalWholeRootWithZeroPayloads(
                 0, exactStoreLength + 1, 0);
         assertInstanceOf(

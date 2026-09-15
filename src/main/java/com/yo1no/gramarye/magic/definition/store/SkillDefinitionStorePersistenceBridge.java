@@ -124,35 +124,15 @@ final class SkillDefinitionStorePersistenceBridge {
         Objects.requireNonNull(provider, "provider");
         Objects.requireNonNull(restorer, "restorer");
         Objects.requireNonNull(documentLoader, "documentLoader");
-        var facts = new PipelineFactReport(List.of(), false);
 
-        var decodedStore = StoreNbtFraming.decodeStore(blob);
-        if (decodedStore.failureValue().isPresent()) {
-            return loadFailure(decodedStore.failureValue().orElseThrow(), facts);
+        var preparation = prepareCurrentStoreEnvelope(blob);
+        if (preparation instanceof FailedStoreEnvelope failed) {
+            return loadFailure(failed.failure(), failed.factReport());
         }
-        var initialEnvelope = decodedStore.successValue().orElseThrow();
-
-        var migration = StorePersistenceMigrator.migrate(
-                StoreNbtFraming.toTag(initialEnvelope),
-                StorePersistenceMigrationPlans.production());
-        if (migration instanceof StorePersistenceMigrationResult.Failure failed) {
-            return loadFailure(
-                    new StorePersistenceFailure.StoreEnvelopeMigrationFailed(failed.failure()),
-                    failed.factReport());
-        }
-        var migrated = (StorePersistenceMigrationResult.Success) migration;
-        facts = migrated.factReport();
-        var rewritePending = migrated.migrated();
-        var currentEnvelopeResult = StoreNbtFraming.fromTag(migrated.migratedTree());
-        if (currentEnvelopeResult.failureValue().isPresent()) {
-            return loadFailure(currentEnvelopeResult.failureValue().orElseThrow(), facts);
-        }
-        var currentEnvelope = currentEnvelopeResult.successValue().orElseThrow();
-        if (currentEnvelope.schemaVersion() != StorePersistenceSchema.CURRENT_SCHEMA_VERSION) {
-            return loadFailure(new StorePersistenceFailure.UnsupportedStoreSchema(
-                    currentEnvelope.schemaVersion(),
-                    StorePersistenceSchema.CURRENT_SCHEMA_VERSION), facts);
-        }
+        var prepared = (PreparedStoreEnvelope) preparation;
+        var currentEnvelope = prepared.envelope();
+        var facts = prepared.factReport();
+        var rewritePending = prepared.migrated();
 
         var historySnapshots = new ArrayList<SkillHistorySnapshot>();
         for (var historyBlob : currentEnvelope.historyEntries()) {
@@ -195,6 +175,42 @@ final class SkillDefinitionStorePersistenceBridge {
                             new StorePersistenceFailure.StoreRestoreRejected(rejected.failure()),
                             facts);
         };
+    }
+
+    private static StoreEnvelopePreparation prepareCurrentStoreEnvelope(ImmutableStoreBlob blob) {
+        var facts = new PipelineFactReport(List.of(), false);
+
+        var decodedStore = StoreNbtFraming.decodeStore(blob);
+        if (decodedStore.failureValue().isPresent()) {
+            return new FailedStoreEnvelope(
+                    decodedStore.failureValue().orElseThrow(), facts);
+        }
+        var initialEnvelope = decodedStore.successValue().orElseThrow();
+
+        var migration = StorePersistenceMigrator.migrate(
+                StoreNbtFraming.toTag(initialEnvelope),
+                StorePersistenceMigrationPlans.production());
+        if (migration instanceof StorePersistenceMigrationResult.Failure failed) {
+            return new FailedStoreEnvelope(
+                    new StorePersistenceFailure.StoreEnvelopeMigrationFailed(failed.failure()),
+                    failed.factReport());
+        }
+        var migrated = (StorePersistenceMigrationResult.Success) migration;
+        facts = migrated.factReport();
+        var currentEnvelopeResult = migrated.decodeMigratedTree();
+        if (currentEnvelopeResult.failureValue().isPresent()) {
+            return new FailedStoreEnvelope(
+                    currentEnvelopeResult.failureValue().orElseThrow(), facts);
+        }
+        var currentEnvelope = currentEnvelopeResult.successValue().orElseThrow();
+        if (currentEnvelope.schemaVersion() != StorePersistenceSchema.CURRENT_SCHEMA_VERSION) {
+            return new FailedStoreEnvelope(
+                    new StorePersistenceFailure.UnsupportedStoreSchema(
+                            currentEnvelope.schemaVersion(),
+                            StorePersistenceSchema.CURRENT_SCHEMA_VERSION),
+                    facts);
+        }
+        return new PreparedStoreEnvelope(currentEnvelope, facts, migrated.migrated());
     }
 
     private static StorePersistenceFailure mapEncodeFailure(
@@ -243,6 +259,21 @@ final class SkillDefinitionStorePersistenceBridge {
             StorePersistenceFailure failure,
             PipelineFactReport facts) {
         return new StorePersistenceLoadResult.Failure(failure, facts);
+    }
+
+    private sealed interface StoreEnvelopePreparation
+            permits PreparedStoreEnvelope, FailedStoreEnvelope {
+    }
+
+    private record PreparedStoreEnvelope(
+            StorePersistentEnvelopeV0 envelope,
+            PipelineFactReport factReport,
+            boolean migrated) implements StoreEnvelopePreparation {
+    }
+
+    private record FailedStoreEnvelope(
+            StorePersistenceFailure failure,
+            PipelineFactReport factReport) implements StoreEnvelopePreparation {
     }
 
     @FunctionalInterface

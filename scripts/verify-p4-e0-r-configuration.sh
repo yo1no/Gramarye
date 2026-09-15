@@ -245,6 +245,13 @@ verify_search_helpers() {
             || "${tool_error_output}" == *'WRONG_MISSING'* ]]; then
         fail 'P4-E0-R1 verifier could not distinguish a grep error from a missing contract'
     fi
+    is_approved_p9_s3_mr1_changed_path \
+        'src/test/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFramingTest.java' \
+        || fail 'P4-E0-R1 verifier rejected an exact P9-S3-MR1 changed path'
+    if is_approved_p9_s3_mr1_changed_path \
+            'src/test/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFramingTest.java.extra'; then
+        fail 'P4-E0-R1 verifier accepted a prefix-near P9-S3-MR1 changed path'
+    fi
 }
 
 is_reviewed_research_path() {
@@ -951,8 +958,28 @@ is_approved_p8_s3_test_changed_path() {
     esac
 }
 
+is_approved_p9_s3_mr1_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStorePersistenceBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFraming.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrationResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrator.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4A2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStorePersistenceBridgeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFramingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigratorTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_reviewed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
+    is_approved_p9_s3_mr1_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
     is_approved_p6_s3_changed_path "$1" && return 0
     is_approved_p9_s3_changed_path "$1" && return 0

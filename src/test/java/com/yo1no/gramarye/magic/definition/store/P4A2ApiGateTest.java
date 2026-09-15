@@ -101,6 +101,41 @@ class P4A2ApiGateTest {
     }
 
     @Test
+    void migrationPreparationRetainsOnlyPrivateTypedState() throws Exception {
+        var prepared = Arrays.stream(
+                        SkillDefinitionStorePersistenceBridge.class.getDeclaredClasses())
+                .filter(type -> type.getSimpleName().equals("PreparedStoreEnvelope"))
+                .findFirst().orElseThrow();
+        var failed = Arrays.stream(
+                        SkillDefinitionStorePersistenceBridge.class.getDeclaredClasses())
+                .filter(type -> type.getSimpleName().equals("FailedStoreEnvelope"))
+                .findFirst().orElseThrow();
+        var decoder = StorePersistenceMigrationResult.Success.class
+                .getDeclaredMethod("decodeMigratedTree");
+        var accessMask = Modifier.PUBLIC | Modifier.PROTECTED | Modifier.PRIVATE;
+
+        assertAll(
+                () -> assertTrue(Modifier.isPrivate(prepared.getModifiers())),
+                () -> assertTrue(Modifier.isPrivate(failed.getModifiers())),
+                () -> assertEquals(
+                        Set.of("envelope", "factReport", "migrated"),
+                        fieldNames(prepared)),
+                () -> assertEquals(
+                        Set.of("failure", "factReport"),
+                        fieldNames(failed)),
+                () -> assertTrue(Arrays.stream(prepared.getDeclaredFields())
+                        .noneMatch(field -> net.minecraft.nbt.Tag.class
+                                .isAssignableFrom(field.getType())
+                                || field.getType() == ImmutableStoreBlob.class
+                                || field.getType() == StorePersistenceMigrationResult.class
+                                || field.getType() == StoreNbtFraming.FramingResult.class)),
+                () -> assertEquals(0, decoder.getModifiers() & accessMask),
+                () -> assertEquals(
+                        StoreNbtFraming.FramingResult.class,
+                        decoder.getReturnType()));
+    }
+
+    @Test
     void p3dStoreSurfaceAndSnapshotShapeAreUnchanged() {
         var publicMethods = Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())
                 .filter(method -> Modifier.isPublic(method.getModifiers()))

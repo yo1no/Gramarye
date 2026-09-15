@@ -440,6 +440,27 @@ verify_search_helpers() {
             || "${tool_error_output}" == *'WRONG_MISSING'* ]]; then
         fail 'P4-D3-A verifier could not distinguish a grep error from a missing contract'
     fi
+    is_approved_p9_s3_mr1_production_path \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrator.java' \
+        || fail 'P4-D3-A verifier rejected an exact P9-S3-MR1 production path'
+    if is_approved_p9_s3_mr1_production_path \
+            'src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrator.java.extra'; then
+        fail 'P4-D3-A verifier accepted a prefix-near P9-S3-MR1 production path'
+    fi
+}
+
+is_approved_p9_s3_mr1_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStorePersistenceBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFraming.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrationResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrator.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 is_reviewed_d3a_production_path() {
@@ -832,6 +853,7 @@ verify_change_boundary() {
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
         is_reviewed_d3a_production_path "${path}" \
+            || is_approved_p9_s3_mr1_production_path "${path}" \
             || is_approved_p6_s3_production_path "${path}" \
             || is_approved_p9_s3_production_path "${path}" \
             || is_approved_p6_s4_r1_production_path "${path}" \
@@ -856,6 +878,7 @@ verify_change_boundary() {
     while IFS= read -r path; do
         [[ -z "${path}" ]] && continue
         is_reviewed_d3a_production_path "${path}" \
+            || is_approved_p9_s3_mr1_production_path "${path}" \
             || is_approved_p6_s3_production_path "${path}" \
             || is_approved_p9_s3_production_path "${path}" \
             || is_approved_p6_s4_r1_production_path "${path}" \

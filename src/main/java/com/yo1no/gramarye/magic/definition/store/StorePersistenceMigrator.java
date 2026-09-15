@@ -46,6 +46,9 @@ final class StorePersistenceMigrator {
             return failure(StorePersistenceMigrationFailure.observed(
                     StorePersistenceMigrationFailure.Code.FUTURE_SCHEMA_VERSION, version), facts);
         }
+        if (version == currentVersion) {
+            return new StorePersistenceMigrationResult.Success(source, facts.report(), false);
+        }
 
         var current = source.copy();
         var index = 0;

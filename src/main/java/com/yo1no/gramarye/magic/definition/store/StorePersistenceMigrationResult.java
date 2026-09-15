@@ -18,6 +18,11 @@ sealed interface StorePersistenceMigrationResult
             return migratedTree.copy();
         }
 
+        StoreNbtFraming.FramingResult<StorePersistentEnvelopeV0> decodeMigratedTree() {
+            // The framing result owns independent blobs; the private mutable tree never escapes.
+            return StoreNbtFraming.fromTag(this.migratedTree);
+        }
+
         @Override
         public String toString() {
             return "Success[migrated=" + migrated

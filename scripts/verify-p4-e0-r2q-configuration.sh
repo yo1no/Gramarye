@@ -229,6 +229,13 @@ verify_helpers() {
             || "${output}" == *'WRONG_MISSING'* ]]; then
         fail 'P4-E0-R2Q verifier cannot distinguish tool error from missing input'
     fi
+    is_approved_p9_s3_mr1_production_path \
+        'src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrator.java' \
+        || fail 'P4-E0-R2Q verifier rejected an exact P9-S3-MR1 production path'
+    if is_approved_p9_s3_mr1_production_path \
+            'src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrator.java.extra'; then
+        fail 'P4-E0-R2Q verifier accepted a prefix-near P9-S3-MR1 production path'
+    fi
     is_reviewed_e1a_production_or_ledger_path \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1AuditBudget.java' \
         || fail 'P4-E0-R2Q verifier rejected an exact reviewed E1-A path'
@@ -240,6 +247,20 @@ verify_helpers() {
             'docs/codex-spec/18_P4持久化與組合修正案.md'; then
         fail 'P4-E0-R2Q verifier accepted an authority path as E1-A work'
     fi
+}
+
+is_approved_p9_s3_mr1_production_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStorePersistenceBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFraming.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrationResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrator.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 is_approved_p4e3_changed_path() {
@@ -631,6 +652,7 @@ verify_p8_s5_access_transformer() {
 
 is_reviewed_e1a_production_or_ledger_path() {
     is_approved_p4e3_changed_path "$1" && return 0
+    is_approved_p9_s3_mr1_production_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
     is_approved_p6_s3_production_path "$1" && return 0
     is_approved_p9_s3_production_path "$1" && return 0

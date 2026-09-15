@@ -1,9 +1,9 @@
 package com.yo1no.gramarye.magic.definition.store;
 
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -178,7 +178,8 @@ final class SkillSavedDataNbtFraming {
     }
 
     private static FramingResult<byte[]> captureWholeRoot(InputStream input) {
-        var output = new ByteArrayOutputStream(READ_BUFFER_BYTES);
+        var captured = new byte[READ_BUFFER_BYTES];
+        var capturedBytes = 0;
         var buffer = new byte[READ_BUFFER_BYTES];
         var overCapacity = false;
         try {
@@ -188,11 +189,21 @@ final class SkillSavedDataNbtFraming {
                 }
                 if (!overCapacity) {
                     var remaining = SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES
-                            + 1 - output.size();
+                            - capturedBytes;
                     var retained = Math.min(count, Math.max(remaining, 0));
-                    output.write(buffer, 0, retained);
+                    var required = Math.addExact(capturedBytes, retained);
+                    if (required > captured.length) {
+                        var doubled = (long) captured.length * 2;
+                        var expanded = Math.max((long) required, doubled);
+                        var nextCapacity = (int) Math.min(
+                                SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES,
+                                expanded);
+                        captured = Arrays.copyOf(captured, nextCapacity);
+                    }
+                    System.arraycopy(buffer, 0, captured, capturedBytes, retained);
+                    capturedBytes = required;
                     overCapacity = retained < count
-                            || output.size()
+                            || capturedBytes
                             > SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES;
                 }
             }
@@ -208,7 +219,9 @@ final class SkillSavedDataNbtFraming {
                                     + 1,
                             SkillSavedDataPersistenceSchema.MAX_WHOLE_DECOMPRESSED_ROOT_BYTES));
         }
-        return success(output.toByteArray());
+        return success(capturedBytes == captured.length
+                ? captured
+                : Arrays.copyOf(captured, capturedBytes));
     }
 
     private static void requireNewField(HashSet<String> fields, String name)

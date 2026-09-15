@@ -478,7 +478,7 @@ class P3D3ApiGateTest {
                     "migrateTo(Lnet/minecraft/nbt/CompoundTag;LStorePersistenceMigrationPlan;I)"
                             + "LStorePersistenceMigrationResult;",
                     "bf85edd6ee825b6423f558f4be484a2a6ecf9c8b6134d827c952a06d1d1c888d",
-                    "8ac6a6155ab76642671ddc32e149ae6205e5b5feda129c33b8785b6da57ebbef"));
+                    "0c650774fd73b31f26930b8877b818ab3db4caacd731da842d612710f3391baa"));
     @Test
     void storeHasExactlySevenReviewedDomainMethodsAndTwoTruthStateMaps() throws Exception {
         var publicMethods = Arrays.stream(SkillDefinitionStore.class.getDeclaredMethods())

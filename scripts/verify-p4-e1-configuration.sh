@@ -643,8 +643,28 @@ is_approved_p8_s3_test_changed_path() {
     esac
 }
 
+is_approved_p9_s3_mr1_changed_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStorePersistenceBridge.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFraming.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrationResult.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigrator.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4A2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStorePersistenceBridgeTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFramingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/StorePersistenceMigratorTest.java)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_allowed_changed_path() {
     is_approved_p4e3_changed_path "$1" && return 0
+    is_approved_p9_s3_mr1_changed_path "$1" && return 0
     is_approved_p6_s2_r3_changed_path "$1" && return 0
     is_approved_p6_s3_changed_path "$1" && return 0
     is_approved_p9_s3_changed_path "$1" && return 0
@@ -892,6 +912,13 @@ self_regression() {
     if is_allowed_changed_path \
             'src/main/resources/META-INF/accesstransformer.cfg.extra'; then
         fail "self-test accepted a prefix-near P8-S5 access-transformer path"
+    fi
+    is_approved_p9_s3_mr1_changed_path \
+        'src/test/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFramingTest.java' \
+        || fail "self-test rejected an exact P9-S3-MR1 changed path"
+    if is_approved_p9_s3_mr1_changed_path \
+            'src/test/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFramingTest.java.extra'; then
+        fail "self-test accepted a prefix-near P9-S3-MR1 changed path"
     fi
     for approved in \
             'build.gradle' \

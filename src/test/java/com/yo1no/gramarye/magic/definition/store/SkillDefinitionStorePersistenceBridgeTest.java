@@ -21,6 +21,9 @@ import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
 import com.yo1no.gramarye.magic.definition.migration.PipelineFactReport;
 import com.yo1no.gramarye.magic.definition.migration.SkillMigrationFact;
 import com.yo1no.gramarye.magic.definition.migration.SkillMigrationFactCode;
+import com.yo1no.gramarye.magic.definition.tree.SerializedTreeContext;
+import com.yo1no.gramarye.magic.definition.tree.SerializedTreeFamily;
+import com.yo1no.gramarye.magic.definition.tree.SupportedDynamicTrees;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -31,6 +34,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.RegistryOps;
 import org.junit.jupiter.api.Test;
@@ -143,6 +148,57 @@ class SkillDefinitionStorePersistenceBridgeTest {
                         .map(SkillHistorySnapshot::skillId).toList());
         assertEquals(new SkillReference(StoreTestFixtures.skillId(3), StoreTestFixtures.revision(9)),
                 loaded.store().latestReference(StoreTestFixtures.skillId(3)).orElseThrow());
+    }
+
+    @Test
+    void currentStoreRoundTripPreservesUnknownMixedFamilyPayloadsAndContext() {
+        var json = new JsonObject();
+        json.addProperty("secret_json", "preserve");
+        var nbt = new CompoundTag();
+        nbt.putInt("secret_nbt", 7);
+        var skillId = StoreTestFixtures.skillId(13);
+        var document = new SkillDocument(
+                SkillDocument.CURRENT_SCHEMA_VERSION,
+                skillId,
+                StoreTestFixtures.revision(0),
+                List.of(new NodeDocument(
+                        new DefinitionEnvelope(
+                                id("unknown_trigger"),
+                                0,
+                                new Dynamic<>(
+                                        RegistryOps.create(JsonOps.COMPRESSED, EMPTY_PROVIDER),
+                                        json)),
+                        new DefinitionEnvelope(
+                                id("unknown_action"),
+                                0,
+                                new Dynamic<>(NbtOps.INSTANCE, nbt)),
+                        AppearanceOverrideDocument.none())),
+                AppearanceDocument.defaultAppearance());
+        var store = StoreTestFixtures.restore(new SkillDefinitionStoreSnapshot(List.of(
+                new SkillHistorySnapshot(
+                        skillId,
+                        StoreTestFixtures.ownerId(13),
+                        List.of(new SkillRevisionSnapshot(
+                                StoreTestFixtures.revision(0), document))))));
+        var originalBlob = encoded(store);
+
+        var loaded = assertInstanceOf(StorePersistenceLoadResult.Loaded.class,
+                SkillDefinitionStorePersistenceBridge.loadStoreBlob(
+                        originalBlob, Optional.of(EMPTY_PROVIDER)));
+        var loadedDocument = loaded.store().snapshot().histories().getFirst()
+                .revisions().getFirst().document();
+        var loadedTrigger = loadedDocument.nodes().getFirst().trigger().copyRawPayload();
+        var loadedAction = loadedDocument.nodes().getFirst().action().copyRawPayload();
+
+        assertEquals(
+                new SerializedTreeContext(SerializedTreeFamily.JSON, true, true),
+                SupportedDynamicTrees.contextOf(loadedTrigger).getOrThrow());
+        assertEquals(
+                new SerializedTreeContext(SerializedTreeFamily.NBT, false, false),
+                SupportedDynamicTrees.contextOf(loadedAction).getOrThrow());
+        assertEquals(json, loadedTrigger.getValue());
+        assertEquals(nbt, loadedAction.getValue());
+        assertArrayEquals(originalBlob.copyBytes(), encoded(loaded.store()).copyBytes());
     }
 
     @Test

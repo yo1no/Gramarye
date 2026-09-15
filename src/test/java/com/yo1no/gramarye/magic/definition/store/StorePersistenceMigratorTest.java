@@ -1,5 +1,6 @@
 package com.yo1no.gramarye.magic.definition.store;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -67,6 +68,113 @@ class StorePersistenceMigratorTest {
                 .toString().contains("do-not-log-this-tree") == false);
         assertEquals(StorePersistenceMigrationFailure.Code.FUTURE_SCHEMA_VERSION,
                 future.failure().code());
+    }
+
+    @Test
+    void currentNoOpKeepsNestedInputAndReturnedTreesIsolated() {
+        var source = root(0);
+        var nested = new CompoundTag();
+        nested.putByteArray("bytes", new byte[] {1, 2, 3});
+        var item = new CompoundTag();
+        item.putByteArray("bytes", new byte[] {4, 5, 6});
+        var items = new net.minecraft.nbt.ListTag();
+        items.add(item);
+        nested.put("items", items);
+        source.put("nested", nested);
+
+        var success = assertInstanceOf(StorePersistenceMigrationResult.Success.class,
+                StorePersistenceMigrator.migrate(source, StorePersistenceMigrationPlan.empty()));
+
+        nested.putByteArray("bytes", new byte[] {7});
+        item.putByteArray("bytes", new byte[] {8});
+        var firstRead = success.migratedTree();
+        assertEquals(3, firstRead.getCompound("nested").getByteArray("bytes").length);
+        assertEquals(3, firstRead.getCompound("nested").getList("items", Tag.TAG_COMPOUND)
+                .getCompound(0).getByteArray("bytes").length);
+
+        firstRead.getCompound("nested").putByteArray("bytes", new byte[] {9});
+        firstRead.getCompound("nested").getList("items", Tag.TAG_COMPOUND)
+                .getCompound(0).putByteArray("bytes", new byte[] {10});
+        var secondRead = success.migratedTree();
+        assertEquals(3, secondRead.getCompound("nested").getByteArray("bytes").length);
+        assertEquals(3, secondRead.getCompound("nested").getList("items", Tag.TAG_COMPOUND)
+                .getCompound(0).getByteArray("bytes").length);
+    }
+
+    @Test
+    void typedDecodeReadsTheOwnedTreeWithoutWeakeningAccessorIsolation() throws Exception {
+        var source = root(0);
+        var entries = new net.minecraft.nbt.ListTag();
+        entries.add(new net.minecraft.nbt.ByteArrayTag(new byte[] {1, 2, 3}));
+        source.put("history_entries", entries);
+
+        var success = assertInstanceOf(StorePersistenceMigrationResult.Success.class,
+                StorePersistenceMigrator.migrate(source, StorePersistenceMigrationPlan.empty()));
+        var typedDecode = StorePersistenceMigrationResult.Success.class
+                .getDeclaredMethod("decodeMigratedTree");
+        assertEquals(0, typedDecode.getModifiers() & (
+                java.lang.reflect.Modifier.PUBLIC
+                        | java.lang.reflect.Modifier.PROTECTED
+                        | java.lang.reflect.Modifier.PRIVATE));
+        var accessorTree = success.migratedTree();
+        ((net.minecraft.nbt.ByteArrayTag) accessorTree
+                .getList("history_entries", Tag.TAG_BYTE_ARRAY).get(0))
+                .getAsByteArray()[0] = 9;
+
+        var decodedResult = success.decodeMigratedTree();
+        assertTrue(decodedResult.failureValue().isEmpty());
+        var decoded = decodedResult.successValue().orElseThrow();
+
+        assertEquals(1, decoded.historyEntries().getFirst().copyBytes()[0]);
+        assertEquals(1, ((net.minecraft.nbt.ByteArrayTag) success.migratedTree()
+                .getList("history_entries", Tag.TAG_BYTE_ARRAY).get(0))
+                .getAsByteArray()[0]);
+    }
+
+    @Test
+    void typedDecodePreservesMigratedTreesAndReturnsTypedMalformedFailure() {
+        var historyBytes = new byte[] {1, 2, 3};
+        var source = root(0);
+        source.getList("history_entries", Tag.TAG_BYTE_ARRAY)
+                .add(new net.minecraft.nbt.ByteArrayTag(historyBytes));
+        var migration = step(0, tree -> DataResult.success(outputWithVersion(tree, 1)));
+
+        var migrated = assertInstanceOf(StorePersistenceMigrationResult.Success.class,
+                StorePersistenceMigrator.migrateTo(
+                        source, new StorePersistenceMigrationPlan(List.of(migration)), 1));
+        source.getList("history_entries", Tag.TAG_BYTE_ARRAY).clear();
+        var migratedEnvelope = migrated.decodeMigratedTree().successValue().orElseThrow();
+
+        var current = root(1);
+        current.getList("history_entries", Tag.TAG_BYTE_ARRAY)
+                .add(new net.minecraft.nbt.ByteArrayTag(historyBytes));
+        var currentResult = assertInstanceOf(StorePersistenceMigrationResult.Success.class,
+                StorePersistenceMigrator.migrateTo(
+                        current, StorePersistenceMigrationPlan.empty(), 1));
+        var currentEnvelope = currentResult.decodeMigratedTree().successValue().orElseThrow();
+
+        assertTrue(migrated.migrated());
+        assertEquals(currentEnvelope.schemaVersion(), migratedEnvelope.schemaVersion());
+        assertArrayEquals(
+                currentEnvelope.historyEntries().getFirst().copyBytes(),
+                migratedEnvelope.historyEntries().getFirst().copyBytes());
+
+        var malformedMigration = step(0, tree -> {
+            var copied = ((CompoundTag) tree.getValue()).copy();
+            copied.putInt("store_schema_version", 1);
+            copied.putString("extra", "rejected");
+            return DataResult.success(new StorePersistenceMigrationStepOutput(
+                    new Dynamic<Tag>(tree.getOps(), copied)));
+        });
+        var malformed = assertInstanceOf(StorePersistenceMigrationResult.Success.class,
+                StorePersistenceMigrator.migrateTo(
+                        root(0),
+                        new StorePersistenceMigrationPlan(List.of(malformedMigration)),
+                        1));
+
+        assertInstanceOf(
+                StorePersistenceFailure.MalformedStoreEnvelope.class,
+                malformed.decodeMigratedTree().failureValue().orElseThrow());
     }
 
     @Test
