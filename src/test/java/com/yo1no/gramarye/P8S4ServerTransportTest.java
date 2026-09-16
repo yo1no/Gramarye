@@ -336,6 +336,76 @@ final class P8S4ServerTransportTest {
     }
 
     @Test
+    void p9AppliedMappingsUseFrozenEventGeometryWithoutReplacingControlledHit() {
+        var service = read(SERVICE_SOURCE);
+        var mapping = between(
+                service,
+                "    private static Optional<PresentationEventKind> presentationKind(",
+                "    private static Optional<P8EventMaterial> eventMaterial(");
+        var dispatch = between(
+                service,
+                "    private static Optional<P8EventMaterial> eventMaterial(",
+                "    private static Optional<P8EventMaterial> p9CastEventMaterial(");
+        var cast = between(
+                service,
+                "    private static Optional<P8EventMaterial> p9CastEventMaterial(",
+                "    private static Optional<P8EventMaterial> p9HitEventMaterial(");
+        var hit = between(
+                service,
+                "    private static Optional<P8EventMaterial> p9HitEventMaterial(",
+                "    private static Optional<P8EventMaterial> liveEventMaterial(");
+        var historical = between(
+                service,
+                "    private static Optional<P8EventMaterial> liveEventMaterial(",
+                "    private static Optional<P8EventMaterial> material(");
+
+        assertAll(
+                () -> assertEquals(1, occurrences(mapping, "id(\"active_cast\")")),
+                () -> assertEquals(1, occurrences(mapping, "id(\"effect_hit\")")),
+                () -> assertEquals(1, occurrences(mapping, "id(\"p8_controlled_hit\")")),
+                () -> assertTrue(mapping.contains(
+                        "id(\"effect_hit\")) || trigger.equals(id(\"p8_controlled_hit\"))")),
+                () -> assertTrue(dispatch.contains(
+                        "event.executionData() instanceof CastGeometryExecutionDataV0 geometry")),
+                () -> assertTrue(dispatch.contains(
+                        "event.executionData() instanceof ProjectileHitExecutionDataV0 hit")),
+                () -> assertTrue(dispatch.contains("trigger.equals(id(\"active_cast\"))")
+                        && dispatch.contains("trigger.equals(id(\"effect_hit\"))")
+                        && dispatch.contains(
+                                "event.executionData() != NoRuntimeExecutionData.INSTANCE")),
+                () -> assertFalse(dispatch.contains("p8_controlled_hit")),
+                () -> assertTrue(dispatch.contains("p9CastEventMaterial(")),
+                () -> assertTrue(dispatch.contains("p9HitEventMaterial(")),
+                () -> assertTrue(dispatch.contains("liveEventMaterial(")),
+                () -> assertTrue(cast.contains("geometry.dimension()")
+                        && cast.contains("geometry.originX()")
+                        && cast.contains("geometry.originY()")
+                        && cast.contains("geometry.originZ()")
+                        && cast.contains("geometry.directionXQ15()")
+                        && cast.contains("geometry.directionYQ15()")
+                        && cast.contains("geometry.directionZQ15()")),
+                () -> assertTrue(hit.contains("hit.dimension()")
+                        && hit.contains("hit.targetId()")
+                        && hit.contains("hit.hitX()")
+                        && hit.contains("hit.hitY()")
+                        && hit.contains("hit.hitZ()")
+                        && hit.contains("hit.directionXQ15()")
+                        && hit.contains("hit.directionYQ15()")
+                        && hit.contains("hit.directionZQ15()")),
+                () -> assertFalse(cast.contains("position()")
+                        || cast.contains("getLookAngle()")
+                        || cast.contains("resolvedOriginPosition(")
+                        || cast.contains("resolvedTargetPosition(")),
+                () -> assertFalse(hit.contains("position()")
+                        || hit.contains("getLookAngle()")
+                        || hit.contains("resolvedOriginPosition(")
+                        || hit.contains("resolvedTargetPosition(")),
+                () -> assertTrue(historical.contains("originEntity.position()")
+                        && historical.contains("targetEntity.position()")
+                        && historical.contains("originEntity.getLookAngle()")));
+    }
+
+    @Test
     void productionMeasurementUsesTheLivePlayEncoderAndHasAnActualPlatformProbe() {
         var packetSubmission = read(PACKET_SUBMISSION_SOURCE);
         var service = read(SERVICE_SOURCE);

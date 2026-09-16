@@ -195,12 +195,17 @@ final class P9S1BoundaryTest {
     }
 
     @Test
-    void serverProjectileAndHandoffRepeatLiveOriginAndPreserveFaultOwnership() {
+    void serverProjectileAndHandoffRepeatLiveOriginAndPreserveFaultOwnership()
+            throws IOException {
         var projectile = read(PROJECTILE_SOURCE);
         var handoff = read(HANDOFF_SOURCE);
         var adapter = read(ADAPTER_SOURCE);
         var service = read(SERVICE_SOURCE);
         var accessTransformer = read(ACCESS_TRANSFORMER);
+        var hurtOwners = javaSources(PROJECT_ROOT.resolve("src/main/java")).stream()
+                .filter(path -> read(path).contains(".hurt("))
+                .map(PROJECT_ROOT::relativize)
+                .toList();
         var construction = handoff.indexOf("projectile = new P9StarterProjectile(");
         var immediateLiveRecheck = handoff.indexOf(
                 "if (!liveSpawnOrigin(geometry))", construction);
@@ -329,6 +334,19 @@ final class P9S1BoundaryTest {
                                 + "                    != RuntimeProjectileContinuationPermit.State.OPEN)")),
                 () -> assertTrue(handoff.contains(
                         "catch (Error failure) {\n            throw failure;\n        }")),
+                () -> assertEquals(
+                        List.of(Path.of(
+                                "src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java")),
+                        hurtOwners),
+                () -> assertEquals(1, occurrences(handoff, ".hurt(")),
+                () -> assertTrue(handoff.contains(
+                        "target.hurt(\n"
+                                + "                        serverLevel.damageSources()"
+                                + ".indirectMagic(projectile, actor), 4.0F)")),
+                () -> assertTrue(handoff.indexOf("command.magnitude() != 4_000L")
+                        < handoff.indexOf("var convertedDamage =")),
+                () -> assertTrue(handoff.indexOf("convertedDamage != 4.0F")
+                        < handoff.indexOf("target.hurt(")),
                 () -> assertFalse(errorOrdinaryCleanup.matcher(
                                 projectile + "\n" + handoff + "\n" + adapter)
                         .find()),

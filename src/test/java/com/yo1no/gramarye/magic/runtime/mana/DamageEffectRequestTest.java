@@ -185,9 +185,9 @@ final class DamageEffectRequestTest {
                 java.util.UUID.fromString("70000000-0000-4000-8000-000000000099"));
         DamageEffectRequest request = new DamageEffectRequest(
                 new EffectRequestId(901),
-                new SourceEventId(902),
+                new SourceEventId(901),
                 target,
-                25,
+                4_000,
                 0,
                 CompensationPolicy.REFUND_IF_NO_PRIMARY_MUTATION);
         EffectResolution resolution = new DamageEffectResolver().resolve(request, 0);

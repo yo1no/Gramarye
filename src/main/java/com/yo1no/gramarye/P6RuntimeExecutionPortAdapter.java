@@ -3,6 +3,7 @@ package com.yo1no.gramarye;
 import com.yo1no.gramarye.magic.capability.ActionOutputKind;
 import com.yo1no.gramarye.magic.definition.lookup.RegistryActionTypeLookup;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.DamageInvocation;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.GuardDecision;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.GuardPort;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.Invocation;
@@ -59,16 +60,25 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
         Objects.requireNonNull(event, "event");
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(input, "input");
+        var diagnostics = diagnosticGuard(context);
+        var damageInvocation = input.invocation() instanceof DamageInvocation;
         Optional<RuntimeProjectileContinuationOpenResult.Opened> opened =
                 openSpawnContinuation(input.invocation(), context);
         if (input.invocation() instanceof SpawnProjectileInvocation && opened.isEmpty()) {
             return completedEmpty();
         }
 
+        var damageCommitEntered = new boolean[] {false};
         try {
+            if (damageInvocation) {
+                diagnostics.reportP9S4Stage(P9RuntimeDiagnosticStage.NODE1_MATCHED);
+            }
             var commitPort = new P9WorldEffectHandoff(
                     context.server(), input.actor(), event.executionData(), opened);
             GuardPort guard = (point, stepIndex) -> {
+                if (damageInvocation && point == P6RuntimeExecutionBridge.GuardPoint.PRE_COMMIT) {
+                    diagnostics.reportP9S4Stage(P9RuntimeDiagnosticStage.DAMAGE_RESOLVED);
+                }
                 var decision = mapGuardDecision(context.executionGuard().check());
                 if (decision != null && decision != GuardDecision.ALLOWED) {
                     closeOpened(
@@ -78,11 +88,17 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
                                     ? ProjectileClosureReason.DEADLINE_REACHED
                                     : ProjectileClosureReason.OWNER_INVALIDATED);
                 }
+                if (damageInvocation
+                        && point == P6RuntimeExecutionBridge.GuardPoint.BEFORE_STEP
+                        && stepIndex == 0
+                        && decision == GuardDecision.ALLOWED) {
+                    diagnostics.enterP9DamageCommit();
+                    damageCommitEntered[0] = true;
+                }
                 return decision;
             };
-            P6RuntimeExecutionBridge.AppliedFactObserver observer = ignoredFact -> {
-                // P9-S4 owns the first production P8 applied-fact mapping.
-            };
+            var observer = new P8AppliedFactHandoff(presentationService, event, context);
+            diagnostics.armP9AppliedObservation();
             bridgeInvoker.execute(
                     capability,
                     input.actor(),
@@ -90,6 +106,9 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
                     guard,
                     commitPort,
                     observer);
+            if (damageInvocation && damageCommitEntered[0]) {
+                diagnostics.finishP9DamageCommit();
+            }
         } catch (RuntimeException failure) {
             if (opened.isPresent()
                     && isAdapterOwnedReservationState(
@@ -102,6 +121,15 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
             throw failure;
         }
         return completedEmpty();
+    }
+
+    private static SkillRuntimeService.RuntimeExecutionGuardState diagnosticGuard(
+            RuntimeExecutionContext context) {
+        if (context.executionGuard()
+                instanceof SkillRuntimeService.RuntimeExecutionGuardState diagnostics) {
+            return diagnostics;
+        }
+        throw new IllegalStateException("P9 execution requires the call-scoped P5 guard");
     }
 
     private static Optional<RuntimeProjectileContinuationOpenResult.Opened>
@@ -249,8 +277,33 @@ enum ProductionP6RuntimeExecutionInputMapper implements P6RuntimeExecutionInputM
                             action.manaCost())));
         }
 
-        // P9-S4 owns the real node-1 damage mapping. S3 consumes that queued event
-        // through P5's ordinary empty-port terminal without invoking P6 damage.
+        if (context.node().nodeIndex() == 1
+                && key.equals(P9StarterSkillContent.DAMAGE_ID)
+                && context.node().action().descriptor() == P9DamageActionType.INSTANCE
+                && context.node().action().payload()
+                        instanceof P9DamageActionPayloadV0 action
+                && action.magnitude() == 4_000L
+                && action.magnitude() % 1_000L == 0L
+                && action.manaCost() == 0L
+                && event.executionData() instanceof ProjectileHitExecutionDataV0 hit
+                && context.resolvedReferences().target()
+                        instanceof ResolvedEntityTarget entityTarget
+                && entityTarget.entity() != playerOrigin.player()
+                && entityTarget.entity().getUUID().equals(hit.targetId())
+                && entityTarget.entity().level() == playerOrigin.player().serverLevel()
+                && hit.dimension().equals(
+                        playerOrigin.player().serverLevel().dimension().location())) {
+            return Optional.of(new P6RuntimeExecutionInput(
+                    playerOrigin.player(),
+                    new DamageInvocation(
+                            key,
+                            identity.requestId(),
+                            identity.sourceEventId(),
+                            hit.targetId(),
+                            action.magnitude(),
+                            action.manaCost())));
+        }
+
         return Optional.empty();
     }
 }

@@ -24,6 +24,19 @@ final class P9S3DirectConsumerContractTest {
             "src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java";
     private static final String LOGICAL_DC1_TEST =
             "src/test/java/com/yo1no/gramarye/P9S3DirectConsumerContractTest.java";
+    private static final List<String> LOGICAL_P9_S4_PATHS = List.of(
+            "src/main/java/com/yo1no/gramarye/P8AppliedFactHandoff.java",
+            "src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java",
+            "src/test/java/com/yo1no/gramarye/P8S4ServerTransportTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/runtime/mana/"
+                    + "ActionDamageTransactionDebitTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/runtime/mana/"
+                    + "ActionDamageTransactionPreDebitTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectRequestTest.java");
+    private static final List<String> LOGICAL_P9_S4_WC1_PATHS = List.of(
+            ".github/workflows/build.yml",
+            "scripts/collect-p9-s3-rd1-unit-test-diagnostics.sh",
+            "scripts/verify-p9-s4-warning-attribution.py");
     private static final String VALID_FIXTURE = """
             package com.yo1no.gramarye;
 
@@ -108,6 +121,19 @@ final class P9S3DirectConsumerContractTest {
         var nearCorrectionPath = runVerifier(List.of(
                 "--is-s4-path", LOGICAL_DC1_TEST + ".extra"));
         assertEquals(1, nearCorrectionPath.exitCode(), nearCorrectionPath.output());
+
+        for (var logicalPath : LOGICAL_P9_S4_PATHS) {
+            var exactS4Path = runVerifier(List.of("--is-s4-path", logicalPath));
+            assertEquals(0, exactS4Path.exitCode(), exactS4Path.output());
+            var nearS4Path = runVerifier(List.of("--is-s4-path", logicalPath + ".extra"));
+            assertEquals(1, nearS4Path.exitCode(), nearS4Path.output());
+        }
+        for (var logicalPath : LOGICAL_P9_S4_WC1_PATHS) {
+            var exactWc1Path = runVerifier(List.of("--is-s4-path", logicalPath));
+            assertEquals(0, exactWc1Path.exitCode(), exactWc1Path.output());
+            var nearWc1Path = runVerifier(List.of("--is-s4-path", logicalPath + ".extra"));
+            assertEquals(1, nearWc1Path.exitCode(), nearWc1Path.output());
+        }
     }
 
     @Test

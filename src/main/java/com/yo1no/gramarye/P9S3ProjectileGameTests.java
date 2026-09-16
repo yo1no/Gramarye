@@ -1,10 +1,19 @@
 package com.yo1no.gramarye;
 
 import com.yo1no.gramarye.magic.capability.ActionOutputKind;
+import com.yo1no.gramarye.magic.api.registry.MagicRegistries;
+import com.yo1no.gramarye.magic.definition.document.AppearanceDefinition;
+import com.yo1no.gramarye.magic.definition.document.AppearanceDocument;
+import com.yo1no.gramarye.magic.definition.document.ProfileSelection;
+import com.yo1no.gramarye.magic.runtime.mana.P7ManaSnapshotBridge;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -15,22 +24,31 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.animal.Cow;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.breeze.Breeze;
 import net.minecraft.world.entity.projectile.ProjectileDeflection;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.portal.DimensionTransition;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.scores.PlayerTeam;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.ProjectileImpactEvent;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.gametest.GameTestHolder;
@@ -50,12 +68,19 @@ public final class P9S3ProjectileGameTests {
     @SuppressWarnings("removal")
     public static void realSpawnTransferHitAndNextDrainUseTheHeldChild(GameTestHelper helper) {
         try (var scenario = new ProductionScenario(helper, 0x9301L)) {
+            scenario.startPresentation();
+            helper.assertTrue(
+                    observeBalance(scenario.actor())
+                            == 0L,
+                    "canonical node 0 must begin with the fresh available-zero mana truth");
             var accepted = scenario.admit();
             scenario.post();
 
             var root = scenario.port().event(0);
             var projectileId = plannedProjectileId(accepted, root);
             var projectile = scenario.requireProjectile(projectileId);
+            var geometry = scenario.fixture().geometry();
+            var castEvents = scenario.presentation().bufferedEventsForTesting();
             helper.assertTrue(
                     scenario.level().getEntity(projectileId) == projectile
                             && projectile.isAddedToLevel()
@@ -64,73 +89,147 @@ public final class P9S3ProjectileGameTests {
                             && projectile.getOwner() == scenario.actor()
                             && close(projectile.getDeltaMovement().length(), 1.5),
                     "real P6 spawn must transfer the exact loaded entity, actor witness, and speed 1.5 launch");
+            helper.assertTrue(
+                    castEvents.size() == 1
+                            && castEvents.getFirst().kind()
+                                    == PresentationEventKind.CAST_RELEASE
+                            && castEvents.getFirst().dimension().equals(geometry.dimension())
+                            && samePosition(
+                                    castEvents.getFirst().position(),
+                                    geometry.originX(),
+                                    geometry.originY(),
+                                    geometry.originZ())
+                            && castEvents.getFirst().direction().equals(
+                                    expectedDirection(
+                                            geometry.directionXQ15(),
+                                            geometry.directionYQ15(),
+                                            geometry.directionZQ15()))
+                            && castEvents.getFirst().sourceSummary()
+                                            .sourceEntityId()
+                                            .orElseThrow()
+                                    == scenario.actor().getId(),
+                    "applied spawn must offer one CAST_RELEASE from the frozen node-0 geometry");
 
             var target = scenario.addTarget(projectile.position().add(
-                    projectile.getDeltaMovement().scale(0.5)));
+                    projectile.getDeltaMovement().scale(0.75)));
             var healthBefore = target.getHealth();
             var sweptMovement = projectile.getDeltaMovement();
-            var impact = new OneShotProjectileImpactCancellation().observeOnly();
+            var impact = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .observeDamage(target);
             NeoForge.EVENT_BUS.register(impact);
             try {
                 projectile.tick();
+                helper.assertTrue(
+                        impact.hitTarget(target) && scenario.port().calls() == 1,
+                        "the actual platform sweep must classify the exact target without invoking node 1 inline");
+                helper.assertTrue(
+                        scenario.level().getEntity(projectileId) == projectile
+                                && projectile.isAddedToLevel()
+                                && !projectile.isRemoved()
+                                && projectile.getDeltaMovement().lengthSqr() == 0.0
+                                && projectile.isNoGravity(),
+                        "accepted claim must retain one loaded inert exact-witness projectile");
+
+                projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+                helper.assertTrue(
+                        scenario.port().calls() == 1
+                                && scenario.level().getEntity(projectileId) == projectile,
+                        "duplicate callback must remain inert without another publication");
+
+                var frozenHit = impact.hitLocation();
+                target.setPos(target.position().add(2.0, 0.0, 0.0));
+                scenario.post();
+                helper.assertTrue(
+                        scenario.port().calls() == 2,
+                        "the held child must become eligible exactly on the next P5 drain");
+                var child = scenario.port().event(1);
+                assertExactHeldChild(
+                        helper,
+                        root,
+                        child,
+                        projectile,
+                        target,
+                        frozenHit,
+                        sweptMovement,
+                        scenario.port().runtimeTick(0));
+                helper.assertTrue(
+                        child.eventId().value() == root.eventId().value() + 1L
+                                && !child.eventId().equals(accepted.eventToken().eventId()),
+                        "the child must consume the held future identity, not reuse the root identity");
+
+                var hitEvents = scenario.presentation().bufferedEventsForTesting();
+                helper.assertTrue(
+                        impact.damageCalls() == 1
+                                && impact.hasExactDamageSource(projectile, scenario.actor())
+                                && sameFloat(impact.damageAmount(), 4.0F)
+                                && close(healthBefore - target.getHealth(), 4.0D),
+                        "node 1 must make one indirect-magic 4.0F call with exact projectile/caster attribution and unarmored health loss");
+                helper.assertTrue(
+                        hitEvents.size() == 1
+                                && hitEvents.getFirst().kind() == PresentationEventKind.HIT
+                                && hitEvents.getFirst().dimension().equals(
+                                        target.level().dimension().location())
+                                && samePosition(
+                                        hitEvents.getFirst().position(),
+                                        frozenHit.x,
+                                        frozenHit.y,
+                                        frozenHit.z)
+                                && hitEvents.getFirst().direction().equals(
+                                        expectedDirection(
+                                                q15(sweptMovement.x, sweptMovement.length()),
+                                                q15(sweptMovement.y, sweptMovement.length()),
+                                                q15(sweptMovement.z, sweptMovement.length())))
+                                && !samePosition(
+                                        hitEvents.getFirst().position(),
+                                        target.getX(),
+                                        target.getY(),
+                                        target.getZ())
+                                && hitEvents.getFirst().sourceSummary()
+                                                .sourceEntityId()
+                                                .orElseThrow()
+                                        == scenario.actor().getId()
+                                && hitEvents.getFirst().sourceSummary()
+                                                .targetEntityId()
+                                                .orElseThrow()
+                                        == target.getId()
+                                && scenario.presentation()
+                                                .bufferedPresentationsForTesting()
+                                                .getFirst()
+                                                .sourceEventId()
+                                        == child.eventId().value(),
+                        "the applied fact must offer one HIT from the accepted frozen hit snapshot, independent of later target movement");
+                helper.assertTrue(
+                        projectile.isRemoved()
+                                && observeBalance(scenario.actor())
+                                        == 0L,
+                        "successful node 0 and node 1 must remove the witness while preserving fresh zero mana");
+                assertTerminalDiagnostic(
+                        helper,
+                        scenario,
+                        accepted,
+                        ProjectileClosureReason.DAMAGE_TERMINAL,
+                        1, 2, 3, 4, 5, 6, 7, 8,
+                        9, 10, 11, 12, 13, 14, 15, 16);
+
+                projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+                projectile.tick();
+                scenario.post();
+                helper.assertTrue(
+                        scenario.port().calls() == 2
+                                && impact.damageCalls() == 1
+                                && close(healthBefore - target.getHealth(), 4.0D)
+                                && scenario.runtime().cancel(
+                                                server(scenario), accepted.eventToken())
+                                        instanceof RuntimeCancellationResult.NotPending
+                                && scenario.runtime().cancel(
+                                                server(scenario), accepted.cancellationToken())
+                                        instanceof RuntimeCancellationResult.NotPending
+                                && scenario.enterStopping() == 0,
+                        "duplicate and late callbacks must cause no second damage/fact and leave zero continuation work");
             } finally {
                 NeoForge.EVENT_BUS.unregister(impact);
             }
-
-            helper.assertTrue(
-                    impact.hitTarget(target) && scenario.port().calls() == 1,
-                    "the actual platform sweep must classify the exact target without invoking node 1 inline");
-            helper.assertTrue(
-                    scenario.level().getEntity(projectileId) == projectile
-                            && projectile.isAddedToLevel()
-                            && !projectile.isRemoved()
-                            && projectile.getDeltaMovement().lengthSqr() == 0.0
-                            && projectile.isNoGravity(),
-                    "accepted claim must retain one loaded inert exact-witness projectile");
-
-            projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
-            helper.assertTrue(
-                    scenario.port().calls() == 1
-                            && scenario.level().getEntity(projectileId) == projectile,
-                    "duplicate callback must remain inert without another publication");
-
-            scenario.post();
-            helper.assertTrue(
-                    scenario.port().calls() == 2,
-                    "the held child must become eligible exactly on the next P5 drain");
-            var child = scenario.port().event(1);
-            assertExactHeldChild(
-                    helper,
-                    root,
-                    child,
-                    projectile,
-                    target,
-                    impact.hitLocation(),
-                    sweptMovement,
-                    scenario.port().runtimeTick(0));
-            helper.assertTrue(
-                    child.eventId().value() == root.eventId().value() + 1L
-                            && !child.eventId().equals(accepted.eventToken().eventId()),
-                    "the child must consume the held future identity, not reuse the root identity");
-            helper.assertTrue(
-                    projectile.isRemoved()
-                            && target.getHealth() == healthBefore
-                            && scenario.presentation().bufferedEventsForTesting().isEmpty(),
-                    "S3 terminal consumption must remove the witness without S4 damage or P8 facts");
-
-            projectile.tick();
-            scenario.post();
-            helper.assertTrue(
-                    scenario.port().calls() == 2
-                            && target.getHealth() == healthBefore
-                            && scenario.runtime().cancel(
-                                            server(scenario), accepted.eventToken())
-                                    instanceof RuntimeCancellationResult.NotPending
-                            && scenario.runtime().cancel(
-                                            server(scenario), accepted.cancellationToken())
-                                    instanceof RuntimeCancellationResult.NotPending
-                            && scenario.enterStopping() == 0,
-                    "late work must not revive, and consumed child/index/pending/instance/lease ownership must leave zero stoppable continuation work");
         }
         helper.succeed();
     }
@@ -192,6 +291,7 @@ public final class P9S3ProjectileGameTests {
                             && scenario.presentation().bufferedEventsForTesting().isEmpty(),
                     "throwing insertion must leave no loaded projectile, retry, or P8 fact");
         }
+        exerciseAbsorptionAppliedTruth(helper, 0x9320L);
         helper.succeed();
     }
 
@@ -252,6 +352,7 @@ public final class P9S3ProjectileGameTests {
         for (var impact : TerminalImpact.values()) {
             exerciseTerminalImpact(helper, 0x9310L + impact.ordinal(), impact);
         }
+        exerciseDamageRejectionPolicies(helper, 0x9330L);
         helper.succeed();
     }
 
@@ -264,6 +365,7 @@ public final class P9S3ProjectileGameTests {
     public static void reservedClaimAndWrongTransferWitnessesAreOneShot(GameTestHelper helper) {
         exerciseWrongLoadedObjectTransfer(helper, 0x9304L);
         exerciseSameUuidActorReplacementBeforeTransfer(helper, 0x9305L);
+        exercisePresentationFailureIsolation(helper, 0x9340L);
         helper.succeed();
     }
 
@@ -281,6 +383,8 @@ public final class P9S3ProjectileGameTests {
         exerciseOpenReload(helper, 0x9314L);
         exerciseExactRangeTerminal(helper, 0x9316L);
         exerciseAgeTerminalBeforeSweep(helper, 0x9317L);
+        exerciseClaimedActorDimensionChange(helper, 0x9350L);
+        exerciseDamageThrowableNoRetry(helper, 0x9360L);
         helper.succeed();
     }
 
@@ -310,7 +414,7 @@ public final class P9S3ProjectileGameTests {
                     "the seventeenth same-player continuation must spawn nothing beyond cap 16");
             helper.assertTrue(
                     scenario.presentation().bufferedEventsForTesting().isEmpty(),
-                    "the cap rejection and sixteen OPEN transfers must emit no S4 facts");
+                    "unstarted P8 must drop presentation while the cap and sixteen OPEN transfers remain unchanged");
             var closedWorkUnits = scenario.enterStopping();
             helper.assertTrue(
                     closedWorkUnits == 16
@@ -318,6 +422,523 @@ public final class P9S3ProjectileGameTests {
                     "bounded server-stop cleanup must report and terminate exactly 16 transfers");
         }
         helper.succeed();
+    }
+
+    private static void exerciseAbsorptionAppliedTruth(
+            GameTestHelper helper, long fixtureId) {
+        try (var scenario = new ProductionScenario(helper, fixtureId)) {
+            scenario.startPresentation();
+            helper.assertTrue(
+                    observeBalance(scenario.actor())
+                            == 0L,
+                    "absorption control must begin at the fresh zero balance");
+            var accepted = scenario.admit();
+            scenario.post();
+            var projectile = scenario.requireProjectile(
+                    plannedProjectileId(accepted, scenario.port().event(0)));
+            var target = scenario.addTarget(projectile.position());
+            var maximumAbsorption = target.getAttribute(Attributes.MAX_ABSORPTION);
+            helper.assertTrue(maximumAbsorption != null,
+                    "controlled living target must expose the platform absorption attribute");
+            maximumAbsorption.setBaseValue(4.0D);
+            target.setAbsorptionAmount(4.0F);
+            var healthBefore = target.getHealth();
+            var damage = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .observeDamage(target);
+            NeoForge.EVENT_BUS.register(damage);
+            try {
+                projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+                scenario.post();
+            } finally {
+                NeoForge.EVENT_BUS.unregister(damage);
+            }
+            var events = scenario.presentation().bufferedEventsForTesting();
+            helper.assertTrue(scenario.port().calls() == 2,
+                    "absorbed damage must consume exactly the root and held child");
+            helper.assertTrue(damage.damageCalls() == 1,
+                    "absorbed damage must make exactly one platform attempt");
+            helper.assertTrue(
+                    damage.hasExactDamageSource(projectile, scenario.actor())
+                            && sameFloat(damage.damageAmount(), 4.0F),
+                    "absorbed damage must retain the exact projectile/caster source and 4.0F amount");
+            helper.assertTrue(sameFloat(target.getHealth(), healthBefore),
+                    "full absorption must preserve raw target health");
+            helper.assertTrue(sameFloat(target.getAbsorptionAmount(), 0.0F),
+                    "the one accepted platform mutation must consume all four absorption points");
+            helper.assertTrue(
+                    events.size() == 1
+                            && events.getFirst().kind() == PresentationEventKind.HIT,
+                    "hurt true under full absorption must emit exactly one HIT");
+            helper.assertTrue(projectile.isRemoved(),
+                    "absorbed damage must terminal the inert projectile");
+            helper.assertTrue(observeBalance(scenario.actor()) == 0L,
+                    "absorbed zero-cost damage must make no mana mutation");
+        }
+    }
+
+    private static void exerciseDamageRejectionPolicies(
+            GameTestHelper helper, long fixtureId) {
+        try (var scenario = new ProductionScenario(helper, fixtureId)) {
+            var accepted = scenario.admit();
+            scenario.post();
+            var projectile = scenario.requireProjectile(
+                    plannedProjectileId(accepted, scenario.port().event(0)));
+            var target = scenario.addTarget(projectile.position());
+            scenario.actor().getAbilities().instabuild = false;
+            helper.assertTrue(
+                    !scenario.actor().getAbilities().instabuild,
+                    "invulnerability control requires a non-creative exact caster");
+            target.setInvulnerable(true);
+            var healthBefore = target.getHealth();
+            var damage = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .observeDamage(target);
+            NeoForge.EVENT_BUS.register(damage);
+            try {
+                projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+                scenario.post();
+            } finally {
+                NeoForge.EVENT_BUS.unregister(damage);
+            }
+            helper.assertTrue(scenario.port().calls() == 2,
+                    "invulnerable damage must consume exactly the root and held child");
+            helper.assertTrue(damage.damageCalls() == 0,
+                    "ordinary invulnerability must reject before the incoming-damage event");
+            helper.assertTrue(sameFloat(target.getHealth(), healthBefore),
+                    "ordinary invulnerability must preserve health");
+            helper.assertTrue(projectile.isRemoved(),
+                    "invulnerability rejection must terminal the inert projectile");
+            helper.assertTrue(
+                    scenario.presentation().bufferedEventsForTesting().isEmpty(),
+                    "invulnerability rejection must emit no HIT fact");
+            assertTerminalDiagnostic(
+                    helper,
+                    scenario,
+                    accepted,
+                    ProjectileClosureReason.DAMAGE_TERMINAL,
+                    1, 2, 3, 4, 5, 6, 7, 8,
+                    9, 10, 11, 12, 13, 15, 16);
+        }
+
+        try (var scenario = new ProductionScenario(helper, fixtureId + 1L)) {
+            scenario.startPresentation();
+            var accepted = scenario.admit();
+            scenario.post();
+            var projectile = scenario.requireProjectile(
+                    plannedProjectileId(accepted, scenario.port().event(0)));
+            var target = scenario.addTarget(projectile.position());
+            var healthBefore = target.getHealth();
+            var presentationSequenceBefore = scenario.presentation()
+                    .presentationSequenceHighWaterForTesting();
+            var cancellation = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .cancelDamage(target);
+            NeoForge.EVENT_BUS.register(cancellation);
+            try {
+                projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+                scenario.post();
+            } finally {
+                NeoForge.EVENT_BUS.unregister(cancellation);
+            }
+            helper.assertTrue(
+                    scenario.port().calls() == 2
+                            && cancellation.damageCalls() == 1
+                            && cancellation.hasExactDamageSource(
+                                    projectile, scenario.actor())
+                            && sameFloat(cancellation.damageAmount(), 4.0F)
+                            && sameFloat(target.getHealth(), healthBefore)
+                            && projectile.isRemoved()
+                            && scenario.presentation()
+                                            .presentationSequenceHighWaterForTesting()
+                                    == presentationSequenceBefore
+                            && scenario.presentation().bufferedEventsForTesting().stream()
+                                    .noneMatch(event -> event.kind()
+                                            == PresentationEventKind.HIT),
+                    "a cancelled ordinary damage event must yield NOT_APPLIED with one attempt and no HIT");
+        }
+
+        var server = helper.getLevel().getServer();
+        var priorPvp = server.isPvpAllowed();
+        try {
+            server.setPvpAllowed(false);
+            try (var scenario = new ProductionScenario(helper, fixtureId + 2L)) {
+                var accepted = scenario.admit();
+                scenario.post();
+                var projectile = scenario.requireProjectile(
+                        plannedProjectileId(accepted, scenario.port().event(0)));
+                var target = scenario.addPlayerTarget(projectile.position());
+                var healthBefore = target.getHealth();
+                projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+                scenario.post();
+                helper.assertTrue(
+                        scenario.port().calls() == 2
+                                && sameFloat(target.getHealth(), healthBefore)
+                                && projectile.isRemoved()
+                                && scenario.presentation()
+                                        .bufferedEventsForTesting()
+                                        .isEmpty(),
+                        "disabled PvP must preserve platform rejection and emit no HIT");
+            }
+        } finally {
+            server.setPvpAllowed(priorPvp);
+        }
+
+        PlayerTeam team = null;
+        var scoreboard = server.getScoreboard();
+        var teamName = "p9s4" + Long.toHexString(fixtureId + 3L);
+        try {
+            server.setPvpAllowed(true);
+            try (var scenario = new ProductionScenario(helper, fixtureId + 3L)) {
+                var accepted = scenario.admit();
+                scenario.post();
+                var projectile = scenario.requireProjectile(
+                        plannedProjectileId(accepted, scenario.port().event(0)));
+                var target = scenario.addPlayerTarget(projectile.position());
+                team = scoreboard.addPlayerTeam(teamName);
+                team.setAllowFriendlyFire(false);
+                scoreboard.addPlayerToTeam(scenario.actor().getScoreboardName(), team);
+                scoreboard.addPlayerToTeam(target.getScoreboardName(), team);
+                var healthBefore = target.getHealth();
+                projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+                scenario.post();
+                helper.assertTrue(
+                        scenario.port().calls() == 2
+                                && sameFloat(target.getHealth(), healthBefore)
+                                && projectile.isRemoved()
+                                && scenario.presentation()
+                                        .bufferedEventsForTesting()
+                                        .isEmpty(),
+                        "same-team friendly-fire policy must reject without a HIT fact");
+            }
+        } finally {
+            if (team != null && scoreboard.getPlayerTeam(teamName) == team) {
+                scoreboard.removePlayerTeam(team);
+            }
+            server.setPvpAllowed(priorPvp);
+        }
+
+        exerciseIFrameRejection(helper, fixtureId + 4L);
+        exercisePostResolveTargetInvalidation(helper, fixtureId + 5L);
+    }
+
+    private static void exerciseIFrameRejection(
+            GameTestHelper helper, long fixtureId) {
+        try (var scenario = new ProductionScenario(helper, fixtureId)) {
+            scenario.startPresentation();
+            var firstAccepted = scenario.admit();
+            scenario.post();
+            var firstProjectile = scenario.requireProjectile(
+                    plannedProjectileId(firstAccepted, scenario.port().event(0)));
+            var target = scenario.addTarget(firstProjectile.position());
+            var healthBefore = target.getHealth();
+            var damage = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .observeDamage(target);
+            NeoForge.EVENT_BUS.register(damage);
+            try {
+                firstProjectile.onHitEntity(
+                        new EntityHitResult(target, firstProjectile.position()));
+                scenario.post();
+                helper.assertTrue(
+                        damage.damageCalls() == 1
+                                && close(healthBefore - target.getHealth(), 4.0D)
+                                && scenario.presentation().bufferedEventsForTesting().size()
+                                        == 1
+                                && scenario.presentation()
+                                                .bufferedEventsForTesting()
+                                                .getFirst()
+                                                .kind()
+                                        == PresentationEventKind.HIT,
+                        "the iframe control requires one initial accepted damage and HIT");
+
+                var secondAccepted = scenario.admit();
+                scenario.post();
+                var secondProjectile = scenario.requireProjectile(
+                        plannedProjectileId(secondAccepted, scenario.port().event(2)));
+                var sequenceBeforeDeniedHit = scenario.presentation()
+                        .presentationSequenceHighWaterForTesting();
+                secondProjectile.onHitEntity(
+                        new EntityHitResult(target, secondProjectile.position()));
+                scenario.post();
+                helper.assertTrue(
+                        scenario.port().calls() == 4
+                                && damage.damageCalls() == 2
+                                && close(healthBefore - target.getHealth(), 4.0D)
+                                && firstProjectile.isRemoved()
+                                && secondProjectile.isRemoved()
+                                && scenario.presentation()
+                                                .presentationSequenceHighWaterForTesting()
+                                        == sequenceBeforeDeniedHit
+                                && scenario.presentation().bufferedEventsForTesting().stream()
+                                        .noneMatch(event -> event.kind()
+                                                == PresentationEventKind.HIT),
+                        "an equal second hit inside the platform iframe must return false without another health change or HIT");
+            } finally {
+                NeoForge.EVENT_BUS.unregister(damage);
+            }
+        }
+    }
+
+    private static void exercisePostResolveTargetInvalidation(
+            GameTestHelper helper, long fixtureId) {
+        try (var scenario = new ProductionScenario(helper, fixtureId)) {
+            var accepted = scenario.admit();
+            scenario.post();
+            var projectile = scenario.requireProjectile(
+                    plannedProjectileId(accepted, scenario.port().event(0)));
+            var target = scenario.addTarget(projectile.position());
+            var healthBefore = target.getHealth();
+            scenario.port().invalidateTargetAfterNextResolvedDamage(target);
+            var damage = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .observeDamage(target);
+            NeoForge.EVENT_BUS.register(damage);
+            try {
+                projectile.onHitEntity(
+                        new EntityHitResult(target, projectile.position()));
+                scenario.post();
+            } finally {
+                NeoForge.EVENT_BUS.unregister(damage);
+            }
+            helper.assertTrue(
+                    scenario.port().calls() == 2
+                            && target.isRemoved()
+                            && damage.damageCalls() == 0
+                            && sameFloat(target.getHealth(), healthBefore)
+                            && projectile.isRemoved()
+                            && scenario.presentation().bufferedEventsForTesting().isEmpty(),
+                    "a target invalidated after damage resolution must be cancelled by the next P5 guard without hurt or applied fact");
+            assertTerminalDiagnostic(
+                    helper,
+                    scenario,
+                    accepted,
+                    ProjectileClosureReason.DAMAGE_TERMINAL,
+                    1, 2, 3, 4, 5, 6, 7, 8,
+                    9, 10, 11, 12, 15, 16);
+        }
+    }
+
+    private static void exercisePresentationFailureIsolation(
+            GameTestHelper helper, long fixtureId) {
+        try (var scenario = new ProductionScenario(
+                helper, fixtureId, particleDisabledAppearance())) {
+            scenario.startPresentation();
+            helper.assertTrue(
+                    observeBalance(scenario.actor()) == 0L,
+                    "particle-disabled gameplay must begin with exact zero mana");
+            var accepted = scenario.admit();
+            scenario.post();
+            var castEvents = scenario.presentation().bufferedEventsForTesting();
+            helper.assertTrue(
+                    castEvents.size() == 1
+                            && castEvents.getFirst().kind()
+                                    == PresentationEventKind.CAST_RELEASE
+                            && castEvents.getFirst().appearance()
+                                    .particleProfileId().isEmpty()
+                            && castEvents.getFirst().appearance().soundProfileId()
+                                    .equals(Optional.of(
+                                            AppearanceSemantics.DEFAULT_SOUND_PROFILE))
+                            && castEvents.getFirst().appearance().trailProfileId()
+                                    .equals(Optional.of(
+                                            AppearanceSemantics.DEFAULT_TRAIL_PROFILE)),
+                    "the actual P9 root must disable only particles while retaining sound and trail defaults");
+            var projectile = scenario.requireProjectile(
+                    plannedProjectileId(accepted, scenario.port().event(0)));
+            var target = scenario.addTarget(projectile.position());
+            var healthBefore = target.getHealth();
+            var damage = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .observeDamage(target);
+            projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+            var primary = new IllegalStateException(
+                    "P9_S4_EXPECTED_PRESENTATION_RUNTIME");
+            scenario.port().failNextPresentationCaptureWith(primary);
+            NeoForge.EVENT_BUS.register(damage);
+            try {
+                scenario.post();
+            } finally {
+                NeoForge.EVENT_BUS.unregister(damage);
+            }
+            scenario.post();
+            helper.assertTrue(
+                    scenario.port().calls() == 2
+                            && damage.damageCalls() == 1
+                            && damage.hasExactDamageSource(projectile, scenario.actor())
+                            && sameFloat(damage.damageAmount(), 4.0F)
+                            && close(healthBefore - target.getHealth(), 4.0D)
+                            && observeBalance(scenario.actor()) == 0L
+                            && projectile.isRemoved()
+                            && scenario.presentation().hasRuntimeDiagnosticForTesting(
+                                    P8ServerRuntimeDiagnosticCode
+                                            .OBSERVER_RUNTIME_EXCEPTION)
+                            && scenario.presentation().bufferedEventsForTesting().stream()
+                                    .noneMatch(event -> event.kind()
+                                            == PresentationEventKind.HIT),
+                    "observer RuntimeException must be isolated after one completed damage without HIT replay");
+            assertTerminalDiagnostic(
+                    helper,
+                    scenario,
+                    accepted,
+                    ProjectileClosureReason.DAMAGE_TERMINAL,
+                    1, 2, 3, 4, 5, 6, 7, 8,
+                    9, 10, 11, 12, 13, 14, 15, 16);
+        }
+
+        try (var scenario = new ProductionScenario(helper, fixtureId + 1L)) {
+            scenario.startPresentation();
+            var accepted = scenario.admit();
+            scenario.post();
+            var projectile = scenario.requireProjectile(
+                    plannedProjectileId(accepted, scenario.port().event(0)));
+            var target = scenario.addTarget(projectile.position());
+            var healthBefore = target.getHealth();
+            var damage = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .observeDamage(target);
+            projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+            var primary = new AssertionError("P9_S4_EXPECTED_PRESENTATION_ERROR");
+            scenario.port().failNextPresentationCaptureWith(primary);
+            Error observed = null;
+            NeoForge.EVENT_BUS.register(damage);
+            try {
+                scenario.post();
+            } catch (Error failure) {
+                observed = failure;
+            } finally {
+                NeoForge.EVENT_BUS.unregister(damage);
+            }
+            scenario.post();
+            helper.assertTrue(
+                    observed == primary
+                            && scenario.port().calls() == 2
+                            && damage.damageCalls() == 1
+                            && close(healthBefore - target.getHealth(), 4.0D)
+                            && projectile.isRemoved()
+                            && scenario.presentation().bufferedEventsForTesting().stream()
+                                    .noneMatch(event -> event.kind()
+                                            == PresentationEventKind.HIT),
+                    "observer Error must propagate identically after damage while cleanup prevents replay");
+            assertErrorDeferredDiagnostic(
+                    helper,
+                    scenario,
+                    accepted,
+                    1, 2, 3, 4, 5, 6, 7, 8,
+                    9, 10, 11, 12, 13, 14, 15, 16);
+        }
+    }
+
+    private static void exerciseClaimedActorDimensionChange(
+            GameTestHelper helper, long fixtureId) {
+        try (var scenario = new ProductionScenario(helper, fixtureId)) {
+            var accepted = scenario.admit();
+            scenario.post();
+            var projectile = scenario.requireProjectile(
+                    plannedProjectileId(accepted, scenario.port().event(0)));
+            var target = scenario.addTarget(projectile.position());
+            var healthBefore = target.getHealth();
+            projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+            var end = scenario.level().getServer().getLevel(Level.END);
+            helper.assertTrue(end != null,
+                    "node-1 dimension control requires the loaded End level");
+            helper.assertTrue(
+                    scenario.changeActorDimension(end) == scenario.actor(),
+                    "ordinary dimension travel must retain exact actor identity");
+            scenario.post();
+            helper.assertTrue(
+                    scenario.port().calls() == 1
+                            && sameFloat(target.getHealth(), healthBefore)
+                            && projectile.isRemoved()
+                            && scenario.presentation().bufferedEventsForTesting().isEmpty(),
+                    "same actor in another dimension must terminal the claimed child before damage");
+            helper.assertTrue(
+                    scenario.changeActorDimension(scenario.level()) == scenario.actor(),
+                    "dimension fixture must restore the exact actor to its original level");
+            scenario.post();
+            helper.assertTrue(
+                    scenario.port().calls() == 1,
+                    "returning to the frozen dimension must not revive terminal damage work");
+        }
+    }
+
+    private static void exerciseDamageThrowableNoRetry(
+            GameTestHelper helper, long fixtureId) {
+        try (var scenario = new ProductionScenario(helper, fixtureId)) {
+            var accepted = scenario.admit();
+            scenario.post();
+            var projectile = scenario.requireProjectile(
+                    plannedProjectileId(accepted, scenario.port().event(0)));
+            var target = scenario.addTarget(projectile.position());
+            var healthBefore = target.getHealth();
+            var primary = new IllegalStateException("P9_S4_EXPECTED_DAMAGE_RUNTIME");
+            var damage = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .failDamageWith(target, primary);
+            projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+            RuntimeException observed = null;
+            NeoForge.EVENT_BUS.register(damage);
+            try {
+                scenario.post();
+            } catch (RuntimeException failure) {
+                observed = failure;
+            } finally {
+                NeoForge.EVENT_BUS.unregister(damage);
+            }
+            scenario.post();
+            helper.assertTrue(
+                    observed == primary
+                            && scenario.port().calls() == 2
+                            && damage.damageCalls() == 1
+                            && sameFloat(target.getHealth(), healthBefore)
+                            && projectile.isRemoved()
+                            && scenario.presentation().bufferedEventsForTesting().isEmpty(),
+                    "damage RuntimeException must propagate identically, terminal cleanup, and never retry");
+            assertTerminalDiagnostic(
+                    helper,
+                    scenario,
+                    accepted,
+                    ProjectileClosureReason.RUNTIME_FAULT,
+                    1, 2, 3, 4, 5, 6, 7, 8,
+                    9, 10, 11, 12, 15, 16);
+        }
+
+        try (var scenario = new ProductionScenario(helper, fixtureId + 1L)) {
+            var accepted = scenario.admit();
+            scenario.post();
+            var projectile = scenario.requireProjectile(
+                    plannedProjectileId(accepted, scenario.port().event(0)));
+            var target = scenario.addTarget(projectile.position());
+            var healthBefore = target.getHealth();
+            var primary = new AssertionError("P9_S4_EXPECTED_DAMAGE_ERROR");
+            var damage = new OneShotProjectileImpactCancellation()
+                    .observeOnly()
+                    .failDamageWith(target, primary);
+            projectile.onHitEntity(new EntityHitResult(target, projectile.position()));
+            Error observed = null;
+            NeoForge.EVENT_BUS.register(damage);
+            try {
+                scenario.post();
+            } catch (Error failure) {
+                observed = failure;
+            } finally {
+                NeoForge.EVENT_BUS.unregister(damage);
+            }
+            scenario.post();
+            helper.assertTrue(
+                    observed == primary
+                            && scenario.port().calls() == 2
+                            && damage.damageCalls() == 1
+                            && sameFloat(target.getHealth(), healthBefore)
+                            && projectile.isRemoved()
+                            && scenario.presentation().bufferedEventsForTesting().isEmpty(),
+                    "damage Error must propagate identically after bounded invalidation and never retry");
+            assertErrorDeferredDiagnostic(
+                    helper,
+                    scenario,
+                    accepted,
+                    1, 2, 3, 4, 5, 6, 7, 8,
+                    9, 10, 11, 12, 15, 16);
+        }
     }
 
     @SuppressWarnings("removal")
@@ -760,7 +1381,7 @@ public final class P9S3ProjectileGameTests {
             RuntimeEvent root,
             RuntimeEvent child,
             P9StarterProjectile projectile,
-            ArmorStand target,
+            LivingEntity target,
             Vec3 hitLocation,
             Vec3 sweptMovement,
             long claimRuntimeTick) {
@@ -867,6 +1488,103 @@ public final class P9S3ProjectileGameTests {
         return Double.doubleToLongBits(actual) == Double.doubleToLongBits(expected);
     }
 
+    private static boolean sameFloat(float actual, float expected) {
+        return Float.floatToIntBits(actual) == Float.floatToIntBits(expected);
+    }
+
+    private static void assertTerminalDiagnostic(
+            GameTestHelper helper,
+            ProductionScenario scenario,
+            RuntimeAdmissionResult.AcceptedMemoryOnly accepted,
+            ProjectileClosureReason terminalReason,
+            int... expectedStages) {
+        var diagnostic = scenario.runtime().p9TerminalDiagnosticForTesting(
+                server(scenario), accepted.eventToken().skillInstanceId());
+        helper.assertTrue(diagnostic != null,
+                "ordinary P9 terminal must publish one bounded diagnostic");
+        var expected = paddedStageCodes(expectedStages);
+        helper.assertTrue(
+                diagnostic.skillInstanceId().equals(
+                                accepted.eventToken().skillInstanceId())
+                        && diagnostic.stageCount() == expectedStages.length
+                        && Arrays.equals(diagnostic.stageCodes(), expected)
+                        && diagnostic.terminalReason() == terminalReason
+                        && diagnostic.cleanupDisposition()
+                                == P9RuntimeCleanupDisposition.RELEASED,
+                "ordinary P9 terminal must preserve the exact ordered stage prefix and RELEASED disposition");
+    }
+
+    private static void assertErrorDeferredDiagnostic(
+            GameTestHelper helper,
+            ProductionScenario scenario,
+            RuntimeAdmissionResult.AcceptedMemoryOnly accepted,
+            int... expectedStages) {
+        var diagnostic = scenario.runtime().p9ErrorDeferredDiagnosticForTesting(
+                server(scenario), accepted.eventToken().skillInstanceId());
+        helper.assertTrue(diagnostic != null,
+                "controlled P9 Error must retain one bounded ERROR_DEFERRED trace");
+        helper.assertTrue(
+                diagnostic.stageCount == expectedStages.length
+                        && Arrays.equals(
+                                diagnostic.stageCodes,
+                                paddedStageCodes(expectedStages))
+                        && diagnostic.terminalReason
+                                == ProjectileClosureReason.RUNTIME_FAULT
+                        && diagnostic.cleanupDisposition
+                                == P9RuntimeCleanupDisposition.ERROR_DEFERRED
+                        && !diagnostic.terminalPublished,
+                "controlled P9 Error must preserve the exact stage prefix without claiming RELEASED or a terminal-ring record");
+        helper.assertTrue(
+                scenario.runtime().p9TerminalDiagnosticForTesting(
+                                server(scenario),
+                                accepted.eventToken().skillInstanceId())
+                        == null,
+                "Error-deferred evidence must not materialize a terminal-ring record");
+    }
+
+    private static int[] paddedStageCodes(int[] stages) {
+        if (stages.length > 16) {
+            throw new IllegalArgumentException("P9 diagnostic stage prefix exceeds 16");
+        }
+        var padded = new int[16];
+        System.arraycopy(stages, 0, padded, 0, stages.length);
+        return padded;
+    }
+
+    private static AppearanceDocument particleDisabledAppearance() {
+        return AppearanceDocument.decoded(new AppearanceDefinition(
+                OptionalInt.empty(),
+                OptionalInt.empty(),
+                ProfileSelection.inherit(),
+                ProfileSelection.disabled(),
+                ProfileSelection.inherit(),
+                OptionalInt.empty()));
+    }
+
+    private static boolean samePosition(
+            PresentationPosition actual, double x, double y, double z) {
+        return sameDouble(actual.x(), x)
+                && sameDouble(actual.y(), y)
+                && sameDouble(actual.z(), z);
+    }
+
+    private static PresentationDirection expectedDirection(int x, int y, int z) {
+        return PresentationDirection.normalized(x, y, z).orElseThrow();
+    }
+
+    private static P8ServerPresentationService.PreparedCatalog emptyCatalog() {
+        return P8ServerPresentationService.loadCandidateForTesting(
+                MagicRegistries.profileTypeRegistry(), Map.of());
+    }
+
+    private static long observeBalance(ServerPlayer actor) {
+        return P7ManaSnapshotBridge.observeBalance(runtimeCapability(), actor);
+    }
+
+    private static P6RuntimeExecutionCapability runtimeCapability() {
+        return P6RuntimeExecutionCapability.forRuntimeAdapter();
+    }
+
     private static int q15(double component, double length) {
         var encoded = StrictMath.rint(component / length * 32_767.0);
         return (int) Math.max(-32_767.0, Math.min(32_767.0, encoded));
@@ -949,6 +1667,14 @@ public final class P9S3ProjectileGameTests {
 
         @SuppressWarnings("removal")
         private ProductionScenario(GameTestHelper helper, long fixtureId) {
+            this(helper, fixtureId, AppearanceDocument.Default.INSTANCE);
+        }
+
+        @SuppressWarnings("removal")
+        private ProductionScenario(
+                GameTestHelper helper,
+                long fixtureId,
+                AppearanceDocument appearance) {
             this.helper = Objects.requireNonNull(helper, "helper");
             level = helper.getLevel();
             actor = helper.makeMockServerPlayerInLevel();
@@ -956,10 +1682,10 @@ public final class P9S3ProjectileGameTests {
             P7S4LoginManaGameTests.P9GameTestFixture openedFixture = null;
             try {
                 openedFixture = P7S4LoginManaGameTests.openP9GameTestFixture(
-                        helper, actor, fixtureId);
+                        helper, actor, fixtureId, appearance);
                 fixture = openedFixture;
-                presentation = P8ServerPresentationService.create();
-                port = new RecordingProductionPort(presentation);
+                port = new RecordingProductionPort(actor);
+                presentation = port.presentation();
                 runtime = fixture.startRuntime(port);
             } catch (RuntimeException | Error failure) {
                 if (openedFixture != null) {
@@ -974,6 +1700,10 @@ public final class P9S3ProjectileGameTests {
                 removeCurrentPlayer(level.getServer(), actorId);
                 throw failure;
             }
+        }
+
+        private void startPresentation() {
+            port.startPresentation(level.getServer());
         }
 
         private RuntimeAdmissionResult.AcceptedMemoryOnly admit() {
@@ -992,10 +1722,23 @@ public final class P9S3ProjectileGameTests {
             return (P9StarterProjectile) entity;
         }
 
-        private ArmorStand addTarget(Vec3 position) {
-            var target = new ArmorStand(level, position.x, position.y - 0.5, position.z);
+        private Cow addTarget(Vec3 position) {
+            var target = new Cow(EntityType.COW, level);
+            target.setNoAi(true);
+            target.setPos(
+                    position.x,
+                    position.y - target.getBbHeight() * 0.5,
+                    position.z);
             helper.assertTrue(level.addFreshEntity(target),
-                    "controlled living target must be inserted into the actual ServerLevel");
+                    "controlled unarmored living target must be inserted into the actual ServerLevel");
+            controlledEntities.add(target);
+            return target;
+        }
+
+        @SuppressWarnings("removal")
+        private ServerPlayer addPlayerTarget(Vec3 position) {
+            var target = helper.makeMockServerPlayerInLevel();
+            target.setPos(position.x, position.y - 0.5, position.z);
             controlledEntities.add(target);
             return target;
         }
@@ -1037,6 +1780,19 @@ public final class P9S3ProjectileGameTests {
                                     == replacement,
                     "platform respawn must install a distinct same-UUID actor");
             return replacement;
+        }
+
+        private ServerPlayer changeActorDimension(ServerLevel destination) {
+            var changed = actor.changeDimension(new DimensionTransition(
+                    destination, actor, DimensionTransition.DO_NOTHING));
+            actor.hasChangedDimension();
+            helper.assertTrue(
+                    changed == actor
+                            && actor.serverLevel() == destination
+                            && level.getServer().getPlayerList().getPlayer(actorId)
+                                    == actor,
+                    "actual dimension travel must preserve the test-owned actor");
+            return actor;
         }
 
         private void stop() {
@@ -1085,7 +1841,12 @@ public final class P9S3ProjectileGameTests {
             }
             for (var entity : controlledEntities) {
                 try {
-                    if (!entity.isRemoved()) {
+                    if (entity instanceof ServerPlayer player
+                            && level.getServer().getPlayerList().getPlayer(
+                                            player.getUUID())
+                                    == player) {
+                        level.getServer().getPlayerList().remove(player);
+                    } else if (!entity.isRemoved()) {
                         entity.discard();
                     }
                 } catch (RuntimeException | Error cleanup) {
@@ -1108,14 +1869,81 @@ public final class P9S3ProjectileGameTests {
         }
     }
 
-    private static final class RecordingProductionPort implements RuntimeExecutionPort {
-        private final P6RuntimeExecutionPortAdapter delegate;
+    private static final class RecordingProductionPort
+            implements RuntimeExecutionPort, P8PresentationTransport {
+        private P6RuntimeExecutionPortAdapter delegate;
+        private final UUID readyPlayerId;
+        private final P8ServerPresentationService presentation;
         private final List<RuntimeEvent> events = new ArrayList<>();
         private final List<Long> runtimeTicks = new ArrayList<>();
+        private LivingEntity preCommitInvalidationTarget;
+        private Throwable nextPresentationCaptureFailure;
+        private boolean presentationActive;
 
-        private RecordingProductionPort(P8ServerPresentationService presentation) {
+        private RecordingProductionPort(ServerPlayer actor) {
+            readyPlayerId = Objects.requireNonNull(actor, "actor").getUUID();
+            presentation = new P8ServerPresentationService(this);
             delegate = new P6RuntimeExecutionPortAdapter(
-                    P6RuntimeExecutionCapability.forRuntimeAdapter(), presentation);
+                    runtimeCapability(), presentation);
+        }
+
+        private void invalidateTargetAfterNextResolvedDamage(LivingEntity target) {
+            if (preCommitInvalidationTarget != null) {
+                throw new IllegalStateException(
+                        "P9 S4 target invalidation already armed");
+            }
+            preCommitInvalidationTarget = Objects.requireNonNull(target, "target");
+            delegate = new P6RuntimeExecutionPortAdapter(
+                    runtimeCapability(),
+                    presentation,
+                    this::executeWithPreCommitInvalidation,
+                    ProductionP6RuntimeExecutionInputMapper.INSTANCE);
+        }
+
+        private void executeWithPreCommitInvalidation(
+                P6RuntimeExecutionCapability capability,
+                ServerPlayer actor,
+                P6RuntimeExecutionBridge.Invocation input,
+                P6RuntimeExecutionBridge.GuardPort guard,
+                P6RuntimeExecutionBridge.WorldCommitPort commitPort,
+                P6RuntimeExecutionBridge.AppliedFactObserver observer) {
+            P6RuntimeExecutionBridge.execute(
+                    capability,
+                    actor,
+                    input,
+                    (point, stepIndex) -> {
+                        var decision = guard.check(point, stepIndex);
+                        if (input instanceof P6RuntimeExecutionBridge.DamageInvocation
+                                && point
+                                        == P6RuntimeExecutionBridge.GuardPoint.PRE_COMMIT
+                                && decision
+                                        == P6RuntimeExecutionBridge.GuardDecision.ALLOWED) {
+                            var target = preCommitInvalidationTarget;
+                            preCommitInvalidationTarget = null;
+                            if (target != null) {
+                                target.discard();
+                            }
+                        }
+                        return decision;
+                    },
+                    commitPort,
+                    observer);
+        }
+
+        private void startPresentation(MinecraftServer server) {
+            if (presentationActive) {
+                throw new IllegalStateException("P9 S4 presentation fixture already active");
+            }
+            presentation.startForTesting(server, emptyCatalog());
+            presentationActive = true;
+        }
+
+        private void failNextPresentationCaptureWith(Throwable failure) {
+            if (!(failure instanceof RuntimeException) && !(failure instanceof Error)) {
+                throw new IllegalArgumentException(
+                        "presentation failure must be unchecked");
+            }
+            nextPresentationCaptureFailure = Objects.requireNonNull(failure, "failure");
         }
 
         @Override
@@ -1136,6 +1964,48 @@ public final class P9S3ProjectileGameTests {
 
         private long runtimeTick(int index) {
             return runtimeTicks.get(index);
+        }
+
+        private P8ServerPresentationService presentation() {
+            return presentation;
+        }
+
+        @Override
+        public Optional<P8RecipientIdentity> captureReadyIdentity(
+                ServerPlayer player, long catalogGeneration) {
+            if (!presentationActive || !player.getUUID().equals(readyPlayerId)) {
+                return Optional.empty();
+            }
+            var failure = nextPresentationCaptureFailure;
+            nextPresentationCaptureFailure = null;
+            if (failure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (failure instanceof Error error) {
+                throw error;
+            }
+            return Optional.of(new P8RecipientIdentity(readyPlayerId, 1L));
+        }
+
+        @Override
+        public boolean isCurrent(
+                ServerPlayer player,
+                P8RecipientIdentity identity,
+                long catalogGeneration) {
+            return presentationActive
+                    && player.getUUID().equals(readyPlayerId)
+                    && identity.playerId().equals(readyPlayerId)
+                    && identity.connectionEpoch() == 1L;
+        }
+
+        @Override
+        public P8PresentationSubmissionResult submit(
+                P8RecipientIdentity identity, PresentationEvent event) {
+            Objects.requireNonNull(identity, "identity");
+            Objects.requireNonNull(event, "event");
+            return identity.playerId().equals(readyPlayerId)
+                    ? P8PresentationSubmissionResult.SUBMITTED
+                    : P8PresentationSubmissionResult.UNAVAILABLE;
         }
     }
 
@@ -1346,6 +2216,12 @@ public final class P9S3ProjectileGameTests {
         private boolean cancel = true;
         private boolean fired;
         private HitResult hit;
+        private LivingEntity damageTarget;
+        private DamageSource damageSource;
+        private Throwable damageFailure;
+        private float damageAmount;
+        private int damageCalls;
+        private boolean cancelDamage;
 
         @SubscribeEvent
         public void onProjectileImpact(ProjectileImpactEvent event) {
@@ -1358,9 +2234,49 @@ public final class P9S3ProjectileGameTests {
             }
         }
 
+        @SubscribeEvent
+        public void onIncomingDamage(LivingIncomingDamageEvent event) {
+            if (event.getEntity() != damageTarget) {
+                return;
+            }
+            damageCalls = Math.incrementExact(damageCalls);
+            damageSource = event.getSource();
+            damageAmount = event.getOriginalAmount();
+            if (cancelDamage) {
+                event.setCanceled(true);
+            }
+            if (damageFailure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (damageFailure instanceof Error error) {
+                throw error;
+            }
+        }
+
         private OneShotProjectileImpactCancellation observeOnly() {
             cancel = false;
             return this;
+        }
+
+        private OneShotProjectileImpactCancellation observeDamage(
+                LivingEntity target) {
+            damageTarget = Objects.requireNonNull(target, "target");
+            return this;
+        }
+
+        private OneShotProjectileImpactCancellation cancelDamage(
+                LivingEntity target) {
+            cancelDamage = true;
+            return observeDamage(target);
+        }
+
+        private OneShotProjectileImpactCancellation failDamageWith(
+                LivingEntity target, Throwable failure) {
+            if (!(failure instanceof RuntimeException) && !(failure instanceof Error)) {
+                throw new IllegalArgumentException("damage failure must be unchecked");
+            }
+            damageFailure = Objects.requireNonNull(failure, "failure");
+            return observeDamage(target);
         }
 
         private boolean fired() {
@@ -1378,6 +2294,22 @@ public final class P9S3ProjectileGameTests {
 
         private Vec3 hitLocation() {
             return Objects.requireNonNull(hit, "observed projectile impact").getLocation();
+        }
+
+        private int damageCalls() {
+            return damageCalls;
+        }
+
+        private float damageAmount() {
+            return damageAmount;
+        }
+
+        private boolean hasExactDamageSource(
+                P9StarterProjectile projectile, ServerPlayer actor) {
+            return damageSource != null
+                    && damageSource.is(DamageTypes.INDIRECT_MAGIC)
+                    && damageSource.getDirectEntity() == projectile
+                    && damageSource.getEntity() == actor;
         }
     }
 

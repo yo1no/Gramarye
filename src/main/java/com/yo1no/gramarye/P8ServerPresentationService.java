@@ -187,7 +187,8 @@ final class P8ServerPresentationService {
             if (kind.isEmpty()) {
                 return P8PresentationOfferOutcome.DROPPED;
             }
-            Optional<P8EventMaterial> material = eventMaterial(kind.orElseThrow(), context);
+            Optional<P8EventMaterial> material =
+                    eventMaterial(kind.orElseThrow(), event, context);
             if (material.isEmpty()) {
                 return P8PresentationOfferOutcome.DROPPED;
             }
@@ -315,16 +316,89 @@ final class P8ServerPresentationService {
         if (trigger.equals(id("active_cast"))) {
             return Optional.of(PresentationEventKind.CAST_RELEASE);
         }
-        if (trigger.equals(id("p8_controlled_hit"))) {
+        if (trigger.equals(id("effect_hit")) || trigger.equals(id("p8_controlled_hit"))) {
             return Optional.of(PresentationEventKind.HIT);
         }
         return Optional.empty();
     }
 
     private static Optional<P8EventMaterial> eventMaterial(
-            PresentationEventKind kind, RuntimeExecutionContext context) {
+            PresentationEventKind kind,
+            RuntimeEvent event,
+            RuntimeExecutionContext context) {
         Entity originEntity = resolvedOriginEntity(context);
         Entity targetEntity = resolvedTargetEntity(context);
+        ResourceLocation trigger = event.triggerCause().eventKind().key();
+
+        if (trigger.equals(id("active_cast"))) {
+            if (event.executionData() instanceof CastGeometryExecutionDataV0 geometry) {
+                return p9CastEventMaterial(geometry, originEntity, targetEntity);
+            }
+            if (event.executionData() != NoRuntimeExecutionData.INSTANCE) {
+                return Optional.empty();
+            }
+        }
+        if (trigger.equals(id("effect_hit"))) {
+            return event.executionData() instanceof ProjectileHitExecutionDataV0 hit
+                    ? p9HitEventMaterial(hit, originEntity, targetEntity)
+                    : Optional.empty();
+        }
+
+        return liveEventMaterial(kind, context, originEntity, targetEntity);
+    }
+
+    private static Optional<P8EventMaterial> p9CastEventMaterial(
+            CastGeometryExecutionDataV0 geometry,
+            Entity originEntity,
+            Entity targetEntity) {
+        if (originEntity == null
+                || !(originEntity.level() instanceof ServerLevel originLevel)
+                || !originLevel.dimension().location().equals(geometry.dimension())) {
+            return Optional.empty();
+        }
+        return material(
+                PresentationEventKind.CAST_RELEASE,
+                geometry.dimension(),
+                geometry.originX(),
+                geometry.originY(),
+                geometry.originZ(),
+                geometry.directionXQ15(),
+                geometry.directionYQ15(),
+                geometry.directionZQ15(),
+                originEntity,
+                targetEntity);
+    }
+
+    private static Optional<P8EventMaterial> p9HitEventMaterial(
+            ProjectileHitExecutionDataV0 hit,
+            Entity originEntity,
+            Entity targetEntity) {
+        if (originEntity == null
+                || targetEntity == null
+                || !(originEntity.level() instanceof ServerLevel originLevel)
+                || targetEntity.level() != originLevel
+                || !originLevel.dimension().location().equals(hit.dimension())
+                || !targetEntity.getUUID().equals(hit.targetId())) {
+            return Optional.empty();
+        }
+        return material(
+                PresentationEventKind.HIT,
+                hit.dimension(),
+                hit.hitX(),
+                hit.hitY(),
+                hit.hitZ(),
+                hit.directionXQ15(),
+                hit.directionYQ15(),
+                hit.directionZQ15(),
+                originEntity,
+                targetEntity);
+    }
+
+    private static Optional<P8EventMaterial> liveEventMaterial(
+            PresentationEventKind kind,
+            RuntimeExecutionContext context,
+            Entity originEntity,
+            Entity targetEntity) {
         Vec3 position;
         Vec3 direction;
         ResourceLocation dimension;
@@ -367,13 +441,7 @@ final class P8ServerPresentationService {
             dimension = targetLevel.dimension().location();
         }
 
-        if (!finite(position) || !finite(direction)
-                || !PresentationPosition.isValid(position.x, position.y, position.z)
-                || PresentationDirection.normalized(direction.x, direction.y, direction.z)
-                        .isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(new P8EventMaterial(
+        return material(
                 kind,
                 dimension,
                 position.x,
@@ -382,6 +450,41 @@ final class P8ServerPresentationService {
                 direction.x,
                 direction.y,
                 direction.z,
+                originEntity,
+                targetEntity);
+    }
+
+    private static Optional<P8EventMaterial> material(
+            PresentationEventKind kind,
+            ResourceLocation dimension,
+            double x,
+            double y,
+            double z,
+            double directionX,
+            double directionY,
+            double directionZ,
+            Entity originEntity,
+            Entity targetEntity) {
+        if (!Double.isFinite(x)
+                || !Double.isFinite(y)
+                || !Double.isFinite(z)
+                || !Double.isFinite(directionX)
+                || !Double.isFinite(directionY)
+                || !Double.isFinite(directionZ)
+                || !PresentationPosition.isValid(x, y, z)
+                || PresentationDirection.normalized(directionX, directionY, directionZ)
+                        .isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new P8EventMaterial(
+                kind,
+                dimension,
+                x,
+                y,
+                z,
+                directionX,
+                directionY,
+                directionZ,
                 entityId(originEntity),
                 entityId(targetEntity),
                 playerId(originEntity),

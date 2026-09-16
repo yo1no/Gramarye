@@ -25,22 +25,101 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Verify P0 platform baseline
-        run: ./gradlew verifyPlatformBaseline
-
-      - name: Compile production sources
-        run: ./gradlew compileJava
+      - name: Compile and qualify production and test warnings
+        id: warning-compile
+        env:
+          GRAMARYE_P9_S4_WARNING_ROOT: ${{ runner.temp }}/gramarye-p9-s4-wc1-warning-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+        run: |
+          set -euo pipefail
+          warning_root="${GRAMARYE_P9_S4_WARNING_ROOT}"
+          if [[ -e "${warning_root}" || -L "${warning_root}" ]]; then
+            printf 'P9-S4-WC1 warning root already exists\n' >&2
+            exit 2
+          fi
+          mkdir -p "${warning_root}/metadata" "${warning_root}/raw" "${warning_root}/results"
+          printf '%s\n' \
+            ./gradlew \
+            --no-daemon \
+            verifyPlatformBaseline \
+            compileJava \
+            compileTestJava \
+            --rerun-tasks \
+            --warning-mode=all \
+            --console=plain \
+            > "${warning_root}/metadata/compile-command.argv"
+          printf 'commit:%s\n' "${GITHUB_SHA}" \
+            > "${warning_root}/metadata/source-identity.txt"
+          set +e
+          ./gradlew --no-daemon \
+            verifyPlatformBaseline compileJava compileTestJava \
+            --rerun-tasks --warning-mode=all --console=plain \
+            2>&1 | tee "${warning_root}/raw/gradle-compile.log"
+          compile_gradle_exit="${PIPESTATUS[0]}"
+          compile_tee_exit="${PIPESTATUS[1]}"
+          set -e
+          source_tree="$(git rev-parse 'HEAD^{tree}')"
+          set +e
+          python3 ./scripts/verify-p9-s4-warning-attribution.py \
+            compile \
+            --project-root "${GITHUB_WORKSPACE}" \
+            --raw-log "${warning_root}/raw/gradle-compile.log" \
+            --result "${warning_root}/results/compile-warning-attribution.json" \
+            --campaign P9-S4-WC1-WARNING-ATTRIBUTION-FRESH-QUALIFICATION \
+            --source-identity "commit:${GITHUB_SHA}" \
+            --commit "${GITHUB_SHA}" \
+            --tree "${source_tree}" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --attempt "${GITHUB_RUN_ATTEMPT}" \
+            --job "${GITHUB_JOB}" \
+            --java-home "${JAVA_HOME}" \
+            --main-output "${GITHUB_WORKSPACE}/build/classes/java/main" \
+            --test-output "${GITHUB_WORKSPACE}/build/classes/java/test"
+          attribution_exit="$?"
+          set -e
+          printf 'GRADLE_EXIT_CODE=%s\nTEE_EXIT_CODE=%s\nATTRIBUTION_EXIT_CODE=%s\n' \
+            "${compile_gradle_exit}" "${compile_tee_exit}" "${attribution_exit}" \
+            > "${warning_root}/metadata/compile-exit.properties"
+          if [[ "${compile_gradle_exit}" != '0' \
+                || "${compile_tee_exit}" != '0' \
+                || "${attribution_exit}" != '0' ]]; then
+            exit 1
+          fi
 
       - name: Run Java unit tests
+        id: unit-rd1
         env:
           GRAMARYE_RD1_DIAGNOSTIC_ROOT: ${{ runner.temp }}/gramarye-p9-s3-rd1-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
         run: bash ./scripts/run-p9-s3-rd1-unit-test-diagnostics.sh
+
+      - name: Attribute unit compiler task states
+        if: ${{ always() && steps.warning-compile.outcome == 'success' && steps.unit-rd1.outcome != 'skipped' }}
+        env:
+          GRAMARYE_RD1_DIAGNOSTIC_ROOT: ${{ runner.temp }}/gramarye-p9-s3-rd1-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          GRAMARYE_P9_S4_WARNING_ROOT: ${{ runner.temp }}/gramarye-p9-s4-wc1-warning-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+        run: |
+          python3 ./scripts/verify-p9-s4-warning-attribution.py \
+            unit \
+            --project-root "${GITHUB_WORKSPACE}" \
+            --raw-log "${GRAMARYE_RD1_DIAGNOSTIC_ROOT}/raw/gradle-test.log" \
+            --result "${GRAMARYE_P9_S4_WARNING_ROOT}/results/unit-warning-attribution.json" \
+            --campaign P9-S4-WC1-WARNING-ATTRIBUTION-FRESH-QUALIFICATION \
+            --source-identity "commit:${GITHUB_SHA}" \
+            --commit "${GITHUB_SHA}" \
+            --tree "$(git rev-parse 'HEAD^{tree}')" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --attempt "${GITHUB_RUN_ATTEMPT}" \
+            --job "${GITHUB_JOB}" \
+            --java-home "${JAVA_HOME}" \
+            --main-output "${GITHUB_WORKSPACE}/build/classes/java/main" \
+            --test-output "${GITHUB_WORKSPACE}/build/classes/java/test" \
+            --compile-proof "${GRAMARYE_P9_S4_WARNING_ROOT}/results/compile-warning-attribution.json"
 
       - name: Collect Java test-worker diagnostics
         id: rd1-collect
         if: ${{ always() }}
         env:
           GRAMARYE_RD1_DIAGNOSTIC_ROOT: ${{ runner.temp }}/gramarye-p9-s3-rd1-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          GRAMARYE_P9_S4_WARNING_ROOT: ${{ runner.temp }}/gramarye-p9-s4-wc1-warning-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
         run: bash ./scripts/collect-p9-s3-rd1-unit-test-diagnostics.sh
 
       - name: Upload Java test-worker diagnostics

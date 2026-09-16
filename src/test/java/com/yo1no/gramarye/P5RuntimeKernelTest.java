@@ -655,6 +655,7 @@ final class P5RuntimeKernelTest {
                 4_096);
         recordP9SpawnResult(
                 trace, RuntimePermitTransferDisposition.TRANSFERRED, 25);
+        trace.record(P9RuntimeDiagnosticStage.CAST_PRESENTATION_OFFERED, 25);
         recordP9HitClaimResult(
                 trace,
                 permitId.getMostSignificantBits(),
@@ -662,6 +663,10 @@ final class P5RuntimeKernelTest {
                 hit,
                 RuntimePermitClaimDisposition.QUEUED,
                 27);
+        trace.record(P9RuntimeDiagnosticStage.NODE1_MATCHED, 27);
+        trace.record(P9RuntimeDiagnosticStage.DAMAGE_RESOLVED, 27);
+        trace.record(P9RuntimeDiagnosticStage.DAMAGE_COMMIT_RESULT, 27);
+        trace.record(P9RuntimeDiagnosticStage.HIT_PRESENTATION_OFFERED, 27);
         trace.record(P9RuntimeDiagnosticStage.TERMINAL_CAUSE, 29);
         trace.record(P9RuntimeDiagnosticStage.CLEANUP_DISPOSITION, 29);
 
@@ -690,12 +695,15 @@ final class P5RuntimeKernelTest {
                                 .toList()),
                 () -> assertEquals(16, trace.stageCodes.length),
                 () -> assertEquals(16, trace.stageTicks.length),
-                () -> assertEquals(11, trace.stageCount),
+                () -> assertEquals(16, trace.stageCount),
                 () -> assertArrayEquals(
-                        new int[] {1, 2, 3, 4, 5, 6, 7, 9, 10, 15, 16},
+                        new int[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
                         Arrays.copyOf(trace.stageCodes, trace.stageCount)),
                 () -> assertArrayEquals(
-                        new long[] {23, 23, 24, 24, 25, 25, 25, 27, 27, 29, 29},
+                        new long[] {
+                            23, 23, 24, 24, 25, 25, 25, 25,
+                            27, 27, 27, 27, 27, 27, 29, 29
+                        },
                         Arrays.copyOf(trace.stageTicks, trace.stageCount)),
                 () -> assertTrue(Arrays.stream(trace.stageCodes, trace.stageCount, 16)
                         .allMatch(value -> value == 0)),

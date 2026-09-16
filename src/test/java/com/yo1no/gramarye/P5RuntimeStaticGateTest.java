@@ -943,6 +943,14 @@ record ProjectileHitExecutionDataV0(
                 "requestP9ReloadInvalidation");
         var completeReload = SkillRuntimeService.class.getDeclaredMethod(
                 "completeP9Reload", MinecraftServer.class);
+        var terminalDiagnosticRead = SkillRuntimeService.class.getDeclaredMethod(
+                "p9TerminalDiagnosticForTesting",
+                MinecraftServer.class,
+                SkillInstanceId.class);
+        var errorDiagnosticRead = SkillRuntimeService.class.getDeclaredMethod(
+                "p9ErrorDeferredDiagnosticForTesting",
+                MinecraftServer.class,
+                SkillInstanceId.class);
         var activeIndexFields = recursivelyDeclaredTypes(p5TopLevelClasses()).stream()
                 .flatMap(type -> Arrays.stream(type.getDeclaredFields()))
                 .filter(field -> field.getType() == Map.class)
@@ -966,10 +974,32 @@ record ProjectileHitExecutionDataV0(
                 () -> assertEquals(1, Arrays.stream(SkillRuntimeService.class.getDeclaredMethods())
                         .filter(method -> method.getName().equals("completeP9Reload"))
                         .count()),
+                () -> assertEquals(1, Arrays.stream(SkillRuntimeService.class.getDeclaredMethods())
+                        .filter(method -> method.getName().equals(
+                                "p9TerminalDiagnosticForTesting"))
+                        .count()),
+                () -> assertEquals(1, Arrays.stream(SkillRuntimeService.class.getDeclaredMethods())
+                        .filter(method -> method.getName().equals(
+                                "p9ErrorDeferredDiagnosticForTesting"))
+                        .count()),
                 () -> assertEquals(void.class, requestReload.getReturnType()),
                 () -> assertEquals(void.class, completeReload.getReturnType()),
                 () -> assertTrue(isPackagePrivate(requestReload.getModifiers())),
                 () -> assertTrue(isPackagePrivate(completeReload.getModifiers())),
+                () -> assertEquals(
+                        ServerSlot.P9TerminalDiagnostic.class,
+                        terminalDiagnosticRead.getReturnType()),
+                () -> assertEquals(
+                        ServerSlot.P9ActiveDiagnostic.class,
+                        errorDiagnosticRead.getReturnType()),
+                () -> assertTrue(isPackagePrivate(
+                        terminalDiagnosticRead.getModifiers())),
+                () -> assertTrue(isPackagePrivate(errorDiagnosticRead.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(
+                        terminalDiagnosticRead.getModifiers())),
+                () -> assertFalse(Modifier.isStatic(errorDiagnosticRead.getModifiers())),
+                () -> assertEquals(0, terminalDiagnosticRead.getExceptionTypes().length),
+                () -> assertEquals(0, errorDiagnosticRead.getExceptionTypes().length),
                 () -> assertEquals(1, activeIndexFields.size()),
                 () -> assertEquals(
                         "activeProjectileContinuations",
@@ -1016,6 +1046,14 @@ record ProjectileHitExecutionDataV0(
         var completeSource = section(
                 source,
                 "void completeP9Reload(",
+                "RuntimeProjectileContinuationOpenResult openProjectileContinuation(");
+        var terminalDiagnosticReadSource = section(
+                source,
+                "ServerSlot.P9TerminalDiagnostic p9TerminalDiagnosticForTesting(",
+                "ServerSlot.P9ActiveDiagnostic p9ErrorDeferredDiagnosticForTesting(");
+        var errorDiagnosticReadSource = section(
+                source,
+                "ServerSlot.P9ActiveDiagnostic p9ErrorDeferredDiagnosticForTesting(",
                 "RuntimeProjectileContinuationOpenResult openProjectileContinuation(");
         var childValidationSource = section(
                 source,
@@ -1091,6 +1129,25 @@ record ProjectileHitExecutionDataV0(
                                 + "\n                server, slot, "
                                 + "ProjectileClosureReason.RELOAD_INVALIDATED)",
                         "p9ReloadCloseRequested.set(false)"),
+                () -> assertInOrder(
+                        terminalDiagnosticReadSource,
+                        "if (!server.isSameThread())",
+                        "var slot = slots.get(server)",
+                        "for (var diagnostic : slot.p9TerminalRing)",
+                        "diagnostic.skillInstanceId().equals(skillInstanceId)",
+                        "if (matched != null)",
+                        "matched = diagnostic",
+                        "return matched"),
+                () -> assertInOrder(
+                        errorDiagnosticReadSource,
+                        "if (!server.isSameThread())",
+                        "slot.state != ServerSlot.State.FAULTED",
+                        "slot.instances.get(skillInstanceId)",
+                        "diagnostic.terminalReason",
+                        "ProjectileClosureReason.RUNTIME_FAULT",
+                        "diagnostic.cleanupDisposition",
+                        "P9RuntimeCleanupDisposition.ERROR_DEFERRED",
+                        "!diagnostic.terminalPublished"),
                 () -> assertEquals(1, occurrences(source, "new int[16]")),
                 () -> assertEquals(1, occurrences(source, "new long[16]")),
                 () -> assertEquals(1,
@@ -1120,21 +1177,21 @@ record ProjectileHitExecutionDataV0(
                         source, "P9RuntimeDiagnosticStage.SPAWN_RESOLVED")),
                 () -> assertEquals(1, occurrences(
                         source, "P9RuntimeDiagnosticStage.SPAWN_COMMIT_RESULT")),
-                () -> assertEquals(1, occurrences(
+                () -> assertEquals(2, occurrences(
                         source, "P9RuntimeDiagnosticStage.PROJECTILE_ACTIVE")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(1, occurrences(
                         source, "P9RuntimeDiagnosticStage.CAST_PRESENTATION_OFFERED")),
                 () -> assertEquals(2, occurrences(
                         source, "P9RuntimeDiagnosticStage.HIT_CLAIM_RESULT")),
-                () -> assertEquals(1, occurrences(
+                () -> assertEquals(2, occurrences(
                         source, "P9RuntimeDiagnosticStage.NODE1_QUEUED")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(1, occurrences(
                         source, "P9RuntimeDiagnosticStage.NODE1_MATCHED")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(2, occurrences(
                         source, "P9RuntimeDiagnosticStage.DAMAGE_RESOLVED")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(3, occurrences(
                         source, "P9RuntimeDiagnosticStage.DAMAGE_COMMIT_RESULT")),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(1, occurrences(
                         source, "P9RuntimeDiagnosticStage.HIT_PRESENTATION_OFFERED")),
                 () -> assertTrue(production.contains("ProjectileHitCandidateV0")),
                 () -> assertTrue(production.contains("P9StarterProjectile")),
@@ -1429,6 +1486,15 @@ record ProjectileHitExecutionDataV0(
                 MinecraftServer.class,
                 RuntimeRootEventSpec.class,
                 ServerPlayer.class);
+        var executionGuardType = SkillRuntimeService.RuntimeExecutionGuardState.class;
+        var executionGuardConstructor = executionGuardType.getDeclaredConstructor(
+                SkillRuntimeService.class,
+                MinecraftServer.class,
+                ServerSlot.class,
+                ServerSlot.InstanceState.class,
+                RuntimeEvent.class,
+                ServerPlayer.class,
+                ResourceLocation.class);
 
         assertAll(
                 () -> assertTrue(Modifier.isPrivate(predicate.getModifiers())),
@@ -1445,6 +1511,47 @@ record ProjectileHitExecutionDataV0(
                 () -> assertEquals(
                         RuntimeAdmissionResult.class, actorAdmissionMethod.getReturnType()),
                 () -> assertEquals(0, actorAdmissionMethod.getExceptionTypes().length),
+                () -> assertTrue(Modifier.isFinal(executionGuardType.getModifiers())),
+                () -> assertTrue(Modifier.isStatic(executionGuardType.getModifiers())),
+                () -> assertTrue(isPackagePrivate(executionGuardType.getModifiers())),
+                () -> assertEquals(1, executionGuardType.getDeclaredConstructors().length),
+                () -> assertTrue(isPackagePrivate(executionGuardConstructor.getModifiers())),
+                () -> assertEquals(0, executionGuardConstructor.getExceptionTypes().length),
+                () -> assertEquals(
+                        Set.of(
+                                "com.yo1no.gramarye.SkillRuntimeService owner",
+                                "net.minecraft.server.MinecraftServer server",
+                                "com.yo1no.gramarye.ServerSlot slot",
+                                "com.yo1no.gramarye.ServerSlot$InstanceState instance",
+                                "com.yo1no.gramarye.RuntimeEvent event",
+                                "net.minecraft.server.level.ServerPlayer p9Actor",
+                                "net.minecraft.resources.ResourceLocation p9Dimension",
+                                "boolean p9DamageCommitEntered",
+                                "boolean p9DamageCommitFinished",
+                                "boolean p9AppliedObservationArmed"),
+                        declaredFieldSignatures(executionGuardType)),
+                () -> assertTrue(Arrays.stream(executionGuardType.getDeclaredFields())
+                        .allMatch(field -> Modifier.isPrivate(field.getModifiers()))),
+                () -> assertTrue(Arrays.stream(executionGuardType.getDeclaredFields())
+                        .filter(field -> field.getType() != boolean.class)
+                        .allMatch(field -> Modifier.isFinal(field.getModifiers()))),
+                () -> assertTrue(Arrays.stream(executionGuardType.getDeclaredFields())
+                        .filter(field -> field.getType() == boolean.class)
+                        .noneMatch(field -> Modifier.isFinal(field.getModifiers()))),
+                () -> assertEquals(
+                        Set.of(
+                                "com.yo1no.gramarye.RuntimeExecutionGuardDecision check()",
+                                "void reportP9S4Stage("
+                                        + "com.yo1no.gramarye.P9RuntimeDiagnosticStage)",
+                                "void enterP9DamageCommit()",
+                                "void armP9AppliedObservation()",
+                                "void reportP9AppliedFactIfArmed()",
+                                "void finishP9DamageCommit()"),
+                        declaredMethodSignatures(executionGuardType)),
+                () -> assertEquals(1, Arrays.stream(executionGuardType.getDeclaredMethods())
+                        .filter(method -> Modifier.isPublic(method.getModifiers())
+                                || Modifier.isProtected(method.getModifiers()))
+                        .count()),
                 () -> assertTrue(actorAdmission.contains("p9AuthenticatedActorWitness")),
                 () -> assertTrue(actorAdmission.contains("resolvedP9Actor")),
                 () -> assertEquals(6, occurrences(
@@ -1493,10 +1600,11 @@ record ProjectileHitExecutionDataV0(
                         "referenceResolver.resolve(server, event)",
                         "isCurrentP9AuthenticatedActor(",
                         "reserveForPort(",
-                        "actorForGuard != null",
-                        "isCurrentP9AuthenticatedActor(",
-                        "runtimeExecutionGuardDecision(slot, instance, event)"),
-                () -> assertEquals(2, occurrences(
+                        "new RuntimeExecutionGuardState(",
+                        "guardedP9Actor,",
+                        "guardedP9Dimension)",
+                        "new RuntimeExecutionContext("),
+                () -> assertEquals(1, occurrences(
                         invocation, "isCurrentP9AuthenticatedActor(")),
                 () -> assertInOrder(
                         opener,
@@ -2178,12 +2286,9 @@ record ProjectileHitExecutionDataV0(
                 "resolution instanceof RuntimeReferenceResolutionOutcome.Resolved",
                 "isCurrentP9AuthenticatedActor(",
                 "reserveForPort(slot, instance, attribution, event)",
+                "new RuntimeExecutionGuardState(",
                 "context = new RuntimeExecutionContext(",
-                "() -> {",
-                "p9ReloadCloseRequested.get()",
-                "actorForGuard != null",
-                "isCurrentP9AuthenticatedActor(",
-                "return runtimeExecutionGuardDecision(slot, instance, event)",
+                "executionGuard,",
                 "new RuntimeProjectileContinuationOpener(",
                 "slot.diagnostics.portInvocationsThisTick++",
                 "executionPort.execute(event, context)",
@@ -2191,6 +2296,17 @@ record ProjectileHitExecutionDataV0(
                 "context = null",
                 "resolvedReferences = null",
                 "resolution = null");
+        var guard = section(
+                source,
+                "static final class RuntimeExecutionGuardState implements RuntimeExecutionGuard {",
+                "record PendingBreak(");
+        assertInOrder(
+                guard,
+                "p9ReloadCloseRequested.get()",
+                "p9Actor != null",
+                "isCurrentP9AuthenticatedActor(",
+                "validClaimedP9Child(",
+                "owner.runtimeExecutionGuardDecision(slot, instance, event)");
         var finishPort = section(
                 source,
                 "private RuntimeExecutionOutcome finishPort(",

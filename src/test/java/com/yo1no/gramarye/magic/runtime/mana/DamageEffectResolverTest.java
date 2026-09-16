@@ -12,7 +12,7 @@ final class DamageEffectResolverTest {
     private final DamageEffectResolver resolver = new DamageEffectResolver();
 
     @Test
-    void acceptsValidDamageRequestWithNonemptyFixedPlan() {
+    void acceptsCanonicalP9DamageRequestWithNonemptyFixedPlan() {
         EffectResolution resolution = resolver.resolve(EffectTestFixtures.request(), 0);
         assertEquals(EffectResolutionKind.ACCEPTED, resolution.kind());
         EffectCommitPlan plan = ((AcceptedEffectResolution) resolution).plan();
@@ -21,13 +21,47 @@ final class DamageEffectResolverTest {
     }
 
     @Test
-    void acceptedPlanPreservesTargetAndAbstractMagnitude() {
-        DamageEffectRequest request = EffectTestFixtures.request(987L, 23L);
+    void acceptedPlanPreservesTargetAndCanonicalAbstractMagnitude() {
+        DamageEffectRequest request = EffectTestFixtures.request();
         DamageEffectStep step = (DamageEffectStep) ((AcceptedEffectResolution)
                 resolver.resolve(request, 0)).plan().steps().getFirst();
         assertEquals(request.target(), step.target());
         assertEquals(request.magnitude(), step.magnitude());
         assertEquals(0, step.declaredChildIntentUpperBound());
+    }
+
+    @Test
+    void rejectsNoncanonicalP9DamageMagnitudeCostAndCurrentEventIdentity() {
+        DamageEffectRequest canonical = EffectTestFixtures.request();
+        for (DamageEffectRequest invalid : List.of(
+                EffectTestFixtures.request(3_000L, 0L),
+                EffectTestFixtures.request(4_001L, 0L),
+                EffectTestFixtures.request(4_000L, 1L),
+                new DamageEffectRequest(
+                        canonical.requestId(),
+                        new SourceEventId(canonical.sourceEventId().value() + 1L),
+                        canonical.target(),
+                        canonical.magnitude(),
+                        canonical.manaCost(),
+                        canonical.compensationPolicy()))) {
+            assertEquals(
+                    new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST),
+                    resolver.resolve(invalid, 0));
+        }
+    }
+
+    @Test
+    void directInjectedResolverPreservesGenericPositiveCostDamageSemantics() {
+        DamageEffectRequest generic = EffectTestFixtures.request(987L, 23L);
+        EffectResolution resolution = ActionTransactionTestFixtures.directDamageResolver()
+                .resolve(generic, 0);
+        DamageEffectStep step = (DamageEffectStep) ((AcceptedEffectResolution) resolution)
+                .plan().steps().getFirst();
+
+        assertEquals(EffectResolutionKind.ACCEPTED, resolution.kind());
+        assertEquals(generic.target(), step.target());
+        assertEquals(987L, step.magnitude());
+        assertEquals(23L, generic.manaCost());
     }
 
     @Test
@@ -44,7 +78,7 @@ final class DamageEffectResolverTest {
     }
 
     @Test
-    void acceptsSpawnRequestWithExactSingleSpawnStep() {
+    void acceptsCanonicalP9SpawnRequestWithExactSingleSpawnStep() {
         SpawnProjectileRequest request = EffectTestFixtures.spawnRequest();
         EffectCommitPlan plan = ((AcceptedEffectResolution) resolver.resolve(request, 0)).plan();
         SpawnProjectileStep step = (SpawnProjectileStep) plan.steps().getFirst();
@@ -61,6 +95,32 @@ final class DamageEffectResolverTest {
         assertEquals(request.profileCode(), step.profileCode());
         assertEquals(1, step.declaredPrimaryMutationUpperBound());
         assertEquals(0, step.declaredChildIntentUpperBound());
+    }
+
+    @Test
+    void rejectsNoncanonicalP9SpawnCostAndCurrentEventIdentity() {
+        SpawnProjectileRequest canonical = EffectTestFixtures.spawnRequest();
+        SpawnProjectileRequest positiveCost = EffectTestFixtures.spawnRequest(1L);
+        SpawnProjectileRequest differentCurrentEvent = new SpawnProjectileRequest(
+                canonical.requestId(),
+                new SourceEventId(canonical.sourceEventId().value() + 1L),
+                canonical.dimension(),
+                canonical.originX(),
+                canonical.originY(),
+                canonical.originZ(),
+                canonical.directionXQ15(),
+                canonical.directionYQ15(),
+                canonical.directionZQ15(),
+                canonical.profileCode(),
+                canonical.manaCost(),
+                canonical.compensationPolicy());
+
+        assertEquals(
+                new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST),
+                resolver.resolve(positiveCost, 0));
+        assertEquals(
+                new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST),
+                resolver.resolve(differentCurrentEvent, 0));
     }
 
     @Test

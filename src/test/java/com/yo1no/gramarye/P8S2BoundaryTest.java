@@ -606,10 +606,10 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(1, occurrences(bridge, "public enum AppliedTerminal")),
                 () -> assertEquals(2, matches(
                         Pattern.compile("AppliedFactObserver\\s+observer\\s*\\)"), bridge)),
-                () -> assertEquals(0, occurrences(
+                () -> assertEquals(1, occurrences(
                         adapter,
                         "new P8AppliedFactHandoff(presentationService, event, context)")),
-                () -> assertEquals(1, occurrences(adapter, "ignoredFact ->")),
+                () -> assertEquals(0, occurrences(adapter, "ignoredFact ->")),
                 () -> assertEquals(3, occurrences(
                         p8S3GameTests, "new P8AppliedFactHandoff(service,")),
                 () -> assertEquals(1, occurrences(
@@ -823,9 +823,9 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
-                () -> assertEquals(117_975L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
+                () -> assertEquals(118_692L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
                 () -> assertEquals(
-                        "c7199845f9fff63c1d3bd3eb440bbc7f2116065b099c3f56f4724151d8f6e10d",
+                        "fc89587d12a123ef8bc94f68040d43783c6023173d48e500b72e07db1559d97f",
                         sha256(P7_LOGIN_ISOLATION_SOURCE)));
     }
 

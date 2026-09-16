@@ -139,6 +139,34 @@ is_p9_s3_dc1_path() {
     esac
 }
 
+# P9-S4 adds the exact six dirty paths that were not already admitted by the
+# immutable S3/DC1 projections above. Keep this as a separate closed extension.
+is_p9_s4_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P8AppliedFactHandoff.java | \
+        src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java | \
+        src/test/java/com/yo1no/gramarye/P8S4ServerTransportTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionDebitTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ActionDamageTransactionPreDebitTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/DamageEffectRequestTest.java)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# P9-S4-WC1 adds three tracked warning-attribution surfaces outside the
+# original exact-27 candidate. The two authorized B-to-F intersections remain
+# admitted by the immutable P9-S4 extension above.
+is_p9_s4_wc1_path() {
+    case "$1" in
+        .github/workflows/build.yml | \
+        scripts/collect-p9-s3-rd1-unit-test-diagnostics.sh | \
+        scripts/verify-p9-s4-warning-attribution.py)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 reject_game_test_worker_surface() {
     printf 'Production-packaged GameTest raw worker/task/process surface: %s\n' \
         "$1" >&2
@@ -634,7 +662,9 @@ case "${1:-}" in
         esac ;;
     --is-s4-path)
         [[ "$#" -eq 2 ]] \
-            && { is_s4_path "$2" || is_p9_s3_path "$2" || is_p9_s3_dc1_path "$2"; } ;;
+            && { is_s4_path "$2" || is_p9_s3_path "$2" \
+                || is_p9_s3_dc1_path "$2" || is_p9_s4_path "$2" \
+                || is_p9_s4_wc1_path "$2"; } ;;
     --check-game-test-worker-source)
         [[ "$#" -eq 4 && -f "$2" && ! -L "$2" ]] \
             && verify_game_test_worker_source "$2" "$3" "$4" ;;

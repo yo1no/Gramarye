@@ -120,7 +120,7 @@ final class P6S3BoundaryTest {
         assertTrue(s1Production.stream().allMatch(Files::isRegularFile));
         assertEquals(14, s1Tests.size());
         assertTrue(s1Tests.stream().allMatch(Files::isRegularFile));
-        assertEquals(96L, testCount(s1Tests));
+        assertEquals(99L, testCount(s1Tests));
         assertEquals(70L, testCount(s2Tests));
         assertEquals(9, s3Production.size());
         assertTrue(s3Production.stream().allMatch(Files::isRegularFile));

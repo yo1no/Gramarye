@@ -20,7 +20,7 @@ final class ActionTransactionTestFixtures {
     }
 
     static DamageActionInvocation invocation(long manaCost) {
-        return invocation(DAMAGE_ACTION_KEY, 25L, manaCost);
+        return invocation(DAMAGE_ACTION_KEY, 4_000L, manaCost);
     }
 
     static DamageActionInvocation invocation(
@@ -28,7 +28,7 @@ final class ActionTransactionTestFixtures {
         return new DamageActionInvocation(
                 key,
                 new EffectRequestId(101L),
-                new SourceEventId(303L),
+                new SourceEventId(101L),
                 new DamageTargetReference(UUID.fromString(
                         "70000000-0000-4000-8000-000000000002")),
                 magnitude,
@@ -78,6 +78,37 @@ final class ActionTransactionTestFixtures {
 
     static EffectResolver resolverFor(EffectCommitPlan plan) {
         return (request, capacity) -> new AcceptedEffectResolution(plan);
+    }
+
+    static EffectResolver directDamageResolver() {
+        return DirectDamageResolver.INSTANCE;
+    }
+
+    static final class DirectDamageResolver implements EffectResolver {
+        private static final DirectDamageResolver INSTANCE = new DirectDamageResolver();
+
+        private DirectDamageResolver() {}
+
+        @Override
+        public EffectResolution resolve(
+                EffectRequest request, int suppliedChildIntentCapacity) {
+            if (!(request instanceof DamageEffectRequest damageRequest)) {
+                return new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST);
+            }
+            if (suppliedChildIntentCapacity < 0
+                    || suppliedChildIntentCapacity
+                            > P6EffectBounds.MAX_CHILD_INTENTS_PER_EXECUTION) {
+                return new RejectedEffectResolution(EffectRejectReason.BOUND_EXCEEDED);
+            }
+            return new AcceptedEffectResolution(new EffectCommitPlan(
+                    List.of(new DamageEffectStep(
+                            0,
+                            damageRequest.target(),
+                            damageRequest.magnitude(),
+                            1,
+                            0)),
+                    suppliedChildIntentCapacity));
+        }
     }
 
     static List<EffectTraceStage> stages(ActionDamageTransactionResult result) {

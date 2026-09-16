@@ -29,7 +29,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.animal.Cow;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
@@ -55,7 +55,7 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /**
- * Process-isolated actual-client proof for the P9-S3 tracked projectile.
+ * Process-isolated actual-client proof for the P9-S3/S4 tracked projectile and damage path.
  *
  * <p>The controller creates only a throw-away integrated world and test-owned Store/runtime
  * fixture. It invokes the production P7 geometry, P5 scheduler, P6 transaction, world handoff,
@@ -98,7 +98,7 @@ final class P9S3ClientRuntimeHarness {
     private static volatile P9StarterProjectile serverProjectile;
     private static volatile P9StarterProjectile clientProjectile;
     private static volatile UUID projectileId;
-    private static volatile ArmorStand target;
+    private static volatile Cow target;
     private static volatile int targetInitialHealthBits;
     private static volatile boolean serverSetupReady;
     private static volatile boolean rootAdmitted;
@@ -111,7 +111,7 @@ final class P9S3ClientRuntimeHarness {
     private static volatile boolean serverImpactObserved;
     private static volatile boolean serverLeaveObserved;
     private static volatile boolean serverTerminalRemovalObserved;
-    private static volatile boolean targetHealthUnchanged;
+    private static volatile boolean targetHealthDecreasedByFour;
     private static volatile boolean clientRemovalObserved;
     private static volatile boolean cleanupRequested;
     private static volatile boolean cleanupComplete;
@@ -414,10 +414,12 @@ final class P9S3ClientRuntimeHarness {
         require(clientProjectile.isRemoved(),
                 "client leave event did not mark the projectile removed");
         marker("12 CLIENT_TRACKING_REMOVAL_OBSERVED uuid=" + expectedId);
-        require(targetHealthUnchanged,
-                "server target health changed during unavailable S3 damage");
-        marker("13 HEALTH_UNCHANGED_AND_DAMAGE_UNAVAILABLE healthBits="
-                + targetInitialHealthBits);
+        require(targetHealthDecreasedByFour,
+                "server target did not receive exact S4 damage through the production path");
+        marker("13 EXACT_FOUR_DAMAGE_APPLIED beforeHealthBits="
+                + targetInitialHealthBits
+                + " afterHealthBits="
+                + Float.floatToIntBits(target.getHealth()));
         cleanupRequested = true;
         transition(Phase.WAIT_FOR_CLEANUP);
         var server = fixtureServer;
@@ -547,9 +549,12 @@ final class P9S3ClientRuntimeHarness {
         require(movement.lengthSqr() > 0.0 && Double.isFinite(movement.lengthSqr()),
                 "server projectile has no finite active motion");
         var direction = movement.normalize();
-        var candidate = EntityType.ARMOR_STAND.create(server.overworld());
-        require(candidate != null, "controlled ArmorStand target creation failed");
+        var candidate = EntityType.COW.create(server.overworld());
+        require(candidate != null, "controlled Cow target creation failed");
+        candidate.setNoAi(true);
         candidate.setNoGravity(true);
+        candidate.setInvulnerable(false);
+        candidate.setAbsorptionAmount(0.0F);
         candidate.setPos(
                 projectile.getX() + direction.x * 3.0,
                 projectile.getY() - candidate.getBbHeight() * 0.5,
@@ -558,7 +563,7 @@ final class P9S3ClientRuntimeHarness {
                 "controlled collision target position is not loaded");
         targetInitialHealthBits = Float.floatToIntBits(candidate.getHealth());
         require(server.overworld().addFreshEntity(candidate),
-                "controlled ArmorStand target insertion failed");
+                "controlled unarmored Cow target insertion failed");
         target = candidate;
         targetArmed = true;
     }
@@ -578,9 +583,10 @@ final class P9S3ClientRuntimeHarness {
             return;
         }
         require(exactTarget.isAddedToLevel() && !exactTarget.isRemoved(),
-                "unavailable damage removed the controlled target");
-        targetHealthUnchanged = Float.floatToIntBits(exactTarget.getHealth())
-                == targetInitialHealthBits;
+                "S4 damage removed the controlled target");
+        targetHealthDecreasedByFour = Float.floatToIntBits(exactTarget.getHealth())
+                == Float.floatToIntBits(
+                        Float.intBitsToFloat(targetInitialHealthBits) - 4.0F);
         serverTerminalRemovalObserved = true;
     }
 

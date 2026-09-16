@@ -166,8 +166,8 @@ final class P6S4BoundaryTest {
                 () -> assertEquals(1, occurrences(
                         adapter, "P6RuntimeExecutionBridge::execute")),
                 () -> assertEquals(1, occurrences(adapter, "bridgeInvoker.execute(")),
-                () -> assertEquals(0, occurrences(adapter, "new P8AppliedFactHandoff(")),
-                () -> assertEquals(1, occurrences(adapter, "ignoredFact ->")),
+                () -> assertEquals(1, occurrences(adapter, "new P8AppliedFactHandoff(")),
+                () -> assertEquals(0, occurrences(adapter, "ignoredFact ->")),
                 () -> assertEquals(1, occurrences(
                         adapter, "catch (RuntimeException failure)")),
                 () -> assertEquals(1, occurrences(adapter, "catch (Error failure)")),
@@ -187,9 +187,34 @@ final class P6S4BoundaryTest {
                 () -> assertEquals(1, occurrences(
                         bridge, "new SpawnProjectileActionExecutor(")),
                 () -> assertEquals(0, occurrences(registries, "ACTION_TYPES.register(\"")),
-                () -> assertEquals(1, occurrences(adapter, "new P6RuntimeExecutionInput(")),
+                () -> assertEquals(2, occurrences(adapter, "new P6RuntimeExecutionInput(")),
+                () -> assertEquals(1, occurrences(adapter, "new DamageInvocation(")),
                 () -> assertTrue(adapter.contains(
-                        "P9-S4 owns the real node-1 damage mapping")),
+                        "context.node().nodeIndex() == 1\n"
+                                + "                && key.equals(P9StarterSkillContent.DAMAGE_ID)")),
+                () -> assertTrue(adapter.contains(
+                        "context.node().action().descriptor() == P9DamageActionType.INSTANCE")),
+                () -> assertTrue(adapter.contains(
+                        "action.magnitude() == 4_000L")
+                        && adapter.contains("action.magnitude() % 1_000L == 0L")
+                        && adapter.contains("action.manaCost() == 0L")),
+                () -> assertTrue(adapter.contains(
+                        "event.executionData() instanceof ProjectileHitExecutionDataV0 hit")),
+                () -> assertTrue(adapter.contains(
+                        "context.resolvedReferences().target()\n"
+                                + "                        instanceof ResolvedEntityTarget entityTarget")),
+                () -> assertTrue(adapter.contains(
+                        "entityTarget.entity().getUUID().equals(hit.targetId())")),
+                () -> assertEquals(1, occurrences(
+                        adapter,
+                        "P6RuntimeExecutionIdentity.fromPublishedEventId(\n"
+                                + "                event.eventId().value())")),
+                () -> assertTrue(adapter.contains(
+                        "identity.requestId(),\n"
+                                + "                            identity.sourceEventId(),\n"
+                                + "                            hit.targetId(),\n"
+                                + "                            action.magnitude(),\n"
+                                + "                            action.manaCost()")),
                 () -> assertTrue(adapter.contains("return Optional.empty();")),
                 () -> assertEquals(1, occurrences(
                         adapter, "new RuntimePortOutcome.Completed()")),

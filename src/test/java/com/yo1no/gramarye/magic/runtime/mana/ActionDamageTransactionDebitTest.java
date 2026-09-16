@@ -132,7 +132,8 @@ final class ActionDamageTransactionDebitTest {
 
         P6ExecutionInvariantException failure = assertThrows(
                 P6ExecutionInvariantException.class,
-                () -> ActionTransactionTestFixtures.engine(new DamageEffectResolver())
+                () -> ActionTransactionTestFixtures.engine(
+                                ActionTransactionTestFixtures.directDamageResolver())
                         .execute(
                                 ActionTransactionTestFixtures.invocation(10L),
                                 null,
@@ -150,7 +151,8 @@ final class ActionDamageTransactionDebitTest {
             long manaCost,
             ActionTransactionTestFixtures.RecordingManaAccount account,
             ActionTransactionTestFixtures.TransactionRecordingPort port) {
-        return ActionTransactionTestFixtures.engine(new DamageEffectResolver())
+        return ActionTransactionTestFixtures.engine(
+                        ActionTransactionTestFixtures.directDamageResolver())
                 .execute(
                         ActionTransactionTestFixtures.invocation(manaCost),
                         account,

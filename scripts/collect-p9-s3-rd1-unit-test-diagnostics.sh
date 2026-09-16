@@ -10,6 +10,7 @@ fail() {
 
 for required_name in \
         GRAMARYE_RD1_DIAGNOSTIC_ROOT \
+        GRAMARYE_P9_S4_WARNING_ROOT \
         RUNNER_TEMP \
         HOME \
         GITHUB_OUTPUT \
@@ -21,6 +22,7 @@ for required_name in \
 done
 
 requested_diagnostic_root="${GRAMARYE_RD1_DIAGNOSTIC_ROOT}"
+requested_warning_root="${GRAMARYE_P9_S4_WARNING_ROOT}"
 runner_temp="$(cd "${RUNNER_TEMP}" 2>/dev/null && pwd -P)" \
     || fail 'RUNNER_TEMP is not an existing directory'
 [[ "${GITHUB_RUN_ID}" =~ ^[1-9][0-9]*$ ]] \
@@ -30,8 +32,36 @@ runner_temp="$(cd "${RUNNER_TEMP}" 2>/dev/null && pwd -P)" \
 [[ "${GITHUB_JOB}" == 'build' ]] \
     || fail 'diagnostics are authorized only for the build job'
 expected_diagnostic_root="${runner_temp}/gramarye-p9-s3-rd1-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+expected_warning_root="${runner_temp}/gramarye-p9-s4-wc1-warning-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
 [[ "${requested_diagnostic_root}" == "${expected_diagnostic_root}" ]] \
     || fail 'diagnostic root does not match the exact run/attempt/job namespace'
+[[ "${requested_warning_root}" == "${expected_warning_root}" ]] \
+    || fail 'warning root does not match the exact run/attempt/job namespace'
+[[ -d "${requested_warning_root}" && ! -L "${requested_warning_root}" ]] \
+    || fail 'warning root is unavailable or linked'
+warning_root="$(cd "${requested_warning_root}" && pwd -P)" \
+    || fail 'could not canonicalize the warning root'
+[[ "${warning_root}" == "${expected_warning_root}" ]] \
+    || fail 'canonical warning root escaped its exact namespace'
+for warning_directory in metadata raw results; do
+    [[ -d "${warning_root}/${warning_directory}" \
+            && ! -L "${warning_root}/${warning_directory}" ]] \
+        || fail "warning directory ${warning_directory} is unavailable or linked"
+done
+
+unit_root_present='true'
+if [[ ! -e "${requested_diagnostic_root}" && ! -L "${requested_diagnostic_root}" ]]; then
+    # Compilation can fail before the unit runner creates its own root. Create
+    # only its fixed evidence namespace so the same bounded collector can
+    # preserve the compiler failure without starting or simulating the test.
+    unit_root_present='false'
+    mkdir -p \
+        "${requested_diagnostic_root}/fatal" \
+        "${requested_diagnostic_root}/metadata" \
+        "${requested_diagnostic_root}/raw" \
+        "${requested_diagnostic_root}/status" \
+        || fail 'could not prepare the compile-failure evidence namespace'
+fi
 [[ -d "${requested_diagnostic_root}" && ! -L "${requested_diagnostic_root}" ]] \
     || fail 'diagnostic root is unavailable or linked'
 diagnostic_root="$(cd "${requested_diagnostic_root}" && pwd -P)" \
@@ -320,6 +350,41 @@ copy_tree() {
     fi
 }
 
+for compiler_metadata_file in \
+        compile-command.argv \
+        compile-exit.properties \
+        source-identity.txt; do
+    copy_regular \
+        "compiler-metadata-${compiler_metadata_file}" \
+        "${warning_root}/metadata/${compiler_metadata_file}" \
+        "${artifact_root}/compiler/metadata/${compiler_metadata_file}" \
+        1048576 \
+        'COLLECTION_FAILED'
+done
+copy_regular \
+    'compiler-raw-log' \
+    "${warning_root}/raw/gradle-compile.log" \
+    "${artifact_root}/compiler/raw/gradle-compile.log" \
+    134217728 \
+    'COLLECTION_FAILED'
+copy_regular \
+    'compiler-warning-attribution' \
+    "${warning_root}/results/compile-warning-attribution.json" \
+    "${artifact_root}/compiler/status/warning-attribution.json" \
+    4194304 \
+    'COLLECTION_FAILED'
+if [[ "${unit_root_present}" == 'true' ]]; then
+    unit_warning_missing_status='COLLECTION_FAILED'
+else
+    unit_warning_missing_status='NOT_PRODUCED'
+fi
+copy_regular \
+    'unit-warning-attribution' \
+    "${warning_root}/results/unit-warning-attribution.json" \
+    "${artifact_root}/unit-warning/status/warning-attribution.json" \
+    4194304 \
+    "${unit_warning_missing_status}"
+
 test_exit_file="${diagnostic_root}/status/test-exit.properties"
 primary_exit='UNAVAILABLE'
 tee_exit='UNAVAILABLE'
@@ -431,16 +496,23 @@ elif [[ "${worker_termination_observed}" == 'true' ]]; then
 else
     missing_results_status='NOT_PRODUCED'
 fi
-copy_tree \
-    'junit-test-results' \
-    'build/test-results/test' \
-    "${artifact_root}/collected/test-results" \
-    "${missing_results_status}"
-copy_tree \
-    'junit-html-report' \
-    'build/reports/tests/test' \
-    "${artifact_root}/collected/html-report" \
-    "${missing_results_status}"
+if [[ "${unit_root_present}" == 'true' ]]; then
+    copy_tree \
+        'junit-test-results' \
+        'build/test-results/test' \
+        "${artifact_root}/collected/test-results" \
+        "${missing_results_status}"
+    copy_tree \
+        'junit-html-report' \
+        'build/reports/tests/test' \
+        "${artifact_root}/collected/html-report" \
+        "${missing_results_status}"
+else
+    record 'junit-test-results' 'NOT_PRODUCED' \
+        'unit runner did not create its exact evidence namespace'
+    record 'junit-html-report' 'NOT_PRODUCED' \
+        'unit runner did not create its exact evidence namespace'
+fi
 
 if [[ "${primary_exit}" == '0' ]]; then
     junit_xml_sample=''

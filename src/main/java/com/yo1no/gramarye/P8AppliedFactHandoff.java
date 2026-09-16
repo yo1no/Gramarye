@@ -21,10 +21,18 @@ final class P8AppliedFactHandoff
 
     @Override
     public void observe(P6RuntimeExecutionBridge.AppliedFact fact) {
+        reportP9AppliedStage();
         try {
             service.offerApplied(event, context, fact);
         } catch (RuntimeException ignored) {
             service.recordObserverRuntimeException();
+        }
+    }
+
+    private void reportP9AppliedStage() {
+        if (context.executionGuard()
+                instanceof SkillRuntimeService.RuntimeExecutionGuardState diagnostics) {
+            diagnostics.reportP9AppliedFactIfArmed();
         }
     }
 }

@@ -830,7 +830,7 @@ verify_changed_paths() {
             [ ! -L "$candidate" ] \
                 || fail "allowed E1-A path is a symlink: $path"
             case "$path" in
-                scripts/*.sh)
+                scripts/*.sh | scripts/verify-p9-s4-warning-attribution.py)
                     [ -x "$candidate" ] \
                         || fail "allowed E1-A verifier is not executable: $path"
                     ;;

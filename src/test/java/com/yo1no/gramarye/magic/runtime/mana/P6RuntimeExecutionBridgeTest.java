@@ -767,7 +767,7 @@ final class P6RuntimeExecutionBridgeTest {
     @Test
     void normalTerminalRetainsNoCallScopedP6Objects() {
         ActionExecutorRegistry registry = ActionTransactionTestFixtures.damageRegistry();
-        DamageEffectResolver resolver = new DamageEffectResolver();
+        EffectResolver resolver = ActionTransactionTestFixtures.directDamageResolver();
         EffectExecutionEngine effects = new EffectExecutionEngine();
         ManaTransactionService manaTransactions = new ManaTransactionService();
         ActionDamageTransactionEngine engine = new ActionDamageTransactionEngine(
@@ -937,7 +937,7 @@ final class P6RuntimeExecutionBridgeTest {
     @Test
     void exceptionalTerminalRetainsNeitherCallScopedObjectsNorThrowable() {
         ActionExecutorRegistry registry = ActionTransactionTestFixtures.damageRegistry();
-        DamageEffectResolver resolver = new DamageEffectResolver();
+        EffectResolver resolver = ActionTransactionTestFixtures.directDamageResolver();
         EffectExecutionEngine effects = new EffectExecutionEngine();
         ManaTransactionService manaTransactions = new ManaTransactionService();
         ActionDamageTransactionEngine engine = new ActionDamageTransactionEngine(
@@ -1126,6 +1126,7 @@ final class P6RuntimeExecutionBridgeTest {
                 DamageActionExecutor.class.getName(),
                 SpawnProjectileActionExecutor.class.getName(),
                 DamageEffectResolver.class.getName(),
+                ActionTransactionTestFixtures.DirectDamageResolver.class.getName(),
                 EffectExecutionEngine.class.getName(),
                 ManaTransactionService.class.getName(),
                 P6RuntimeExecutionCapability.class.getName(),

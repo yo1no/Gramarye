@@ -5,6 +5,7 @@ import com.yo1no.gramarye.magic.api.id.SkillInstanceId;
 import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillRevision;
 import com.yo1no.gramarye.magic.capability.ActionOutputKind;
+import com.yo1no.gramarye.magic.definition.document.AppearanceDocument;
 import com.yo1no.gramarye.magic.definition.document.SkillDraft;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentGameTests;
@@ -80,8 +81,18 @@ public final class P7S4LoginManaGameTests {
             GameTestHelper helper,
             ServerPlayer actor,
             long fixtureId) {
+        return openP9GameTestFixture(
+                helper, actor, fixtureId, AppearanceDocument.Default.INSTANCE);
+    }
+
+    static P9GameTestFixture openP9GameTestFixture(
+            GameTestHelper helper,
+            ServerPlayer actor,
+            long fixtureId,
+            AppearanceDocument appearance) {
         Objects.requireNonNull(helper, "helper");
         Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(appearance, "appearance");
         if (fixtureId <= 0) {
             throw new IllegalArgumentException("P9 GameTest fixture identity must be positive");
         }
@@ -98,13 +109,20 @@ public final class P7S4LoginManaGameTests {
                 "p9-s3-author");
         var fixture = loginFixture(server, (exactServer, exactActor) -> {});
         try {
+            var canonical = P9StarterSkillContent.canonicalDraft(new SkillId(new UUID(
+                    0x7900000000004000L,
+                    0x8000000000000000L | fixtureId)));
+            var draft = new SkillDraft(
+                    canonical.draftSchemaVersion(),
+                    canonical.skillId(),
+                    canonical.baseRevision(),
+                    canonical.nodes(),
+                    appearance);
             var reference = submitCanonical(
                     helper,
                     fixture,
                     author,
-                    P9StarterSkillContent.canonicalDraft(new SkillId(new UUID(
-                            0x7900000000004000L,
-                            0x8000000000000000L | fixtureId))));
+                    draft);
             return new P9GameTestFixture(server, actor, fixture, reference);
         } catch (RuntimeException | Error failure) {
             try {

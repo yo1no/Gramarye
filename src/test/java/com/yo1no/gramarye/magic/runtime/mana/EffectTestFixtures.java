@@ -13,13 +13,13 @@ final class EffectTestFixtures {
     private EffectTestFixtures() {}
 
     static DamageEffectRequest request() {
-        return request(25L, 0L);
+        return request(4_000L, 0L);
     }
 
     static DamageEffectRequest request(long magnitude, long manaCost) {
         return new DamageEffectRequest(
                 new EffectRequestId(11L),
-                new SourceEventId(29L),
+                new SourceEventId(11L),
                 new DamageTargetReference(TARGET_ID),
                 magnitude,
                 manaCost,
@@ -33,7 +33,7 @@ final class EffectTestFixtures {
     static SpawnProjectileRequest spawnRequest(long manaCost) {
         return new SpawnProjectileRequest(
                 new EffectRequestId(11L),
-                new SourceEventId(29L),
+                new SourceEventId(11L),
                 ResourceLocation.fromNamespaceAndPath("minecraft", "overworld"),
                 1.25,
                 64.5,

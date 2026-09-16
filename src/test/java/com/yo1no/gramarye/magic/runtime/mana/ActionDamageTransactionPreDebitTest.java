@@ -3,6 +3,7 @@ package com.yo1no.gramarye.magic.runtime.mana;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
+import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
@@ -190,11 +191,15 @@ final class ActionDamageTransactionPreDebitTest {
     }
 
     @Test
-    void zeroCostRequestSkipsManaServiceAndExecutesOneStep() {
+    void zeroCostRequestSkipsEvenUnavailableManaAccountAndExecutesOneStep() {
         var resolver = new ActionTransactionTestFixtures.TransactionRecordingResolver(
-                ActionTransactionTestFixtures.resolverFor(
-                        ActionTransactionTestFixtures.plan(1)));
-        var account = new ActionTransactionTestFixtures.RecordingManaAccount(100L);
+                new DamageEffectResolver());
+        var account = new ActionTransactionTestFixtures.RecordingManaAccount(
+                true,
+                ActionTransactionTestFixtures.ACCOUNT_ID,
+                ManaAvailability.UNAVAILABLE,
+                0L,
+                new ArrayList<>());
         var guard = ActionTransactionTestFixtures.TransactionRecordingGuard.allowing();
         var port = ActionTransactionTestFixtures.TransactionRecordingPort.applyingAll();
 
@@ -205,6 +210,12 @@ final class ActionDamageTransactionPreDebitTest {
         assertInstanceOf(ManaNotRequired.class, result.manaSummary());
         assertEquals(0, result.manaMutationCount());
         assertEquals(0, account.totalAccesses());
+        assertEquals(0, account.threadChecks());
+        assertEquals(0, account.accountIdReads());
+        assertEquals(0, account.availabilityReads());
+        assertEquals(0, account.balanceReads());
+        assertEquals(0, account.balanceWrites());
+        assertEquals(0L, account.currentBalance());
         assertEquals(1, resolver.calls());
         assertEquals(
                 List.of(

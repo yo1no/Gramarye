@@ -55,6 +55,12 @@ final class DamageEffectResolver implements EffectResolver {
         }
         EffectStep step;
         if (request instanceof SpawnProjectileRequest spawnRequest) {
+            if (spawnRequest.requestId().value()
+                            != spawnRequest.sourceEventId().value()
+                    || spawnRequest.profileCode() != 0
+                    || spawnRequest.manaCost() != 0) {
+                return new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST);
+            }
             step = new SpawnProjectileStep(
                     0,
                     spawnRequest.dimension(),
@@ -68,6 +74,13 @@ final class DamageEffectResolver implements EffectResolver {
                     1,
                     0);
         } else if (request instanceof DamageEffectRequest damageRequest) {
+            if (damageRequest.requestId().value()
+                            != damageRequest.sourceEventId().value()
+                    || damageRequest.magnitude() % 1_000L != 0
+                    || damageRequest.magnitude() != 4_000L
+                    || damageRequest.manaCost() != 0) {
+                return new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST);
+            }
             step = new DamageEffectStep(
                     0,
                     damageRequest.target(),

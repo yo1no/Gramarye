@@ -9,6 +9,7 @@ import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
 
 /** Call-scoped root handoff from the pure P6 transaction to the platform world. */
 final class P9WorldEffectHandoff implements WorldCommitPort {
@@ -109,11 +110,47 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
                 || command.requestId() <= 0L
                 || !command.targetId().equals(hit.targetId())
                 || command.magnitude() != 4_000L
+                || command.magnitude() % 1_000L != 0L
                 || command.manaCost() != 0L) {
             return CommitDisposition.NOT_APPLIED;
         }
-        // P9-S4 owns the only real damage mutation and applied-fact binding.
-        return CommitDisposition.NOT_APPLIED;
+        var convertedDamage = (float) (command.magnitude() / 1_000.0D);
+        if (!Float.isFinite(convertedDamage)
+                || convertedDamage <= 0.0F
+                || convertedDamage != 4.0F
+                || !currentActor(hit.dimension())) {
+            return CommitDisposition.NOT_APPLIED;
+        }
+
+        var serverLevel = actor.serverLevel();
+        var hitPosition = BlockPos.containing(hit.hitX(), hit.hitY(), hit.hitZ());
+        var projectileEntity = serverLevel.getEntity(hit.projectileId());
+        var targetEntity = serverLevel.getEntity(hit.targetId());
+        if (!(projectileEntity instanceof P9StarterProjectile projectile)
+                || !(targetEntity instanceof LivingEntity target)
+                || projectile.getUUID().equals(target.getUUID())
+                || projectile.level() != serverLevel
+                || !projectile.isAddedToLevel()
+                || projectile.isRemoved()
+                || !projectile.isAlive()
+                || projectile.getOwner() != actor
+                || !projectile.hasAuthenticatedCasterIdentity(actor)
+                || target == actor
+                || target.level() != serverLevel
+                || !target.isAddedToLevel()
+                || target.isRemoved()
+                || !target.isAlive()
+                || !serverLevel.isInWorldBounds(hitPosition)
+                || !serverLevel.isLoaded(hitPosition)
+                || !serverLevel.getWorldBorder().isWithinBounds(hit.hitX(), hit.hitZ())
+                || !serverLevel.isLoaded(target.blockPosition())) {
+            return CommitDisposition.NOT_APPLIED;
+        }
+
+        return target.hurt(
+                        serverLevel.damageSources().indirectMagic(projectile, actor), 4.0F)
+                ? CommitDisposition.APPLIED
+                : CommitDisposition.NOT_APPLIED;
     }
 
     private boolean currentActor(net.minecraft.resources.ResourceLocation dimension) {
