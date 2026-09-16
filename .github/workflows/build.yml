@@ -54,8 +54,9 @@ jobs:
             verifyPlatformBaseline compileJava compileTestJava \
             --rerun-tasks --warning-mode=all --console=plain \
             2>&1 | tee "${warning_root}/raw/gradle-compile.log"
-          compile_gradle_exit="${PIPESTATUS[0]}"
-          compile_tee_exit="${PIPESTATUS[1]}"
+          compile_pipeline_status=("${PIPESTATUS[@]}")
+          compile_gradle_exit="${compile_pipeline_status[0]}"
+          compile_tee_exit="${compile_pipeline_status[1]}"
           set -e
           source_tree="$(git rev-parse 'HEAD^{tree}')"
           set +e
