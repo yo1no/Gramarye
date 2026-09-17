@@ -37,6 +37,68 @@ jobs:
             exit 2
           fi
           mkdir -p "${warning_root}/metadata" "${warning_root}/raw" "${warning_root}/results"
+          raw_java_home="${JAVA_HOME-}"
+          if [[ -z "${raw_java_home}" ]]; then
+            printf 'P9-S4 Java-home handoff rejected: JAVA_HOME is missing or empty\n' >&2
+            exit 2
+          fi
+          canonical_java_home="$(
+            RAW_JAVA_HOME="${raw_java_home}" python3 - <<'PY'
+          import os
+          import stat
+          import sys
+          from pathlib import Path
+
+          def reject(message: str) -> None:
+              print(f"P9-S4 Java-home handoff rejected: {message}", file=sys.stderr)
+              raise SystemExit(2)
+
+          raw = os.environ.get("RAW_JAVA_HOME")
+          if raw is None or raw == "":
+              reject("JAVA_HOME is missing or empty")
+          if "\r" in raw or "\n" in raw:
+              reject("JAVA_HOME contains CR or LF")
+          try:
+              raw.encode("utf-8", "strict")
+          except UnicodeEncodeError:
+              reject("JAVA_HOME is not strict UTF-8")
+          raw_path = Path(raw)
+          if not raw_path.is_absolute():
+              reject("JAVA_HOME is not absolute")
+          try:
+              canonical_path = raw_path.resolve(strict=True)
+              canonical_info = canonical_path.lstat()
+              same_target = raw_path.samefile(canonical_path)
+          except (OSError, RuntimeError, ValueError) as error:
+              reject(f"JAVA_HOME cannot be resolved strictly: {type(error).__name__}")
+          if not stat.S_ISDIR(canonical_info.st_mode):
+              reject("resolved JAVA_HOME is not a directory")
+          if not same_target:
+              reject("raw and canonical JAVA_HOME identify different directories")
+          canonical = os.fspath(canonical_path)
+          if canonical == "" or "\r" in canonical or "\n" in canonical:
+              reject("canonical JAVA_HOME is empty or contains CR or LF")
+          try:
+              canonical.encode("utf-8", "strict")
+          except UnicodeEncodeError:
+              reject("canonical JAVA_HOME is not strict UTF-8")
+          sys.stdout.write(canonical)
+          PY
+          )"
+          if [[ -z "${canonical_java_home}" \
+                || "${canonical_java_home}" == *$'\r'* \
+                || "${canonical_java_home}" == *$'\n'* ]]; then
+            printf 'P9-S4 Java-home handoff rejected: canonical output is unsafe\n' >&2
+            exit 2
+          fi
+          if [[ -z "${GITHUB_OUTPUT-}" ]]; then
+            printf 'P9-S4 Java-home handoff rejected: GITHUB_OUTPUT is missing or empty\n' >&2
+            exit 2
+          fi
+          printf 'P9-S4 Java-home handoff raw=%q canonical=%q\n' \
+            "${raw_java_home}" "${canonical_java_home}"
+          printf 'canonical_java_home=%s\n' "${canonical_java_home}" \
+            >> "${GITHUB_OUTPUT}"
           printf '%s\n' \
             ./gradlew \
             --no-daemon \
@@ -72,7 +134,7 @@ jobs:
             --run-id "${GITHUB_RUN_ID}" \
             --attempt "${GITHUB_RUN_ATTEMPT}" \
             --job "${GITHUB_JOB}" \
-            --java-home "${JAVA_HOME}" \
+            --java-home "${canonical_java_home}" \
             --main-output "${GITHUB_WORKSPACE}/build/classes/java/main" \
             --test-output "${GITHUB_WORKSPACE}/build/classes/java/test"
           attribution_exit="$?"
@@ -97,7 +159,14 @@ jobs:
         env:
           GRAMARYE_RD1_DIAGNOSTIC_ROOT: ${{ runner.temp }}/gramarye-p9-s3-rd1-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           GRAMARYE_P9_S4_WARNING_ROOT: ${{ runner.temp }}/gramarye-p9-s4-wc1-warning-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          GRAMARYE_P9_S4_CANONICAL_JAVA_HOME: ${{ steps.warning-compile.outputs.canonical_java_home }}
         run: |
+          if [[ -z "${GRAMARYE_P9_S4_CANONICAL_JAVA_HOME-}" \
+                || "${GRAMARYE_P9_S4_CANONICAL_JAVA_HOME}" == *$'\r'* \
+                || "${GRAMARYE_P9_S4_CANONICAL_JAVA_HOME}" == *$'\n'* ]]; then
+            printf 'P9-S4 Java-home handoff rejected: compile-step output is missing, empty, or unsafe\n' >&2
+            exit 2
+          fi
           python3 ./scripts/verify-p9-s4-warning-attribution.py \
             unit \
             --project-root "${GITHUB_WORKSPACE}" \
@@ -110,7 +179,7 @@ jobs:
             --run-id "${GITHUB_RUN_ID}" \
             --attempt "${GITHUB_RUN_ATTEMPT}" \
             --job "${GITHUB_JOB}" \
-            --java-home "${JAVA_HOME}" \
+            --java-home "${GRAMARYE_P9_S4_CANONICAL_JAVA_HOME}" \
             --main-output "${GITHUB_WORKSPACE}/build/classes/java/main" \
             --test-output "${GITHUB_WORKSPACE}/build/classes/java/test" \
             --compile-proof "${GRAMARYE_P9_S4_WARNING_ROOT}/results/compile-warning-attribution.json"
