@@ -88,9 +88,12 @@ final class P8S2BoundaryTest {
     private static final int ARCHITECTURE_P9_A1_1_PREFIX_LENGTH = 28_780_571;
     private static final String ARCHITECTURE_P9_A1_1_PREFIX_SHA256 =
             "8dbb7523d20bf23bc8cd5b7b480bbcda6a24c2287bbe36ca4687802853690b05";
-    private static final int ARCHITECTURE_FINAL_LENGTH = 28_815_909;
-    private static final String ARCHITECTURE_FINAL_SHA256 =
+    private static final int ARCHITECTURE_P9_A1_2_PREFIX_LENGTH = 28_815_909;
+    private static final String ARCHITECTURE_P9_A1_2_PREFIX_SHA256 =
             "a46bf9ba6a27a1ca74601b602b26350716dde4535053349504d7187624e1c45a";
+    private static final int ARCHITECTURE_FINAL_LENGTH = 28_856_619;
+    private static final String ARCHITECTURE_FINAL_SHA256 =
+            "7d5ff7da38078c1d338c004f33df6cc8c6411a84f744685069b20f68027bf4f7";
     private static final Path P7_LOGIN_ISOLATION_SOURCE =
             ROOT_PACKAGE.resolve("P7S4LoginManaGameTests.java");
     private static final Path LEGACY_SEMANTIC_PACKAGE =
@@ -820,6 +823,9 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         ARCHITECTURE_P9_A1_1_PREFIX_SHA256,
                         sha256(architectureBytes, 0, ARCHITECTURE_P9_A1_1_PREFIX_LENGTH)),
+                () -> assertEquals(
+                        ARCHITECTURE_P9_A1_2_PREFIX_SHA256,
+                        sha256(architectureBytes, 0, ARCHITECTURE_P9_A1_2_PREFIX_LENGTH)),
                 () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
