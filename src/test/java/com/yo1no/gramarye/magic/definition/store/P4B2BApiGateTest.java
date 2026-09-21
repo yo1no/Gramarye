@@ -394,7 +394,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(96, dependencyErrorCatchCount(production)),
+                () -> assertEquals(100, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -630,10 +630,15 @@ class P4B2BApiGateTest {
                 "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java"))));
         var lifecycleCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java"))));
-        var p8ClientCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
-                "com/yo1no/gramarye/P8ClientPresentationState.java"))));
+        var p8ClientState = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/P8ClientPresentationState.java")));
+        var p8ClientCatches = errorCatchBlocks(p8ClientState);
         var p8ClientPrimary = p8ClientCatches.stream()
-                .filter(block -> block.body().contains("cancelCatalogDrain(drainIdentity);"))
+                .filter(block -> Pattern.compile(
+                                "cancelCatalogDrain\\s*\\(\\s*drainIdentity\\s*,\\s*"
+                                        + "capturedEpoch\\s*,\\s*capturedConnection\\s*\\)")
+                        .matcher(block.body())
+                        .find())
                 .toList();
         var p8ServerCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/P8ServerPresentationService.java"))));
@@ -669,6 +674,15 @@ class P4B2BApiGateTest {
                 + p8LifecycleCatches.size()
                 + p8RendererCatches.size()
                 + p8BackendCatches.size();
+        var p8RetainedGraph = p8ClientState.substring(
+                p8ClientState.indexOf("    private enum EventReservationOwner"),
+                p8ClientState.indexOf("final class P8ClientResourceIndex"));
+        var p8OpenResult = Class.forName(
+                "com.yo1no.gramarye.P8ClientConnectionOpenResult");
+        var p8CleanupDisposition = Class.forName(
+                "com.yo1no.gramarye.P8ClientCleanupDisposition");
+        var p8MaintenanceResult = Class.forName(
+                "com.yo1no.gramarye.P8ClientTransportMaintenanceResult");
         var primary = new java.util.ArrayList<ErrorCatchBlock>(p5Primary);
         primary.addAll(storeCatches);
         primary.addAll(networkCatches);
@@ -695,17 +709,71 @@ class P4B2BApiGateTest {
                 () -> assertEquals(1, p8ClientPrimary.size()),
                 () -> assertEquals(1, p8ServerCatches.size()),
                 () -> assertEquals(31, p8ExecutionCatches.size()),
-                () -> assertEquals(4, p8LifecycleCatches.size()),
+                () -> assertEquals(8, p8LifecycleCatches.size()),
                 () -> assertEquals(3, p8RendererCatches.size()),
                 () -> assertEquals(2, p8BackendCatches.size()),
-                () -> assertEquals(54, reviewedP8S5Catches),
+                () -> assertEquals(58, reviewedP8S5Catches),
+                () -> assertPackagePrivate(
+                        p8OpenResult.getModifiers(), "P8ClientConnectionOpenResult"),
+                () -> assertTrue(p8OpenResult.isRecord()),
+                () -> assertEquals(
+                        List.of(
+                                "opened:boolean",
+                                "publishedGeneration:long",
+                                "catalogDrain:java.util.Optional",
+                                "maintenance:com.yo1no.gramarye."
+                                        + "P8ClientTransportMaintenanceResult"),
+                        Arrays.stream(p8OpenResult.getRecordComponents())
+                                .map(component -> component.getName()
+                                        + ":" + component.getType().getName())
+                                .toList()),
+                () -> assertPackagePrivate(
+                        p8CleanupDisposition.getModifiers(), "P8ClientCleanupDisposition"),
+                () -> assertTrue(p8CleanupDisposition.isEnum()),
+                () -> assertEquals(
+                        List.of("NONE", "CLEARED", "SUPERSEDED"),
+                        Arrays.stream(p8CleanupDisposition.getEnumConstants())
+                                .map(Object::toString)
+                                .toList()),
+                () -> assertPackagePrivate(
+                        p8MaintenanceResult.getModifiers(),
+                        "P8ClientTransportMaintenanceResult"),
+                () -> assertTrue(p8MaintenanceResult.isRecord()),
+                () -> assertEquals(
+                        List.of(
+                                "cleanupDisposition:com.yo1no.gramarye."
+                                        + "P8ClientCleanupDisposition",
+                                "invalidatedPublishedGeneration:java.util.OptionalLong"),
+                        Arrays.stream(p8MaintenanceResult.getRecordComponents())
+                                .map(component -> component.getName()
+                                        + ":" + component.getType().getName())
+                                .toList()),
+                () -> assertEquals(
+                        1,
+                        occurrences(
+                                p8ClientState,
+                                "private Connection p8TransportConnection;")),
+                () -> assertEquals(
+                        1,
+                        occurrences(
+                                p8ClientState,
+                                "private ICommonPacketListener p8PlayListenerWitness;")),
+                () -> assertFalse(Pattern.compile(
+                                "(?<![A-Za-z0-9_$])Connection\\s+[A-Za-z_$]"
+                                        + "|(?<![A-Za-z0-9_$.])ICommonPacketListener\\s+"
+                                        + "[A-Za-z_$]")
+                        .matcher(p8RetainedGraph)
+                        .find()),
                 () -> assertEquals("primary", syncCatches.getFirst().binding()),
                 () -> assertTrue(syncCatches.getFirst().body().contains(
                         "lifecycle.submissionFailed(server, actor, identity, primary);")),
                 () -> assertTrue(syncCatches.getFirst().body().contains("throw primary;")),
                 () -> assertEquals("failure", p8ClientPrimary.getFirst().binding()),
-                () -> assertTrue(p8ClientPrimary.getFirst().body().contains(
-                        "cancelCatalogDrain(drainIdentity);")),
+                () -> assertTrue(Pattern.compile(
+                                "cancelCatalogDrain\\s*\\(\\s*drainIdentity\\s*,\\s*"
+                                        + "capturedEpoch\\s*,\\s*capturedConnection\\s*\\)")
+                        .matcher(p8ClientPrimary.getFirst().body())
+                        .find()),
                 () -> assertTrue(p8ClientPrimary.getFirst().body().contains("throw failure;")),
                 () -> assertEquals("failure", p8ServerCatches.getFirst().binding()),
                 () -> assertTrue(p8ServerCatches.getFirst().body().contains(
@@ -775,7 +843,7 @@ class P4B2BApiGateTest {
                                 + lifecycleCatches.size()
                                 + reviewedP8S5Catches,
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(96, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(100, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
                 "permit.releaseAfterEnqueueFailure();", "throw failure;");
         assertOrdered(

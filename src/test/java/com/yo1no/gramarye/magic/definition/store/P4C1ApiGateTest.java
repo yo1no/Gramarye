@@ -208,7 +208,12 @@ class P4C1ApiGateTest {
     void fiveAuthoritativeCeilingsAreExactAndHaveNoSynonymDefinitions() throws Exception {
         var ceilingSource = read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java"));
-        var production = javaSources(MAIN_JAVA);
+        var production = javaSources(MAIN_JAVA).stream()
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S5Harness(path))
+                .toList();
         var ceilingPath = "com/yo1no/gramarye/magic/limits/MagicSafetyCeilings.java";
         var names = Set.of(
                 "MAX_PLAYER_DRAFTS",
@@ -230,12 +235,14 @@ class P4C1ApiGateTest {
                 () -> assertEquals(
                         Set.of(
                                 ceilingPath,
+                                "com/yo1no/gramarye/P9StarterCommand.java",
                                 "com/yo1no/gramarye/magic/definition/player/"
                                         + "PlayerSkillAttachmentPersistenceBridge.java"),
                         relativeFilesContaining(production, "MAX_PLAYER_DRAFTS")),
                 () -> assertEquals(
                         Set.of(
                                 ceilingPath,
+                                "com/yo1no/gramarye/P9StarterCommand.java",
                                 "com/yo1no/gramarye/magic/definition/player/"
                                         + "PlayerSkillAttachmentPersistenceBridge.java",
                                 "com/yo1no/gramarye/magic/definition/player/"

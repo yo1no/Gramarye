@@ -19,12 +19,17 @@ import com.yo1no.gramarye.magic.definition.document.DraftActionSlot;
 import com.yo1no.gramarye.magic.definition.document.DraftNode;
 import com.yo1no.gramarye.magic.definition.document.DraftTriggerSlot;
 import com.yo1no.gramarye.magic.definition.document.SkillDraft;
+import com.yo1no.gramarye.magic.definition.document.SkillDocument;
+import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
 import com.yo1no.gramarye.magic.definition.inspection.ReferenceRole;
 import com.yo1no.gramarye.magic.definition.inspection.SourceSelection;
 import com.yo1no.gramarye.magic.definition.inspection.TargetSelection;
 import com.yo1no.gramarye.magic.definition.validation.ValidatedNodeDefinition;
 import com.yo1no.gramarye.magic.definition.validation.ValidatedSkillDefinition;
+import com.yo1no.gramarye.magic.definition.validation.ProfileAvailability;
+import com.yo1no.gramarye.magic.limits.MagicPolicyLimits;
+import com.yo1no.gramarye.magic.validation.ValidationContext;
 import com.yo1no.gramarye.magic.trigger.type.TriggerPayload;
 import java.math.BigDecimal;
 import java.util.List;
@@ -61,6 +66,11 @@ final class P9StarterSkillContent {
                     DAMAGE_ID,
                     4_000L,
                     0L);
+
+    private static final ValidationContext CANONICAL_VALIDATION_CONTEXT =
+            new ValidationContext(MagicPolicyLimits.DEFAULTS);
+    private static final P5RuntimeProjector CANONICAL_PROJECTOR =
+            new P5RuntimeProjector((field, profileId) -> ProfileAvailability.UNKNOWN);
 
     private static boolean definitionTypesDeclared;
 
@@ -122,6 +132,16 @@ final class P9StarterSkillContent {
         return fingerprintOf(definition)
                 .map(CANONICAL_FINGERPRINT::equals)
                 .orElse(false);
+    }
+
+    static boolean hasCanonicalGameplayFingerprint(
+            SkillReference reference, SkillDocument document) {
+        Objects.requireNonNull(reference, "reference");
+        Objects.requireNonNull(document, "document");
+        var projection = CANONICAL_PROJECTOR.project(
+                reference, document, CANONICAL_VALIDATION_CONTEXT);
+        return projection instanceof P5RuntimeProjector.Projection.Available available
+                && hasCanonicalGameplayFingerprint(available.definition());
     }
 
     static Optional<StarterGameplayFingerprintV0> fingerprintOf(

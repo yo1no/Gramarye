@@ -294,7 +294,8 @@ final class P4D3BApiGateTest {
                         - manaGameTestCount
                         - com.yo1no.gramarye.P7GameTestInventory.s4Count()
                         - com.yo1no.gramarye.P7GameTestInventory.p8Count()
-                        - com.yo1no.gramarye.P7GameTestInventory.p9S3Count()),
+                        - com.yo1no.gramarye.P7GameTestInventory.p9S3Count()
+                        - com.yo1no.gramarye.P7GameTestInventory.p9S5Count()),
                 () -> assertEquals(7, manaGameTestCount),
                 () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount));
     }

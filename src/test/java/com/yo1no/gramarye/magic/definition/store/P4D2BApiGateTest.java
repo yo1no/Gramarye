@@ -196,7 +196,8 @@ final class P4D2BApiGateTest {
                 - manaGameTestCount
                 - com.yo1no.gramarye.P7GameTestInventory.s4Count()
                 - com.yo1no.gramarye.P7GameTestInventory.p8Count()
-                - com.yo1no.gramarye.P7GameTestInventory.p9S3Count());
+                - com.yo1no.gramarye.P7GameTestInventory.p9S3Count()
+                - com.yo1no.gramarye.P7GameTestInventory.p9S5Count());
         assertEquals(7, manaGameTestCount);
         assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTestCount);
     }
@@ -222,7 +223,8 @@ final class P4D2BApiGateTest {
         assertEquals(Set.of(
                         "DefaultSkillSubmissionPolicyProvider.java",
                         "P8PayloadCodecSupport.java",
-                        "P8ServerPresentationService.java"),
+                        "P8ServerPresentationService.java",
+                        "P9StarterSkillContent.java"),
                 relativeSourcesContaining(
                         "new ValidationContext(MagicPolicyLimits.DEFAULTS)"));
 
@@ -258,10 +260,12 @@ final class P4D2BApiGateTest {
         for (var forbidden : List.of(
                 "OfflineRoot",
                 "RootCollector",
-                "RootIndex",
-                "PacketDistributor")) {
+                "RootIndex")) {
             assertFalse(allMain.contains(forbidden), forbidden);
         }
+        assertEquals(
+                Set.of("com/yo1no/gramarye/magic/network/P9ClientCastInput.java"),
+                relativeProductionPathsContaining("PacketDistributor"));
         assertEquals(
                 Set.of(
                         "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
@@ -310,6 +314,7 @@ final class P4D2BApiGateTest {
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S5Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
@@ -321,6 +326,7 @@ final class P4D2BApiGateTest {
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S5Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(MAIN_JAVA::relativize)
                 .map(path -> path.toString().replace('\\', '/'))
@@ -332,6 +338,7 @@ final class P4D2BApiGateTest {
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S5Harness(path))
                 .filter(path -> pattern.matcher(withoutCommentsAndLiterals(read(path))).find())
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());

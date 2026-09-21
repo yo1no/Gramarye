@@ -331,7 +331,8 @@ require_only_fixed_owner() {
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
                 || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s5-harness "${file}"; then
             continue
         fi
         status=0
@@ -359,7 +360,8 @@ require_only_ere_owner() {
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
                 || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s5-harness "${file}"; then
             continue
         fi
         status=0
@@ -786,7 +788,16 @@ is_approved_p8_s5_production_path() {
 }
 
 is_approved_p8_s5_resource_path() {
-    [[ "$1" == 'src/main/resources/META-INF/accesstransformer.cfg' ]]
+    case "$1" in
+        src/main/resources/META-INF/accesstransformer.cfg | \
+        src/main/resources/assets/gramarye/lang/en_us.json | \
+        src/main/resources/assets/gramarye/lang/zh_tw.json)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 is_approved_p8_s5_test_path() {
@@ -836,6 +847,18 @@ verify_p8_s5_access_transformer() {
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
         fail 'P8-S5 resource allowlist accepted a prefix-near access-transformer path'
     fi
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/en_us.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact en_us language path'
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/zh_tw.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact zh_tw language path'
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/en_us.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near en_us language path'
+    fi
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/zh_tw.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near zh_tw language path'
+    fi
 }
 
 verify_change_boundary() {
@@ -846,6 +869,8 @@ verify_change_boundary() {
     git diff --quiet HEAD -- \
         src/main/resources \
         ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
+        ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+        ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \
         || fail 'P4-E1-A must not modify production resources'
     changed="$(git diff --name-only HEAD -- src/main/java)" || status=$?
     [[ "${status}" -eq 0 ]] \
@@ -1014,13 +1039,17 @@ verify_ownership_and_phase_boundary() {
         OfflineRoot \
         RootCollector \
         RootIndex \
-        PacketDistributor \
         'Runtime.getRuntime().halt' \
         'Runtime.halt(' \
         'org.junit'; do
         forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" "${literal}" \
             "D3-B/P4-E/network/test surface appeared in production (${literal})"
     done
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        PacketDistributor \
+        'PacketDistributor escaped the exact P9-S5 client sender owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInput.java'
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         CustomPacketPayload \

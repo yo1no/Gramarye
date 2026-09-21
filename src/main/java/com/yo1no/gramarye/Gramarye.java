@@ -16,6 +16,8 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.AddReloadListenerEvent;
+import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.slf4j.Logger;
 
@@ -35,6 +37,7 @@ public final class Gramarye {
     private final P5ServerRuntimeConfig p5ServerRuntimeConfig;
     private final SkillRuntimeService skillRuntimeService;
     private final P8ServerPresentationService p8ServerPresentationService;
+    private final P9StarterCommand p9StarterCommand;
 
     public Gramarye(IEventBus modBus, ModContainer exactContainer) {
         Objects.requireNonNull(modBus, "modBus");
@@ -89,8 +92,27 @@ public final class Gramarye {
         P7ServerAuthorizationBoundary.install(
                 runtimeCapability,
                 p7AuthenticatedPlayerCastIngress);
+        p9StarterCommand = new P9StarterCommand(
+                playerSkillAttachmentService,
+                skillDefinitionSubmissionService,
+                skillDefinitionStoreService);
+        NeoForge.EVENT_BUS.addListener(p9StarterCommand::register);
+        NeoForge.EVENT_BUS.addListener(this::handleP9ReloadStarted);
+        NeoForge.EVENT_BUS.addListener(this::handleP9ReloadCompleted);
         NeoForge.EVENT_BUS.addListener(this::handleP5RuntimeStarted);
         exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);
+    }
+
+    private void handleP9ReloadStarted(AddReloadListenerEvent event) {
+        Objects.requireNonNull(event, "event");
+        skillRuntimeService.requestP9ReloadInvalidation();
+    }
+
+    private void handleP9ReloadCompleted(OnDatapackSyncEvent event) {
+        Objects.requireNonNull(event, "event");
+        if (event.getPlayer() == null) {
+            skillRuntimeService.completeP9Reload(event.getPlayerList().getServer());
+        }
     }
 
     private void handleP5RuntimeStarted(ServerStartedEvent event) {

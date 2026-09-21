@@ -102,7 +102,8 @@ class P4C2AApiGateTest {
         var p8ClientRegistryOwners = Set.of(
                 "com/yo1no/gramarye/GramaryeClient.java",
                 "com/yo1no/gramarye/magic/api/registry/"
-                        + "P8BuiltInClientProfileFactories.java");
+                        + "P8BuiltInClientProfileFactories.java",
+                "com/yo1no/gramarye/magic/network/P9ClientCastInput.java");
         var registryMutationOwners = production.stream()
                 .filter(path -> !p8ClientRegistryOwners.contains(relative(path)))
                 .filter(path -> {
@@ -404,7 +405,8 @@ class P4C2AApiGateTest {
                         - manaCount
                         - com.yo1no.gramarye.P7GameTestInventory.s4Count()
                         - com.yo1no.gramarye.P7GameTestInventory.p8Count()
-                        - com.yo1no.gramarye.P7GameTestInventory.p9S3Count()),
+                        - com.yo1no.gramarye.P7GameTestInventory.p9S3Count()
+                        - com.yo1no.gramarye.P7GameTestInventory.p9S5Count()),
                 () -> assertEquals(7, manaCount),
                 () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalCount));
     }
@@ -482,11 +484,13 @@ class P4C2AApiGateTest {
         for (var forbidden : List.of(
                 "OfflineRoot",
                 "RootCollector",
-                "RootIndex",
-                "PacketDistributor")) {
+                "RootIndex")) {
             assertFalse(allProduction.contains(forbidden),
                     () -> "Later phase production surface appeared: " + forbidden);
         }
+        assertEquals(
+                Set.of("com/yo1no/gramarye/magic/network/P9ClientCastInput.java"),
+                relativeFilesContaining(javaSources(MAIN_JAVA), "PacketDistributor"));
         assertEquals(
                 Set.of(
                         "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
@@ -624,6 +628,7 @@ class P4C2AApiGateTest {
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                 .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
+                .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S5Harness(path))
                 .filter(path -> read(path).contains(fragment))
                 .map(P4C2AApiGateTest::relative)
                 .collect(Collectors.toSet());

@@ -2,7 +2,6 @@ package com.yo1no.gramarye;
 
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Supplier;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
@@ -21,27 +20,48 @@ final class P8ClientPayloadHandlers {
             ProfileCatalogPayload payload, IPayloadContext context) {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(context, "context");
-        dispatch(context, () -> PRODUCTION.prepareProfileCatalog(payload));
+        prepareAndDispatchProfileCatalog(context, payload);
     }
 
     static void handlePresentationEvent(
             PresentationEventPayload payload, IPayloadContext context) {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(context, "context");
-        dispatch(context, () -> PRODUCTION.preparePresentationEvent(payload));
+        prepareAndDispatchPresentationEvent(context, payload);
     }
 
-    private static void dispatch(
-            IPayloadContext context,
-            Supplier<Optional<P8ClientDispatchTask>> preparation) {
+    private static void prepareAndDispatchProfileCatalog(
+            IPayloadContext context, ProfileCatalogPayload payload) {
         final Optional<P8ClientDispatchTask> prepared;
         try {
             prepared = Objects.requireNonNull(
-                    preparation.get(), "P8 client dispatch preparation");
+                    PRODUCTION.prepareProfileCatalog(
+                            context.connection(), context.listener(), payload),
+                    "P8 client dispatch preparation");
         } catch (P8ClientDispatchUnavailableException unavailable) {
             context.disconnect(INVALID_PAYLOAD);
             return;
         }
+        dispatch(context, prepared);
+    }
+
+    private static void prepareAndDispatchPresentationEvent(
+            IPayloadContext context, PresentationEventPayload payload) {
+        final Optional<P8ClientDispatchTask> prepared;
+        try {
+            prepared = Objects.requireNonNull(
+                    PRODUCTION.preparePresentationEvent(
+                            context.connection(), context.listener(), payload),
+                    "P8 client dispatch preparation");
+        } catch (P8ClientDispatchUnavailableException unavailable) {
+            context.disconnect(INVALID_PAYLOAD);
+            return;
+        }
+        dispatch(context, prepared);
+    }
+
+    private static void dispatch(
+            IPayloadContext context, Optional<P8ClientDispatchTask> prepared) {
         if (prepared.isEmpty()) {
             return;
         }

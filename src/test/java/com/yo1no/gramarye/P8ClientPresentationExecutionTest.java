@@ -37,6 +37,7 @@ import net.neoforged.bus.api.BusBuilder;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.sound.PlaySoundEvent;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 final class P8ClientPresentationExecutionTest {
@@ -75,6 +76,11 @@ final class P8ClientPresentationExecutionTest {
             new P8S2TestFixtures.ParticleConfiguration(PARTICLE_ASSET, 8, 50, 250, 20);
     private static final P8S2TestFixtures.TrailConfiguration DEFAULT_TRAIL =
             new P8S2TestFixtures.TrailConfiguration(PARTICLE_ASSET, 8, 2, 200, 16);
+
+    @AfterEach
+    void closeClientTransports() {
+        P8ClientTestEpochs.closeAll();
+    }
 
     @Test
     void executionOwnerHasNoPublicOrProtectedDeclaredSurface() {
@@ -548,7 +554,7 @@ final class P8ClientPresentationExecutionTest {
         execution.clearAll();
 
         var state = new P8ClientPresentationState(() -> true, execution);
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         var catalog = catalog();
         execution.replaceCatalog(
@@ -603,7 +609,7 @@ final class P8ClientPresentationExecutionTest {
         assertEquals(PresentationLimits.MAX_PROFILE_DIAGNOSTIC_KEYS, execution.diagnosticCount());
         assertEquals(Long.MAX_VALUE, execution.suppressedDiagnosticCount());
 
-        state.onLoggedOut();
+        P8ClientTestEpochs.logout(state);
 
         assertEquals(0, execution.diagnosticCount());
         assertEquals(0L, execution.suppressedDiagnosticCount());
@@ -620,10 +626,10 @@ final class P8ClientPresentationExecutionTest {
                     availabilityCalls[0]++;
                     if (availabilityCalls[0] == 1) {
                         var state = stateHolder[0];
-                        state.onLoggedOut();
-                        state.onConnectionOpened();
+                        P8ClientTestEpochs.logout(state);
+                        P8ClientTestEpochs.open(state);
                         state.onWorldLoaded();
-                        latestDrain[0] = state.prepareProfileCatalog(latestPayload).orElseThrow();
+                        latestDrain[0] = P8ClientTestEpochs.prepareProfileCatalog(state, latestPayload).orElseThrow();
                         return ClientProfileFactory.Availability.UNAVAILABLE;
                     }
                     return ClientProfileFactory.Availability.AVAILABLE;
@@ -634,10 +640,10 @@ final class P8ClientPresentationExecutionTest {
         var state = new P8ClientPresentationState(() -> true, execution);
         stateHolder[0] = state;
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
 
-        state.prepareProfileCatalog(new ProfileCatalogPayload(1L, catalog().entries()))
+        P8ClientTestEpochs.prepareProfileCatalog(state, new ProfileCatalogPayload(1L, catalog().entries()))
                 .orElseThrow()
                 .run();
 
@@ -684,9 +690,10 @@ final class P8ClientPresentationExecutionTest {
                 errorFactory, idleParticleFactory(), idleTrailFactory(), new FakeBackend());
         var errorState = new P8ClientPresentationState(() -> true, errorExecution);
         errorState.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        errorState.onConnectionOpened();
+        P8ClientTestEpochs.open(errorState);
         errorState.onWorldLoaded();
-        var drain = errorState.prepareProfileCatalog(
+        var drain = P8ClientTestEpochs.prepareProfileCatalog(
+                        errorState,
                         new ProfileCatalogPayload(1L, catalog().entries()))
                 .orElseThrow();
 

@@ -15,13 +15,15 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Direct positive and negative controls for the P9-S3 GameTest worker-surface consumer. */
+/** Direct positive and negative controls for the P9-S3 worker and P9-S5 path consumers. */
 final class P9S3DirectConsumerContractTest {
     private static final Path PROJECT_ROOT = projectRoot();
     private static final Path VERIFIER = PROJECT_ROOT.resolve(
             "scripts/verify-p7-s4-source-contracts.sh");
     private static final String LOGICAL_P9_SOURCE =
             "src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java";
+    private static final String LOGICAL_P9_S5_HOLDER =
+            "src/main/java/com/yo1no/gramarye/P9S5ProvisioningGameTests.java";
     private static final String LOGICAL_DC1_TEST =
             "src/test/java/com/yo1no/gramarye/P9S3DirectConsumerContractTest.java";
     private static final List<String> LOGICAL_P9_S4_PATHS = List.of(
@@ -37,6 +39,74 @@ final class P9S3DirectConsumerContractTest {
             ".github/workflows/build.yml",
             "scripts/collect-p9-s3-rd1-unit-test-diagnostics.sh",
             "scripts/verify-p9-s4-warning-attribution.py");
+    private static final List<String> LOGICAL_P9_S5_PATHS = List.of(
+            "build.gradle",
+            "scripts/verify-p4-a3-b-configuration.sh",
+            "scripts/verify-p4-b2-b-configuration.sh",
+            "scripts/verify-p4-c2-a-configuration.sh",
+            "scripts/verify-p4-c2-b-configuration.sh",
+            "scripts/verify-p4-d1-configuration.sh",
+            "scripts/verify-p4-d2-configuration.sh",
+            "scripts/verify-p4-d3-a-configuration.sh",
+            "scripts/verify-p4-d3-configuration.sh",
+            "scripts/verify-p4-e0-r-configuration.sh",
+            "scripts/verify-p4-e0-r2q-configuration.sh",
+            "scripts/verify-p4-e1-configuration.sh",
+            "scripts/verify-p4-e2-configuration.sh",
+            "scripts/verify-p4-e3-configuration.sh",
+            "scripts/verify-p7-s4-source-contracts.sh",
+            "src/main/java/com/yo1no/gramarye/Gramarye.java",
+            "src/main/java/com/yo1no/gramarye/P8ClientPayloadDispatchFactory.java",
+            "src/main/java/com/yo1no/gramarye/P8ClientPayloadDispatchPort.java",
+            "src/main/java/com/yo1no/gramarye/P8ClientPayloadHandlers.java",
+            "src/main/java/com/yo1no/gramarye/P8ClientPresentationLifecycle.java",
+            "src/main/java/com/yo1no/gramarye/P8ClientPresentationState.java",
+            "src/main/java/com/yo1no/gramarye/P9StarterCommand.java",
+            "src/main/java/com/yo1no/gramarye/P9StarterSkillContent.java",
+            "src/main/java/com/yo1no/gramarye/P9StarterSkillIdentityV0.java",
+            "src/main/java/com/yo1no/gramarye/P9S5ProvisioningGameTests.java",
+            "src/main/java/com/yo1no/gramarye/magic/network/P7ClientLifecycleEvents.java",
+            "src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInput.java",
+            "src/main/java/com/yo1no/gramarye/magic/network/P9ClientKeyMappings.java",
+            "src/main/resources/assets/gramarye/lang/en_us.json",
+            "src/main/resources/assets/gramarye/lang/zh_tw.json",
+            "src/p8S5ClientHarness/java/com/yo1no/gramarye/P8S5ClientRuntimeHarness.java",
+            "src/p9S5ClientHarness/java/com/yo1no/gramarye/P9S5ClientRuntimeHarness.java",
+            "src/test/java/com/yo1no/gramarye/P6RuntimeExecutionCapabilityTest.java",
+            "src/test/java/com/yo1no/gramarye/P7GameTestInventory.java",
+            "src/test/java/com/yo1no/gramarye/P8ClientPayloadHandlersTest.java",
+            "src/test/java/com/yo1no/gramarye/P8ClientPlayConnection.java",
+            "src/test/java/com/yo1no/gramarye/P8ClientPlayEpochAcceptanceTest.java",
+            "src/test/java/com/yo1no/gramarye/P8ClientPlayEpochTest.java",
+            "src/test/java/com/yo1no/gramarye/P8ClientPresentationExecutionTest.java",
+            "src/test/java/com/yo1no/gramarye/P8ClientPresentationLifecycleTest.java",
+            "src/test/java/com/yo1no/gramarye/P8ClientPresentationStateConcurrencyTest.java",
+            "src/test/java/com/yo1no/gramarye/P8ClientPresentationStateTest.java",
+            "src/test/java/com/yo1no/gramarye/P8S2BoundaryTest.java",
+            "src/test/java/com/yo1no/gramarye/P8S4PayloadBoundaryTest.java",
+            "src/test/java/com/yo1no/gramarye/P9S1BoundaryTest.java",
+            "src/test/java/com/yo1no/gramarye/P9S3DirectConsumerContractTest.java",
+            "src/test/java/com/yo1no/gramarye/P9S5BoundaryTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2AApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4C1ApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4D1ApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2ApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3BApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/network/P7ClientMirrorTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrarTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/network/P7S2BoundaryTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/network/P7S2DedicatedRegistrationTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/network/P7S3BoundaryTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/network/P9ClientCastInputTest.java",
+            "src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java");
     private static final String VALID_FIXTURE = """
             package com.yo1no.gramarye;
 
@@ -114,7 +184,8 @@ final class P9S3DirectConsumerContractTest {
         var result = runVerifier(List.of("--game-test-count"));
 
         assertEquals(0, result.exitCode(), result.output());
-        assertEquals("38", result.output().trim());
+        assertEquals("39", result.output().trim());
+        assertEquals(67, LOGICAL_P9_S5_PATHS.size());
 
         var exactCorrectionPath = runVerifier(List.of("--is-s4-path", LOGICAL_DC1_TEST));
         assertEquals(0, exactCorrectionPath.exitCode(), exactCorrectionPath.output());
@@ -134,6 +205,30 @@ final class P9S3DirectConsumerContractTest {
             var nearWc1Path = runVerifier(List.of("--is-s4-path", logicalPath + ".extra"));
             assertEquals(1, nearWc1Path.exitCode(), nearWc1Path.output());
         }
+        for (var logicalPath : LOGICAL_P9_S5_PATHS) {
+            var exactS5Path = runVerifier(List.of("--is-p9-s5-path", logicalPath));
+            assertEquals(0, exactS5Path.exitCode(), exactS5Path.output());
+            var exactAggregatePath = runVerifier(List.of("--is-s4-path", logicalPath));
+            assertEquals(0, exactAggregatePath.exitCode(), exactAggregatePath.output());
+            var nearS5Path = runVerifier(List.of(
+                    "--is-p9-s5-path", logicalPath + ".extra"));
+            assertEquals(1, nearS5Path.exitCode(), nearS5Path.output());
+        }
+        for (var broadPath : List.of(
+                "scripts/verify-p4-configuration.sh",
+                "src/main/java/com/yo1no/gramarye/magic/network",
+                "src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInputExtra.java",
+                "src/test/java/com/yo1no/gramarye/P9S5BoundaryTestHelper.java")) {
+            var broadS5Path = runVerifier(List.of("--is-p9-s5-path", broadPath));
+            assertEquals(1, broadS5Path.exitCode(), broadS5Path.output());
+        }
+
+        var exactS5Holder = runVerifier(List.of(
+                "--is-p9-s5-harness", LOGICAL_P9_S5_HOLDER));
+        assertEquals(0, exactS5Holder.exitCode(), exactS5Holder.output());
+        var nearS5Holder = runVerifier(List.of(
+                "--is-p9-s5-harness", LOGICAL_P9_S5_HOLDER + ".extra"));
+        assertEquals(1, nearS5Holder.exitCode(), nearS5Holder.output());
     }
 
     @Test

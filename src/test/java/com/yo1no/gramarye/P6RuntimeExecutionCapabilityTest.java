@@ -23,6 +23,8 @@ final class P6RuntimeExecutionCapabilityTest {
     private static final Path MAIN_JAVA = projectRoot().resolve("src/main/java");
     private static final Path P9_S3_GAME_TEST = MAIN_JAVA.resolve(
             "com/yo1no/gramarye/P9S3ProjectileGameTests.java");
+    private static final Path P9_S5_GAME_TEST = MAIN_JAVA.resolve(
+            "com/yo1no/gramarye/P9S5ProvisioningGameTests.java");
     private static final Pattern CAPABILITY_ACQUISITION = Pattern.compile(
             "\\bP6RuntimeExecutionCapability\\s*\\.\\s*forRuntimeAdapter\\s*\\(");
 
@@ -34,9 +36,12 @@ final class P6RuntimeExecutionCapabilityTest {
         var callers = new HashSet<String>();
         var callCount = 0L;
         var gameTestCallCount = CAPABILITY_ACQUISITION.matcher(
-                        Files.readString(P9_S3_GAME_TEST))
-                .results()
-                .count();
+                                Files.readString(P9_S3_GAME_TEST))
+                        .results()
+                        .count()
+                + CAPABILITY_ACQUISITION.matcher(Files.readString(P9_S5_GAME_TEST))
+                        .results()
+                        .count();
         try (var paths = Files.walk(MAIN_JAVA)) {
             for (var path : paths.filter(Files::isRegularFile)
                     .filter(candidate -> candidate.toString().endsWith(".java"))
@@ -45,6 +50,7 @@ final class P6RuntimeExecutionCapabilityTest {
                     .filter(candidate -> !candidate.equals(MAIN_JAVA.resolve(
                             "com/yo1no/gramarye/P8S3PresentationGameTests.java")))
                     .filter(candidate -> !candidate.equals(P9_S3_GAME_TEST))
+                    .filter(candidate -> !candidate.equals(P9_S5_GAME_TEST))
                     .toList()) {
                 var matches = CAPABILITY_ACQUISITION.matcher(Files.readString(path))
                         .results()

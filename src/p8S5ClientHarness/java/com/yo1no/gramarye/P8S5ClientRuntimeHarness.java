@@ -264,10 +264,10 @@ final class P8S5ClientRuntimeHarness {
         }
         catalogGeneration = state.installedCatalogGeneration();
         require(
-                state.connectionGeneration() > 0L
+                state.connectionGeneration() == 1L
                         && state.worldGeneration() > 0L
                         && state.resourceGeneration() > 0L,
-                "ready client retained a non-positive lifecycle generation");
+                "fresh actual client did not publish exact connection generation 1");
         require(
                 state.installedCatalogSnapshot() != null,
                 "catalog generation has no installed snapshot");
@@ -288,8 +288,9 @@ final class P8S5ClientRuntimeHarness {
                 firstParticleBaseline == 0,
                 "fresh ParticleEngine retained a P8 backend particle");
         firstParticleMaximum = firstParticleBaseline;
-        marker("03 WORLD_CONNECTION_RESOURCE_AND_CATALOG_READY catalogGeneration="
-                + catalogGeneration
+        marker("03 WORLD_CONNECTION_RESOURCE_AND_CATALOG_READY connectionGeneration="
+                + state.connectionGeneration()
+                + " catalogGeneration=" + catalogGeneration
                 + " resourceGeneration="
                 + state.resourceGeneration());
         submitEventFromIntegratedServer(minecraft, 1L);
@@ -674,7 +675,9 @@ final class P8S5ClientRuntimeHarness {
         require(
                 !state.connected()
                         && state.connectionGeneration()
-                                == connectionGenerationBeforeDisconnect + 1L
+                                == connectionGenerationBeforeDisconnect
+                        && !state.isCurrentPublishedPlayGeneration(
+                                connectionGenerationBeforeDisconnect)
                         && !state.worldReady()
                         && state.worldGeneration() == 0L
                         && state.resourceReady()
@@ -688,7 +691,8 @@ final class P8S5ClientRuntimeHarness {
                         && state.pendingEventCount() == 0
                         && state.pendingCatalogGeneration() == 0L
                         && state.unavailableHandoffCount() == 0L,
-                "LoggingOut did not synchronously clear P8 connection/world truth");
+                "LoggingOut did not invalidate the published P8 generation or clear "
+                        + "connection/world truth");
         require(
                 execution.activePresentationCount() == 0
                         && execution.activeTrails() == 0L

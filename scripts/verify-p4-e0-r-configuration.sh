@@ -148,6 +148,39 @@ require_ere_count() {
         || fail "${message} (expected ${expected}, found ${actual})"
 }
 
+require_jar_class_family() {
+    local listing="$1"
+    local class_base="$2"
+    local expected_family_count="$3"
+    local description="$4"
+    local family_pattern="^${class_base}(\\\$[^/]+)?\\.class$"
+
+    require_ere_count \
+        "${listing}" \
+        "^${class_base}\\.class$" \
+        1 \
+        "${description} must contain its exact B.class entry"
+    if [[ -n "${expected_family_count}" ]]; then
+        require_ere_count \
+            "${listing}" \
+            "${family_pattern}" \
+            "${expected_family_count}" \
+            "${description} exact B.class/B\$*.class family changed"
+    fi
+}
+
+forbid_jar_class_family() {
+    local listing="$1"
+    local class_base="$2"
+    local description="$3"
+    local family_pattern="^${class_base}(\\\$[^/]+)?\\.class$"
+
+    forbid_ere \
+        "${listing}" \
+        "${family_pattern}" \
+        "${description} leaked into the production JAR"
+}
+
 require_regular_file() {
     local file="$1"
     local message="$2"
@@ -892,7 +925,16 @@ is_approved_p8_s5_production_path() {
 }
 
 is_approved_p8_s5_resource_path() {
-    [[ "$1" == 'src/main/resources/META-INF/accesstransformer.cfg' ]]
+    case "$1" in
+        src/main/resources/META-INF/accesstransformer.cfg | \
+        src/main/resources/assets/gramarye/lang/en_us.json | \
+        src/main/resources/assets/gramarye/lang/zh_tw.json)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 is_approved_p8_s5_test_path() {
@@ -941,6 +983,18 @@ verify_p8_s5_access_transformer() {
         || fail 'P8-S5 resource allowlist rejected its exact access transformer'
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
         fail 'P8-S5 resource allowlist accepted a prefix-near access-transformer path'
+    fi
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/en_us.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact en_us language path'
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/zh_tw.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact zh_tw language path'
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/en_us.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near en_us language path'
+    fi
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/zh_tw.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near zh_tw language path'
     fi
 }
 
@@ -1077,12 +1131,16 @@ verify_prohibited_paths_unchanged() {
     git diff --quiet HEAD -- \
         src/main/resources \
         ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
+        ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+        ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \
         docs/codex-spec \
         gradle.properties \
         || fail 'P4-E0-R1 modified production resource, authority, or version truth'
     untracked="$(git ls-files --others --exclude-standard -- \
         src/main/resources docs/codex-spec \
-        ':(exclude)src/main/resources/META-INF/accesstransformer.cfg')" || status=$?
+        ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
+        ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+        ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json')" || status=$?
     [[ "${status}" -eq 0 ]] || fail 'git failed while checking prohibited untracked paths'
     [[ -z "${untracked}" ]] \
         || fail "P4-E0-R1 added a prohibited untracked path: ${untracked}"
@@ -1293,7 +1351,10 @@ verify_build_contract() {
         ": name == 'p8S5ClientRuntimeHarness'" \
         '? p8S5ClientHarnessMod' \
         ": name == 'p9S3ClientRuntimeHarness'" \
-        '? p9S3ClientHarnessMod : productionMod' \
+        '? p9S3ClientHarnessMod' \
+        ": name == 'p9S5ClientRuntimeHarness'" \
+        '? p9S5ClientHarnessMod' \
+        ': productionMod' \
         "sourceSets.create('p8S5ClientHarness')" \
         "tasks.register('prepareP8S5ClientRuntimeHarness', Delete)" \
         "mods.named('p8S5ClientRuntimeHarness')" \
@@ -1309,7 +1370,17 @@ verify_build_contract() {
         "tasks.register('verifyP9S3ClientRuntimeResultParser')" \
         'dependsOn(verifyP9S3ClientRuntimeResultParser)' \
         "tasks.named(p9S3ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
-        "add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
+        "add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)" \
+        "sourceSets.create('p9S5ClientHarness')" \
+        'addModdingDependenciesTo(p9S5ClientHarnessSourceSet)' \
+        'sourceSet(p9S5ClientHarnessSourceSet)' \
+        "tasks.register('prepareP9S5ClientRuntimeHarness', Delete)" \
+        "mods.named('p9S5ClientRuntimeHarness')" \
+        "tasks.named('runP9S5ClientRuntimeHarness', JavaExec)" \
+        "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
+        'dependsOn(verifyP9S5ClientRuntimeResultParser)' \
+        "tasks.named(p9S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
+        "add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
         require_fixed scripts/verify-p4-b2-b-configuration.sh "${marker}" \
             "P4-E0-R1 exact B2 runtime allowlist is missing ${marker}"
     done
@@ -1325,10 +1396,40 @@ verify_build_contract() {
     require_fixed_count build.gradle \
         'verifyP9S3ClientRuntimeResultParser' 4 \
         'P9-S3 result parser escaped its exact definition/run/test topology'
+    require_fixed_count build.gradle \
+        'tasks.named(p9S5ClientHarnessSourceSet.classesTaskName)' 2 \
+        'P9-S5 harness classes escaped the exact run plus required-test topology'
+    require_fixed_count build.gradle \
+        'verifyP9S5ClientRuntimeResultParser' 4 \
+        'P9-S5 result parser escaped its exact definition/run/test topology'
+    require_ere_count build.gradle \
+        "^[[:space:]]*tasks\.named\(p9S5ClientHarnessSourceSet\.compileJavaTaskName, JavaCompile\)\.configure[[:space:]]*\{" \
+        1 \
+        'P9-S5 harness compile lint owner must remain exact'
+    for marker in \
+        "sourceSets.create('p9S5ClientHarness')" \
+        'addModdingDependenciesTo(p9S5ClientHarnessSourceSet)' \
+        'sourceSet(p9S5ClientHarnessSourceSet)' \
+        "tasks.register('prepareP9S5ClientRuntimeHarness', Delete)" \
+        "mods.named('p9S5ClientRuntimeHarness')" \
+        ": name == 'p9S5ClientRuntimeHarness'" \
+        '? p9S5ClientHarnessMod' \
+        "tasks.named('runP9S5ClientRuntimeHarness', JavaExec)" \
+        "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
+        'dependsOn(verifyP9S5ClientRuntimeResultParser)' \
+        "add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
+        require_fixed_count \
+            build.gradle \
+            "${marker}" \
+            1 \
+            "P9-S5 exact source-set/mod/run/parser topology changed: ${marker}"
+    done
     forbid_fixed build.gradle "name.startsWith('p4E0R2QCase')" \
         'P4-E0-R2Q formal cases must use exact generated loaded-mod membership'
     forbid_fixed build.gradle "name.startsWith('p4E0R2Q')" \
         'P4-E0-R2Q phase must not gain a broad loaded-mod prefix allowlist'
+    forbid_ere build.gradle "name\\.startsWith\\('p9[^']*'\\)" \
+        'P9 client harnesses must retain exact loaded-mod routing'
 }
 
 verify_r2_build_contract() {
@@ -1862,6 +1963,61 @@ verify_jar_isolation() {
             forbid_fixed "${JAR_LISTING}" "${source_path#src/p4E0Research/resources/}" \
                 'P4-E0 research resource leaked into production JAR'
         done < "${RESOURCE_LIST}"
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9StarterCommand' \
+            2 \
+            'P9-S5 starter command'
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9StarterSkillIdentityV0' \
+            1 \
+            'P9-S5 deterministic starter identity'
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/magic/network/P9ClientCastInput' \
+            6 \
+            'P9-S5 client cast input'
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/magic/network/P9ClientKeyMappings' \
+            1 \
+            'P9-S5 key-mapping registrar'
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9S5ProvisioningGameTests' \
+            '' \
+            'P9-S5 provisioning GameTest holder'
+        require_ere_count \
+            "${JAR_LISTING}" \
+            '^assets/gramarye/lang/en_us\.json$' \
+            1 \
+            'P9-S5 production JAR must contain exact en_us language resource'
+        require_ere_count \
+            "${JAR_LISTING}" \
+            '^assets/gramarye/lang/zh_tw\.json$' \
+            1 \
+            'P9-S5 production JAR must contain exact zh_tw language resource'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P8S5ClientRuntimeHarness' \
+            'P8-S5 client harness family'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9S3ClientRuntimeHarness' \
+            'P9-S3 client harness family'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9S5ClientRuntimeHarness' \
+            'P9-S5 client harness family'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9S5BoundaryTest' \
+            'P9-S5 boundary-test family'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/magic/network/P9ClientCastInputTest' \
+            'P9-S5 cast-input test family'
     done < "${JAR_FILE_LIST}"
 }
 

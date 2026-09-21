@@ -619,7 +619,16 @@ is_approved_p8_s5_production_path() {
 }
 
 is_approved_p8_s5_resource_path() {
-    [[ "$1" == 'src/main/resources/META-INF/accesstransformer.cfg' ]]
+    case "$1" in
+        src/main/resources/META-INF/accesstransformer.cfg | \
+        src/main/resources/assets/gramarye/lang/en_us.json | \
+        src/main/resources/assets/gramarye/lang/zh_tw.json)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 is_approved_p8_s5_test_path() {
@@ -669,6 +678,18 @@ verify_p8_s5_access_transformer() {
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
         fail 'P8-S5 resource allowlist accepted a prefix-near access-transformer path'
     fi
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/en_us.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact en_us language path'
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/zh_tw.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact zh_tw language path'
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/en_us.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near en_us language path'
+    fi
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/zh_tw.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near zh_tw language path'
+    fi
 }
 
 verify_production_no_diff() {
@@ -679,6 +700,8 @@ verify_production_no_diff() {
     git diff --quiet HEAD -- \
         src/main/resources \
         ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
+        ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+        ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \
         || fail 'P4-E1-A must not modify production resources'
     changed="$(git diff --name-only HEAD -- src/main/java)" || status=$?
     [[ "${status}" -eq 0 ]] \

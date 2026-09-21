@@ -347,13 +347,17 @@ main() {
     # portable gates. Manual clone hooks, offline roots, and unreviewed networking remain
     # forbidden.
     for literal in \
-        'OfflineRoot' \
-        'PacketDistributor'; do
+        'OfflineRoot'; do
         forbid_fixed_in_file_list \
             "${SOURCE_FILE_LIST}" \
             "${literal}" \
             'Unreviewed later lifecycle/root/network surface appeared in production'
     done
+    forbid_fixed_in_file_list_except \
+        "${SOURCE_FILE_LIST}" \
+        'PacketDistributor' \
+        'PacketDistributor escaped the exact P9-S5 client sender owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInput.java'
     forbid_fixed_in_file_list_except \
         "${SOURCE_FILE_LIST}" \
         'CustomPacketPayload' \

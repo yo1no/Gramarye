@@ -29,6 +29,10 @@ final class P7S2DedicatedRegistrationTest {
             "P8ProfileCatalogSnapshot.java",
             "PresentationEventPayload.java",
             "ProfileCatalogPayload.java");
+    private static final Set<String> CLIENT_ONLY_NETWORK_SOURCES = Set.of(
+            "P7ClientLifecycleEvents.java",
+            "P9ClientCastInput.java",
+            "P9ClientKeyMappings.java");
 
     @Test
     void commonRegistrarPayloadHandlerAndCompositionClassesInitializeWithoutClientCode() {
@@ -58,19 +62,28 @@ final class P7S2DedicatedRegistrationTest {
 
     @Test
     void productionNetworkSourcesContainNoMinecraftClientReference() throws IOException {
-        var clientOwner = NETWORK_MAIN.resolve("P7ClientLifecycleEvents.java");
-        var client = read(clientOwner);
-        assertTrue(client.contains("@EventBusSubscriber(modid = Gramarye.MOD_ID, value = Dist.CLIENT)"));
-        assertTrue(client.contains("final class P7ClientLifecycleEvents"));
-        assertFalse(client.contains("public class P7ClientLifecycleEvents"));
-        assertEquals(3, client.split("@SubscribeEvent", -1).length - 1);
+        var lifecycle = read(NETWORK_MAIN.resolve("P7ClientLifecycleEvents.java"));
+        var input = read(NETWORK_MAIN.resolve("P9ClientCastInput.java"));
+        var mappings = read(NETWORK_MAIN.resolve("P9ClientKeyMappings.java"));
+        assertTrue(lifecycle.contains(
+                "@EventBusSubscriber(modid = Gramarye.MOD_ID, value = Dist.CLIENT)"));
+        assertTrue(lifecycle.contains("final class P7ClientLifecycleEvents"));
+        assertFalse(lifecycle.contains("public class P7ClientLifecycleEvents"));
+        assertEquals(5, lifecycle.split("@SubscribeEvent", -1).length - 1);
+        assertTrue(input.contains("final class P9ClientCastInput"));
+        assertEquals(4, input.split("@SubscribeEvent", -1).length - 1);
+        assertTrue(mappings.contains("final class P9ClientKeyMappings"));
+        assertEquals(1, mappings.split("@SubscribeEvent", -1).length - 1);
         try (var paths = Files.walk(NETWORK_MAIN)) {
             assertTrue(paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
-                    .filter(path -> !path.equals(clientOwner))
+                    .filter(path -> !CLIENT_ONLY_NETWORK_SOURCES.contains(
+                            path.getFileName().toString()))
                     .map(P7S2DedicatedRegistrationTest::read)
                     .noneMatch(source -> source.contains("net.minecraft.client")
                             || source.contains("P7ClientLifecycleEvents")
+                            || source.contains("P9ClientCastInput")
+                            || source.contains("P9ClientKeyMappings")
                             || source.contains("Dist.CLIENT")));
         }
     }

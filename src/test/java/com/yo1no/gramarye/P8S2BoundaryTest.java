@@ -40,12 +40,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.minecraft.core.Registry;
+import net.minecraft.network.Connection;
 import net.minecraft.resources.ResourceKey;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import org.junit.jupiter.api.Test;
 
@@ -75,6 +78,12 @@ final class P8S2BoundaryTest {
             ROOT_PACKAGE.resolve("P8S3PresentationGameTests.java");
     private static final Path PRESENTATION_RUNTIME_SOURCE =
             ROOT_PACKAGE.resolve("P8PresentationRuntime.java");
+    private static final Path CLIENT_STATE_SOURCE =
+            ROOT_PACKAGE.resolve("P8ClientPresentationState.java");
+    private static final Path CLIENT_LIFECYCLE_SOURCE =
+            ROOT_PACKAGE.resolve("P8ClientPresentationLifecycle.java");
+    private static final Path CLIENT_HANDLERS_SOURCE =
+            ROOT_PACKAGE.resolve("P8ClientPayloadHandlers.java");
     private static final Path SUBMISSION_SOURCE = ROOT_PACKAGE.resolve(
             "magic/definition/submission/SkillDefinitionSubmissionService.java");
     private static final Path ARCHITECTURE_SOURCE = PROJECT_ROOT.resolve(
@@ -839,6 +848,103 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         "fc89587d12a123ef8bc94f68040d43783c6023173d48e500b72e07db1559d97f",
                         sha256(P7_LOGIN_ISOLATION_SOURCE)));
+    }
+
+    @Test
+    void p8PlayEpochAuthorityUsesOneExactWitnessAndClosedTypedSurface()
+            throws ReflectiveOperationException {
+        var catalogPreparation = P8ClientPayloadDispatchPort.class.getDeclaredMethod(
+                "prepareProfileCatalog",
+                Connection.class,
+                ICommonPacketListener.class,
+                ProfileCatalogPayload.class);
+        var eventPreparation = P8ClientPayloadDispatchPort.class.getDeclaredMethod(
+                "preparePresentationEvent",
+                Connection.class,
+                ICommonPacketListener.class,
+                PresentationEventPayload.class);
+        var open = P8ClientPresentationState.class.getDeclaredMethod(
+                "onConnectionOpened", Connection.class, ICommonPacketListener.class);
+        var logout = P8ClientPresentationState.class.getDeclaredMethod(
+                "onLoggedOut", Connection.class, ICommonPacketListener.class);
+        var maintenance = P8ClientPresentationState.class.getDeclaredMethod(
+                "maintainTransportLiveness");
+        var generationQuery = P8ClientPresentationState.class.getDeclaredMethod(
+                "isCurrentPublishedPlayGeneration", long.class);
+
+        var retainedTransportFields = Arrays.stream(
+                        P8ClientPresentationState.class.getDeclaredFields())
+                .filter(field -> field.getType() == Connection.class
+                        || field.getType() == ICommonPacketListener.class)
+                .map(field -> field.getName() + ":" + field.getType().getName())
+                .sorted()
+                .toList();
+        var escapedTransportFields = Arrays.stream(
+                        P8ClientPresentationState.class.getDeclaredClasses())
+                .flatMap(type -> Arrays.stream(type.getDeclaredFields())
+                        .filter(field -> !field.isSynthetic())
+                        .map(field -> type.getSimpleName() + "#" + field.getName()
+                                + ":" + field.getType().getName()))
+                .filter(signature -> signature.endsWith(":" + Connection.class.getName())
+                        || signature.endsWith(":"
+                                + ICommonPacketListener.class.getName()))
+                .toList();
+        var liveResultComponents = List.of(
+                        P8ClientConnectionOpenResult.class,
+                        P8ClientTransportMaintenanceResult.class)
+                .stream()
+                .flatMap(type -> Arrays.stream(type.getRecordComponents()))
+                .filter(component -> component.getType() == Connection.class
+                        || component.getType() == ICommonPacketListener.class)
+                .map(component -> component.getDeclaringRecord().getSimpleName()
+                        + "#" + component.getName())
+                .toList();
+
+        var stateSource = read(CLIENT_STATE_SOURCE);
+        var lifecycleSource = read(CLIENT_LIFECYCLE_SOURCE);
+        var handlersSource = read(CLIENT_HANDLERS_SOURCE);
+        assertAll(
+                () -> assertEquals(Optional.class, catalogPreparation.getReturnType()),
+                () -> assertEquals(Optional.class, eventPreparation.getReturnType()),
+                () -> assertEquals(P8ClientConnectionOpenResult.class, open.getReturnType()),
+                () -> assertEquals(
+                        P8ClientTransportMaintenanceResult.class,
+                        logout.getReturnType()),
+                () -> assertEquals(
+                        P8ClientTransportMaintenanceResult.class,
+                        maintenance.getReturnType()),
+                () -> assertEquals(boolean.class, generationQuery.getReturnType()),
+                () -> assertEquals(
+                        List.of(
+                                "p8PlayListenerWitness:"
+                                        + ICommonPacketListener.class.getName(),
+                                "p8TransportConnection:" + Connection.class.getName()),
+                        retainedTransportFields),
+                () -> assertEquals(List.of(), escapedTransportFields),
+                () -> assertEquals(List.of(), liveResultComponents),
+                () -> assertEquals(
+                        List.of("NONE", "CLEARED", "SUPERSEDED"),
+                        Arrays.stream(P8ClientCleanupDisposition.values())
+                                .map(Enum::name)
+                                .toList()),
+                () -> assertEquals(
+                        OptionalLong.class,
+                        P8ClientTransportMaintenanceResult.class
+                                .getRecordComponents()[1]
+                                .getType()),
+                () -> assertTrue(
+                        stateSource.contains(
+                                "private long pendingLifecycleInvalidationGeneration;")),
+                () -> assertTrue(
+                        lifecycleSource.contains(
+                                "private long pendingWorldLoadGeneration;")),
+                () -> assertTrue(
+                        lifecycleSource.contains(
+                                "ClientTickEvent.Pre.class, this::onClientPreTick")),
+                () -> assertFalse(lifecycleSource.contains("state.onConnectionOpened();")),
+                () -> assertFalse(lifecycleSource.contains("state.onLoggedOut();")),
+                () -> assertTrue(handlersSource.contains("context.connection()")),
+                () -> assertTrue(handlersSource.contains("context.listener()")));
     }
 
     private static Map<String, Pattern> commonForbiddenSourcePatterns() {

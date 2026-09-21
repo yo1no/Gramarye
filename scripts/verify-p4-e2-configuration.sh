@@ -192,7 +192,8 @@ require_only_owner() {
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
                 || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s5-harness "${file}"; then
             continue
         fi
         status=0
@@ -224,7 +225,8 @@ require_exact_two_owners() {
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
                 || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s5-harness "${file}"; then
             continue
         fi
         status=0
@@ -797,7 +799,16 @@ is_approved_p8_s5_production_path() {
 }
 
 is_approved_p8_s5_resource_path() {
-    [[ "$1" == 'src/main/resources/META-INF/accesstransformer.cfg' ]]
+    case "$1" in
+        src/main/resources/META-INF/accesstransformer.cfg | \
+        src/main/resources/assets/gramarye/lang/en_us.json | \
+        src/main/resources/assets/gramarye/lang/zh_tw.json)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 is_approved_p8_s5_test_path() {
@@ -846,6 +857,18 @@ verify_p8_s5_access_transformer() {
         || fail 'P8-S5 resource allowlist rejected its exact access transformer'
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
         fail 'P8-S5 resource allowlist accepted a prefix-near access-transformer path'
+    fi
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/en_us.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact en_us language path'
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/zh_tw.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact zh_tw language path'
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/en_us.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near en_us language path'
+    fi
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/zh_tw.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near zh_tw language path'
     fi
 }
 
@@ -901,6 +924,7 @@ is_allowed_changed_path() {
     is_approved_p8_s5_resource_path "$1" && return 0
     is_approved_p8_s5_test_path "$1" && return 0
     case "$1" in
+        AGENTS.md | \
         scripts/verify-p4-c2-a-configuration.sh | \
         scripts/verify-p4-c2-b-configuration.sh | \
         scripts/verify-p4-d1-configuration.sh | \
@@ -1051,6 +1075,11 @@ self_regression() {
     if is_allowed_changed_path \
             'src/main/resources/META-INF/accesstransformer.cfg.extra'; then
         fail 'self-test accepted a prefix-near P8-S5 access-transformer path'
+    fi
+    is_allowed_changed_path 'AGENTS.md' \
+        || fail 'self-test rejected the exact root delivery-guidance path'
+    if is_allowed_changed_path 'AGENTS.md.extra'; then
+        fail 'self-test accepted a prefix-near root delivery-guidance path'
     fi
     is_approved_p9_s3_mr1_changed_path \
         'src/test/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFramingTest.java' \
@@ -1644,6 +1673,8 @@ git diff --quiet HEAD -- \
     gradle.properties settings.gradle gradle \
     docs/codex-spec src/main/resources src/test/resources \
     ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
+    ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+    ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \
     || fail 'P4-E2 must not change authority/resource/version truth'
 git diff --quiet HEAD -- \
     docs/architecture \

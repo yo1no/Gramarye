@@ -170,6 +170,11 @@ final class P7ClientMirrorTest {
         assertTrue(lifecycleSource.contains(
                 "ClientPlayerNetworkEvent.LoggingOut"));
         assertTrue(lifecycleSource.contains("LevelEvent.Unload"));
+        assertTrue(lifecycleSource.contains("P9ClientCastInput.onConnectionOpened()"));
+        assertTrue(lifecycleSource.contains("P9ClientCastInput.onConnectionClosed()"));
+        assertTrue(lifecycleSource.contains("P9ClientCastInput.onPlayerContextReplaced()"));
+        assertTrue(lifecycleSource.contains("P9ClientCastInput.onClientWorldLoaded()"));
+        assertTrue(lifecycleSource.contains("P9ClientCastInput.onClientWorldUnloaded()"));
         assertTrue(factorySource.contains("static P7ClientMirrorDispatchPort production()"));
         assertTrue(!factorySource.contains("net.minecraft.client"));
         assertTrue(!factorySource.contains("ClientPlayerNetworkEvent"));

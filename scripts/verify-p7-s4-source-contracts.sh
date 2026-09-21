@@ -167,6 +167,85 @@ is_p9_s4_wc1_path() {
     esac
 }
 
+# P9-S5-R2 adds one closed candidate projection for the normal-player
+# provisioning/input/composition slice. Earlier phase projections intentionally
+# remain unchanged; overlap here records the exact final S5 candidate rather
+# than admitting a directory, package, or filename prefix.
+is_p9_s5_path() {
+    case "$1" in
+        AGENTS.md | \
+        build.gradle | \
+        scripts/verify-p4-a3-b-configuration.sh | \
+        scripts/verify-p4-b2-b-configuration.sh | \
+        scripts/verify-p4-c2-a-configuration.sh | \
+        scripts/verify-p4-c2-b-configuration.sh | \
+        scripts/verify-p4-d1-configuration.sh | \
+        scripts/verify-p4-d2-configuration.sh | \
+        scripts/verify-p4-d3-a-configuration.sh | \
+        scripts/verify-p4-d3-configuration.sh | \
+        scripts/verify-p4-e0-r-configuration.sh | \
+        scripts/verify-p4-e0-r2q-configuration.sh | \
+        scripts/verify-p4-e1-configuration.sh | \
+        scripts/verify-p4-e2-configuration.sh | \
+        scripts/verify-p4-e3-configuration.sh | \
+        scripts/verify-p7-s4-source-contracts.sh | \
+        src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPayloadDispatchFactory.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPayloadDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPayloadHandlers.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPresentationLifecycle.java | \
+        src/main/java/com/yo1no/gramarye/P8ClientPresentationState.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterCommand.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterSkillContent.java | \
+        src/main/java/com/yo1no/gramarye/P9StarterSkillIdentityV0.java | \
+        src/main/java/com/yo1no/gramarye/P9S5ProvisioningGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ClientLifecycleEvents.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInput.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P9ClientKeyMappings.java | \
+        src/main/resources/assets/gramarye/lang/en_us.json | \
+        src/main/resources/assets/gramarye/lang/zh_tw.json | \
+        src/p8S5ClientHarness/java/com/yo1no/gramarye/P8S5ClientRuntimeHarness.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P9S5ClientRuntimeHarness.java | \
+        src/test/java/com/yo1no/gramarye/P6RuntimeExecutionCapabilityTest.java | \
+        src/test/java/com/yo1no/gramarye/P7GameTestInventory.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPayloadHandlersTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPlayConnection.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPlayEpochAcceptanceTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPlayEpochTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationExecutionTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationLifecycleTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationStateConcurrencyTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ClientPresentationStateTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S2BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P8S4PayloadBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P9S1BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P9S3DirectConsumerContractTest.java | \
+        src/test/java/com/yo1no/gramarye/P9S5BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D1ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1B2BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E1BApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2ApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2LifecycleOrderingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ClientMirrorTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrarTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S2BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S2DedicatedRegistrationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S3BoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P9ClientCastInputTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/runtime/mana/ManaBoundaryTest.java)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 reject_game_test_worker_surface() {
     printf 'Production-packaged GameTest raw worker/task/process surface: %s\n' \
         "$1" >&2
@@ -551,6 +630,7 @@ verify_game_tests() {
         'P9S3ProjectileGameTests.java:replacementRemovalAndDeadlineCloseWithoutDamage' \
         'P9S3ProjectileGameTests.java:reservedClaimAndWrongTransferWitnessesAreOneShot' \
         'P9S3ProjectileGameTests.java:sixteenthOpenPermitIsThePerPlayerMaximum' \
+        'P9S5ProvisioningGameTests.java:registeredStarterCommandCoversProvisioningBranches' \
         'gametest/PlatformGameTests.java:customDescriptorRegistriesLoadEmpty' \
         'gametest/PlatformGameTests.java:dedicatedServerLoads' \
         'gametest/PlatformGameTests.java:descriptorMigrationCoverageAuditPassesAfterRegistryFreeze' \
@@ -573,8 +653,8 @@ verify_game_tests() {
         'magic/runtime/mana/ManaLifecycleGameTests.java:nonDeathCloneCopiesExactManaState' \
         'magic/runtime/mana/ManaLifecycleGameTests.java:validAttachmentSerializesAndLoadsExactly' \
         | LC_ALL=C sort)"
-    [[ "$(printf '%s\n' "${expected_non_p8}" | wc -l | tr -d ' ')" -eq 34 ]] || {
-        printf '%s\n' 'Non-P8 GameTest inventory must remain exact 34' >&2
+    [[ "$(printf '%s\n' "${expected_non_p8}" | wc -l | tr -d ' ')" -eq 35 ]] || {
+        printf '%s\n' 'Non-P8 GameTest inventory must remain exact 35' >&2
         return 1
     }
     actual="$(find src/main/java/com/yo1no/gramarye -type f -name '*.java' \
@@ -610,6 +690,11 @@ verify_game_tests() {
         || { printf '%s\n' 'Unsupported or duplicate GameTest declaration' >&2; return 1; }
     expected_holder_count="$(printf '%s\n' "${actual}" \
         | awk -F: 'NF >= 2 { print $1 }' | LC_ALL=C sort -u | wc -l | tr -d ' ')"
+    [[ "${expected_holder_count}" -eq 11 ]] || {
+        printf 'Production-packaged GameTest holder inventory must remain exact 11 (found %s)\n' \
+            "${expected_holder_count}" >&2
+        return 1
+    }
     inspected_holder_count=0
     while IFS= read -r -d '' source; do
         marker_status=0
@@ -660,14 +745,24 @@ case "${1:-}" in
             src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java) exit 0 ;;
             *) exit 1 ;;
         esac ;;
+    --is-p9-s5-harness)
+        [[ "$#" -eq 2 ]]
+        repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+        source_path="${2#"${repository_root}/"}"
+        case "${source_path}" in
+            src/main/java/com/yo1no/gramarye/P9S5ProvisioningGameTests.java) exit 0 ;;
+            *) exit 1 ;;
+        esac ;;
     --is-s4-path)
         [[ "$#" -eq 2 ]] \
             && { is_s4_path "$2" || is_p9_s3_path "$2" \
                 || is_p9_s3_dc1_path "$2" || is_p9_s4_path "$2" \
-                || is_p9_s4_wc1_path "$2"; } ;;
+                || is_p9_s4_wc1_path "$2" || is_p9_s5_path "$2"; } ;;
+    --is-p9-s5-path)
+        [[ "$#" -eq 2 ]] && is_p9_s5_path "$2" ;;
     --check-game-test-worker-source)
         [[ "$#" -eq 4 && -f "$2" && ! -L "$2" ]] \
             && verify_game_test_worker_source "$2" "$3" "$4" ;;
     --game-test-count) [[ "$#" -eq 1 ]] && verify_game_tests ;;
-    *) printf '%s\n' 'Expected --is-s4-path PATH, --is-s4-harness PATH, --is-p8-harness PATH, --is-p9-s3-harness PATH, --check-game-test-worker-source FILE LOGICAL_PATH CLASSES_ROOT, or --game-test-count' >&2; exit 2 ;;
+    *) printf '%s\n' 'Expected --is-s4-path PATH, --is-p9-s5-path PATH, --is-s4-harness PATH, --is-p8-harness PATH, --is-p9-s3-harness PATH, --is-p9-s5-harness PATH, --check-game-test-worker-source FILE LOGICAL_PATH CLASSES_ROOT, or --game-test-count' >&2; exit 2 ;;
 esac

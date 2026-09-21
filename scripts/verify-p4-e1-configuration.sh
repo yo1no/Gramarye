@@ -577,7 +577,16 @@ is_approved_p8_s5_production_path() {
 }
 
 is_approved_p8_s5_resource_path() {
-    [[ "$1" == 'src/main/resources/META-INF/accesstransformer.cfg' ]]
+    case "$1" in
+        src/main/resources/META-INF/accesstransformer.cfg | \
+        src/main/resources/assets/gramarye/lang/en_us.json | \
+        src/main/resources/assets/gramarye/lang/zh_tw.json)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 is_approved_p8_s5_test_path() {
@@ -626,6 +635,18 @@ verify_p8_s5_access_transformer() {
         || fail 'P8-S5 resource allowlist rejected its exact access transformer'
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
         fail 'P8-S5 resource allowlist accepted a prefix-near access-transformer path'
+    fi
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/en_us.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact en_us language path'
+    is_approved_p8_s5_resource_path 'src/main/resources/assets/gramarye/lang/zh_tw.json' \
+        || fail 'P9-S5 resource allowlist rejected the exact zh_tw language path'
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/en_us.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near en_us language path'
+    fi
+    if is_approved_p8_s5_resource_path \
+            'src/main/resources/assets/gramarye/lang/zh_tw.json.extra'; then
+        fail 'P9-S5 resource allowlist accepted a prefix-near zh_tw language path'
     fi
 }
 
@@ -681,6 +702,7 @@ is_allowed_changed_path() {
     is_approved_p8_s5_resource_path "$1" && return 0
     is_approved_p8_s5_test_path "$1" && return 0
     case "$1" in
+        AGENTS.md | \
         docs/architecture/P4-0-persistence-boundary.md | \
         docs/architecture/P4-E0-root-audit-boundary.md | \
         scripts/verify-p4-c2-a-configuration.sh | \
@@ -838,7 +860,9 @@ verify_changed_paths() {
                     [ ! -x "$candidate" ] \
                         || fail "allowed P4-E3 build/workflow path is executable: $path"
                     ;;
-                src/main/resources/META-INF/accesstransformer.cfg) ;;
+                src/main/resources/META-INF/accesstransformer.cfg | \
+                src/main/resources/assets/gramarye/lang/en_us.json | \
+                src/main/resources/assets/gramarye/lang/zh_tw.json) ;;
                 *.java | *.md) ;;
                 *) fail "allowed E1-A path has an unexpected file type: $path" ;;
             esac
@@ -912,6 +936,11 @@ self_regression() {
     if is_allowed_changed_path \
             'src/main/resources/META-INF/accesstransformer.cfg.extra'; then
         fail "self-test accepted a prefix-near P8-S5 access-transformer path"
+    fi
+    is_allowed_changed_path 'AGENTS.md' \
+        || fail "self-test rejected the exact root delivery-guidance path"
+    if is_allowed_changed_path 'AGENTS.md.extra'; then
+        fail "self-test accepted a prefix-near root delivery-guidance path"
     fi
     is_approved_p9_s3_mr1_changed_path \
         'src/test/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFramingTest.java' \

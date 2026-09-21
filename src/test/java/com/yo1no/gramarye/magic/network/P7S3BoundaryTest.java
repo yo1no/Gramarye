@@ -47,6 +47,7 @@ final class P7S3BoundaryTest {
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S5Harness(path))
                     .flatMap(path -> publicP7.matcher(read(path)).results())
                     .map(match -> match.group(1))
                     .collect(Collectors.toUnmodifiableSet());

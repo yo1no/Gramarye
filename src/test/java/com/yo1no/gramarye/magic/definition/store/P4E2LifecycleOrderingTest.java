@@ -607,6 +607,7 @@ final class P4E2LifecycleOrderingTest {
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S5Harness(path))
                     .filter(path -> {
                         try {
                             return withoutCommentsAndLiterals(Files.readString(path))
@@ -631,6 +632,7 @@ final class P4E2LifecycleOrderingTest {
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S5Harness(path))
                     .toList()) {
                 text.append(withoutCommentsAndLiterals(Files.readString(path))).append('\n');
             }

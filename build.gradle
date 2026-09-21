@@ -213,12 +213,19 @@ def p8S2GameTestSourceSet = sourceSets.create('p8S2GameTest')
 def p8S5ClientHarnessSourceSet = sourceSets.create('p8S5ClientHarness')
 // P9-S3's tracked-projectile client harness is process-isolated and never packaged.
 def p9S3ClientHarnessSourceSet = sourceSets.create('p9S3ClientHarness')
+// P9-S5's normal-player composition harness is process-isolated and never packaged.
+def p9S5ClientHarnessSourceSet = sourceSets.create('p9S5ClientHarness')
 def p8S5ClientHarnessJvmArgs = [
         '-Xms512m',
         '-Xmx1536m',
         '-XX:+ExitOnOutOfMemoryError',
 ]
 def p9S3ClientHarnessJvmArgs = [
+        '-Xms512m',
+        '-Xmx1536m',
+        '-XX:+ExitOnOutOfMemoryError',
+]
+def p9S5ClientHarnessJvmArgs = [
         '-Xms512m',
         '-Xmx1536m',
         '-XX:+ExitOnOutOfMemoryError',
@@ -604,6 +611,45 @@ def prepareP9S3ClientRuntimeHarness =
         tasks.register('prepareP9S3ClientRuntimeHarness', Delete) {
     delete(p9S3ClientRuntimeRoot)
 }
+def p9S5ClientRuntimeRoot = layout.buildDirectory.dir('p9-s5-client-runtime')
+def p9S5ClientRuntimeGameDirectory = p9S5ClientRuntimeRoot.map { it.dir('game') }
+def p9S5ClientRuntimeResult = p9S5ClientRuntimeRoot.map { it.file('result.txt') }
+def p9S5ClientRuntimeOwnedPlayer =
+        p9S5ClientRuntimeRoot.map { it.file('owned-player.txt') }
+def p9S5ClientRuntimePlayerCleanup =
+        p9S5ClientRuntimeRoot.map { it.file('player-cleanup.txt') }
+def p9S5ClientRuntimeExpectedMarkers = [
+        '01 PRODUCTION_R_KEY_MAPPING_REGISTERED',
+        '02 FRESH_FIXED_SEED_WORLD_REQUESTED',
+        '03 WORLD_AND_NORMAL_PLAYER_READY',
+        '04 SAME_CONNECTION_RECONFIGURATION_REQUESTED',
+        '05 SAME_CONNECTION_PLAY_REENTRY_READY',
+        '06 FIRST_NORMAL_PLAYER_COMMAND_COMPLETED',
+        '07 SECOND_IDEMPOTENT_COMMAND_COMPLETED',
+        '08 INPUT_SUPPRESSION_MATRIX_STARTED',
+        '09 INPUT_SUPPRESSION_MATRIX_PASSED',
+        '10 LATER_NEW_R_CLICK_QUEUED',
+        '11 FIRST_SERVER_PROJECTILE_SPAWNED',
+        '12 FIRST_CLIENT_PROJECTILE_TRACKED',
+        '13 FIRST_SERVER_AUTHORITATIVE_HIT_OBSERVED',
+        '14 FIRST_EXACT_FOUR_DAMAGE_APPLIED',
+        '15 FIRST_P8_SOUND_EVENT_OBSERVED',
+        '16 FIRST_P8_PARTICLE_ENGINE_OBSERVED',
+        '17 FIRST_P8_AFTER_PARTICLES_RENDER_OBSERVED',
+        '18 SAME_WORLD_DISCONNECT_COMPLETED',
+        '19 SAME_WORLD_REOPEN_REQUESTED',
+        '20 SAME_NORMAL_PLAYER_REOPENED_WITHOUT_REPROVISION',
+        '21 NEW_SESSION_R_CLICK_QUEUED',
+        '22 SECOND_SERVER_PROJECTILE_SPAWNED',
+        '23 SECOND_SERVER_AUTHORITATIVE_HIT_OBSERVED',
+        '24 SECOND_EXACT_FOUR_DAMAGE_APPLIED',
+        '25 NEW_SESSION_SEQUENCE_RESET_ACCEPTED',
+        '26 TERMINAL_PASS',
+]
+def prepareP9S5ClientRuntimeHarness =
+        tasks.register('prepareP9S5ClientRuntimeHarness', Delete) {
+    delete(p9S5ClientRuntimeRoot)
+}
 
 neoForge {
     // Specify the version of NeoForge to use.
@@ -625,6 +671,7 @@ neoForge {
     addModdingDependenciesTo(p8S2GameTestSourceSet)
     addModdingDependenciesTo(p8S5ClientHarnessSourceSet)
     addModdingDependenciesTo(p9S3ClientHarnessSourceSet)
+    addModdingDependenciesTo(p9S5ClientHarnessSourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -706,6 +753,13 @@ neoForge {
             sourceSet(sourceSets.main)
             sourceSet(p9S3ClientHarnessSourceSet)
         }
+
+        // One finite actual-client normal-player composition cohort. Its controller remains
+        // outside main while entering solely through the command and registered R-key surfaces.
+        p9S5ClientRuntimeHarness {
+            sourceSet(sourceSets.main)
+            sourceSet(p9S5ClientHarnessSourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
@@ -719,6 +773,7 @@ neoForge {
     def p8S2GameTestMod = mods.named('p8S2ReloadHarness').get()
     def p8S5ClientHarnessMod = mods.named('p8S5ClientRuntimeHarness').get()
     def p9S3ClientHarnessMod = mods.named('p9S3ClientRuntimeHarness').get()
+    def p9S5ClientHarnessMod = mods.named('p9S5ClientRuntimeHarness').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -1233,6 +1288,20 @@ neoForge {
             taskBefore(tasks.named(p9S3ClientHarnessSourceSet.classesTaskName))
         }
 
+        p9S5ClientRuntimeHarness {
+            client()
+            sourceSet = p9S5ClientHarnessSourceSet
+            gameDirectory = p9S5ClientRuntimeGameDirectory.get().asFile
+            systemProperty 'gramarye.p9s5.clientHarnessResult',
+                    p9S5ClientRuntimeResult.get().asFile.absolutePath
+            systemProperty 'gramarye.p9s5.clientHarnessOwnedPlayer',
+                    p9S5ClientRuntimeOwnedPlayer.get().asFile.absolutePath
+            jvmArguments.addAll(p9S5ClientHarnessJvmArgs)
+            disableIdeRun()
+            taskBefore(prepareP9S5ClientRuntimeHarness)
+            taskBefore(tasks.named(p9S5ClientHarnessSourceSet.classesTaskName))
+        }
+
         p4E0R2QFormalCaseIndices.each { formalCaseIndex ->
                 def formalCaseToken = String.format(
                         java.util.Locale.ROOT, '%02d', formalCaseIndex)
@@ -1359,7 +1428,10 @@ neoForge {
                                     : name == 'p8S5ClientRuntimeHarness'
                                             ? p8S5ClientHarnessMod
                                             : name == 'p9S3ClientRuntimeHarness'
-                                                    ? p9S3ClientHarnessMod : productionMod])
+                                                    ? p9S3ClientHarnessMod
+                                                    : name == 'p9S5ClientRuntimeHarness'
+                                                            ? p9S5ClientHarnessMod
+                                                            : productionMod])
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -1553,13 +1625,194 @@ tasks.named('runP9S3ClientRuntimeHarness', JavaExec).configure {
     }
 }
 
+def validateP9S5ClientRuntimeResultLines = { List<String> resultLines ->
+    if (resultLines.size() != p9S5ClientRuntimeExpectedMarkers.size() + 2
+            || resultLines.first() != 'P9-S5-CLIENT-RUNTIME-HARNESS-V1'
+            || resultLines.last() != 'RESULT=PASS') {
+        throw new GradleException(
+                'P9-S5 client runtime harness result envelope is incomplete')
+    }
+    p9S5ClientRuntimeExpectedMarkers.eachWithIndex { expected, index ->
+        def actual = resultLines[index + 1]
+        if (actual != expected && !actual.startsWith(expected + ' ')) {
+            throw new GradleException(
+                    "P9-S5 client runtime marker ${index + 1} is not exact")
+        }
+    }
+}
+def verifyP9S5ClientRuntimeResultParser =
+        tasks.register('verifyP9S5ClientRuntimeResultParser') {
+    group = 'verification'
+    description = 'Preflights the finite P9-S5 actual-client result parser without a client.'
+    doLast {
+        def accepted = ['P9-S5-CLIENT-RUNTIME-HARNESS-V1']
+        p9S5ClientRuntimeExpectedMarkers.eachWithIndex { expected, index ->
+            accepted << (index % 2 == 0 ? expected : expected + ' detail=preflight')
+        }
+        accepted << 'RESULT=PASS'
+        validateP9S5ClientRuntimeResultLines(accepted)
+
+        def requireRejected = { String mutation, Closure<?> change ->
+            def candidate = new ArrayList<String>(accepted)
+            change(candidate)
+            def rejected = false
+            try {
+                validateP9S5ClientRuntimeResultLines(candidate)
+            } catch (GradleException ignored) {
+                rejected = true
+            }
+            if (!rejected) {
+                throw new GradleException(
+                        "P9-S5 result parser accepted ${mutation}")
+            }
+        }
+        requireRejected('a marker-prefix collision') { candidate ->
+            candidate[1] = candidate[1] + '-collision'
+        }
+        requireRejected('an out-of-order marker') { candidate ->
+            def replacement = candidate[1]
+            candidate[1] = candidate[2]
+            candidate[2] = replacement
+        }
+        requireRejected('an extra result line') { candidate ->
+            candidate.add(candidate.size() - 1, 'EXTRA')
+        }
+        requireRejected('a non-PASS terminal') { candidate ->
+            candidate[candidate.size() - 1] = 'RESULT=FAIL'
+        }
+    }
+}
+
+tasks.named('runP9S5ClientRuntimeHarness', JavaExec).configure {
+    dependsOn(verifyP9S5ClientRuntimeResultParser)
+    timeout.set(java.time.Duration.ofMinutes(10))
+    doLast {
+        def resultFile = p9S5ClientRuntimeResult.get().asFile
+        if (!resultFile.isFile()) {
+            throw new GradleException(
+                    'P9-S5 client runtime harness did not write its result')
+        }
+        if (resultFile.length() < 1L || resultFile.length() > 16_384L) {
+            throw new GradleException(
+                    'P9-S5 client runtime harness result exceeded its fixed file bound')
+        }
+        def resultLines = resultFile.readLines('UTF-8')
+        validateP9S5ClientRuntimeResultLines(resultLines)
+    }
+}
+
+def cleanupP9S5ClientRuntimePlayerData =
+        tasks.register('cleanupP9S5ClientRuntimePlayerData') {
+    group = 'verification'
+    description = 'Deletes only the exact isolated P9-S5 client player files.'
+    mustRunAfter(tasks.named('runP9S5ClientRuntimeHarness'))
+    outputs.upToDateWhen { false }
+    doLast {
+        def inventory = p9S5ClientRuntimeOwnedPlayer.get().asFile.toPath()
+        if (!java.nio.file.Files.isRegularFile(inventory,
+                java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                || java.nio.file.Files.isSymbolicLink(inventory)) {
+            throw new GradleException(
+                    'P9-S5 exact owned-player inventory is unavailable')
+        }
+        if (java.nio.file.Files.size(inventory) < 1L
+                || java.nio.file.Files.size(inventory) > 4_096L) {
+            throw new GradleException(
+                    'P9-S5 exact owned-player inventory exceeded its fixed bound')
+        }
+        def lines = java.nio.file.Files.readAllLines(
+                inventory, java.nio.charset.StandardCharsets.UTF_8)
+        if (lines.size() != 7
+                || lines[0] != 'P9-S5-CLIENT-OWNED-PLAYER-V1'
+                || !(lines[1] ==~ /^uuid=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+                || lines[2] != 'world=p9-s5-client-runtime-world') {
+            throw new GradleException(
+                    'P9-S5 exact owned-player inventory is malformed')
+        }
+        def uuid = lines[1].substring('uuid='.length())
+        def expectedLines = [
+                'P9-S5-CLIENT-OWNED-PLAYER-V1',
+                "uuid=${uuid}",
+                'world=p9-s5-client-runtime-world',
+                "playerdata=${uuid}.dat",
+                "playerdata_old=${uuid}.dat_old",
+                "stats=${uuid}.json",
+                "advancements=${uuid}.json",
+        ]
+        if (lines != expectedLines) {
+            throw new GradleException(
+                    'P9-S5 exact owned-player paths are not canonical')
+        }
+        def gameRoot = p9S5ClientRuntimeGameDirectory.get().asFile.toPath()
+                .toAbsolutePath().normalize()
+        def worldRoot = gameRoot.resolve(
+                'saves/p9-s5-client-runtime-world').normalize()
+        if (!worldRoot.startsWith(gameRoot)) {
+            throw new GradleException(
+                    'P9-S5 owned-player world escaped the isolated game root')
+        }
+        def targets = [
+                worldRoot.resolve("playerdata/${uuid}.dat"),
+                worldRoot.resolve("playerdata/${uuid}.dat_old"),
+                worldRoot.resolve("stats/${uuid}.json"),
+                worldRoot.resolve("advancements/${uuid}.json"),
+        ]
+        int removed = 0
+        int absent = 0
+        targets.each { targetValue ->
+            def target = targetValue.toAbsolutePath().normalize()
+            if (!target.startsWith(worldRoot)) {
+                throw new GradleException(
+                        'P9-S5 owned-player target escaped the isolated world')
+            }
+            if (java.nio.file.Files.isSymbolicLink(target)) {
+                throw new GradleException(
+                        'P9-S5 owned-player target is a symbolic link')
+            }
+            if (java.nio.file.Files.exists(
+                    target, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                if (!java.nio.file.Files.isRegularFile(
+                        target, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                    throw new GradleException(
+                            'P9-S5 owned-player target is not a regular file')
+                }
+                java.nio.file.Files.delete(target)
+                removed++
+            } else {
+                absent++
+            }
+            if (java.nio.file.Files.exists(
+                    target, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                throw new GradleException(
+                        'P9-S5 owned-player target survived exact cleanup')
+            }
+        }
+        def cleanupResult = p9S5ClientRuntimePlayerCleanup.get().asFile.toPath()
+        def cleanupLine = "P9_S5_CLIENT_PLAYERDATA_CLEANUP_OK uuid=${uuid}" \
+                + " removed=${removed} absent=${absent} targets=4"
+        java.nio.file.Files.writeString(
+                cleanupResult,
+                cleanupLine + System.lineSeparator(),
+                java.nio.charset.StandardCharsets.UTF_8,
+                java.nio.file.StandardOpenOption.CREATE_NEW,
+                java.nio.file.StandardOpenOption.WRITE)
+        println cleanupLine
+    }
+}
+
+tasks.named('runP9S5ClientRuntimeHarness').configure {
+    finalizedBy(cleanupP9S5ClientRuntimePlayerData)
+}
+
 // Full unit/check paths compile the isolated harness without executing a graphical client.
 tasks.named('test').configure {
     dependsOn(
             tasks.named(p8S5ClientHarnessSourceSet.classesTaskName),
             verifyP8S5ClientRuntimeResultParser,
             tasks.named(p9S3ClientHarnessSourceSet.classesTaskName),
-            verifyP9S3ClientRuntimeResultParser)
+            verifyP9S3ClientRuntimeResultParser,
+            tasks.named(p9S5ClientHarnessSourceSet.classesTaskName),
+            verifyP9S5ClientRuntimeResultParser)
 }
 
 // Sets up a dependency configuration called 'localRuntime'.
@@ -1634,6 +1887,7 @@ dependencies {
     add(p8S2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
     testImplementation p4C2ProbeSourceSet.output
@@ -3702,6 +3956,9 @@ tasks.named(p8S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configu
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p9S3ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p9S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4E0ResearchGameTestSourceSet.compileJavaTaskName, JavaCompile).configure {

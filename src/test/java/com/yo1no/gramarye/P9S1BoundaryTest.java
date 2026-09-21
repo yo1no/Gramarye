@@ -65,12 +65,15 @@ final class P9S1BoundaryTest {
             "P9EffectHitTriggerPayloadV0.java",
             "P9EffectHitTriggerType.java",
             "P9S3ProjectileGameTests.java",
+            "P9S5ProvisioningGameTests.java",
             "P9SpawnProjectileActionPayloadV0.java",
             "P9SpawnProjectileActionType.java",
+            "P9StarterCommand.java",
             "P9StarterProjectile.java",
             "P9StarterProjectileClientEvents.java",
             "P9StarterProjectileRegistration.java",
             "P9StarterSkillContent.java",
+            "P9StarterSkillIdentityV0.java",
             "P9WorldEffectHandoff.java");
     private static final Map<String, Set<String>> TOP_LEVEL_TYPES = Map.ofEntries(
             Map.entry(
@@ -87,11 +90,17 @@ final class P9S1BoundaryTest {
                     "P9S3ProjectileGameTests.java",
                     Set.of("P9S3ProjectileGameTests")),
             Map.entry(
+                    "P9S5ProvisioningGameTests.java",
+                    Set.of("P9S5ProvisioningGameTests")),
+            Map.entry(
                     "P9SpawnProjectileActionPayloadV0.java",
                     Set.of("P9SpawnProjectileActionPayloadV0")),
             Map.entry(
                     "P9SpawnProjectileActionType.java",
                     Set.of("P9SpawnProjectileActionType")),
+            Map.entry(
+                    "P9StarterCommand.java",
+                    Set.of("P9StarterCommand")),
             Map.entry(
                     "P9StarterProjectile.java",
                     Set.of("P9StarterProjectile")),
@@ -104,6 +113,9 @@ final class P9S1BoundaryTest {
             Map.entry(
                     "P9StarterSkillContent.java",
                     Set.of("P9StarterSkillContent", "StarterGameplayFingerprintV0")),
+            Map.entry(
+                    "P9StarterSkillIdentityV0.java",
+                    Set.of("P9StarterSkillIdentityV0")),
             Map.entry(
                     "P9WorldEffectHandoff.java",
                     Set.of("P9WorldEffectHandoff")));
@@ -134,8 +146,15 @@ final class P9S1BoundaryTest {
             "P9S3ProjectileGameTests$ReplacedActorTransferPort.class",
             "P9S3ProjectileGameTests$TerminalImpact.class",
             "P9S3ProjectileGameTests$WrongLoadedObjectTransferPort.class",
+            "P9S5ProvisioningGameTests.class",
+            "P9S5ProvisioningGameTests$OwnedPlayer.class",
+            "P9S5ProvisioningGameTests$OwnedPlayers.class",
+            "P9S5ProvisioningGameTests$PlayerdataClaim.class",
+            "P9S5ProvisioningGameTests$StoreFixture.class",
             "P9SpawnProjectileActionPayloadV0.class",
             "P9SpawnProjectileActionType.class",
+            "P9StarterCommand.class",
+            "P9StarterCommand$ReferenceCheck.class",
             "P9StarterProjectile.class",
             "P9StarterProjectileClientEvents.class",
             "P9StarterProjectileRegistration.class",
@@ -143,6 +162,7 @@ final class P9S1BoundaryTest {
             "P9StarterSkillContent$1.class",
             "P9StarterSkillContent$2.class",
             "P9StarterSkillContent$3.class",
+            "P9StarterSkillIdentityV0.class",
             "P9WorldEffectHandoff.class",
             "StarterGameplayFingerprintV0.class");
 
@@ -176,8 +196,11 @@ final class P9S1BoundaryTest {
                 () -> assertEquals(P9_CURRENT_SOURCE_FILES, actualFiles),
                 () -> assertEquals(TOP_LEVEL_TYPES, actualTypes),
                 () -> assertEquals(
-                        List.of("src/main/java/com/yo1no/gramarye/"
-                                + "P9S3ProjectileGameTests.java"),
+                        List.of(
+                                "src/main/java/com/yo1no/gramarye/"
+                                        + "P9S3ProjectileGameTests.java",
+                                "src/main/java/com/yo1no/gramarye/"
+                                        + "P9S5ProvisioningGameTests.java"),
                         publicP9Types));
     }
 
@@ -441,6 +464,10 @@ final class P9S1BoundaryTest {
                 "fingerprintOf", ValidatedSkillDefinition.class);
         var predicate = owner.getDeclaredMethod(
                 "hasCanonicalGameplayFingerprint", ValidatedSkillDefinition.class);
+        var persistedPredicate = owner.getDeclaredMethod(
+                "hasCanonicalGameplayFingerprint",
+                com.yo1no.gramarye.magic.definition.document.SkillReference.class,
+                com.yo1no.gramarye.magic.definition.document.SkillDocument.class);
         var source = read(GRAMARYE_SOURCE);
         var registrationCallers = javaSources(PROJECT_ROOT.resolve("src/main/java")).stream()
                 .filter(path -> patternOccurrences(REGISTRATION_CALL, read(path)) > 0)
@@ -463,6 +490,11 @@ final class P9S1BoundaryTest {
                         fingerprint, Optional.class, ValidatedSkillDefinition.class),
                 () -> assertPackageStatic(
                         predicate, boolean.class, ValidatedSkillDefinition.class),
+                () -> assertPackageStatic(
+                        persistedPredicate,
+                        boolean.class,
+                        com.yo1no.gramarye.magic.definition.document.SkillReference.class,
+                        com.yo1no.gramarye.magic.definition.document.SkillDocument.class),
                 () -> assertEquals(1, patternOccurrences(REGISTRATION_CALL, source)),
                 () -> assertEquals(
                         Map.of(
@@ -521,18 +553,25 @@ final class P9S1BoundaryTest {
                 ".submit(")) {
             assertFalse(contentSources.contains(forbidden), forbidden);
         }
+        assertEquals(3, occurrences(contentSources, "P5RuntimeProjector"));
+        var contentWithoutExactFormalProjector =
+                contentSources.replace("P5RuntimeProjector", "");
         assertFalse(Pattern.compile(
                         "\\bP[5-8][A-Za-z0-9_$]*\\b|"
                                 + "\\b(?:P9StarterProjectile|Entity|EntityType|Projectile|"
                                 + "ServerPlayer|MinecraftServer|Executor|Thread|ThreadLocal|"
                                 + "Future|CompletableFuture|Object)\\b")
-                .matcher(contentSources)
+                .matcher(contentWithoutExactFormalProjector)
                 .find());
 
         var sourceJsonResources = Files.isDirectory(MAIN_RESOURCES)
                 ? jsonResources(MAIN_RESOURCES)
                 : List.<Path>of();
-        assertEquals(List.of(), sourceJsonResources);
+        assertEquals(
+                List.of(
+                        Path.of("src/main/resources/assets/gramarye/lang/en_us.json"),
+                        Path.of("src/main/resources/assets/gramarye/lang/zh_tw.json")),
+                sourceJsonResources);
     }
 
     private static void assertDescriptor(

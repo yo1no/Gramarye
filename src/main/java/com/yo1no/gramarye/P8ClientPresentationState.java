@@ -10,8 +10,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.function.BooleanSupplier;
+import javax.annotation.Nullable;
+import net.minecraft.network.Connection;
+import net.minecraft.network.ConnectionProtocol;
+import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.resources.ResourceLocation;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 
 /**
  * Client-owned P8 catalog mirror, generation state, and bounded NETWORK-to-main
@@ -29,6 +35,12 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     private long connectionCounter;
     private long connectionGeneration;
     private boolean connected;
+    private Connection p8TransportConnection;
+    private ICommonPacketListener p8PlayListenerWitness;
+    private long pendingLifecycleInvalidationGeneration;
+    private PlayPhase playPhase = PlayPhase.EMPTY;
+    private PlayEpochIdentity playEpochIdentity;
+    private PublishedCleanupObligation publishedCleanupObligation;
 
     private long worldCounter;
     private long worldGeneration;
@@ -67,32 +79,41 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     @Override
     public synchronized Optional<P8ClientDispatchTask> prepareProfileCatalog(
+            Connection sourceConnection,
+            ICommonPacketListener sourcePlayListener,
             ProfileCatalogPayload payload) {
+        Objects.requireNonNull(sourceConnection, "sourceConnection");
+        Objects.requireNonNull(sourcePlayListener, "sourcePlayListener");
         Objects.requireNonNull(payload, "payload");
-        if (!connected
-                || payload.bodySize()
-                        > PresentationLimits.MAX_CLIENT_CATALOG_RETAINED_BODY_BYTES) {
+        if (payload.bodySize()
+                > PresentationLimits.MAX_CLIENT_CATALOG_RETAINED_BODY_BYTES) {
+            return Optional.empty();
+        }
+        if (!admitCatalogEpochLocked(sourceConnection, sourcePlayListener)) {
             return Optional.empty();
         }
 
         var incomingGeneration = payload.catalogGeneration();
-        if (installedCatalog != null
+        if (playPhase == PlayPhase.OPEN
+                && installedCatalog != null
                 && incomingGeneration <= installedCatalog.snapshot().catalogGeneration()) {
             return Optional.empty();
         }
 
-        var capturedConnection = connectionGeneration;
+        var capturedConnection = playPhase == PlayPhase.OPEN ? connectionGeneration : 0L;
         var packetCharge = Math.addExact(
                 (long) payload.bodySize(),
                 PresentationLimits.PROFILE_CATALOG_PACKET_OVERHEAD_BYTES);
-        if (catalogBindAttempt != null
+        if (playPhase == PlayPhase.OPEN
+                && catalogBindAttempt != null
                 && catalogBindAttempt.connectionGeneration() == capturedConnection
                 && incomingGeneration
                         <= catalogBindAttempt.catalog().catalogGeneration()) {
             return Optional.empty();
         }
         if (catalogMailbox != null) {
-            if (catalogMailbox.connectionGeneration() != capturedConnection) {
+            if (catalogMailbox.epochIdentity() != playEpochIdentity
+                    || catalogMailbox.connectionGeneration() != capturedConnection) {
                 releaseCatalogMailboxLocked();
             } else {
                 if (incomingGeneration <= catalogMailbox.payload().catalogGeneration()) {
@@ -113,6 +134,7 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                         chargeWithoutOld, packetCharge);
                 catalogMailbox = new CatalogMailboxValue(
                         catalogMailbox.drainIdentity(),
+                        playEpochIdentity,
                         capturedConnection,
                         payload,
                         packetCharge);
@@ -130,9 +152,15 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         }
         var drainIdentity = new CatalogDrainIdentity();
         var replacement = new CatalogMailboxValue(
-                drainIdentity, capturedConnection, payload, packetCharge);
-        var task = Optional.<P8ClientDispatchTask>of(new CatalogDrainTask(
-                this, drainIdentity, capturedConnection));
+                drainIdentity,
+                playEpochIdentity,
+                capturedConnection,
+                payload,
+                packetCharge);
+        var task = playPhase == PlayPhase.OPEN
+                ? Optional.<P8ClientDispatchTask>of(new CatalogDrainTask(
+                        this, drainIdentity, playEpochIdentity, capturedConnection))
+                : Optional.<P8ClientDispatchTask>empty();
         var nextCombinedQueuedCharge = Math.addExact(
                 combinedQueuedCharge, packetCharge);
         catalogMailbox = replacement;
@@ -142,9 +170,18 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     @Override
     public synchronized Optional<P8ClientDispatchTask> preparePresentationEvent(
+            Connection sourceConnection,
+            ICommonPacketListener sourcePlayListener,
             PresentationEventPayload payload) {
+        Objects.requireNonNull(sourceConnection, "sourceConnection");
+        Objects.requireNonNull(sourcePlayListener, "sourcePlayListener");
         Objects.requireNonNull(payload, "payload");
-        if (!connected) {
+        refreshSelectedTransportLocked();
+        if (playPhase != PlayPhase.OPEN
+                || !connected
+                || p8TransportConnection != sourceConnection
+                || p8PlayListenerWitness != sourcePlayListener
+                || !isCurrentClientboundPlay(sourceConnection, sourcePlayListener)) {
             return Optional.empty();
         }
 
@@ -167,6 +204,7 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
         var reservation = new EventReservation(
                 this,
+                playEpochIdentity,
                 connectionGeneration,
                 worldGeneration,
                 resourceGeneration,
@@ -185,83 +223,211 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         return task;
     }
 
-    void onConnectionOpened() {
+    P8ClientConnectionOpenResult onConnectionOpened(
+            Connection exactConnection, ICommonPacketListener exactPlayListener) {
         requireClientThread();
-        final ConnectionTransitionAttempt attempt;
+        Objects.requireNonNull(exactConnection, "exactConnection");
+        Objects.requireNonNull(exactPlayListener, "exactPlayListener");
+        ConnectionTransitionAttempt selectedAttempt = null;
+        boolean serviceOnly = false;
         synchronized (this) {
-            clearConnectionScopedStateLocked();
-            worldCounter = 0L;
-            var canOpen = connectionCounter != Long.MAX_VALUE;
-            if (!canOpen) {
-                connected = false;
-                connectionGeneration = connectionCounter;
-            } else {
-                connectionCounter++;
-                connectionGeneration = connectionCounter;
-                connected = false;
+            refreshSelectedTransportLocked();
+            if (playPhase == PlayPhase.OPEN
+                    && connected
+                    && p8TransportConnection == exactConnection
+                    && p8PlayListenerWitness == exactPlayListener
+                    && isCurrentClientboundPlay(exactConnection, exactPlayListener)) {
+                return new P8ClientConnectionOpenResult(
+                        false,
+                        0L,
+                        Optional.empty(),
+                        transferMaintenanceResultLocked(P8ClientCleanupDisposition.NONE));
             }
-            attempt = new ConnectionTransitionAttempt(
-                    connectionGeneration, canOpen);
-            connectionTransitionAttempt = attempt;
-        }
-
-        RuntimeException cleanupRuntimeFailure = null;
-        Error cleanupError = null;
-        try {
-            execution.clearAll();
-        } catch (RuntimeException failure) {
-            cleanupRuntimeFailure = failure;
-        } catch (Error failure) {
-            cleanupError = failure;
-        }
-        synchronized (this) {
-            if (connectionTransitionAttempt == attempt) {
-                connectionTransitionAttempt = null;
-                if (connectionGeneration == attempt.connectionGeneration()) {
-                    connected = attempt.connectedAfterCleanup();
+            if (!isCurrentClientboundPlay(exactConnection, exactPlayListener)) {
+                serviceOnly = true;
+            } else {
+                if (connectionTransitionAttempt != null) {
+                    throw new IllegalStateException(
+                            "P8 PLAY publication cannot re-enter an active transport cleanup");
+                }
+                selectMainEpochLocked(exactConnection, exactPlayListener);
+                servicePublishedInvalidationCounterLocked();
+                if (playPhase == PlayPhase.RETIRING) {
+                    serviceOnly = true;
+                } else if (connectionCounter == Long.MAX_VALUE) {
+                    retireSelectedEpochLocked(true);
+                    serviceOnly = true;
+                } else {
+                    connectionCounter++;
+                    var attemptGeneration = connectionCounter;
+                    connected = false;
+                    playPhase = PlayPhase.OPENING;
+                    selectedAttempt = new ConnectionTransitionAttempt(
+                            playEpochIdentity,
+                            attemptGeneration,
+                            publishedCleanupObligation);
+                    connectionTransitionAttempt = selectedAttempt;
                 }
             }
         }
-        rethrowCleanupFailure(cleanupRuntimeFailure, cleanupError);
+        if (serviceOnly) {
+            return new P8ClientConnectionOpenResult(
+                    false,
+                    0L,
+                    Optional.empty(),
+                    performTransportMaintenance());
+        }
+        final ConnectionTransitionAttempt attempt = selectedAttempt;
+
+        RuntimeException cleanupRuntimeFailure = null;
+        Error cleanupError = null;
+        if (attempt.cleanupObligation() != null
+                && !attempt.cleanupObligation().backendCleared()) {
+            try {
+                execution.clearAll();
+            } catch (RuntimeException failure) {
+                cleanupRuntimeFailure = failure;
+            } catch (Error failure) {
+                cleanupError = failure;
+            }
+        }
+        final P8ClientConnectionOpenResult result;
+        synchronized (this) {
+            if (cleanupRuntimeFailure != null || cleanupError != null) {
+                if (connectionTransitionAttempt == attempt) {
+                    connectionTransitionAttempt = null;
+                    if (playEpochIdentity == attempt.epochIdentity()
+                            && playPhase == PlayPhase.OPENING) {
+                        playPhase = PlayPhase.PREOPEN;
+                    }
+                }
+                rethrowCleanupFailure(cleanupRuntimeFailure, cleanupError);
+            }
+            var cleanupDisposition = completeCleanupAttemptLocked(attempt);
+            refreshSelectedTransportLocked();
+            if (connectionTransitionAttempt != attempt
+                    || playPhase != PlayPhase.OPENING
+                    || playEpochIdentity != attempt.epochIdentity()
+                    || !isSelectedCurrentPlayLocked()) {
+                if (connectionTransitionAttempt == attempt) {
+                    connectionTransitionAttempt = null;
+                }
+                result = new P8ClientConnectionOpenResult(
+                        false,
+                        0L,
+                        Optional.empty(),
+                        transferMaintenanceResultLocked(cleanupDisposition));
+            } else {
+                var drain = prepareOpenPublicationLocked(attempt.connectionGeneration());
+                var maintenance = pendingMaintenanceResultLocked(cleanupDisposition);
+                result = new P8ClientConnectionOpenResult(
+                        true, attempt.connectionGeneration(), drain, maintenance);
+                connectionGeneration = attempt.connectionGeneration();
+                connected = true;
+                playPhase = PlayPhase.OPEN;
+                connectionTransitionAttempt = null;
+                publishedCleanupObligation = null;
+                pendingLifecycleInvalidationGeneration = 0L;
+                worldCounter = 0L;
+            }
+        }
+        return result;
     }
 
-    void onLoggedOut() {
+    P8ClientTransportMaintenanceResult onLoggedOut(
+            @Nullable Connection expectedConnection,
+            @Nullable ICommonPacketListener expectedPlayListener) {
         requireClientThread();
+        synchronized (this) {
+            refreshSelectedTransportLocked();
+            if (hasExactLogoutAuthorityLocked(expectedConnection, expectedPlayListener)
+                    || hasClosedTransportLogoutAuthorityLocked(
+                            expectedConnection, expectedPlayListener)) {
+                var retainFence = expectedConnection != null
+                        && expectedPlayListener != null
+                        && isCurrentClientboundPlay(
+                                expectedConnection, expectedPlayListener);
+                retireSelectedEpochLocked(retainFence);
+            }
+        }
+        return performTransportMaintenance();
+    }
+
+    P8ClientTransportMaintenanceResult maintainTransportLiveness() {
+        requireClientThread();
+        synchronized (this) {
+            refreshSelectedTransportLocked();
+        }
+        return performTransportMaintenance();
+    }
+
+    synchronized boolean isCurrentPublishedPlayGeneration(long expectedGeneration) {
+        requireClientThread();
+        return expectedGeneration > 0L
+                && playPhase == PlayPhase.OPEN
+                && connected
+                && connectionGeneration == expectedGeneration
+                && isSelectedCurrentPlayLocked();
+    }
+
+    private P8ClientTransportMaintenanceResult performTransportMaintenance() {
         final ConnectionTransitionAttempt attempt;
         synchronized (this) {
-            clearConnectionScopedStateLocked();
-            if (connectionCounter != Long.MAX_VALUE) {
-                connectionCounter++;
+            refreshSelectedTransportLocked();
+            servicePublishedInvalidationCounterLocked();
+            if (publishedCleanupObligation == null) {
+                return transferMaintenanceResultLocked(P8ClientCleanupDisposition.NONE);
             }
-            connectionGeneration = connectionCounter;
-            connected = false;
-            worldCounter = 0L;
-            attempt = new ConnectionTransitionAttempt(connectionGeneration, false);
+            if (connectionTransitionAttempt != null) {
+                throw new IllegalStateException(
+                        "P8 transport maintenance cannot re-enter an active transition");
+            }
+            attempt = new ConnectionTransitionAttempt(
+                    playEpochIdentity, 0L, publishedCleanupObligation);
             connectionTransitionAttempt = attempt;
         }
 
         RuntimeException cleanupRuntimeFailure = null;
         Error cleanupError = null;
-        try {
-            execution.clearAll();
-        } catch (RuntimeException failure) {
-            cleanupRuntimeFailure = failure;
-        } catch (Error failure) {
-            cleanupError = failure;
+        if (!attempt.cleanupObligation().backendCleared()) {
+            try {
+                execution.clearAll();
+            } catch (RuntimeException failure) {
+                cleanupRuntimeFailure = failure;
+            } catch (Error failure) {
+                cleanupError = failure;
+            }
         }
         synchronized (this) {
+            if (cleanupRuntimeFailure != null || cleanupError != null) {
+                if (connectionTransitionAttempt == attempt) {
+                    connectionTransitionAttempt = null;
+                }
+                rethrowCleanupFailure(cleanupRuntimeFailure, cleanupError);
+            }
+            var disposition = completeCleanupAttemptLocked(attempt);
             if (connectionTransitionAttempt == attempt) {
                 connectionTransitionAttempt = null;
             }
+            var result = transferMaintenanceResultLocked(disposition);
+            if (publishedCleanupObligation == attempt.cleanupObligation()
+                    || publishedCleanupObligation != null
+                            && publishedCleanupObligation.publishedGeneration()
+                                    == attempt.cleanupObligation().publishedGeneration()
+                            && publishedCleanupObligation.backendCleared()) {
+                publishedCleanupObligation = null;
+            }
+            return result;
         }
-        rethrowCleanupFailure(cleanupRuntimeFailure, cleanupError);
     }
 
     void onWorldLoaded() {
         requireClientThread();
         final WorldTransitionAttempt attempt;
         synchronized (this) {
-            if (!connected) {
+            if (playPhase != PlayPhase.OPEN
+                    || !connected
+                    || !isSelectedCurrentPlayLocked()) {
                 return;
             }
             clearAllEventWorkLocked();
@@ -300,7 +466,9 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         requireClientThread();
         final WorldTransitionAttempt attempt;
         synchronized (this) {
-            if (!connected) {
+            if (playPhase != PlayPhase.OPEN
+                    || !connected
+                    || !isSelectedCurrentPlayLocked()) {
                 return;
             }
             clearAllEventWorkLocked();
@@ -345,7 +513,9 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                     ? resourceCounter
                     : resourceCounter + 1L;
             var bindingCatalog = catalogBindAttempt != null
+                            && playPhase == PlayPhase.OPEN
                             && connected
+                            && isSelectedCurrentPlayLocked()
                             && catalogBindAttempt.connectionGeneration()
                                     == connectionGeneration
                             && (installedCatalog == null
@@ -633,25 +803,33 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     }
 
     private void executeCatalogDrain(
-            CatalogDrainIdentity drainIdentity, long capturedConnection) {
+            CatalogDrainIdentity drainIdentity,
+            PlayEpochIdentity capturedEpoch,
+            long capturedConnection) {
         try {
             requireClientThread();
         } catch (RuntimeException | Error failure) {
-            cancelCatalogDrain(drainIdentity);
+            cancelCatalogDrain(
+                    drainIdentity, capturedEpoch, capturedConnection);
             throw failure;
         }
 
         final CatalogBindAttempt attempt;
         synchronized (this) {
             var value = catalogMailbox;
-            if (value == null || value.drainIdentity() != drainIdentity) {
+            if (value == null
+                    || value.drainIdentity() != drainIdentity
+                    || value.epochIdentity() != capturedEpoch
+                    || value.connectionGeneration() != capturedConnection) {
                 return;
             }
             try {
-                if (!connected
+                if (playPhase != PlayPhase.OPEN
+                        || !connected
+                        || playEpochIdentity != capturedEpoch
+                        || !isSelectedCurrentPlayLocked()
                         || capturedConnection < 1L
-                        || capturedConnection != connectionGeneration
-                        || value.connectionGeneration() != capturedConnection) {
+                        || capturedConnection != connectionGeneration) {
                     releaseCatalogMailboxLocked();
                     return;
                 }
@@ -737,10 +915,15 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         }
     }
 
-    private void cancelCatalogDrain(CatalogDrainIdentity drainIdentity) {
+    private void cancelCatalogDrain(
+            CatalogDrainIdentity drainIdentity,
+            PlayEpochIdentity capturedEpoch,
+            long capturedConnection) {
         synchronized (this) {
             if (catalogMailbox != null
-                    && catalogMailbox.drainIdentity() == drainIdentity) {
+                    && catalogMailbox.drainIdentity() == drainIdentity
+                    && catalogMailbox.epochIdentity() == capturedEpoch
+                    && catalogMailbox.connectionGeneration() == capturedConnection) {
                 releaseCatalogMailboxLocked();
             }
         }
@@ -799,7 +982,10 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     private boolean matchesCurrentEventGenerationLocked(
             PresentationEventPayload payload, EventReservation reservation) {
-        return connected
+        return playPhase == PlayPhase.OPEN
+                && connected
+                && isSelectedCurrentPlayLocked()
+                && reservation.epochIdentity() == playEpochIdentity
                 && worldReady
                 && resourceReady
                 && reservation.connectionGeneration() == connectionGeneration
@@ -815,7 +1001,6 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     private void clearConnectionScopedStateLocked() {
         releaseCatalogMailboxLocked();
         resourceApplyAttempt = null;
-        connectionTransitionAttempt = null;
         worldTransitionAttempt = null;
         clearAllEventWorkLocked();
         installedCatalog = null;
@@ -830,7 +1015,9 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             return;
         }
         worldTransitionAttempt = null;
-        if (connected
+        if (playPhase == PlayPhase.OPEN
+                && connected
+                && isSelectedCurrentPlayLocked()
                 && connectionGeneration == attempt.connectionGeneration()
                 && worldGeneration == attempt.worldGeneration()) {
             worldReady = attempt.worldReadyAfterCleanup();
@@ -855,6 +1042,7 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     private void clearEventWorkOutsideInstallableCatalogsLocked(
             long retainedCatalogGeneration) {
         var pendingGeneration = catalogMailbox != null
+                        && catalogMailbox.epochIdentity() == playEpochIdentity
                         && catalogMailbox.connectionGeneration() == connectionGeneration
                 ? catalogMailbox.payload().catalogGeneration()
                 : 0L;
@@ -874,7 +1062,8 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             EventReservation reservation,
             long retainedCatalogGeneration,
             long pendingCatalogGeneration) {
-        return reservation.connectionGeneration() == connectionGeneration
+        return reservation.epochIdentity() == playEpochIdentity
+                && reservation.connectionGeneration() == connectionGeneration
                 && (reservation.catalogGeneration() == retainedCatalogGeneration
                         || reservation.catalogGeneration() == pendingCatalogGeneration);
     }
@@ -893,7 +1082,9 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     private static boolean matchesCatalogBindReservation(
             EventReservation reservation, CatalogBindAttempt attempt) {
-        return reservation.connectionGeneration() == attempt.connectionGeneration()
+        return reservation.epochIdentity()
+                        == attempt.mailboxValue().epochIdentity()
+                && reservation.connectionGeneration() == attempt.connectionGeneration()
                 && reservation.catalogGeneration()
                         == attempt.catalog().catalogGeneration();
     }
@@ -936,8 +1127,11 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     private boolean matchesCatalogBindAttemptLocked(CatalogBindAttempt attempt) {
         return catalogBindAttempt == attempt
+                && playPhase == PlayPhase.OPEN
                 && connected
+                && isSelectedCurrentPlayLocked()
                 && attempt.connected()
+                && attempt.mailboxValue().epochIdentity() == playEpochIdentity
                 && connectionGeneration == attempt.connectionGeneration()
                 && (installedCatalog == null
                         ? attempt.priorInstalledCatalogGeneration() == 0L
@@ -965,6 +1159,9 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
                 && resourceIndex == attempt.resourceIndex()
                 && connectionGeneration == attempt.connectionGeneration()
                 && connected == attempt.connected()
+                && (!attempt.connected()
+                        || playPhase == PlayPhase.OPEN
+                                && isSelectedCurrentPlayLocked())
                 && worldGeneration == attempt.worldGeneration()
                 && worldReady == attempt.worldReady()
                 && (installedCatalog == null
@@ -993,7 +1190,10 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     }
 
     private boolean isCatalogBindInstalledLocked(CatalogBindAttempt attempt) {
-        return connected
+        return playPhase == PlayPhase.OPEN
+                && connected
+                && isSelectedCurrentPlayLocked()
+                && attempt.mailboxValue().epochIdentity() == playEpochIdentity
                 && connectionGeneration == attempt.connectionGeneration()
                 && installedCatalog != null
                 && installedCatalog.snapshot().catalogGeneration()
@@ -1087,6 +1287,243 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         combinedQueuedCharge = nextCombinedQueuedCharge;
     }
 
+    private boolean admitCatalogEpochLocked(
+            Connection incomingConnection,
+            ICommonPacketListener incomingPlayListener) {
+        refreshSelectedTransportLocked();
+        if (!isCurrentClientboundPlay(incomingConnection, incomingPlayListener)) {
+            return false;
+        }
+        if (p8TransportConnection == incomingConnection
+                && p8PlayListenerWitness == incomingPlayListener) {
+            return playPhase == PlayPhase.PREOPEN
+                    || playPhase == PlayPhase.OPENING
+                    || playPhase == PlayPhase.OPEN;
+        }
+        if (p8TransportConnection != null
+                && p8TransportConnection != incomingConnection
+                && p8TransportConnection.isConnected()) {
+            throw new P8ClientDispatchUnavailableException();
+        }
+        retireSelectedEpochLocked(false);
+        selectEpochLocked(incomingConnection, incomingPlayListener);
+        return true;
+    }
+
+    private void selectMainEpochLocked(
+            Connection incomingConnection,
+            ICommonPacketListener incomingPlayListener) {
+        if (p8TransportConnection == incomingConnection
+                && p8PlayListenerWitness == incomingPlayListener) {
+            return;
+        }
+        retireSelectedEpochLocked(false);
+        selectEpochLocked(incomingConnection, incomingPlayListener);
+    }
+
+    private void selectEpochLocked(
+            Connection connection, ICommonPacketListener playListener) {
+        p8TransportConnection = connection;
+        p8PlayListenerWitness = playListener;
+        playEpochIdentity = new PlayEpochIdentity();
+        connected = false;
+        playPhase = PlayPhase.PREOPEN;
+    }
+
+    private void refreshSelectedTransportLocked() {
+        var selectedConnection = p8TransportConnection;
+        if (selectedConnection == null) {
+            p8PlayListenerWitness = null;
+            playEpochIdentity = null;
+            connected = false;
+            playPhase = PlayPhase.EMPTY;
+            return;
+        }
+        if (!selectedConnection.isConnected()) {
+            retireSelectedEpochLocked(false);
+            p8TransportConnection = null;
+            p8PlayListenerWitness = null;
+            playEpochIdentity = null;
+            playPhase = PlayPhase.EMPTY;
+            return;
+        }
+        var selectedListener = p8PlayListenerWitness;
+        if (selectedListener != null
+                && isCurrentClientboundPlay(selectedConnection, selectedListener)) {
+            return;
+        }
+
+        retireSelectedEpochLocked(false);
+        var currentListener = selectedConnection.getPacketListener();
+        if (currentListener instanceof ICommonPacketListener currentCommonListener
+                && isCurrentClientboundPlay(
+                        selectedConnection, currentCommonListener)) {
+            selectEpochLocked(selectedConnection, currentCommonListener);
+            return;
+        }
+        p8TransportConnection = selectedConnection;
+        p8PlayListenerWitness = null;
+        playEpochIdentity = null;
+        connected = false;
+        playPhase = PlayPhase.CONFIGURING;
+    }
+
+    private void retireSelectedEpochLocked(boolean retainTerminalFence) {
+        var wasPublished = playPhase == PlayPhase.OPEN && connected;
+        var retiredGeneration = wasPublished ? connectionGeneration : 0L;
+        clearConnectionScopedStateLocked();
+        connected = false;
+        if (wasPublished) {
+            recordPublishedInvalidationLocked(retiredGeneration);
+            if (publishedCleanupObligation == null) {
+                publishedCleanupObligation = new PublishedCleanupObligation(
+                        retiredGeneration, false, false);
+            } else if (publishedCleanupObligation.publishedGeneration()
+                    != retiredGeneration) {
+                throw new IllegalStateException(
+                        "P8 cannot replace an unresolved published cleanup obligation");
+            }
+        }
+        if (retainTerminalFence
+                && p8TransportConnection != null
+                && p8PlayListenerWitness != null) {
+            playPhase = PlayPhase.RETIRING;
+        } else {
+            p8PlayListenerWitness = null;
+            playEpochIdentity = null;
+            playPhase = p8TransportConnection == null
+                    ? PlayPhase.EMPTY
+                    : PlayPhase.CONFIGURING;
+        }
+    }
+
+    private void recordPublishedInvalidationLocked(long publishedGeneration) {
+        if (publishedGeneration < 1L) {
+            throw new IllegalStateException(
+                    "P8 invalidation notification requires a published generation");
+        }
+        if (pendingLifecycleInvalidationGeneration == 0L) {
+            pendingLifecycleInvalidationGeneration = publishedGeneration;
+        } else if (pendingLifecycleInvalidationGeneration != publishedGeneration) {
+            throw new IllegalStateException(
+                    "P8 cannot overwrite an undelivered lifecycle invalidation");
+        }
+    }
+
+    private void servicePublishedInvalidationCounterLocked() {
+        var obligation = publishedCleanupObligation;
+        if (obligation == null || obligation.counterServiced()) {
+            return;
+        }
+        if (connectionCounter == obligation.publishedGeneration()
+                && connectionCounter != Long.MAX_VALUE) {
+            connectionCounter++;
+        }
+        publishedCleanupObligation = new PublishedCleanupObligation(
+                obligation.publishedGeneration(), true, obligation.backendCleared());
+    }
+
+    private P8ClientCleanupDisposition completeCleanupAttemptLocked(
+            ConnectionTransitionAttempt attempt) {
+        var attemptedObligation = attempt.cleanupObligation();
+        if (attemptedObligation == null) {
+            return P8ClientCleanupDisposition.NONE;
+        }
+        if (attemptedObligation.backendCleared()) {
+            return P8ClientCleanupDisposition.SUPERSEDED;
+        }
+        var currentObligation = publishedCleanupObligation;
+        if (currentObligation == null
+                || currentObligation.publishedGeneration()
+                        != attemptedObligation.publishedGeneration()) {
+            throw new IllegalStateException(
+                    "P8 cleanup completed without its published obligation owner");
+        }
+        publishedCleanupObligation = new PublishedCleanupObligation(
+                currentObligation.publishedGeneration(),
+                currentObligation.counterServiced(),
+                true);
+        return P8ClientCleanupDisposition.CLEARED;
+    }
+
+    private Optional<P8ClientDispatchTask> prepareOpenPublicationLocked(
+            long publishedGeneration) {
+        var value = catalogMailbox;
+        if (value == null) {
+            return Optional.empty();
+        }
+        if (value.epochIdentity() != playEpochIdentity
+                || value.connectionGeneration() != 0L) {
+            releaseCatalogMailboxLocked();
+            return Optional.empty();
+        }
+        var published = new CatalogMailboxValue(
+                value.drainIdentity(),
+                value.epochIdentity(),
+                publishedGeneration,
+                value.payload(),
+                value.packetCharge());
+        var task = new CatalogDrainTask(
+                this,
+                published.drainIdentity(),
+                published.epochIdentity(),
+                publishedGeneration);
+        catalogMailbox = published;
+        return Optional.of(task);
+    }
+
+    private P8ClientTransportMaintenanceResult pendingMaintenanceResultLocked(
+            P8ClientCleanupDisposition disposition) {
+        return new P8ClientTransportMaintenanceResult(
+                disposition,
+                pendingLifecycleInvalidationGeneration == 0L
+                        ? OptionalLong.empty()
+                        : OptionalLong.of(pendingLifecycleInvalidationGeneration));
+    }
+
+    private P8ClientTransportMaintenanceResult transferMaintenanceResultLocked(
+            P8ClientCleanupDisposition disposition) {
+        var result = pendingMaintenanceResultLocked(disposition);
+        pendingLifecycleInvalidationGeneration = 0L;
+        return result;
+    }
+
+    private boolean hasExactLogoutAuthorityLocked(
+            @Nullable Connection expectedConnection,
+            @Nullable ICommonPacketListener expectedPlayListener) {
+        return expectedConnection != null
+                && expectedPlayListener != null
+                && expectedPlayListener.getConnection() == expectedConnection
+                && p8TransportConnection == expectedConnection
+                && p8PlayListenerWitness == expectedPlayListener;
+    }
+
+    private boolean hasClosedTransportLogoutAuthorityLocked(
+            @Nullable Connection expectedConnection,
+            @Nullable ICommonPacketListener expectedPlayListener) {
+        return expectedConnection != null
+                && expectedPlayListener == null
+                && p8TransportConnection == expectedConnection
+                && !expectedConnection.isConnected();
+    }
+
+    private boolean isSelectedCurrentPlayLocked() {
+        return p8TransportConnection != null
+                && p8PlayListenerWitness != null
+                && isCurrentClientboundPlay(
+                        p8TransportConnection, p8PlayListenerWitness);
+    }
+
+    private static boolean isCurrentClientboundPlay(
+            Connection connection, ICommonPacketListener listener) {
+        return listener.getConnection() == connection
+                && listener.protocol() == ConnectionProtocol.PLAY
+                && listener.flow() == PacketFlow.CLIENTBOUND
+                && connection.getReceiving() == PacketFlow.CLIENTBOUND
+                && connection.isConnected()
+                && connection.getPacketListener() == listener;
+    }
+
     private static long checkedSubtractNonnegative(
             long current, long released, String owner) {
         if (current < 0L || released < 0L || released > current) {
@@ -1127,6 +1564,15 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         PENDING
     }
 
+    private enum PlayPhase {
+        EMPTY,
+        CONFIGURING,
+        PREOPEN,
+        OPENING,
+        OPEN,
+        RETIRING
+    }
+
     private record InstalledCatalog(
             P8ProfileCatalogSnapshot snapshot, long resourceGeneration) {
         private InstalledCatalog {
@@ -1140,12 +1586,18 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     private record CatalogMailboxValue(
             CatalogDrainIdentity drainIdentity,
+            PlayEpochIdentity epochIdentity,
             long connectionGeneration,
             ProfileCatalogPayload payload,
             long packetCharge) {
         private CatalogMailboxValue {
             Objects.requireNonNull(drainIdentity, "drainIdentity");
+            Objects.requireNonNull(epochIdentity, "epochIdentity");
             Objects.requireNonNull(payload, "payload");
+            if (connectionGeneration < 0L || packetCharge < 0L) {
+                throw new IllegalArgumentException(
+                        "P8 catalog mailbox counters cannot be negative");
+            }
         }
     }
 
@@ -1199,7 +1651,16 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     }
 
     private record ConnectionTransitionAttempt(
-            long connectionGeneration, boolean connectedAfterCleanup) {}
+            @Nullable PlayEpochIdentity epochIdentity,
+            long connectionGeneration,
+            @Nullable PublishedCleanupObligation cleanupObligation) {
+        private ConnectionTransitionAttempt {
+            if (connectionGeneration < 0L) {
+                throw new IllegalArgumentException(
+                        "connectionGeneration cannot be negative");
+            }
+        }
+    }
 
     private record WorldTransitionAttempt(
             long connectionGeneration,
@@ -1208,8 +1669,23 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
 
     private static final class CatalogDrainIdentity {}
 
+    private static final class PlayEpochIdentity {}
+
+    private record PublishedCleanupObligation(
+            long publishedGeneration,
+            boolean counterServiced,
+            boolean backendCleared) {
+        private PublishedCleanupObligation {
+            if (publishedGeneration < 1L) {
+                throw new IllegalArgumentException(
+                        "publishedGeneration must identify a published generation");
+            }
+        }
+    }
+
     private record EventReservation(
             P8ClientPresentationState owner,
+            PlayEpochIdentity epochIdentity,
             long connectionGeneration,
             long worldGeneration,
             long resourceGeneration,
@@ -1218,6 +1694,7 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
             long packetCharge) {
         private EventReservation {
             Objects.requireNonNull(owner, "owner");
+            Objects.requireNonNull(epochIdentity, "epochIdentity");
         }
 
         private void releaseAfterFailedEnqueue() {
@@ -1236,20 +1713,28 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
     private record CatalogDrainTask(
             P8ClientPresentationState owner,
             CatalogDrainIdentity drainIdentity,
+            PlayEpochIdentity capturedEpoch,
             long capturedConnection) implements P8ClientDispatchTask {
         private CatalogDrainTask {
             Objects.requireNonNull(owner, "owner");
             Objects.requireNonNull(drainIdentity, "drainIdentity");
+            Objects.requireNonNull(capturedEpoch, "capturedEpoch");
+            if (capturedConnection < 1L) {
+                throw new IllegalArgumentException(
+                        "capturedConnection must identify a published generation");
+            }
         }
 
         @Override
         public void run() {
-            owner.executeCatalogDrain(drainIdentity, capturedConnection);
+            owner.executeCatalogDrain(
+                    drainIdentity, capturedEpoch, capturedConnection);
         }
 
         @Override
         public void releaseAfterFailedEnqueue() {
-            owner.cancelCatalogDrain(drainIdentity);
+            owner.cancelCatalogDrain(
+                    drainIdentity, capturedEpoch, capturedConnection);
         }
     }
 
@@ -1271,6 +1756,47 @@ final class P8ClientPresentationState implements P8ClientPayloadDispatchPort {
         @Override
         public void releaseAfterFailedEnqueue() {
             reservation.releaseAfterFailedEnqueue();
+        }
+    }
+}
+
+record P8ClientConnectionOpenResult(
+        boolean opened,
+        long publishedGeneration,
+        Optional<P8ClientDispatchTask> catalogDrain,
+        P8ClientTransportMaintenanceResult maintenance) {
+    P8ClientConnectionOpenResult {
+        Objects.requireNonNull(catalogDrain, "catalogDrain");
+        Objects.requireNonNull(maintenance, "maintenance");
+        if (opened) {
+            if (publishedGeneration < 1L) {
+                throw new IllegalArgumentException(
+                        "an opened P8 epoch requires a published generation");
+            }
+        } else if (publishedGeneration != 0L || catalogDrain.isPresent()) {
+            throw new IllegalArgumentException(
+                    "a non-open P8 result cannot publish a generation or drain");
+        }
+    }
+}
+
+enum P8ClientCleanupDisposition {
+    NONE,
+    CLEARED,
+    SUPERSEDED
+}
+
+record P8ClientTransportMaintenanceResult(
+        P8ClientCleanupDisposition cleanupDisposition,
+        OptionalLong invalidatedPublishedGeneration) {
+    P8ClientTransportMaintenanceResult {
+        Objects.requireNonNull(cleanupDisposition, "cleanupDisposition");
+        Objects.requireNonNull(
+                invalidatedPublishedGeneration, "invalidatedPublishedGeneration");
+        if (invalidatedPublishedGeneration.isPresent()
+                && invalidatedPublishedGeneration.getAsLong() < 1L) {
+            throw new IllegalArgumentException(
+                    "an invalidated P8 generation must have been published");
         }
     }
 }

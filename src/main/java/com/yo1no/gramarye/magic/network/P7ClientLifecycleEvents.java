@@ -25,17 +25,32 @@ final class P7ClientLifecycleEvents {
     @SubscribeEvent
     static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn ignored) {
         MIRROR.onConnected();
+        P9ClientCastInput.onConnectionOpened();
     }
 
     @SubscribeEvent
     static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut ignored) {
         MIRROR.onDisconnected();
+        P9ClientCastInput.onConnectionClosed();
+    }
+
+    @SubscribeEvent
+    static void onClientPlayerClone(ClientPlayerNetworkEvent.Clone ignored) {
+        P9ClientCastInput.onPlayerContextReplaced();
+    }
+
+    @SubscribeEvent
+    static void onClientLevelLoad(LevelEvent.Load event) {
+        if (event.getLevel() instanceof ClientLevel) {
+            P9ClientCastInput.onClientWorldLoaded();
+        }
     }
 
     @SubscribeEvent
     static void onClientLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel() instanceof ClientLevel) {
             MIRROR.onClientWorldUnload();
+            P9ClientCastInput.onClientWorldUnloaded();
         }
     }
 }

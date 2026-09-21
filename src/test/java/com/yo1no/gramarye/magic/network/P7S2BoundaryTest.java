@@ -124,6 +124,8 @@ final class P7S2BoundaryTest {
             "P7ServerLifecycleEvents.java", "P7ReloadStartEvents.java",
             "P7Diagnostics.java", "P7ClientMirror.java",
             "P7ClientMirrorDispatchFactory.java", "P7ClientLifecycleEvents.java");
+    private static final Set<String> S5_PRODUCTION_PATHS = Set.of(
+            "P9ClientCastInput.java", "P9ClientKeyMappings.java");
 
     private static final Set<String> S2_TEST_PATHS = Set.of(
             "CastIntentPayloadCodecTest.java",
@@ -159,6 +161,7 @@ final class P7S2BoundaryTest {
                 .filter(path -> !S1_PRODUCTION_PATHS.contains(path))
                 .filter(path -> !S3_R1_PRODUCTION_PATHS.contains(path))
                 .filter(path -> !S4_PRODUCTION_PATHS.contains(path))
+                .filter(path -> !S5_PRODUCTION_PATHS.contains(path))
                 .filter(path -> !path.equals("P7S4NetworkGameTests.java"))
                 .collect(Collectors.toUnmodifiableSet());
         var actualS3R1Paths = allNetworkPaths.stream()
@@ -172,6 +175,8 @@ final class P7S2BoundaryTest {
         assertEquals(S3_R1_PRODUCTION_PATHS, actualS3R1Paths);
         assertEquals(S4_PRODUCTION_PATHS, allNetworkPaths.stream()
                 .filter(S4_PRODUCTION_PATHS::contains).collect(Collectors.toSet()));
+        assertEquals(S5_PRODUCTION_PATHS, allNetworkPaths.stream()
+                .filter(S5_PRODUCTION_PATHS::contains).collect(Collectors.toSet()));
         assertTrue(allNetworkPaths.containsAll(S1_PRODUCTION_PATHS));
         S2_PRODUCTION_TYPES.forEach((path, type) -> {
             assertEquals(PACKAGE_NAME, type.getPackageName(), path);
@@ -458,6 +463,7 @@ final class P7S2BoundaryTest {
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isS4Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP8Harness(path))
                     .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S3Harness(path))
+                    .filter(path -> !com.yo1no.gramarye.P7GameTestInventory.isP9S5Harness(path))
                     .flatMap(path -> PUBLIC_P6_P7_TOP_LEVEL.matcher(read(path)).results())
                     .map(result -> result.group(1))
                     .collect(Collectors.toUnmodifiableSet());

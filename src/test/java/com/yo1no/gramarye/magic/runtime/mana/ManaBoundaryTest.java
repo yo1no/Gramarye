@@ -156,7 +156,8 @@ final class ManaBoundaryTest {
                 - manaGameTestCount
                 - com.yo1no.gramarye.P7GameTestInventory.s4Count()
                 - com.yo1no.gramarye.P7GameTestInventory.p8Count()
-                - com.yo1no.gramarye.P7GameTestInventory.p9S3Count();
+                - com.yo1no.gramarye.P7GameTestInventory.p9S3Count()
+                - com.yo1no.gramarye.P7GameTestInventory.p9S5Count();
 
         assertAll(
                 () -> assertEquals(

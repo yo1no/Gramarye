@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.network.Connection;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
@@ -14,6 +15,7 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -23,13 +25,13 @@ final class P8ClientPresentationLifecycle {
     private final P8ClientPresentationState state;
     private final P8ClientPresentationExecution execution;
     private boolean pendingWorldLoad;
+    private long pendingWorldLoadGeneration;
 
     P8ClientPresentationLifecycle(
             P8ClientPresentationState state,
             P8ClientPresentationExecution execution,
             IEventBus modBus) {
-        this.state = Objects.requireNonNull(state, "state");
-        this.execution = Objects.requireNonNull(execution, "execution");
+        this(state, execution);
         Objects.requireNonNull(modBus, "modBus")
                 .addListener(this::onRegisterClientReloadListeners);
         NeoForge.EVENT_BUS.addListener(
@@ -40,9 +42,17 @@ final class P8ClientPresentationLifecycle {
         NeoForge.EVENT_BUS.addListener(LevelEvent.Unload.class, this::onClientLevelUnload);
         NeoForge.EVENT_BUS.addListener(
                 EntityLeaveLevelEvent.class, this::onEntityLeaveLevel);
+        NeoForge.EVENT_BUS.addListener(ClientTickEvent.Pre.class, this::onClientPreTick);
         NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, this::onClientPostTick);
         NeoForge.EVENT_BUS.addListener(
                 RenderLevelStageEvent.class, this::onRenderLevelStage);
+    }
+
+    private P8ClientPresentationLifecycle(
+            P8ClientPresentationState state,
+            P8ClientPresentationExecution execution) {
+        this.state = Objects.requireNonNull(state, "state");
+        this.execution = Objects.requireNonNull(execution, "execution");
     }
 
     private void onRegisterClientReloadListeners(
@@ -50,43 +60,109 @@ final class P8ClientPresentationLifecycle {
         event.registerReloadListener(new P8ResourceReloadListener(state));
     }
 
-    private void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn ignored) {
-        pendingWorldLoad = false;
-        RuntimeException primaryRuntimeFailure = null;
-        Error primaryFailure = null;
+    private void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
+        Throwable primaryFailure = null;
+        P8ClientDispatchTask catalogDrain = null;
+        boolean catalogDrainClaimed = false;
         try {
-            state.onConnectionOpened();
-        } catch (RuntimeException failure) {
-            primaryRuntimeFailure = failure;
-        } catch (Error failure) {
-            primaryFailure = failure;
-        }
-        if (Minecraft.getInstance().level != null) {
-            try {
-                state.onWorldLoaded();
-            } catch (RuntimeException failure) {
-                if (primaryRuntimeFailure == null && primaryFailure == null) {
-                    primaryRuntimeFailure = failure;
-                }
-            } catch (Error failure) {
-                if (primaryFailure == null) {
-                    primaryFailure = failure;
-                }
+            clearStalePendingWorldLoad();
+            var eventConnection = event.getConnection();
+            var eventPlayer = event.getPlayer();
+            var eventPlayListener = eventPlayer.connection;
+            if (!isCurrentLoginWitness(
+                    eventConnection, eventPlayListener, eventPlayer)) {
+                consumeMaintenance(state.maintainTransportLiveness());
+                return;
             }
-        }
-        if (primaryFailure != null) {
-            throw primaryFailure;
-        }
-        if (primaryRuntimeFailure != null) {
-            throw primaryRuntimeFailure;
+            var result = state.onConnectionOpened(
+                    eventConnection, eventPlayListener);
+            catalogDrain = consumeOpenMaintenanceAndSelectDrain(result);
+            if (!result.opened()) {
+                return;
+            }
+            var publishedGeneration = result.publishedGeneration();
+            if (!state.isCurrentPublishedPlayGeneration(publishedGeneration)
+                    || !isCurrentLoginWitness(
+                            eventConnection, eventPlayListener, eventPlayer)) {
+                return;
+            }
+            clearPendingWorldLoadUnlessGeneration(publishedGeneration);
+            if (Minecraft.getInstance().level != null) {
+                state.onWorldLoaded();
+            }
+            if (!state.isCurrentPublishedPlayGeneration(publishedGeneration)
+                    || !isCurrentLoginWitness(
+                            eventConnection, eventPlayListener, eventPlayer)) {
+                return;
+            }
+            if (catalogDrain != null) {
+                catalogDrainClaimed = true;
+                catalogDrain.run();
+            }
+        } catch (RuntimeException | Error failure) {
+            primaryFailure = failure;
+        } finally {
+            var unclaimedCatalogDrain = catalogDrain != null && !catalogDrainClaimed
+                    ? catalogDrain
+                    : null;
+            finishLifecycle(
+                    primaryFailure,
+                    () -> {
+                        if (unclaimedCatalogDrain != null) {
+                            unclaimedCatalogDrain.releaseAfterFailedEnqueue();
+                        }
+                    },
+                    this::clearStalePendingWorldLoad);
         }
     }
 
-    private void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut ignored) {
+    P8ClientDispatchTask consumeOpenMaintenanceAndSelectDrain(
+            P8ClientConnectionOpenResult result) {
+        Objects.requireNonNull(result, "result");
+        consumeMaintenance(result.maintenance());
+        return result.opened() ? result.catalogDrain().orElse(null) : null;
+    }
+
+    static void finishLifecycle(
+            Throwable primaryFailure, Runnable... cleanupActions) {
+        var terminalFailure = primaryFailure;
+        for (var cleanupAction : cleanupActions) {
+            try {
+                Objects.requireNonNull(cleanupAction, "cleanupAction").run();
+            } catch (RuntimeException | Error secondaryFailure) {
+                if (terminalFailure == null) {
+                    terminalFailure = secondaryFailure;
+                } else if (terminalFailure != secondaryFailure) {
+                    terminalFailure.addSuppressed(secondaryFailure);
+                }
+            }
+        }
+        if (terminalFailure instanceof RuntimeException runtimeFailure) {
+            throw runtimeFailure;
+        }
+        if (terminalFailure instanceof Error errorFailure) {
+            throw errorFailure;
+        }
+        if (terminalFailure != null) {
+            throw new IllegalArgumentException(
+                    "P8 lifecycle failures must be unchecked", terminalFailure);
+        }
+    }
+
+    private void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        Throwable primaryFailure = null;
         try {
-            state.onLoggedOut();
+            clearStalePendingWorldLoad();
+            var eventPlayer = event.getPlayer();
+            ICommonPacketListener eventPlayListener = eventPlayer == null
+                    ? null
+                    : eventPlayer.connection;
+            consumeMaintenance(state.onLoggedOut(
+                    event.getConnection(), eventPlayListener));
+        } catch (RuntimeException | Error failure) {
+            primaryFailure = failure;
         } finally {
-            pendingWorldLoad = false;
+            finishLifecycle(primaryFailure, this::clearStalePendingWorldLoad);
         }
     }
 
@@ -96,22 +172,98 @@ final class P8ClientPresentationLifecycle {
             // old level's Unload event. Each event independently advances the
             // world generation; this token only tells the later Unload that a
             // current world remains and never retains either level.
-            pendingWorldLoad = state.worldReady();
-            state.onWorldLoaded();
+            Throwable primaryFailure = null;
+            try {
+                clearStalePendingWorldLoad();
+                var publishedGeneration = state.connectionGeneration();
+                if (state.worldReady()
+                        && state.isCurrentPublishedPlayGeneration(
+                                publishedGeneration)) {
+                    pendingWorldLoad = true;
+                    pendingWorldLoadGeneration = publishedGeneration;
+                }
+                state.onWorldLoaded();
+            } catch (RuntimeException | Error failure) {
+                primaryFailure = failure;
+            } finally {
+                finishLifecycle(primaryFailure, this::clearStalePendingWorldLoad);
+            }
         }
     }
 
     private void onClientLevelUnload(LevelEvent.Unload event) {
         if (event.getLevel() instanceof ClientLevel) {
-            var currentLevel = Minecraft.getInstance().level;
-            if (pendingWorldLoad) {
-                pendingWorldLoad = false;
-                state.onWorldUnloaded(true);
-            } else if (state.worldReady()
-                    && (currentLevel == null || event.getLevel() == currentLevel)) {
-                state.onWorldUnloaded(false);
+            Throwable primaryFailure = null;
+            try {
+                clearStalePendingWorldLoad();
+                var currentLevel = Minecraft.getInstance().level;
+                if (pendingWorldLoad
+                        && state.isCurrentPublishedPlayGeneration(
+                                pendingWorldLoadGeneration)) {
+                    clearPendingWorldLoad();
+                    state.onWorldUnloaded(true);
+                } else if (state.worldReady()
+                        && (currentLevel == null || event.getLevel() == currentLevel)) {
+                    state.onWorldUnloaded(false);
+                }
+            } catch (RuntimeException | Error failure) {
+                primaryFailure = failure;
+            } finally {
+                finishLifecycle(primaryFailure, this::clearStalePendingWorldLoad);
             }
         }
+    }
+
+    private void onClientPreTick(ClientTickEvent.Pre ignored) {
+        Throwable primaryFailure = null;
+        try {
+            clearStalePendingWorldLoad();
+            consumeMaintenance(state.maintainTransportLiveness());
+        } catch (RuntimeException | Error failure) {
+            primaryFailure = failure;
+        } finally {
+            finishLifecycle(primaryFailure, this::clearStalePendingWorldLoad);
+        }
+    }
+
+    private static boolean isCurrentLoginWitness(
+            Connection eventConnection,
+            ICommonPacketListener eventPlayListener,
+            net.minecraft.client.player.LocalPlayer eventPlayer) {
+        var minecraft = Minecraft.getInstance();
+        return minecraft.player == eventPlayer
+                && minecraft.getConnection() == eventPlayListener
+                && eventPlayListener.getConnection() == eventConnection
+                && eventConnection.getPacketListener() == eventPlayListener;
+    }
+
+    void consumeMaintenance(P8ClientTransportMaintenanceResult result) {
+        Objects.requireNonNull(result, "result");
+        var invalidated = result.invalidatedPublishedGeneration();
+        if (invalidated.isPresent()
+                && pendingWorldLoad
+                && pendingWorldLoadGeneration == invalidated.getAsLong()) {
+            clearPendingWorldLoad();
+        }
+    }
+
+    private void clearPendingWorldLoadUnlessGeneration(long generation) {
+        if (pendingWorldLoad && pendingWorldLoadGeneration != generation) {
+            clearPendingWorldLoad();
+        }
+    }
+
+    private void clearStalePendingWorldLoad() {
+        if (pendingWorldLoad
+                && !state.isCurrentPublishedPlayGeneration(
+                        pendingWorldLoadGeneration)) {
+            clearPendingWorldLoad();
+        }
+    }
+
+    private void clearPendingWorldLoad() {
+        pendingWorldLoad = false;
+        pendingWorldLoadGeneration = 0L;
     }
 
     private void onClientPostTick(ClientTickEvent.Post ignored) {

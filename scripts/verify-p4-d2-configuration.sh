@@ -205,7 +205,8 @@ require_only_ere_owner() {
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
                 || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s5-harness "${file}"; then
             continue
         fi
         status=0
@@ -265,7 +266,8 @@ require_only_fixed_owner() {
     while IFS= read -r -d '' file; do
         if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-harness "${file}" \
                 || bash scripts/verify-p7-s4-source-contracts.sh --is-p8-harness "${file}" \
-                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}"; then
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s3-harness "${file}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh --is-p9-s5-harness "${file}"; then
             continue
         fi
         status=0
@@ -474,11 +476,12 @@ verify_static_ownership_and_phase_bounds() {
     require_only_fixed_owner 'SkillQuota.Unlimited.INSTANCE' "${default_provider}" \
         'default quota escaped the unique reviewed provider'
     require_exact_ere_owners \
-        'new ValidationContext\(MagicPolicyLimits\.DEFAULTS\)' 3 \
-        'default validation context escaped the exact reviewed P4 and P8 owners' \
+        'new ValidationContext\(MagicPolicyLimits\.DEFAULTS\)' 4 \
+        'default validation context escaped the exact reviewed P4, P8, and P9 owners' \
         "${default_provider}" \
         'src/main/java/com/yo1no/gramarye/P8PayloadCodecSupport.java' \
-        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java'
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
+        'src/main/java/com/yo1no/gramarye/P9StarterSkillContent.java'
 
     require_exact_ere_owners \
         'PlayerLoggedInEvent' 4 \
@@ -497,11 +500,15 @@ verify_static_ownership_and_phase_bounds() {
         'OfflineRoot' \
         'RootCollector' \
         'RootIndex' \
-        'PacketDistributor' \
         'org.junit'; do
         forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" "${literal}" \
             "P4-D3/P4-E/network/test surface appeared in production (${literal})"
     done
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        'PacketDistributor' \
+        'PacketDistributor escaped the exact P9-S5 client sender owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInput.java'
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'CustomPacketPayload' \

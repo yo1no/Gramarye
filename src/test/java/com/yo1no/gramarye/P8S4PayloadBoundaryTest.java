@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.minecraft.network.Connection;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import org.junit.jupiter.api.Test;
 
@@ -66,7 +68,13 @@ final class P8S4PayloadBoundaryTest {
                 () -> assertFalse(
                         Modifier.isPublic(P8ClientPayloadDispatchPort.class.getModifiers())),
                 () -> assertFalse(
-                        Modifier.isPublic(P8ClientDispatchTask.class.getModifiers())));
+                        Modifier.isPublic(P8ClientDispatchTask.class.getModifiers())),
+                () -> assertFalse(Modifier.isPublic(
+                        P8ClientConnectionOpenResult.class.getModifiers())),
+                () -> assertFalse(Modifier.isPublic(
+                        P8ClientCleanupDisposition.class.getModifiers())),
+                () -> assertFalse(Modifier.isPublic(
+                        P8ClientTransportMaintenanceResult.class.getModifiers())));
     }
 
     @Test
@@ -131,7 +139,22 @@ final class P8S4PayloadBoundaryTest {
                 () -> assertEquals(1, occurrences(
                         handlers, "disconnect.gramarye.invalid_presentation_payload")),
                 () -> assertTrue(handlers.contains("if (!transferred)")),
-                () -> assertTrue(handlers.contains("task.releaseAfterFailedEnqueue()")));
+                () -> assertTrue(handlers.contains("task.releaseAfterFailedEnqueue()")),
+                () -> assertEquals(2, occurrences(
+                        handlers, "context.connection(), context.listener(), payload")),
+                () -> assertNoRetainedTransportIdentity(
+                        P8ClientConnectionOpenResult.class),
+                () -> assertNoRetainedTransportIdentity(
+                        P8ClientTransportMaintenanceResult.class));
+    }
+
+    private static void assertNoRetainedTransportIdentity(Class<?> resultType) {
+        assertTrue(Arrays.stream(resultType.getDeclaredFields())
+                .filter(field -> !Modifier.isStatic(field.getModifiers()))
+                .map(field -> field.getType())
+                .noneMatch(type -> Connection.class.isAssignableFrom(type)
+                        || ICommonPacketListener.class.isAssignableFrom(type)),
+                resultType.getName());
     }
 
     private static int occurrences(String source, String needle) {

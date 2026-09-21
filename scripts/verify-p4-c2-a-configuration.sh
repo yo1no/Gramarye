@@ -224,6 +224,7 @@ verify_exact_sources_and_registration() {
     local p8_client='src/main/java/com/yo1no/gramarye/GramaryeClient.java'
     local p8_client_factories='src/main/java/com/yo1no/gramarye/magic/api/registry/P8BuiltInClientProfileFactories.java'
     local p9_entity_registration='src/main/java/com/yo1no/gramarye/P9StarterProjectileRegistration.java'
+    local p9_client_input='src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInput.java'
     local serialize_line=''
     local death_line=''
 
@@ -370,12 +371,14 @@ verify_exact_sources_and_registration() {
         'P8 built-in factory registration must execute on the client mod bus'
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" 'event.register(' "${p8_client_factories}" \
-        "${p8_client}" '' \
-        'event.register escaped the exact P8 client registry/factory owners'
+        "${p8_client}" "${p9_client_input}" \
+        'event.register escaped the exact P8 registry/factory and P9 key owners'
     require_fixed_count "${p8_client_factories}" 'event.register(' 1 \
         'P8 built-in factory owner must perform exactly one startup registration batch'
     require_fixed_count "${p8_client}" 'event.register(' 1 \
         'P8 client bootstrap must register exactly one client factory registry'
+    require_fixed_count "${p9_client_input}" 'event.register(' 1 \
+        'P9 client input must register exactly one key mapping through its event'
     for literal in \
         'DeferredRegister<AttachmentType<?>>' \
         'DeferredHolder' \

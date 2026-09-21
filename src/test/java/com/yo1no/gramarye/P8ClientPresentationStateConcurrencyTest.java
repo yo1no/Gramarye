@@ -26,6 +26,7 @@ import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.connection.ConnectionType;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /** Adversarial publication tests for the client-state/execution two-phase boundary. */
@@ -49,17 +50,22 @@ final class P8ClientPresentationStateConcurrencyTest {
                     + "\"size_milli_blocks\":200}";
     private static final String MAX_ENVELOPE_JSON = maximumEnvelopeJson();
 
+    @AfterEach
+    void closeClientTransports() {
+        P8ClientTestEpochs.closeAll();
+    }
+
     @Test
     void supersededInFlightCatalogRemainsExecutableWhenTheNewDrainFailsToEnqueue()
             throws Exception {
         var execution = new BlockingExecution();
         var state = new P8ClientPresentationState(() -> true, execution);
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
 
         var first = catalog(1L);
-        var firstDrain = state.prepareProfileCatalog(first).orElseThrow();
+        var firstDrain = P8ClientTestEpochs.prepareProfileCatalog(state, first).orElseThrow();
         var drainFailure = new AtomicReference<Throwable>();
         var drainThread = new Thread(() -> {
             try {
@@ -78,8 +84,8 @@ final class P8ClientPresentationStateConcurrencyTest {
         var second = catalog(2L);
         try {
             networkWork = network.submit(() -> new NetworkWork(
-                            state.prepareProfileCatalog(second).orElseThrow(),
-                            state.preparePresentationEvent(event(1L, 1L)).orElseThrow()))
+                            P8ClientTestEpochs.prepareProfileCatalog(state, second).orElseThrow(),
+                            P8ClientTestEpochs.preparePresentationEvent(state, event(1L, 1L)).orElseThrow()))
                     .get(1L, TimeUnit.SECONDS);
             assertEquals(
                     catalogCharge(second) + eventCharge(event(1L, 1L)),
@@ -116,7 +122,7 @@ final class P8ClientPresentationStateConcurrencyTest {
         var execution = new BlockingCleanupExecution();
         var state = new P8ClientPresentationState(() -> true, execution);
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         execution.blockNextClearActive();
 
@@ -134,7 +140,7 @@ final class P8ClientPresentationStateConcurrencyTest {
         var network = Executors.newSingleThreadExecutor();
         P8ClientDispatchTask drain;
         try {
-            drain = network.submit(() -> state.prepareProfileCatalog(catalog(1L)))
+            drain = network.submit(() -> P8ClientTestEpochs.prepareProfileCatalog(state, catalog(1L)))
                     .get(1L, TimeUnit.SECONDS)
                     .orElseThrow();
             drain.releaseAfterFailedEnqueue();
@@ -157,7 +163,7 @@ final class P8ClientPresentationStateConcurrencyTest {
         var execution = new BlockingExecution();
         var state = new P8ClientPresentationState(() -> true, execution);
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         var first = maximumEnvelopeCatalog(1L);
         var second = maximumEnvelopeCatalog(2L);
@@ -175,7 +181,7 @@ final class P8ClientPresentationStateConcurrencyTest {
                 catalogCharge(first) * 2L
                         > PresentationLimits.MAX_CLIENT_COMBINED_QUEUED_BYTES);
 
-        var drain = state.prepareProfileCatalog(first).orElseThrow();
+        var drain = P8ClientTestEpochs.prepareProfileCatalog(state, first).orElseThrow();
         var drainFailure = new AtomicReference<Throwable>();
         var drainThread = new Thread(() -> {
             try {
@@ -194,27 +200,27 @@ final class P8ClientPresentationStateConcurrencyTest {
         P8ClientDispatchTask latestDrain;
         P8ClientDispatchTask latestEvent;
         try {
-            latestDrain = network.submit(() -> state.prepareProfileCatalog(second))
+            latestDrain = network.submit(() -> P8ClientTestEpochs.prepareProfileCatalog(state, second))
                     .get(1L, TimeUnit.SECONDS)
                     .orElseThrow();
             assertEquals(2L, state.pendingCatalogGeneration());
             assertEquals(catalogCharge(second), state.combinedQueuedCharge());
             assertEquals(catalogCharge(first), state.inFlightCatalogPacketCharge());
 
-            assertTrue(network.submit(() -> state.prepareProfileCatalog(third))
+            assertTrue(network.submit(() -> P8ClientTestEpochs.prepareProfileCatalog(state, third))
                     .get(1L, TimeUnit.SECONDS)
                     .isEmpty());
             assertEquals(3L, state.pendingCatalogGeneration());
             assertEquals(catalogCharge(third), state.combinedQueuedCharge());
             assertEquals(catalogCharge(first), state.inFlightCatalogPacketCharge());
-            assertTrue(network.submit(() -> state.prepareProfileCatalog(catalog(3L)))
+            assertTrue(network.submit(() -> P8ClientTestEpochs.prepareProfileCatalog(state, catalog(3L)))
                     .get(1L, TimeUnit.SECONDS)
                     .isEmpty());
             assertMalformedNewerCatalogDoesNotReplace(state, third);
             assertEquals(3L, state.pendingCatalogGeneration());
             assertEquals(catalogCharge(third), state.combinedQueuedCharge());
             latestEvent = network.submit(() ->
-                            state.preparePresentationEvent(event(3L, 1L)).orElseThrow())
+                            P8ClientTestEpochs.preparePresentationEvent(state, event(3L, 1L)).orElseThrow())
                     .get(1L, TimeUnit.SECONDS);
             assertTrue(
                     state.combinedQueuedCharge()
@@ -253,17 +259,17 @@ final class P8ClientPresentationStateConcurrencyTest {
         var execution = new ReentrantExecution();
         var state = new P8ClientPresentationState(() -> true, execution);
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         var active = maximumEnvelopeCatalog(1L);
         var replacement = maximumEnvelopeCatalog(2L);
-        state.prepareProfileCatalog(active).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, active).orElseThrow().run();
         assertSame(active.snapshot(), state.installedCatalogSnapshot());
 
         execution.onNextReplace(() -> {
             assertSame(active.snapshot(), state.installedCatalogSnapshot());
             assertEquals(catalogCharge(replacement), state.inFlightCatalogPacketCharge());
-            state.onLoggedOut();
+            P8ClientTestEpochs.logout(state);
             assertNull(state.installedCatalogSnapshot());
             assertNull(execution.boundCatalog());
             assertEquals(catalogCharge(replacement), state.inFlightCatalogPacketCharge());
@@ -271,7 +277,7 @@ final class P8ClientPresentationStateConcurrencyTest {
             assertCatalogBindAttemptHasNoInstalledCatalogReference();
         });
 
-        state.prepareProfileCatalog(replacement).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, replacement).orElseThrow().run();
 
         assertFalse(state.connected());
         assertNull(state.installedCatalogSnapshot());
@@ -285,18 +291,18 @@ final class P8ClientPresentationStateConcurrencyTest {
         var execution = new ReentrantExecution();
         var state = new P8ClientPresentationState(() -> true, execution);
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         var active = maximumEnvelopeCatalog(1L);
         var replacement = maximumEnvelopeCatalog(2L);
-        state.prepareProfileCatalog(active).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, active).orElseThrow().run();
         assertSame(active.snapshot(), state.installedCatalogSnapshot());
 
         execution.onNextReplace(() -> {
             execution.onNextReplace(() -> {
                 assertSame(active.snapshot(), state.installedCatalogSnapshot());
                 assertEquals(catalogCharge(replacement), state.inFlightCatalogPacketCharge());
-                state.onLoggedOut();
+                P8ClientTestEpochs.logout(state);
                 assertNull(state.installedCatalogSnapshot());
                 assertNull(execution.boundCatalog());
                 assertEquals(catalogCharge(replacement), state.inFlightCatalogPacketCharge());
@@ -307,7 +313,7 @@ final class P8ClientPresentationStateConcurrencyTest {
                     new P8ClientResourceIndex(List.of(id("nested_resource"))));
         });
 
-        state.prepareProfileCatalog(replacement).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, replacement).orElseThrow().run();
 
         assertFalse(state.connected());
         assertNull(state.installedCatalogSnapshot());
@@ -325,11 +331,11 @@ final class P8ClientPresentationStateConcurrencyTest {
             var execution = new BlockingFailureExecution(expectedFailure);
             var state = new P8ClientPresentationState(() -> true, execution);
             state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-            state.onConnectionOpened();
+            P8ClientTestEpochs.open(state);
             state.onWorldLoaded();
             var first = catalog(1L);
             var second = catalog(2L);
-            var firstDrain = state.prepareProfileCatalog(first).orElseThrow();
+            var firstDrain = P8ClientTestEpochs.prepareProfileCatalog(state, first).orElseThrow();
             var observedFailure = new AtomicReference<Throwable>();
             var drainThread = new Thread(() -> {
                 try {
@@ -341,8 +347,8 @@ final class P8ClientPresentationStateConcurrencyTest {
             drainThread.start();
             assertTrue(execution.awaitBlocked(), "catalog bind never reached failure seam");
 
-            var latestDrain = state.prepareProfileCatalog(second).orElseThrow();
-            var latestEvent = state.preparePresentationEvent(event(2L, 1L)).orElseThrow();
+            var latestDrain = P8ClientTestEpochs.prepareProfileCatalog(state, second).orElseThrow();
+            var latestEvent = P8ClientTestEpochs.preparePresentationEvent(state, event(2L, 1L)).orElseThrow();
             assertEquals(catalogCharge(first), state.inFlightCatalogPacketCharge());
             assertEquals(
                     catalogCharge(second) + eventCharge(event(2L, 1L)),
@@ -374,21 +380,21 @@ final class P8ClientPresentationStateConcurrencyTest {
         var execution = new ReentrantExecution();
         var state = new P8ClientPresentationState(() -> true, execution);
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         var stale = catalog(1L);
-        var staleDrain = state.prepareProfileCatalog(stale).orElseThrow();
+        var staleDrain = P8ClientTestEpochs.prepareProfileCatalog(state, stale).orElseThrow();
         var currentDrain = new AtomicReference<P8ClientDispatchTask>();
         var currentEvent = new AtomicReference<P8ClientDispatchTask>();
         var current = catalog(1L);
         var expectedFailure = new IllegalStateException("expected old-epoch failure");
         execution.onNextReplace(() -> {
-            state.onLoggedOut();
-            state.onConnectionOpened();
+            P8ClientTestEpochs.logout(state);
+            P8ClientTestEpochs.open(state);
             state.onWorldLoaded();
-            currentDrain.set(state.prepareProfileCatalog(current).orElseThrow());
+            currentDrain.set(P8ClientTestEpochs.prepareProfileCatalog(state, current).orElseThrow());
             currentEvent.set(
-                    state.preparePresentationEvent(event(1L, 1L)).orElseThrow());
+                    P8ClientTestEpochs.preparePresentationEvent(state, event(1L, 1L)).orElseThrow());
             assertEquals(catalogCharge(stale), state.inFlightCatalogPacketCharge());
             assertEquals(
                     catalogCharge(current) + eventCharge(event(1L, 1L)),
@@ -424,13 +430,13 @@ final class P8ClientPresentationStateConcurrencyTest {
         var execution = new ReentrantExecution();
         var state = new P8ClientPresentationState(() -> true, execution);
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         var catalog = catalog(1L);
         var firstWorld = state.worldGeneration();
         execution.onNextReplace(state::onWorldLoaded);
 
-        state.prepareProfileCatalog(catalog).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, catalog).orElseThrow().run();
 
         assertTrue(state.worldReady());
         assertTrue(state.worldGeneration() > firstWorld);
@@ -448,7 +454,7 @@ final class P8ClientPresentationStateConcurrencyTest {
         var firstResources = new P8ClientResourceIndex(List.of(id("first_resource")));
         var latestResources = new P8ClientResourceIndex(List.of(id("latest_resource")));
         state.onResourceIndexApplied(firstResources);
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         var latest = catalog(1L);
         execution.onNextReplace(() -> {
@@ -457,7 +463,7 @@ final class P8ClientPresentationStateConcurrencyTest {
             state.onResourceIndexApplied(latestResources);
         });
 
-        state.prepareProfileCatalog(latest).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, latest).orElseThrow().run();
 
         assertEquals(1L, state.installedCatalogGeneration());
         assertSame(latest.snapshot(), state.installedCatalogSnapshot());
@@ -475,10 +481,10 @@ final class P8ClientPresentationStateConcurrencyTest {
         var activeResources = maximumResourceIndex("active_resource");
         var candidateResources = maximumResourceIndex("candidate_resource");
         state.onResourceIndexApplied(activeResources);
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         var activeCatalog = catalog(1L);
-        state.prepareProfileCatalog(activeCatalog).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, activeCatalog).orElseThrow().run();
         var activeResourceGeneration = state.resourceGeneration();
         var expectedFailure = new IllegalStateException("expected maximum resource apply failure");
         execution.onNextReplace(() -> {
@@ -512,7 +518,7 @@ final class P8ClientPresentationStateConcurrencyTest {
         var execution = new ReentrantExecution();
         var state = new P8ClientPresentationState(() -> true, execution);
         state.onResourceIndexApplied(new P8ClientResourceIndex(List.of(id("first_resource"))));
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
         var latestResources = new P8ClientResourceIndex(List.of(id("latest_resource")));
         var latest = catalog(1L);
@@ -521,7 +527,7 @@ final class P8ClientPresentationStateConcurrencyTest {
         execution.onNextReplace(() -> {
             state.onResourceIndexApplied(latestResources);
             currentEvent.set(
-                    state.preparePresentationEvent(event(1L, 1L)).orElseThrow());
+                    P8ClientTestEpochs.preparePresentationEvent(state, event(1L, 1L)).orElseThrow());
             assertEquals(1L, state.installedCatalogGeneration());
             assertEquals(catalogCharge(latest), state.inFlightCatalogPacketCharge());
             assertEquals(eventCharge(event(1L, 1L)), state.combinedQueuedCharge());
@@ -530,7 +536,7 @@ final class P8ClientPresentationStateConcurrencyTest {
 
         var observedFailure = assertThrows(
                 Error.class,
-                () -> state.prepareProfileCatalog(latest).orElseThrow().run());
+                () -> P8ClientTestEpochs.prepareProfileCatalog(state, latest).orElseThrow().run());
 
         assertSame(expectedFailure, observedFailure);
         assertSame(latest.snapshot(), state.installedCatalogSnapshot());
@@ -552,20 +558,20 @@ final class P8ClientPresentationStateConcurrencyTest {
         var state = new P8ClientPresentationState(() -> true, execution);
         var retained = new P8ClientResourceIndex(List.of(id("retained_resource")));
         state.onResourceIndexApplied(retained);
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
-        state.prepareProfileCatalog(catalog(1L)).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, catalog(1L)).orElseThrow().run();
         var retainedGeneration = state.resourceGeneration();
 
         var staleReplacement = new P8ClientResourceIndex(List.of(id("stale_resource")));
-        execution.onNextReplace(state::onConnectionOpened);
+        execution.onNextReplace(() -> P8ClientTestEpochs.open(state));
         state.onResourceIndexApplied(staleReplacement);
 
         assertEquals(retainedGeneration, state.resourceGeneration());
         assertTrue(state.resourceReady());
         assertEquals(0L, state.installedCatalogGeneration());
 
-        state.prepareProfileCatalog(catalog(2L)).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, catalog(2L)).orElseThrow().run();
         assertSame(retained, execution.lastResources());
         assertEquals(retainedGeneration, state.catalogEvaluationResourceGeneration());
     }
@@ -575,12 +581,12 @@ final class P8ClientPresentationStateConcurrencyTest {
         var execution = new CleanupRoutingExecution();
         var state = new P8ClientPresentationState(() -> true, execution);
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        P8ClientTestEpochs.open(state);
         state.onWorldLoaded();
-        state.prepareProfileCatalog(catalog(1L)).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, catalog(1L)).orElseThrow().run();
 
         execution.seedActiveWork();
-        state.prepareProfileCatalog(catalog(2L)).orElseThrow().run();
+        P8ClientTestEpochs.prepareProfileCatalog(state, catalog(2L)).orElseThrow().run();
         assertEquals(0, execution.activeOwners());
         assertEquals(1L, execution.liveParticleCredits());
 
@@ -595,7 +601,7 @@ final class P8ClientPresentationStateConcurrencyTest {
         assertEquals(0L, execution.liveParticleCredits());
 
         execution.seedActiveWork();
-        state.onLoggedOut();
+        P8ClientTestEpochs.logout(state);
         assertEquals(0, execution.activeOwners());
         assertEquals(0L, execution.liveParticleCredits());
     }

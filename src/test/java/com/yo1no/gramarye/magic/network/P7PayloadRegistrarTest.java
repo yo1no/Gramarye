@@ -145,7 +145,11 @@ final class P7PayloadRegistrarTest {
     void registrarAndHandlersHaveNoClientOnlyOrGenericRegistrationSurface()
             throws IOException {
         var source = javaSources(NETWORK_MAIN).stream()
-                .filter(path -> !path.equals(NETWORK_MAIN.resolve("P7ClientLifecycleEvents.java")))
+                .filter(path -> !Set.of(
+                                "P7ClientLifecycleEvents.java",
+                                "P9ClientCastInput.java",
+                                "P9ClientKeyMappings.java")
+                        .contains(path.getFileName().toString()))
                 .map(P7PayloadRegistrarTest::read)
                 .collect(Collectors.joining("\n"));
 

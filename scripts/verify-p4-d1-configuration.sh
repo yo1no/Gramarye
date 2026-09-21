@@ -180,8 +180,8 @@ verify_d2a_sources_and_owners() {
 
     [[ "$(grep -R -l -F --include='*.java' -- 'SkillQuota.Unlimited.INSTANCE' src/main/java | wc -l | tr -d ' ')" -eq 1 ]] \
         || fail 'submission Unlimited default must have one production owner'
-    [[ "$(grep -R -l -F --include='*.java' -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' src/main/java | wc -l | tr -d ' ')" -eq 3 ]] \
-        || fail 'validation defaults must have the exact reviewed P4 and P8 production owners'
+    [[ "$(grep -R -l -F --include='*.java' -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' src/main/java | wc -l | tr -d ' ')" -eq 4 ]] \
+        || fail 'validation defaults must have the exact reviewed P4, P8, and P9 production owners'
     grep -Fq -- 'SkillQuota.Unlimited.INSTANCE' \
         "${SUBMISSION_ROOT}/DefaultSkillSubmissionPolicyProvider.java" \
         || fail 'Unlimited default escaped the reviewed provider'
@@ -194,6 +194,9 @@ verify_d2a_sources_and_owners() {
     grep -Fq -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' \
         'src/main/java/com/yo1no/gramarye/P8PayloadCodecSupport.java' \
         || fail 'P8 wire Profile validation default escaped the reviewed codec owner'
+    grep -Fq -- 'new ValidationContext(MagicPolicyLimits.DEFAULTS)' \
+        'src/main/java/com/yo1no/gramarye/P9StarterSkillContent.java' \
+        || fail 'P9 canonical fingerprint validation default escaped the reviewed content owner'
 
     grep -Fq -- 'prepareLatestTransitionToCurrent(' "${PLAYER_SERVICE}" \
         || fail 'P4-C prepare-to-current seam is missing'

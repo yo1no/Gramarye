@@ -955,7 +955,7 @@ def _parse_log(text: str, project_root: Path) -> dict[str, Any]:
             current_task = pieces[0]
             suffix = " ".join(pieces[1:])
             if not suffix:
-                state = "EXECUTED"
+                state = "DISPLAYED"
             elif suffix in KNOWN_TASK_STATES:
                 state = suffix
             else:
@@ -1176,11 +1176,12 @@ def _observe_task(parsed: dict[str, Any], task: str) -> dict[str, Any]:
     if not headers:
         raise PolicyRejection(f"required Gradle task observation is missing: {task}")
     states = {str(header["state"]) for header in headers}
-    if len(states) != 1:
+    terminal_states = states - {"DISPLAYED"}
+    if len(terminal_states) > 1:
         raise PolicyRejection(
             f"Gradle task has conflicting states: task={task} states={sorted(states)}"
         )
-    state = next(iter(states))
+    state = next(iter(terminal_states)) if terminal_states else "DISPLAYED"
     if state.startswith("UNKNOWN:"):
         raise PolicyRejection(f"Gradle task has unknown state: task={task} state={state}")
     return {
@@ -1226,12 +1227,7 @@ def _compile_roles(parsed: dict[str, Any]) -> dict[str, Any]:
     roles: dict[str, Any] = {}
     for role, spec in ROLE_SPECS.items():
         task = _observe_task(parsed, str(spec["task"]))
-        if task["header_count"] != 1:
-            raise PolicyRejection(
-                f"{role} direct compile task header count differs: "
-                f"expected=1 actual={task['header_count']}"
-            )
-        if task["state"] != "EXECUTED":
+        if task["state"] not in {"DISPLAYED", "EXECUTED"}:
             raise PolicyRejection(
                 f"{role} was not directly executed: state={task['state']}"
             )
@@ -1252,6 +1248,7 @@ def _compile_roles(parsed: dict[str, Any]) -> dict[str, Any]:
             )
         roles[role] = {
             **task,
+            "state": "EXECUTED",
             "source_set": spec["source_set"],
             "attribution": "DIRECT_EXECUTION",
             "diagnostic_occurrences": len(actual),
@@ -1354,11 +1351,6 @@ def _unit_role(
 ) -> dict[str, Any]:
     spec = ROLE_SPECS[role]
     task = _observe_task(parsed, str(spec["task"]))
-    if task["header_count"] != 1:
-        raise PolicyRejection(
-            f"{role} unit compile task header count differs: "
-            f"expected=1 actual={task['header_count']}"
-        )
     state = task["state"]
     actual = _sorted_diagnostics(parsed["diagnostics"][role])
     summaries = list(parsed["summaries"][role])
@@ -1374,7 +1366,11 @@ def _unit_role(
                 "compiler diagnostics or numeric summaries"
             )
         attribution = "REFERENCED_DIRECT_COMPILE_PROOF"
-    elif state == "EXECUTED":
+        result_state = state
+    elif state == "DISPLAYED" and not actual and not summaries:
+        attribution = "REFERENCED_DIRECT_COMPILE_PROOF_WITH_DISPLAY_ONLY"
+        result_state = "DISPLAYED"
+    elif state in {"DISPLAYED", "EXECUTED"}:
         for identity, count in actual_counter.items():
             if count > expected_counter[identity]:
                 raise PolicyRejection(
@@ -1391,6 +1387,7 @@ def _unit_role(
                 f"{role} reexecution emitted a summary without diagnostics: {summaries}"
             )
         attribution = "OBSERVED_REEXECUTION_AUTHORIZED_SUBSET"
+        result_state = "EXECUTED"
     else:
         raise PolicyRejection(
             f"{role} has prohibited unit compilation state: {state}"
@@ -1398,6 +1395,7 @@ def _unit_role(
 
     return {
         **task,
+        "state": result_state,
         "source_set": spec["source_set"],
         "attribution": attribution,
         "referenced_direct_role": {
@@ -1526,7 +1524,7 @@ def _require_fresh_test_execution(
     project_root: Path,
 ) -> dict[str, Any]:
     task = _observe_task(parsed, ":test")
-    if task["state"] != "EXECUTED":
+    if task["state"] not in {"DISPLAYED", "EXECUTED"}:
         raise PolicyRejection(
             f"fresh product test execution is absent: state={task['state']}"
         )
@@ -1556,6 +1554,7 @@ def _require_fresh_test_execution(
         )
     return {
         **task,
+        "state": "EXECUTED",
         "worker": worker_launch["worker"],
         "worker_started_executing": 1,
         "worker_started": 1,
@@ -1933,6 +1932,36 @@ def _run_self_test() -> int:
             proof = _build_compile_result(
                 context, compile_raw, compile_parsed, outputs, source_files
             )
+            repeated_compile_text = compile_text.replace(
+                "> Task :compileJava\n",
+                "> Task :compileJava\n> Task :compileJava\n",
+                1,
+            ).replace(
+                "> Task :compileTestJava\n",
+                "> Task :compileTestJava\n> Task :compileTestJava\n",
+                1,
+            )
+            repeated_compile_raw_path = project_root / "repeated-compile.raw.log"
+            repeated_compile_raw_path.write_text(
+                repeated_compile_text, encoding="utf-8"
+            )
+            repeated_compile_raw, _ = _raw_record(
+                repeated_compile_raw_path, "self-test repeated compile raw"
+            )
+            repeated_compile = _build_compile_result(
+                context,
+                repeated_compile_raw,
+                _parse_log(repeated_compile_text, project_root),
+                outputs,
+                source_files,
+            )
+            if any(
+                role["header_count"] != 2
+                for role in repeated_compile["roles"].values()
+            ):
+                raise AssertionError(
+                    "repeated compiler display headers were not preserved"
+                )
             completed.append("1-direct-both-roles")
 
             proof_path = project_root / "compile-proof.json"
@@ -1992,6 +2021,73 @@ def _run_self_test() -> int:
                 loaded_proof,
                 _external_file_record(proof_path, "self-test proof", MAX_JSON_BYTES),
                 project_root,
+            )
+            repeated_unit_text = unit_text.replace(
+                "> Task :test\n",
+                "> Task :test\n> Task :test\n",
+                1,
+            )
+            repeated_unit_raw_path = project_root / "repeated-unit.raw.log"
+            repeated_unit_raw_path.write_text(
+                repeated_unit_text, encoding="utf-8"
+            )
+            repeated_unit_raw, _ = _raw_record(
+                repeated_unit_raw_path, "self-test repeated unit raw"
+            )
+            repeated_unit = _build_unit_result(
+                context,
+                repeated_unit_raw,
+                _parse_log(repeated_unit_text, project_root),
+                outputs,
+                source_files,
+                loaded_proof,
+                _external_file_record(
+                    proof_path, "self-test proof", MAX_JSON_BYTES
+                ),
+                project_root,
+            )
+            if repeated_unit["test"]["header_count"] != 3:
+                raise AssertionError(
+                    "repeated test display headers were not preserved"
+                )
+            missing_terminal_text = unit_text.replace(
+                "Gradle Test Run :test PASSED\n", "", 1
+            )
+            _expect_rejection(
+                "2-missing-test-run-terminal",
+                lambda: _build_unit_result(
+                    context,
+                    unit_raw,
+                    _parse_log(missing_terminal_text, project_root),
+                    outputs,
+                    source_files,
+                    loaded_proof,
+                    _external_file_record(
+                        proof_path, "self-test proof", MAX_JSON_BYTES
+                    ),
+                    project_root,
+                ),
+            )
+            duplicate_lifecycle_text = unit_text.replace(
+                "Gradle Test Executor 7 started executing tests.\n",
+                "Gradle Test Executor 7 started executing tests.\n"
+                "Gradle Test Executor 7 started executing tests.\n",
+                1,
+            )
+            _expect_rejection(
+                "2-duplicate-worker-lifecycle",
+                lambda: _build_unit_result(
+                    context,
+                    unit_raw,
+                    _parse_log(duplicate_lifecycle_text, project_root),
+                    outputs,
+                    source_files,
+                    loaded_proof,
+                    _external_file_record(
+                        proof_path, "self-test proof", MAX_JSON_BYTES
+                    ),
+                    project_root,
+                ),
             )
             completed.append("2-cached-attribution")
 

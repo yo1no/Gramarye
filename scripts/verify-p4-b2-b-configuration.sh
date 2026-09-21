@@ -152,6 +152,57 @@ require_ere_count() {
     fi
 }
 
+require_fixed_count() {
+    local file="$1"
+    local needle="$2"
+    local expected="$3"
+    local message="$4"
+    local actual=''
+    local status=0
+
+    actual="$(LC_ALL=C grep -Fc -- "${needle}" "${file}")" || status=$?
+    case "${status}" in
+        0) ;;
+        1) actual=0 ;;
+        *) grep_failed "${file}" "${status}" ;;
+    esac
+    [[ "${actual}" -eq "${expected}" ]] \
+        || fail "${message} (expected ${expected}, found ${actual})"
+}
+
+require_jar_class_family() {
+    local listing="$1"
+    local class_base="$2"
+    local expected_family_count="$3"
+    local description="$4"
+    local family_pattern="^${class_base}(\\\$[^/]+)?\\.class$"
+
+    require_ere_count \
+        "${listing}" \
+        "^${class_base}\\.class$" \
+        1 \
+        "${description} must contain its exact B.class entry"
+    if [[ -n "${expected_family_count}" ]]; then
+        require_ere_count \
+            "${listing}" \
+            "${family_pattern}" \
+            "${expected_family_count}" \
+            "${description} exact B.class/B\$*.class family changed"
+    fi
+}
+
+forbid_jar_class_family() {
+    local listing="$1"
+    local class_base="$2"
+    local description="$3"
+    local family_pattern="^${class_base}(\\\$[^/]+)?\\.class$"
+
+    forbid_ere \
+        "${listing}" \
+        "${family_pattern}" \
+        "${description} leaked into the production JAR"
+}
+
 require_fixed_count_in_range() {
     local file="$1"
     local start_marker="$2"
@@ -589,7 +640,10 @@ verify_b2_build_contracts() {
         ": name == 'p8S5ClientRuntimeHarness'" \
         "? p8S5ClientHarnessMod" \
         ": name == 'p9S3ClientRuntimeHarness'" \
-        "? p9S3ClientHarnessMod : productionMod" \
+        '? p9S3ClientHarnessMod' \
+        ": name == 'p9S5ClientRuntimeHarness'" \
+        '? p9S5ClientHarnessMod' \
+        ': productionMod' \
         "sourceSets.create('p8S5ClientHarness')" \
         "tasks.register('prepareP8S5ClientRuntimeHarness', Delete)" \
         "mods.named('p8S5ClientRuntimeHarness')" \
@@ -606,6 +660,16 @@ verify_b2_build_contracts() {
         'dependsOn(verifyP9S3ClientRuntimeResultParser)' \
         "tasks.named(p9S3ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
         "add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)" \
+        "sourceSets.create('p9S5ClientHarness')" \
+        'addModdingDependenciesTo(p9S5ClientHarnessSourceSet)' \
+        'sourceSet(p9S5ClientHarnessSourceSet)' \
+        "tasks.register('prepareP9S5ClientRuntimeHarness', Delete)" \
+        "mods.named('p9S5ClientRuntimeHarness')" \
+        "tasks.named('runP9S5ClientRuntimeHarness', JavaExec)" \
+        "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
+        'dependsOn(verifyP9S5ClientRuntimeResultParser)' \
+        "tasks.named(p9S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
+        "add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)" \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)' \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)' \
         'add(p4B2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)' \
@@ -636,6 +700,34 @@ verify_b2_build_contracts() {
     require_ere_count build.gradle \
         'verifyP9S3ClientRuntimeResultParser' 4 \
         'P9-S3 parser task must remain bound to its definition, run, and required test paths'
+    require_ere_count build.gradle \
+        'tasks\.named\(p9S5ClientHarnessSourceSet\.classesTaskName\)' 2 \
+        'P9-S5 harness classes must remain in both the run and required test paths'
+    require_ere_count build.gradle \
+        'verifyP9S5ClientRuntimeResultParser' 4 \
+        'P9-S5 parser task must remain bound to its definition, run, and required test paths'
+    require_ere_count build.gradle \
+        "^[[:space:]]*tasks\.named\(p9S5ClientHarnessSourceSet\.compileJavaTaskName, JavaCompile\)\.configure[[:space:]]*\{" \
+        1 \
+        'P9-S5 harness compile lint owner must remain exact'
+    for literal in \
+        "sourceSets.create('p9S5ClientHarness')" \
+        'addModdingDependenciesTo(p9S5ClientHarnessSourceSet)' \
+        'sourceSet(p9S5ClientHarnessSourceSet)' \
+        "tasks.register('prepareP9S5ClientRuntimeHarness', Delete)" \
+        "mods.named('p9S5ClientRuntimeHarness')" \
+        ": name == 'p9S5ClientRuntimeHarness'" \
+        '? p9S5ClientHarnessMod' \
+        "tasks.named('runP9S5ClientRuntimeHarness', JavaExec)" \
+        "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
+        'dependsOn(verifyP9S5ClientRuntimeResultParser)' \
+        "add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
+        require_fixed_count \
+            build.gradle \
+            "${literal}" \
+            1 \
+            "P9-S5 exact source-set/mod/run/parser topology changed: ${literal}"
+    done
     forbid_fixed \
         build.gradle \
         "name.startsWith('p4E0R2QCase')" \
@@ -648,6 +740,10 @@ verify_b2_build_contracts() {
         build.gradle \
         "name\\.startsWith\\('p8[^']*'\\)" \
         'P4-B2-B must keep P8 loaded-mod routing on exact run identities'
+    forbid_ere \
+        build.gradle \
+        "name\\.startsWith\\('p9[^']*'\\)" \
+        'P4-B2-B must keep P9 loaded-mod routing on exact run identities'
 
     require_ere_count \
         build.gradle \
@@ -1180,13 +1276,17 @@ verify_b2_sources_and_outputs() {
     # exact login-event owner; offline-root, manual-clone, and unreviewed networking surfaces
     # remain absent.
     for literal in \
-        'OfflineRoot' \
-        'PacketDistributor'; do
+        'OfflineRoot'; do
         forbid_fixed_in_file_list \
             "${PRODUCTION_SOURCE_LIST}" \
             "${literal}" \
             "unreviewed later lifecycle/root/network surface appeared (${literal})"
     done
+    forbid_fixed_in_file_list_except \
+        "${PRODUCTION_SOURCE_LIST}" \
+        'PacketDistributor' \
+        'PacketDistributor escaped the exact P9-S5 client sender owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInput.java'
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'CustomPacketPayload' \
@@ -1254,7 +1354,9 @@ verify_b2_sources_and_outputs() {
                 || bash scripts/verify-p7-s4-source-contracts.sh \
                     --is-p8-harness "${source}" \
                 || bash scripts/verify-p7-s4-source-contracts.sh \
-                    --is-p9-s3-harness "${source}"; then
+                    --is-p9-s3-harness "${source}" \
+                || bash scripts/verify-p7-s4-source-contracts.sh \
+                    --is-p9-s5-harness "${source}"; then
             continue
         fi
         forbid_ere \
@@ -1399,12 +1501,30 @@ verify_b2_sources_and_outputs() {
     require_ere_count "${p8_client_state}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 15 \
         'P8 client state must contain exactly its fifteen reviewed Error catches'
+    require_fixed_count "${p8_client_state}" \
+        '    private Connection p8TransportConnection;' 1 \
+        'P8 client state must retain exactly its one selected transport field'
+    require_fixed_count "${p8_client_state}" \
+        '    private ICommonPacketListener p8PlayListenerWitness;' 1 \
+        'P8 client state must retain exactly its one selected PLAY-listener witness field'
+    require_ere_count "${p8_client_state}" \
+        '^record P8ClientConnectionOpenResult\($' 1 \
+        'P8 connection-open result must remain one package-private top-level record'
+    require_ere_count "${p8_client_state}" \
+        '^enum P8ClientCleanupDisposition \{$' 1 \
+        'P8 cleanup disposition must remain one package-private top-level enum'
+    require_ere_count "${p8_client_state}" \
+        '^record P8ClientTransportMaintenanceResult\($' 1 \
+        'P8 transport-maintenance result must remain one package-private top-level record'
+    forbid_ere "${p8_client_state}" \
+        '^public[[:space:]]+(record|enum)[[:space:]]+P8Client(ConnectionOpenResult|CleanupDisposition|TransportMaintenanceResult)' \
+        'P8 transport result vocabulary must not become a public API'
     require_ere_count "${p8_client_execution}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 31 \
         'P8 client execution must contain exactly its thirty-one reviewed Error catches'
     require_ere_count "${p8_client_lifecycle}" \
-        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 4 \
-        'P8 client lifecycle must contain exactly its four reviewed Error catches'
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 8 \
+        'P8 client lifecycle must contain exactly its eight reviewed Error catches'
     require_ere_count "${p8_client_renderer}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' 3 \
         'P8 client renderer must contain exactly its three reviewed Error catches'
@@ -1496,14 +1616,67 @@ verify_production_jar_isolation() {
             'P4D3' \
             'p4D3Probe' \
             'p4D3GameTest' \
-            'gramarye_p4_d3' \
-            'com/yo1no/gramarye/P8S5ClientRuntimeHarness.class' \
-            'com/yo1no/gramarye/P8S5ClientRuntimeHarness$'; do
+            'gramarye_p4_d3'; do
             forbid_fixed \
                 "${JAR_LISTING}" \
                 "${literal}" \
                 "test/probe/client-harness classes or resources leaked into ${jar_path} (${literal})"
         done
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9StarterCommand' \
+            2 \
+            'P9-S5 starter command'
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9StarterSkillIdentityV0' \
+            1 \
+            'P9-S5 deterministic starter identity'
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/magic/network/P9ClientCastInput' \
+            6 \
+            'P9-S5 client cast input'
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/magic/network/P9ClientKeyMappings' \
+            1 \
+            'P9-S5 key-mapping registrar'
+        require_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9S5ProvisioningGameTests' \
+            '' \
+            'P9-S5 provisioning GameTest holder'
+        require_ere_count \
+            "${JAR_LISTING}" \
+            '^assets/gramarye/lang/en_us\.json$' \
+            1 \
+            'P9-S5 production JAR must contain exact en_us language resource'
+        require_ere_count \
+            "${JAR_LISTING}" \
+            '^assets/gramarye/lang/zh_tw\.json$' \
+            1 \
+            'P9-S5 production JAR must contain exact zh_tw language resource'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P8S5ClientRuntimeHarness' \
+            'P8-S5 client harness family'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9S3ClientRuntimeHarness' \
+            'P9-S3 client harness family'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9S5ClientRuntimeHarness' \
+            'P9-S5 client harness family'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/P9S5BoundaryTest' \
+            'P9-S5 boundary-test family'
+        forbid_jar_class_family \
+            "${JAR_LISTING}" \
+            'com/yo1no/gramarye/magic/network/P9ClientCastInputTest' \
+            'P9-S5 cast-input test family'
         require_fixed \
             "${JAR_LISTING}" \
             'META-INF/jarjar/metadata.json' \

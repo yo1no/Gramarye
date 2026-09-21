@@ -31,10 +31,12 @@ import net.minecraft.server.network.ConfigurationTask;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /** Direct executable NETWORK-to-client-main tests for the production P8 handlers. */
 final class P8ClientPayloadHandlersTest {
+    private final ArrayList<P8ClientPlayConnection> transports = new ArrayList<>();
     private static final ResourceLocation DEFAULT_PARTICLE = id("default_particle");
     private static final ResourceLocation DEFAULT_SOUND = id("default_sound");
     private static final ResourceLocation DEFAULT_TRAIL = id("default_trail");
@@ -53,12 +55,20 @@ final class P8ClientPayloadHandlersTest {
                     + "\"sample_interval_ticks\":2,\"segments\":8,"
                     + "\"size_milli_blocks\":200}";
 
+    @AfterEach
+    void closeClientTransports() {
+        transports.forEach(P8ClientPlayConnection::close);
+    }
+
     @Test
     void actualHandlersTransferExactlyOnceAndReleaseBothFailedEnqueues() {
-        var disconnectedCatalogContext = new RecordingContext(null, true);
+        var disconnectedTransport = newTransport();
+        var disconnectedCatalogContext =
+                new RecordingContext(disconnectedTransport, null, true);
         P8ClientPayloadHandlers.handleProfileCatalog(
                 catalog(1L), disconnectedCatalogContext);
-        var disconnectedEventContext = new RecordingContext(null, true);
+        var disconnectedEventContext =
+                new RecordingContext(disconnectedTransport, null, true);
         P8ClientPayloadHandlers.handlePresentationEvent(
                 event(1L, 1L), disconnectedEventContext);
         assertAll(
@@ -76,13 +86,17 @@ final class P8ClientPayloadHandlersTest {
         var clientMain = new AtomicBoolean(true);
         var state = new P8ClientPresentationState(clientMain::get);
         state.onResourceIndexApplied(P8ClientResourceIndex.empty());
-        state.onConnectionOpened();
+        var transport = newTransport();
+        var open = state.onConnectionOpened(
+                transport.connection(), transport.listener());
+        assertTrue(open.opened());
+        assertTrue(open.catalogDrain().isEmpty());
         state.onWorldLoaded();
         P8ClientPayloadDispatchFactory.installClient(state);
         clientMain.set(false);
 
         var catalogFailure = new IllegalStateException("catalog enqueue rejected");
-        var failedCatalogContext = new RecordingContext(catalogFailure);
+        var failedCatalogContext = new RecordingContext(transport, catalogFailure);
         var generationOne = catalog(1L);
         assertSame(
                 catalogFailure,
@@ -99,7 +113,7 @@ final class P8ClientPayloadHandlersTest {
         failedCatalogContext.lastOfferedTask().releaseAfterFailedEnqueue();
         assertEquals(0L, state.combinedQueuedCharge());
 
-        var catalogContext = new RecordingContext(null);
+        var catalogContext = new RecordingContext(transport, null);
         P8ClientPayloadHandlers.handleProfileCatalog(generationOne, catalogContext);
         assertAll(
                 () -> assertEquals(1, catalogContext.enqueueCalls()),
@@ -117,7 +131,7 @@ final class P8ClientPayloadHandlersTest {
 
         clientMain.set(false);
         var eventFailure = new AssertionError("event enqueue rejected");
-        var failedEventContext = new RecordingContext(eventFailure);
+        var failedEventContext = new RecordingContext(transport, eventFailure);
         var firstEvent = event(1L, 1L);
         assertSame(
                 eventFailure,
@@ -136,7 +150,7 @@ final class P8ClientPayloadHandlersTest {
         failedEventContext.lastOfferedTask().releaseAfterFailedEnqueue();
         assertEquals(0L, state.reservedEventCount());
 
-        var eventContext = new RecordingContext(null);
+        var eventContext = new RecordingContext(transport, null);
         P8ClientPayloadHandlers.handlePresentationEvent(firstEvent, eventContext);
         assertAll(
                 () -> assertEquals(1, eventContext.enqueueCalls()),
@@ -171,10 +185,17 @@ final class P8ClientPayloadHandlersTest {
                         .noneMatch(P8ClientPayloadHandlersTest::isForbiddenRetainedType)));
     }
 
+    private P8ClientPlayConnection newTransport() {
+        var transport = new P8ClientPlayConnection();
+        transports.add(transport);
+        return transport;
+    }
+
     private static boolean isForbiddenRetainedType(Class<?> type) {
         return IPayloadContext.class.isAssignableFrom(type)
                 || ByteBuf.class.isAssignableFrom(type)
                 || Connection.class.isAssignableFrom(type)
+                || ICommonPacketListener.class.isAssignableFrom(type)
                 || Player.class.isAssignableFrom(type)
                 || Throwable.class.isAssignableFrom(type);
     }
@@ -232,6 +253,7 @@ final class P8ClientPayloadHandlersTest {
     }
 
     private static final class RecordingContext implements IPayloadContext {
+        private final P8ClientPlayConnection transport;
         private final Throwable enqueueFailure;
         private final boolean disconnectExpected;
         private final ArrayDeque<P8ClientDispatchTask> queuedTasks = new ArrayDeque<>();
@@ -240,23 +262,28 @@ final class P8ClientPayloadHandlersTest {
         private Component disconnectReason;
         private P8ClientDispatchTask lastOfferedTask;
 
-        private RecordingContext(Throwable enqueueFailure) {
-            this(enqueueFailure, false);
+        private RecordingContext(
+                P8ClientPlayConnection transport, Throwable enqueueFailure) {
+            this(transport, enqueueFailure, false);
         }
 
-        private RecordingContext(Throwable enqueueFailure, boolean disconnectExpected) {
+        private RecordingContext(
+                P8ClientPlayConnection transport,
+                Throwable enqueueFailure,
+                boolean disconnectExpected) {
             if (enqueueFailure != null
                     && !(enqueueFailure instanceof RuntimeException)
                     && !(enqueueFailure instanceof Error)) {
                 throw new IllegalArgumentException("enqueue failure must be unchecked");
             }
+            this.transport = Objects.requireNonNull(transport, "transport");
             this.enqueueFailure = enqueueFailure;
             this.disconnectExpected = disconnectExpected;
         }
 
         @Override
         public ICommonPacketListener listener() {
-            throw new AssertionError("listener access was not expected");
+            return transport.listener();
         }
 
         @Override

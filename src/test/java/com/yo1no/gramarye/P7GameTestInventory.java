@@ -13,7 +13,8 @@ public final class P7GameTestInventory {
     private static final String MAIN = "src/main/java/com/yo1no/gramarye/";
     private static final String P8_HARNESS = "P8S3PresentationGameTests.java";
     private static final String P9_S3_HARNESS = "P9S3ProjectileGameTests.java";
-    private static final int NON_P8_COUNT = 34;
+    private static final String P9_S5_HARNESS = "P9S5ProvisioningGameTests.java";
+    private static final int NON_P8_COUNT = 35;
     private static final Pattern TEST = Pattern.compile(
             "@GameTest\\s*\\([^)]*\\)\\s*"
                     + "(?:@[A-Za-z_$][A-Za-z0-9_$.]*(?:\\s*\\([^)]*\\))?\\s*)*"
@@ -65,6 +66,9 @@ public final class P7GameTestInventory {
                     "reservedClaimAndWrongTransferWitnessesAreOneShot",
                     "replacementRemovalAndDeadlineCloseWithoutDamage",
                     "sixteenthOpenPermitIsThePerPlayerMaximum"));
+    private static final Map<String, Set<String>> P9_S5 = Map.of(
+            P9_S5_HARNESS, Set.of(
+                    "registeredStarterCommandCoversProvisioningBranches"));
 
     private P7GameTestInventory() {
     }
@@ -86,6 +90,10 @@ public final class P7GameTestInventory {
         return P9_S3.values().stream().mapToInt(Set::size).sum();
     }
 
+    public static int p9S5Count() {
+        return P9_S5.values().stream().mapToInt(Set::size).sum();
+    }
+
     public static boolean isS4Harness(Path path) {
         var normalized = path.toAbsolutePath().normalize();
         var root = projectRoot().resolve(MAIN);
@@ -105,6 +113,11 @@ public final class P7GameTestInventory {
         return normalized.equals(projectRoot().resolve(MAIN).resolve(P9_S3_HARNESS));
     }
 
+    public static boolean isP9S5Harness(Path path) {
+        var normalized = path.toAbsolutePath().normalize();
+        return normalized.equals(projectRoot().resolve(MAIN).resolve(P9_S5_HARNESS));
+    }
+
     public static String productionSource() {
         try (var paths = Files.walk(projectRoot().resolve(MAIN))) {
             var source = new StringBuilder();
@@ -112,7 +125,8 @@ public final class P7GameTestInventory {
                     .filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> !isS4Harness(path))
                     .filter(path -> !isP8Harness(path))
-                    .filter(path -> !isP9S3Harness(path)).toList()) {
+                    .filter(path -> !isP9S3Harness(path))
+                    .filter(path -> !isP9S5Harness(path)).toList()) {
                 source.append(Files.readString(path)).append('\n');
             }
             return source.toString();
@@ -135,13 +149,15 @@ public final class P7GameTestInventory {
         var root = projectRoot().resolve(MAIN);
         var nonP8Count = HISTORICAL.values().stream().mapToInt(Set::size).sum()
                 + s4Count()
-                + p9S3Count();
+                + p9S3Count()
+                + p9S5Count();
         if (nonP8Count != NON_P8_COUNT) {
-            throw new AssertionError("non-P8 GameTest inventory must remain exact 34");
+            throw new AssertionError("non-P8 GameTest inventory must remain exact 35");
         }
         var expected = new java.util.HashMap<>(HISTORICAL);
         expected.putAll(S4);
         expected.putAll(P9_S3);
+        expected.putAll(P9_S5);
         expected.put(P8_HARNESS, p8Methods());
         var actual = new java.util.HashMap<String, Set<String>>();
         try (var paths = Files.walk(root)) {
