@@ -899,7 +899,8 @@ is_approved_p8_s5_resource_path() {
     case "$1" in
         src/main/resources/META-INF/accesstransformer.cfg | \
         src/main/resources/assets/gramarye/lang/en_us.json | \
-        src/main/resources/assets/gramarye/lang/zh_tw.json)
+        src/main/resources/assets/gramarye/lang/zh_tw.json | \
+        src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json)
             return 0
             ;;
         *)
@@ -1062,6 +1063,7 @@ verify_repository_scope() {
         src/main/resources src/test/resources docs/codex-spec gradle gradle.properties settings.gradle \
         ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
         ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+        ':(exclude)src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json' \
         ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \
         || fail 'P4-E3 changed resource, authority, wrapper, or version truth'
     git diff --quiet HEAD -- \

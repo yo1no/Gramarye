@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -81,10 +82,15 @@ final class P9S5BoundaryTest {
                 "p8ServerPresentationService.registerAfterP5(NeoForge.EVENT_BUS);",
                 "var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(",
                 "P7ServerAuthorizationBoundary.install(",
+                "var p10TemplateValidation = new P10TemplateValidation(",
+                "p10TemplateService = new P10TemplateService(p10TemplateValidation);",
                 "p9StarterCommand = new P9StarterCommand(",
+                "p10TemplateValidateCommand = new P10TemplateValidateCommand(",
                 "NeoForge.EVENT_BUS.addListener(p9StarterCommand::register);",
+                "NeoForge.EVENT_BUS.addListener(p10TemplateValidateCommand::register);",
                 "NeoForge.EVENT_BUS.addListener(this::handleP9ReloadStarted);",
-                "NeoForge.EVENT_BUS.addListener(this::handleP9ReloadCompleted);",
+                "p10TemplateService.registerAfterP8(NeoForge.EVENT_BUS);",
+                "NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, this::handleP9ReloadCompleted);",
                 "NeoForge.EVENT_BUS.addListener(this::handleP5RuntimeStarted);",
                 "exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);");
 
@@ -95,6 +101,9 @@ final class P9S5BoundaryTest {
                 () -> assertEquals(1, occurrences(source, "SkillDefinitionSubmissionService.production(")),
                 () -> assertEquals(1, occurrences(source, "SkillRuntimeService.create(")),
                 () -> assertEquals(1, occurrences(source, "new P9StarterCommand(")),
+                () -> assertEquals(1, occurrences(source, "new P10TemplateService(")),
+                () -> assertEquals(1, occurrences(source, "new P10TemplateValidation(")),
+                () -> assertEquals(1, occurrences(source, "new P10TemplateValidateCommand(")),
                 () -> assertEquals(1, occurrences(source, "P7ServerAuthorizationBoundary.install(")),
                 () -> assertEquals(
                         Set.of("skillDefinitionStoreService"),
@@ -136,10 +145,76 @@ final class P9S5BoundaryTest {
                 () -> assertEquals(1, occurrences(completed, "completeP9Reload(")),
                 () -> assertFalse(completed.contains("requestP9ReloadInvalidation()")),
                 () -> assertOrdered(
+                        completed,
+                        "p10TemplateService.beginPostInstall(server)",
+                        "p8ServerPresentationService.activateMatchingCandidateForRoot(server)",
+                        "p10TemplateService.completeInstalled(server, outcome)",
+                        "skillRuntimeService.completeP9Reload(server)"),
+                () -> assertOrdered(completed, "markInstalled.run()", "activateP8.get()",
+                        "settleP10.accept(outcome)", "reopenP5.run()"),
+                () -> assertFalse(completed.contains("catch (")),
+                () -> assertFalse(completed.contains("finally")),
+                () -> assertOrdered(
                         runtimeStarted,
                         "p8ServerPresentationService.handleServerStarted(event);",
+                        "p10TemplateService.handleServerStarted(event);",
                         "p5ServerRuntimeConfig.snapshotForStarted();",
                         "skillRuntimeService.handleRuntimeStarted(event, limits);"));
+    }
+
+    @Test
+    void rootReloadCoordinatorSettlesEachExactNormalOutcomeBeforeReopening() throws Throwable {
+        for (var outcome : P8ServerPresentationService.P8RootFullSyncOutcome.values()) {
+            var calls = new java.util.ArrayList<String>();
+            runRootReloadProbe(() -> calls.add("mark"), () -> {
+                calls.add("p8");
+                return outcome;
+            }, actual -> {
+                assertSame(outcome, actual);
+                calls.add("p10");
+            }, () -> calls.add("p5"));
+            assertEquals(List.of("mark", "p8", "p10", "p5"), calls);
+        }
+    }
+
+    @Test
+    void rootReloadCoordinatorPropagatesEachFaultWithoutReopenRollbackOrRetry() {
+        var order = List.of("mark", "p8", "p10", "p5");
+        for (int index = 0; index < order.size(); index++) {
+            final int failingStage = index;
+            for (Throwable failure : List.of(new IllegalStateException("root reload"),
+                    new AssertionError("root reload"))) {
+                var calls = new java.util.ArrayList<String>();
+                java.util.function.IntConsumer stage = selected -> {
+                    calls.add(order.get(selected));
+                    if (selected == failingStage) {
+                        if (failure instanceof Error error) throw error;
+                        throw (RuntimeException) failure;
+                    }
+                };
+                assertSame(failure, assertThrows(Throwable.class, () -> runRootReloadProbe(
+                        () -> stage.accept(0), () -> {
+                            stage.accept(1);
+                            return P8ServerPresentationService.P8RootFullSyncOutcome.ACTIVATED_CURRENT;
+                        }, ignored -> stage.accept(2), () -> stage.accept(3))));
+                assertEquals(order.subList(0, index + 1), calls);
+            }
+        }
+    }
+
+    private static void runRootReloadProbe(Runnable mark,
+            java.util.function.Supplier<P8ServerPresentationService.P8RootFullSyncOutcome> p8,
+            java.util.function.Consumer<P8ServerPresentationService.P8RootFullSyncOutcome> p10,
+            Runnable p5) throws Throwable {
+        var method = Gramarye.class.getDeclaredMethod("finishP10Reload", Runnable.class,
+                java.util.function.Supplier.class, java.util.function.Consumer.class, Runnable.class);
+        assertTrue(Modifier.isPrivate(method.getModifiers()) && Modifier.isStatic(method.getModifiers()));
+        method.setAccessible(true);
+        try {
+            method.invoke(null, mark, p8, p10, p5);
+        } catch (java.lang.reflect.InvocationTargetException failure) {
+            throw failure.getCause();
+        }
     }
 
     @Test
@@ -147,45 +222,31 @@ final class P9S5BoundaryTest {
             throws IOException, ReflectiveOperationException {
         var type = P9StarterCommand.class;
         var constructor = type.getDeclaredConstructor(
-                PlayerSkillAttachmentService.class,
-                SkillDefinitionSubmissionService.class,
-                SkillDefinitionStoreService.class);
+                PlayerSkillAttachmentService.class, SkillDefinitionSubmissionService.class,
+                SkillDefinitionStoreService.class, P10TemplateService.class, P10TemplateValidation.class);
         var registration = type.getDeclaredMethod("register", RegisterCommandsEvent.class);
-        var dispatcherRegistration = type.getDeclaredMethod("register", CommandDispatcher.class);
         var source = read(COMMAND_SOURCE);
-        var fields = Arrays.stream(type.getDeclaredFields())
-                .filter(field -> !field.isSynthetic())
-                .collect(Collectors.toUnmodifiableMap(
-                        java.lang.reflect.Field::getName,
+        var fields = Arrays.stream(type.getDeclaredFields()).filter(field -> !field.isSynthetic())
+                .collect(Collectors.toUnmodifiableMap(java.lang.reflect.Field::getName,
                         java.lang.reflect.Field::getType));
-
         assertAll(
                 () -> assertFalse(Modifier.isPublic(type.getModifiers())),
                 () -> assertTrue(Modifier.isFinal(type.getModifiers())),
                 () -> assertEquals(1, type.getDeclaredConstructors().length),
-                () -> assertFalse(Modifier.isPublic(constructor.getModifiers())),
-                () -> assertFalse(Modifier.isProtected(constructor.getModifiers())),
-                () -> assertFalse(Modifier.isPrivate(constructor.getModifiers())),
+                () -> assertEquals(0, constructor.getModifiers()),
                 () -> assertEquals(void.class, registration.getReturnType()),
-                () -> assertFalse(Modifier.isPublic(registration.getModifiers())),
-                () -> assertFalse(Modifier.isProtected(registration.getModifiers())),
-                () -> assertFalse(Modifier.isPrivate(registration.getModifiers())),
-                () -> assertTrue(Modifier.isPrivate(dispatcherRegistration.getModifiers())),
-                () -> assertEquals(
-                        Map.of(
-                                "EQUIPPED_SLOT", int.class,
-                                "attachments", PlayerSkillAttachmentService.class,
-                                "submissions", SkillDefinitionSubmissionService.class,
-                                "store", SkillDefinitionStoreService.class),
-                        fields),
-                () -> assertTrue(Arrays.stream(type.getDeclaredFields())
-                        .allMatch(field -> Modifier.isPrivate(field.getModifiers())
-                                && Modifier.isFinal(field.getModifiers()))),
+                () -> assertEquals(0, registration.getModifiers()),
+                () -> assertEquals(Map.of("EQUIPPED_SLOT", int.class,
+                        "attachments", PlayerSkillAttachmentService.class,
+                        "submissions", SkillDefinitionSubmissionService.class,
+                        "store", SkillDefinitionStoreService.class,
+                        "templates", P10TemplateService.class,
+                        "validation", P10TemplateValidation.class), fields),
+                () -> assertTrue(Arrays.stream(type.getDeclaredFields()).allMatch(field ->
+                        Modifier.isPrivate(field.getModifiers()) && Modifier.isFinal(field.getModifiers()))),
                 () -> assertEquals(0, publicOrProtectedDeclaredMembers(type)),
                 () -> assertTrue(source.contains("private static final int EQUIPPED_SLOT = 0;")),
                 () -> assertEquals(2, occurrences(source, "Commands.literal(")),
-                () -> assertEquals(1, occurrences(source, "Commands.literal(\"gramarye\")")),
-                () -> assertEquals(1, occurrences(source, "Commands.literal(\"starter\")")),
                 () -> assertEquals(1, occurrences(source, ".requires(source -> source.hasPermission(0))")),
                 () -> assertEquals(1, occurrences(source, ".executes(context -> provision(context.getSource()))")),
                 () -> assertFalse(source.contains("Commands.argument(")),
@@ -195,82 +256,65 @@ final class P9S5BoundaryTest {
                 () -> assertTrue(source.contains("player instanceof FakePlayer")),
                 () -> assertTrue(source.contains("server.getPlayerList().getPlayer(player.getUUID()) != player")),
                 () -> assertEquals(1, occurrences(source, "observePendingRecovery(server, owner)")),
-                () -> assertEquals(1, occurrences(source, "observeLatestStates(player)")),
+                () -> assertEquals(0, occurrences(source, "observeLatestStates(")),
                 () -> assertEquals(1, occurrences(source, "submissions.submit(player, skillId)")),
-                () -> assertEquals(1, occurrences(source, "attachments.putDraft(player, canonicalDraft)")),
+                () -> assertEquals(1, occurrences(source, "attachments.putDraft(player, target)")),
                 () -> assertEquals(1, occurrences(source, "attachments.setEquipped(")),
-                () -> assertEquals(
-                        1,
-                        occurrences(
-                                source,
-                                "source.sendFailure(Component.translatable(\n"
-                                        + "                        \"commands.gramarye.starter.slot_occupied\"));")),
-                () -> assertEquals(2, occurrences(source, "SkillDraftPersistenceFacade.encodeCurrent(")),
-                () -> assertTrue(source.contains("MagicSafetyCeilings.MAX_PLAYER_LATEST_STATES")),
                 () -> assertTrue(source.contains("MagicSafetyCeilings.MAX_PLAYER_DRAFTS")),
                 () -> assertTrue(source.contains("instanceof SkillSubmissionCompositionOutcome.Committed committed")));
-
-        for (var forbidden : List.of(
-                "SkillSubmissionRecoveryService",
-                "recoverPersistedPlayer",
-                "CommittedPendingAttachmentRecovery",
-                "removeDraft",
-                "deleteDraft",
-                "rollback",
-                "UUID.randomUUID",
-                "setEquipped(player, 1",
-                "setEquipped(player, 2")) {
+        for (var forbidden : List.of("SkillSubmissionRecoveryService", "recoverPersistedPlayer",
+                "removeDraft", "deleteDraft", "rollback", "UUID.randomUUID",
+                "setEquipped(player, 1", "setEquipped(player, 2", "canonicalDraft(")) {
             assertFalse(source.contains(forbidden), forbidden);
         }
     }
 
     @Test
     void commandAlgorithmKeepsExactReadScanCreateSubmitRereadMutationOrder() throws IOException {
+        // Historical method ID retained; §68 replaces the arbitrary-ID scan with exact lineage.
         var source = read(COMMAND_SOURCE);
-        var provision = source.substring(
-                source.indexOf("private int provision("),
-                source.indexOf("private Optional<SkillReference> createOrSubmitCanonical("));
-        var creation = source.substring(
-                source.indexOf("private Optional<SkillReference> createOrSubmitCanonical("),
-                source.indexOf("private ReferenceCheck checkReference("));
-
-        var firstEquipped = provision.indexOf("attachments.equippedAt(player, EQUIPPED_SLOT)");
-        var recovery = provision.indexOf("observePendingRecovery(server, owner)");
-        var latestScan = provision.indexOf("attachments.observeLatestStates(player)");
-        var loop = provision.indexOf("for (var state : latestStates)");
-        var create = provision.indexOf("createOrSubmitCanonical(player, server, owner)");
-        var finalEquipped = provision.indexOf(
-                "attachments.equippedAt(player, EQUIPPED_SLOT)", firstEquipped + 1);
-        var mutation = provision.indexOf("attachments.setEquipped(", finalEquipped);
-
+        assertOrdered(source,
+                "templates.capture(server)", "validation.validate(server, capture.body().orElseThrow())",
+                "templates.isCurrent(server, capture)", "P9StarterSkillIdentityV0.forPlayer(player.getUUID())",
+                "attachments.equippedAt(player, EQUIPPED_SLOT)", "store.ownerOf(server, skillId)",
+                "store.latestReference(server, skillId)", "P9StarterSkillContent.sameNormalizedContent(",
+                "return finishRevisionRoute(same, expected, latest,");
+        var route = source.substring(source.indexOf("static Fine finishRevisionRoute("),
+                source.indexOf("private Optional<Fine> mutationGuard("));
+        assertOrdered(route, "if (same && expected.equals(latest))", "mutationGuard.get()",
+                "if (rejection.isPresent())", "if (same) return equipExisting.apply(latest.orElseThrow())",
+                "Integer.MAX_VALUE", "return submitSuccessor.get()");
+        var guard = source.substring(source.indexOf("private Optional<Fine> mutationGuard("),
+                source.indexOf("private Fine submitSuccessor("));
+        assertOrdered(guard, "observePendingRecovery(server, owner)", "PendingRecoveryProjection.TargetInvalid",
+                "PendingRecoveryProjection.Available", "!available.chains().isEmpty()",
+                "!templates.isCurrent(server, capture)", "return Optional.empty()");
+        var successor = source.substring(source.indexOf("private Fine submitSuccessor("),
+                source.indexOf("static Fine submitAndEquip("));
+        assertOrdered(successor, "attachments.findDraft(player, skillId)", "attachments.draftCount(player)",
+                "attachments.putDraft(player, target)", "return submitAndEquip(() -> submissions.submit(player, skillId)",
+                "reference -> equip(player, expected, reference, true)");
+        var handoff = source.substring(source.indexOf("static Fine submitAndEquip("),
+                source.indexOf("private Fine equip("));
+        assertOrdered(handoff, "submit.get()", "instanceof SkillSubmissionCompositionOutcome.Committed committed",
+                "equipCommitted.apply(committed.reference())", "submissionFailure(submission)");
+        var finalEquip = source.substring(source.indexOf("static Fine finishEquip("),
+                source.indexOf("static Fine submissionFailure("));
+        assertOrdered(finalEquip, "read.get()", "if (!current.value().equals(expected))", "set.get()");
         assertAll(
-                () -> assertTrue(
-                        firstEquipped >= 0
-                                && firstEquipped < recovery
-                                && recovery < latestScan
-                                && latestScan < loop
-                                && loop < create
-                                && create < finalEquipped
-                                && finalEquipped < mutation,
-                        "slot/read-only recovery/scan/create/final-reread/mutation order"),
-                () -> assertEquals(2, occurrences(provision, "attachments.equippedAt(")),
-                () -> assertTrue(provision.contains("if (matches.size() > 1)")),
-                () -> assertTrue(provision.contains("if (matches.size() == 1)")),
-                () -> assertTrue(provision.contains("if (finalEquipped.isPresent())")),
-                () -> assertOrdered(
-                        creation,
-                        "P9StarterSkillIdentityV0.forPlayer(player.getUUID())",
-                        "attachments.findLatestState(player, skillId)",
-                        "store.latestReference(server, skillId)",
-                        "store.ownerOf(server, skillId)",
-                        "P9StarterSkillContent.canonicalDraft(skillId)",
-                        "attachments.findDraft(player, skillId)",
-                        "attachments.draftCount(player)",
-                        "attachments.findDraft(player, skillId)",
-                        "attachments.putDraft(player, canonicalDraft)",
-                        "submissions.submit(player, skillId)",
-                        "checkReference(server, owner, reference)"),
-                () -> assertEquals(2, occurrences(creation, "attachments.findDraft(player, skillId)")));
+                () -> assertEquals(1, occurrences(source, "return finishRevisionRoute(")),
+                () -> assertEquals(1, occurrences(source, "() -> mutationGuard(server, owner, capture)")),
+                () -> assertEquals(1, occurrences(source, "reference -> equip(player, expected, reference, false)")),
+                () -> assertEquals(1, occurrences(source, "() -> submitSuccessor(player, expected, latest, observedLatestDocument,")),
+                () -> assertEquals(1, occurrences(source, "return finishEquip(expected, committed,")),
+                () -> assertEquals(2, occurrences(source, "attachments.equippedAt(")),
+                () -> assertEquals(1, occurrences(source, "attachments.findDraft(")),
+                () -> assertTrue(source.contains("draft.baseRevision().equals(latest.map(SkillReference::revision))")),
+                () -> assertTrue(source.contains("sameContent(draft, latest.orElseThrow(), latestDocument)")),
+                () -> assertTrue(source.contains("POST_COMMIT_STORE_COMMITTED")),
+                () -> assertTrue(source.contains("STORE_JOURNAL_PUBLICATION_INVARIANT")),
+                () -> assertFalse(source.contains("for (var state : latestStates)")),
+                () -> assertFalse(source.contains("checkQuota(")));
     }
 
     @Test
@@ -343,46 +387,65 @@ final class P9S5BoundaryTest {
         try (var paths = Files.walk(MAIN_RESOURCES)) {
             jsonResources = paths.filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".json"))
-                    .map(PROJECT_ROOT::relativize)
-                    .sorted()
-                    .toList();
+                    .map(PROJECT_ROOT::relativize).sorted().toList();
         }
-        var expectedEn = "{\n"
-                + "  \"commands.gramarye.starter.slot_occupied\": "
-                + "\"Starter skill slot is already occupied\",\n"
-                + "  \"key.gramarye.cast\": \"Cast Skill\",\n"
-                + "  \"key.categories.gramarye\": \"Gramarye\"\n"
-                + "}\n";
-        var expectedZh = "{\n"
-                + "  \"commands.gramarye.starter.slot_occupied\": \"起始技能欄位已被佔用\",\n"
-                + "  \"key.gramarye.cast\": \"施放技能\",\n"
-                + "  \"key.categories.gramarye\": \"Gramarye\"\n"
-                + "}\n";
-
+        var keys = Set.of(
+                "commands.gramarye.starter.slot_occupied",
+                "commands.gramarye.starter.source_rejected",
+                "commands.gramarye.starter.template_unavailable",
+                "commands.gramarye.starter.stale_context",
+                "commands.gramarye.starter.snapshot_changed",
+                "commands.gramarye.starter.attachment_unavailable",
+                "commands.gramarye.starter.store_unavailable",
+                "commands.gramarye.starter.starter_identity_not_authorized",
+                "commands.gramarye.starter.starter_identity_unavailable_or_collision",
+                "commands.gramarye.starter.recovery_pending",
+                "commands.gramarye.starter.recovery_target_invalid",
+                "commands.gramarye.starter.recovery_unavailable",
+                "commands.gramarye.starter.equip_state_unavailable",
+                "commands.gramarye.starter.equip_publish_unavailable",
+                "commands.gramarye.starter.draft_conflict",
+                "commands.gramarye.starter.draft_has_unsubmitted_changes",
+                "commands.gramarye.starter.draft_limit_reached",
+                "commands.gramarye.starter.revision_exhausted",
+                "commands.gramarye.starter.route_capacity_rejected",
+                "commands.gramarye.starter.draft_retained_quota_rejected",
+                "commands.gramarye.starter.draft_retained_capacity_rejected",
+                "commands.gramarye.starter.draft_retained_submission_rejected",
+                "commands.gramarye.starter.store_committed_journal_publication_invariant",
+                "commands.gramarye.starter.committed_pending_recovery",
+                "commands.gramarye.starter.committed_not_equipped",
+                "commands.gramarye.starter.slot_unavailable",
+                "commands.gramarye.starter.equip_conflict",
+                "commands.gramarye.starter.already_current",
+                "commands.gramarye.starter.equipped_target",
+                "key.gramarye.cast", "key.categories.gramarye");
+        var english = JsonParser.parseString(Files.readString(en, StandardCharsets.UTF_8)).getAsJsonObject();
+        var chinese = JsonParser.parseString(Files.readString(zh, StandardCharsets.UTF_8)).getAsJsonObject();
         assertAll(
-                () -> assertEquals(
-                        List.of(
-                                Path.of("src/main/resources/assets/gramarye/lang/en_us.json"),
-                                Path.of("src/main/resources/assets/gramarye/lang/zh_tw.json")),
+                () -> assertEquals(List.of(
+                        Path.of("src/main/resources/assets/gramarye/lang/en_us.json"),
+                        Path.of("src/main/resources/assets/gramarye/lang/zh_tw.json"),
+                        Path.of("src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json")),
                         jsonResources),
-                () -> assertEquals(expectedEn, Files.readString(en, StandardCharsets.UTF_8)),
-                () -> assertEquals(expectedZh, Files.readString(zh, StandardCharsets.UTF_8)),
-                () -> assertEquals(
-                        Set.of(
-                                "commands.gramarye.starter.slot_occupied",
-                                "key.gramarye.cast",
-                                "key.categories.gramarye"),
-                        JsonParser.parseString(Files.readString(en, StandardCharsets.UTF_8))
-                                .getAsJsonObject()
-                                .keySet()),
-                () -> assertEquals(
-                        Set.of(
-                                "commands.gramarye.starter.slot_occupied",
-                                "key.gramarye.cast",
-                                "key.categories.gramarye"),
-                        JsonParser.parseString(Files.readString(zh, StandardCharsets.UTF_8))
-                                .getAsJsonObject()
-                                .keySet()));
+                () -> assertEquals(keys, english.keySet()),
+                () -> assertEquals(keys, chinese.keySet()),
+                () -> assertEquals("Cast Skill", english.get("key.gramarye.cast").getAsString()),
+                () -> assertEquals("施放技能", chinese.get("key.gramarye.cast").getAsString()),
+                () -> assertEquals("Gramarye", english.get("key.categories.gramarye").getAsString()),
+                () -> assertEquals("Gramarye", chinese.get("key.categories.gramarye").getAsString()),
+                () -> assertEquals("Starter skill slot is already occupied",
+                        english.get("commands.gramarye.starter.slot_occupied").getAsString()),
+                () -> assertEquals("起始技能欄位已被佔用",
+                        chinese.get("commands.gramarye.starter.slot_occupied").getAsString()));
+        for (var language : List.of(english, chinese)) {
+            for (var key : keys) assertTrue(language.get(key).getAsString().length() <= 1_024);
+            for (var success : List.of("already_current", "equipped_target")) {
+                assertTrue(language.get("commands.gramarye.starter." + success).getAsString().contains("%s"));
+            }
+        }
+        assertTrue(Files.readString(en, StandardCharsets.UTF_8).endsWith("\n"));
+        assertTrue(Files.readString(zh, StandardCharsets.UTF_8).endsWith("\n"));
     }
 
     @Test
@@ -416,7 +479,37 @@ final class P9S5BoundaryTest {
                 () -> assertFalse(cleanup.contains("deleteDir")),
                 () -> assertFalse(cleanup.contains("rm -")),
                 () -> assertTrue(build.contains(
-                        "finalizedBy(cleanupP9S5ClientRuntimePlayerData)")));
+                        "finalizedBy(cleanupP9S5ClientRuntimePlayerData)")),
+                () -> assertTrue(harness.contains("getDeclaredField(\"installedRootIngress\")")),
+                () -> assertTrue(harness.contains("ingress.getClass() == P7AuthenticatedPlayerCastIngress.class")),
+                () -> assertTrue(harness.contains("ready.chains().isEmpty()")),
+                () -> assertTrue(harness.contains("observePendingRecovery(server, new SkillOwnerId(playerId))")),
+                () -> assertTrue(harness.contains("server.reloadResources(selected)")),
+                () -> assertTrue(harness.contains("minecraft.getConnection().sendCommand(COMMAND)")),
+                () -> assertTrue(harness.contains("expectedDamage = 5.0F")),
+                () -> assertTrue(build.contains("systemProperty 'gramarye.p10.frozenJar'")),
+                () -> assertTrue(build.contains("[builtBy: tasks.named('jar')], tasks.named('jar', Jar).flatMap { it.archiveFile }")),
+                () -> assertTrue(build.contains("add(p9S5ClientHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)")),
+                () -> assertFalse(build.contains("add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)")),
+                () -> assertTrue(build.contains("def runtimeClasspathFiles = p9S5ClientHarnessSourceSet.runtimeClasspath")),
+                () -> assertTrue(build.contains("def runtimeFiles = runtimeClasspathFiles.files")),
+                () -> assertFalse(build.contains("def runtimeFiles = p9S5ClientHarnessSourceSet.runtimeClasspath.files")),
+                () -> assertTrue(build.contains("configurations.named(p9S5ClientHarnessSourceSet.runtimeClasspathConfigurationName)")),
+                () -> assertTrue(build.contains("additionalRuntimeClasspathConfiguration.exclude(\n"
+                        + "                    group: 'org.apache.commons', module: 'commons-compress')")),
+                () -> assertTrue(build.contains("runtimeFiles.contains(frozenJar)")),
+                () -> assertTrue(build.contains("runtimeFiles.any { mainOutputFiles.contains(it) }")),
+                () -> assertTrue(build.contains("runtimeFiles.any { it.name == standaloneCompressName }")),
+                () -> assertTrue(harness.contains("System.getProperty(\"java.class.path\", \"\")")),
+                () -> assertTrue(harness.contains("JVM runtime classpath contains exploded production classes")),
+                () -> assertTrue(harness.contains("roots.contains(frozenProductionJar)")),
+                () -> assertTrue(harness.contains("frozenProductionJarHash.equals(productionJarHash(frozenProductionJar))")),
+                () -> assertTrue(harness.contains("Arrays.equals(loaded.readAllBytes(), archived.readAllBytes())")),
+                () -> assertFalse(harness.contains(".setEquipped(")),
+                () -> assertFalse(harness.contains(".putDraft(")),
+                () -> assertFalse(harness.contains(".submit(")),
+                () -> assertFalse(harness.contains("new SkillDefinitionStoreService(")),
+                () -> assertFalse(harness.contains("new PlayerSkillAttachmentService(")));
     }
 
     private static SkillDocument formalDocument(SkillDraft draft, SkillRevision revision) {

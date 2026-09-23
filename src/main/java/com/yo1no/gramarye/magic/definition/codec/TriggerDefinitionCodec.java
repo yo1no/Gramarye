@@ -57,6 +57,20 @@ public final class TriggerDefinitionCodec {
     public static <P extends TriggerPayload> TriggerDefinition decodeWithDescriptor(
             DefinitionEnvelope envelope,
             TriggerType<P> descriptor) {
+        return decodeWithDescriptor(envelope, descriptor, false);
+    }
+
+    /** Ordered-ingress helper; unexpected descriptor failures retain their original identity. */
+    public static <P extends TriggerPayload> TriggerDefinition decodeWithDescriptorPropagating(
+            DefinitionEnvelope envelope,
+            TriggerType<P> descriptor) {
+        return decodeWithDescriptor(envelope, descriptor, true);
+    }
+
+    private static <P extends TriggerPayload> TriggerDefinition decodeWithDescriptor(
+            DefinitionEnvelope envelope,
+            TriggerType<P> descriptor,
+            boolean propagateUnexpected) {
         Objects.requireNonNull(envelope, "envelope");
         Objects.requireNonNull(descriptor, "descriptor");
         try {
@@ -83,6 +97,7 @@ public final class TriggerDefinitionCodec {
             }
             return new ResolvedTriggerDefinition<>(descriptor, currentSchemaVersion, payload.orElseThrow());
         } catch (RuntimeException exception) {
+            if (propagateUnexpected) throw exception;
             return unknown(envelope, Code.CODEC_EXCEPTION, exceptionDiagnostic(exception));
         }
     }

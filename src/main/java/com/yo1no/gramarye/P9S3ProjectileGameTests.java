@@ -67,7 +67,16 @@ public final class P9S3ProjectileGameTests {
             timeoutTicks = 240)
     @SuppressWarnings("removal")
     public static void realSpawnTransferHitAndNextDrainUseTheHeldChild(GameTestHelper helper) {
-        try (var scenario = new ProductionScenario(helper, 0x9301L)) {
+        exerciseSupportedDamageChain(helper, 4_000L, 0x9301L);
+        exerciseSupportedDamageChain(helper, 5_000L, 0x9401L);
+        helper.succeed();
+    }
+
+    private static void exerciseSupportedDamageChain(
+            GameTestHelper helper, long magnitude, long fixtureId) {
+        var expectedDamage = (float) (magnitude / 1_000L);
+        try (var scenario = new ProductionScenario(helper, fixtureId,
+                AppearanceDocument.Default.INSTANCE, 1, magnitude)) {
             scenario.startPresentation();
             helper.assertTrue(
                     observeBalance(scenario.actor())
@@ -162,9 +171,9 @@ public final class P9S3ProjectileGameTests {
                 helper.assertTrue(
                         impact.damageCalls() == 1
                                 && impact.hasExactDamageSource(projectile, scenario.actor())
-                                && sameFloat(impact.damageAmount(), 4.0F)
-                                && close(healthBefore - target.getHealth(), 4.0D),
-                        "node 1 must make one indirect-magic 4.0F call with exact projectile/caster attribution and unarmored health loss");
+                                && sameFloat(impact.damageAmount(), expectedDamage)
+                                && close(healthBefore - target.getHealth(), expectedDamage),
+                        "node 1 must make one exact selected indirect-magic 4.0F/5.0F call with projectile/caster attribution and unarmored health loss");
                 helper.assertTrue(
                         hitEvents.size() == 1
                                 && hitEvents.getFirst().kind() == PresentationEventKind.HIT
@@ -218,7 +227,7 @@ public final class P9S3ProjectileGameTests {
                 helper.assertTrue(
                         scenario.port().calls() == 2
                                 && impact.damageCalls() == 1
-                                && close(healthBefore - target.getHealth(), 4.0D)
+                                && close(healthBefore - target.getHealth(), expectedDamage)
                                 && scenario.runtime().cancel(
                                                 server(scenario), accepted.eventToken())
                                         instanceof RuntimeCancellationResult.NotPending
@@ -231,7 +240,6 @@ public final class P9S3ProjectileGameTests {
                 NeoForge.EVENT_BUS.unregister(impact);
             }
         }
-        helper.succeed();
     }
 
     @GameTest(
@@ -1675,6 +1683,16 @@ public final class P9S3ProjectileGameTests {
                 GameTestHelper helper,
                 long fixtureId,
                 AppearanceDocument appearance) {
+            this(helper, fixtureId, appearance, 0, 4_000L);
+        }
+
+        @SuppressWarnings("removal")
+        private ProductionScenario(
+                GameTestHelper helper,
+                long fixtureId,
+                AppearanceDocument appearance,
+                int damageSchema,
+                long magnitude) {
             this.helper = Objects.requireNonNull(helper, "helper");
             level = helper.getLevel();
             actor = helper.makeMockServerPlayerInLevel();
@@ -1682,7 +1700,7 @@ public final class P9S3ProjectileGameTests {
             P7S4LoginManaGameTests.P9GameTestFixture openedFixture = null;
             try {
                 openedFixture = P7S4LoginManaGameTests.openP9GameTestFixture(
-                        helper, actor, fixtureId, appearance);
+                        helper, actor, fixtureId, appearance, damageSchema, magnitude);
                 fixture = openedFixture;
                 port = new RecordingProductionPort(actor);
                 presentation = port.presentation();

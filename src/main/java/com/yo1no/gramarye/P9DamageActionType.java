@@ -1,5 +1,7 @@
 package com.yo1no.gramarye;
 
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.Dynamic;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.yo1no.gramarye.magic.action.type.ActionPayloadInspector;
@@ -13,6 +15,9 @@ import com.yo1no.gramarye.magic.definition.inspection.ActionReferenceProjection;
 import com.yo1no.gramarye.magic.definition.inspection.PayloadInspectionResult;
 import com.yo1no.gramarye.magic.definition.inspection.SourceSelection;
 import com.yo1no.gramarye.magic.definition.inspection.TargetSelection;
+import com.yo1no.gramarye.magic.definition.migration.PayloadMigrationPlan;
+import com.yo1no.gramarye.magic.definition.migration.PayloadMigrationStep;
+import com.yo1no.gramarye.magic.definition.migration.PayloadMigrationStepOutput;
 import com.yo1no.gramarye.magic.validation.ValidationCollector;
 import com.yo1no.gramarye.magic.validation.ValidationContext;
 import com.yo1no.gramarye.magic.validation.ValidationIssue;
@@ -43,6 +48,8 @@ final class P9DamageActionType implements ActionType<P9DamageActionPayloadV0> {
                                     P9StarterSkillContent.EXACT_LONG.fieldOf("mana_cost")
                                             .forGetter(P9DamageActionPayloadV0::manaCost))
                             .apply(instance, P9DamageActionPayloadV0::new)));
+    private static final PayloadMigrationPlan MIGRATION_PLAN =
+            new PayloadMigrationPlan(List.of(new LegacyDamageMigration()));
     private static final ActionCapabilities CAPABILITIES = new ActionCapabilities(
             SourceRequirement.NONE,
             TargetRequirement.REQUIRED,
@@ -73,7 +80,12 @@ final class P9DamageActionType implements ActionType<P9DamageActionPayloadV0> {
 
     @Override
     public int currentPayloadSchemaVersion() {
-        return 0;
+        return 1;
+    }
+
+    @Override
+    public PayloadMigrationPlan payloadMigrationPlan() {
+        return MIGRATION_PLAN;
     }
 
     @Override
@@ -97,7 +109,7 @@ final class P9DamageActionType implements ActionType<P9DamageActionPayloadV0> {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(context, "context");
         var collector = new ValidationCollector();
-        if (payload.magnitude() != 4_000L) {
+        if (payload.magnitude() != 4_000L && payload.magnitude() != 5_000L) {
             collector.add(error(NONCANONICAL_MAGNITUDE, "magnitude"));
         }
         if (payload.manaCost() != 0L) {
@@ -116,5 +128,30 @@ final class P9DamageActionType implements ActionType<P9DamageActionPayloadV0> {
 
     private static ValidationIssueCode code(String path) {
         return ValidationIssueCode.fromNamespaceAndPath(Gramarye.MOD_ID, path);
+    }
+
+    /** Re-encodes only the historically legal V0 value; never upgrades arbitrary raw data. */
+    private static final class LegacyDamageMigration implements PayloadMigrationStep {
+        @Override
+        public int fromVersion() {
+            return 0;
+        }
+
+        @Override
+        public int toVersion() {
+            return 1;
+        }
+
+        @Override
+        public <T> DataResult<PayloadMigrationStepOutput<T>> migrate(Dynamic<T> input) {
+            return CODEC.codec().parse(input).flatMap(payload -> {
+                if (payload.magnitude() != 4_000L || payload.manaCost() != 0L) {
+                    return DataResult.error(() -> "Legacy damage must be exactly 4000/0");
+                }
+                return CODEC.codec().encodeStart(input.getOps(), payload)
+                        .map(encoded -> new PayloadMigrationStepOutput<>(
+                                new Dynamic<>(input.getOps(), encoded)));
+            });
+        }
     }
 }

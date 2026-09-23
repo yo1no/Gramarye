@@ -1,17 +1,36 @@
 package com.yo1no.gramarye;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.serialization.JsonOps;
+import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
+import com.yo1no.gramarye.magic.api.registry.MagicRegistries;
+import com.yo1no.gramarye.magic.definition.document.SkillDocument;
+import com.yo1no.gramarye.magic.definition.document.SkillReference;
+import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
+import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
+import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreSubmissionPort;
+import com.yo1no.gramarye.magic.definition.store.SkillSubsystemResult;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
+import com.yo1no.gramarye.magic.definition.validation.ProfileAvailabilityView;
+import com.yo1no.gramarye.magic.limits.MagicPolicyLimits;
+import com.yo1no.gramarye.magic.validation.ValidationContext;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.HexFormat;
+import java.util.jar.JarFile;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
@@ -22,6 +41,9 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.gui.screens.options.controls.ControlsScreen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.commands.CommandSource;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -55,6 +77,7 @@ import net.neoforged.neoforge.event.CommandEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.entity.ProjectileImpactEvent;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.lwjgl.glfw.GLFW;
 
@@ -63,8 +86,9 @@ import org.lwjgl.glfw.GLFW;
  *
  * <p>The harness creates one throw-away integrated world, sends the production command through
  * the client play connection, and submits casts only through the registered R key mapping. It
- * observes the resulting world and presentation effects without acquiring or modifying the
- * Store, Attachment, equipped reference, P7 ingress, or P5 runtime.</p>
+ * observes world effects and, only in this excluded test source set, reads the existing P7
+ * owner's Store/Attachment ports. It never mutates player state through those observation
+ * ports, invokes ingress directly, or accesses/modifies private platform identities.</p>
  */
 @EventBusSubscriber(modid = Gramarye.MOD_ID, value = Dist.CLIENT)
 final class P9S5ClientRuntimeHarness {
@@ -83,7 +107,9 @@ final class P9S5ClientRuntimeHarness {
     private static final ResourceLocation SOUND_EVENT =
             ResourceLocation.withDefaultNamespace("entity.experience_orb.pickup");
 
-    private static final List<String> MARKERS = new ArrayList<>(26);
+    private static final List<String> MARKERS = new ArrayList<>(36);
+    private static final String TEMPLATE_PACK = "file/p10-owned-template";
+    private static final String TEMPLATE_JSON = "data/gramarye/gramarye/skill_templates/starter_bolt_v0.json";
 
     private static volatile Phase phase = Phase.BOOTSTRAP;
     private static volatile Throwable asynchronousFailure;
@@ -92,6 +118,12 @@ final class P9S5ClientRuntimeHarness {
     private static volatile ServerPlayer firstServerPlayer;
     private static volatile UUID playerId;
     private static volatile int serverPreparationGeneration;
+    private static volatile long preparedACatalogGeneration;
+    private static volatile long preparedBCatalogGeneration;
+    private static volatile boolean bReloadAdmissionOpen;
+    private static volatile String lastP7ReloadGateState = "UNOBSERVED";
+    private static volatile boolean lastP7ReloadCloseRequested = true;
+    private static volatile long lastP7ReloadGateTick = -1L;
     private static volatile int spoofedCommandEventCount;
     private static volatile boolean spoofedProvisionRejected;
     private static volatile int commandEventCount;
@@ -120,6 +152,31 @@ final class P9S5ClientRuntimeHarness {
     private static volatile boolean serverImpactObserved;
     private static volatile boolean serverLeaveObserved;
     private static volatile boolean exactFourDamageObserved;
+    private static volatile float expectedDamage = 4.0F;
+    private static volatile int damageCalls;
+    private static volatile boolean exactAttributionObserved;
+    private static volatile boolean p10AsyncComplete;
+    private static volatile boolean recoveryATerminal;
+    private static volatile boolean recoveryBTerminal;
+    private static volatile boolean oldAProvedBeforeBSave;
+    private static volatile boolean reloadCleanupCast;
+    private static volatile boolean activeAReloadCleanupComplete;
+    private static volatile int activeAReloadDamageCalls;
+    private static volatile UUID retiredAProjectileId;
+    private static volatile P8ServerPresentationService wrongServerProbe;
+    private static volatile boolean p8WrongThreadRejected;
+    private static volatile boolean p8WrongServerRejected;
+    private static SkillDefinitionStoreService observedStore;
+    private static PlayerSkillAttachmentService observedAttachments;
+    private static SkillRuntimeService observedRuntime;
+    private static SkillReference revisionA;
+    private static SkillReference revisionB;
+    private static SkillReference revisionC;
+    private static String revisionABytes;
+    private static String revisionBBytes;
+    private static String revisionCBytes;
+    private static Path frozenProductionJar;
+    private static String frozenProductionJarHash;
     private static volatile boolean firstTargetCleanupComplete;
     private static volatile int p8SoundEvents;
     private static volatile boolean p8AfterParticlesRenderObserved;
@@ -184,6 +241,17 @@ final class P9S5ClientRuntimeHarness {
                 case WAIT_FOR_REOPENED_WORLD -> waitForReopenedWorld(minecraft);
                 case WAIT_FOR_REOPEN_FLUSH -> waitForReopenFlush(minecraft);
                 case WAIT_FOR_SECOND_CAST -> waitForSecondCast(minecraft);
+                case WAIT_FOR_P10_A_RELOAD_PREPARATION -> waitForActiveAReloadPreparation(minecraft);
+                case WAIT_FOR_P10_A_RELOAD_CAST -> waitForActiveAReloadCast(minecraft);
+                case WAIT_FOR_P10_B_RELOAD -> waitForBReload(minecraft);
+                case WAIT_FOR_P10_B_COMMAND -> waitForBCommand(minecraft);
+                case WAIT_FOR_P10_B_CAST -> waitForBCast(minecraft);
+                case WAIT_FOR_P10_B_SAVE -> waitForBSave(minecraft);
+                case WAIT_FOR_P10_B_REOPEN_REQUEST -> requestBReopen(minecraft);
+                case WAIT_FOR_P10_B_REOPENED -> waitForBReopened(minecraft);
+                case WAIT_FOR_P10_C_RELOAD -> waitForCReload(minecraft);
+                case WAIT_FOR_P10_C_COMMAND -> waitForCCommand(minecraft);
+                case WAIT_FOR_P10_CONTROLS -> waitForP10Controls(minecraft);
                 case TERMINAL -> {
                     // Terminal work stops the game loop in the same client tick.
                 }
@@ -287,7 +355,7 @@ final class P9S5ClientRuntimeHarness {
                 return;
             }
             int next = commandEventCount + 1;
-            require(next <= 2, "more than two starter commands reached the server");
+            require(next <= 4, "more than four starter commands reached the server");
             commandEventCount = next;
             var parsedCommand = event.getParseResults().getContext().getLastChild().getCommand();
             require(parsedCommand != null,
@@ -308,10 +376,11 @@ final class P9S5ClientRuntimeHarness {
             return;
         }
         try {
-            if (castOrdinal > 0
+            if (!reloadCleanupCast
+                    && castOrdinal > 0
                     && serverProjectile != null
                     && target == null
-                    && (castOrdinal == 2 || clientProjectile != null)) {
+                    && (castOrdinal >= 2 || clientProjectile != null)) {
                 armCollisionTarget(event.getServer());
             }
         } catch (RuntimeException | Error failure) {
@@ -327,6 +396,11 @@ final class P9S5ClientRuntimeHarness {
         try {
             startConfigurationWhenAcknowledged(event.getServer());
             observeExactDamage();
+            if (preparedBCatalogGeneration > 0L
+                    && (phase == Phase.WAIT_FOR_P10_B_RELOAD
+                            || phase == Phase.WAIT_FOR_P10_B_COMMAND)) {
+                observeBReloadAdmission(event.getServer());
+            }
         } catch (RuntimeException | Error failure) {
             asynchronousFailure = failure;
         }
@@ -338,8 +412,11 @@ final class P9S5ClientRuntimeHarness {
             return;
         }
         try {
-            require(castOrdinal == 1 || castOrdinal == 2,
+            require(castOrdinal >= 1 && castOrdinal <= 4,
                     "a projectile spawned from the suppressed or absent cast input");
+            require(!activeAReloadCleanupComplete
+                            || !projectile.getUUID().equals(retiredAProjectileId),
+                    "reload-invalidated A projectile reappeared after terminal cleanup");
             require(projectile.getType() == P9StarterProjectileRegistration.type(),
                     "spawned projectile type is not the registered P9 type");
             if (event.getLevel().isClientSide()) {
@@ -392,11 +469,24 @@ final class P9S5ClientRuntimeHarness {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void onPlaySound(PlaySoundEvent event) {
         if (!terminal
-                && phase == Phase.WAIT_FOR_FIRST_CAST
+                && (phase == Phase.WAIT_FOR_FIRST_CAST || phase == Phase.WAIT_FOR_P10_B_CAST)
                 && event.getSound() != null
                 && event.getOriginalSound().getLocation().equals(SOUND_EVENT)) {
             p8SoundEvents++;
         }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void onIncomingDamage(LivingIncomingDamageEvent event) {
+        if (!terminal && reloadCleanupCast
+                && event.getSource().getDirectEntity() == serverProjectile) {
+            activeAReloadDamageCalls++;
+        }
+        if (terminal || event.getEntity() != target) return;
+        damageCalls++;
+        exactAttributionObserved = event.getSource().getDirectEntity() == serverProjectile
+                && event.getSource().getEntity() == activeServer.getPlayerList().getPlayer(playerId)
+                && Float.floatToIntBits(event.getAmount()) == Float.floatToIntBits(expectedDamage);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -411,6 +501,7 @@ final class P9S5ClientRuntimeHarness {
 
     private static void bootstrap(Minecraft minecraft) {
         require(minecraft.isSameThread(), "harness bootstrap is not on the client thread");
+        captureFrozenProductionJar();
         var forwarding = P8ClientPayloadDispatchFactory.production();
         presentationState = readField(
                 forwarding, "delegate", P8ClientPresentationState.class);
@@ -437,7 +528,8 @@ final class P9S5ClientRuntimeHarness {
                         .getKey(P9StarterProjectileRegistration.type())
                         .equals(PROJECTILE_TYPE_ID),
                 "production projectile registration is not exact");
-        marker("01 PRODUCTION_R_KEY_MAPPING_REGISTERED key=" + CAST_KEY.getName());
+        marker("01 PRODUCTION_R_KEY_MAPPING_REGISTERED key=" + CAST_KEY.getName()
+                + " productionJarSha256=" + frozenProductionJarHash);
 
         require(minecraft.level == null
                         && minecraft.player == null
@@ -523,6 +615,17 @@ final class P9S5ClientRuntimeHarness {
         if (!presentationReady()) {
             return;
         }
+        long expectedCatalogGeneration = preparedACatalogGeneration;
+        require(expectedCatalogGeneration > 0L,
+                "supported A reload did not publish its actual server catalog generation");
+        if (state.installedCatalogGeneration() < expectedCatalogGeneration) {
+            return;
+        }
+        require(state.installedCatalogGeneration() == expectedCatalogGeneration,
+                "client catalog advanced beyond the completed supported A reload");
+        if (!p8WrongThreadRejected) {
+            assertRootHandoffWrongThread(minecraft, server);
+        }
         require(spoofedProvisionRejected && spoofedCommandEventCount == 1,
                 "console/entity substitution was not directly rejected");
         var transport = connection.getConnection();
@@ -533,6 +636,7 @@ final class P9S5ClientRuntimeHarness {
                         && stateGeneration == 1L
                         && state.isCurrentPublishedPlayGeneration(stateGeneration)
                         && catalog != null
+                        && catalog.catalogGeneration() == expectedCatalogGeneration
                         && state.installedCatalogGeneration() == catalog.catalogGeneration()
                         && boundCatalogConnectionGeneration() == stateGeneration
                         && boundCatalogSnapshot() == catalog,
@@ -1032,9 +1136,697 @@ final class P9S5ClientRuntimeHarness {
                     "second cast depended on an unapproved reprovisioning command");
             marker("25 NEW_SESSION_SEQUENCE_RESET_ACCEPTED projectile=" + projectileId
                     + " oldPendingDropped=true samePlayer=true");
-            marker("26 TERMINAL_PASS");
-            pass(minecraft);
+            marker("26 P9_REGRESSION_COMPLETE");
+            require(recoveryATerminal, "A persisted login recovery did not reach empty pending projection");
+            marker("27 A_RECOVERY_TERMINAL_SAME_UUID reference=" + revisionA);
+            p10AsyncComplete = false;
+            transition(Phase.WAIT_FOR_P10_A_RELOAD_PREPARATION);
+            activeServer.execute(() -> {
+                try {
+                    discardTarget();
+                    resetCastObservation();
+                    assertPlayerReference(activeServer, revisionA);
+                    assertOldA(activeServer);
+                    requireEmptyPendingRecovery(activeServer);
+                    p10AsyncComplete = true;
+                } catch (RuntimeException | Error failure) { asynchronousFailure = failure; }
+            });
         }
+    }
+
+    private static void waitForActiveAReloadPreparation(Minecraft minecraft) {
+        if (!p10AsyncComplete || !clientCastGatesOpen(minecraft) || !presentationReady()) return;
+        p10AsyncComplete = false;
+        expectedDamage = 4.0F;
+        activeAReloadDamageCalls = 0;
+        reloadCleanupCast = true;
+        castOrdinal = 3;
+        queueCastClick(minecraft);
+        transition(Phase.WAIT_FOR_P10_A_RELOAD_CAST);
+    }
+
+    private static void waitForActiveAReloadCast(Minecraft minecraft) {
+        if (serverProjectile == null || clientProjectile == null) return;
+        require(projectileId.equals(clientProjectile.getUUID()),
+                "reload control did not track its exact normal-R A projectile");
+        var server = activeServer;
+        var projectile = serverProjectile;
+        transition(Phase.WAIT_FOR_P10_B_RELOAD);
+        server.execute(() -> {
+            try {
+                require(server.isSameThread() && projectile == serverProjectile
+                                && projectile.level() == server.overworld()
+                                && projectile.isAddedToLevel() && !projectile.isRemoved()
+                                && server.overworld().getEntity(projectile.getId()) == projectile
+                                && projectile.hasAuthenticatedCasterIdentity(
+                                        server.getPlayerList().getPlayer(playerId))
+                                && target == null && activeAReloadDamageCalls == 0,
+                        "reload must begin with the actual live no-target A projectile");
+                // Read only existing product state; never mutate or claim this permit.
+                var permit = readField(projectile, "continuationPermit",
+                        RuntimeProjectileContinuationPermit.class);
+                require(permit.mode == RuntimeProjectileContinuationPermit.Mode.REAL
+                                && permit.state == RuntimeProjectileContinuationPermit.State.OPEN
+                                && permit.exactReference.equals(revisionA)
+                                && permit.plannedProjectileId.equals(projectile.getUUID())
+                                && observedRuntime.ownsOpenedContinuation(permit, projectile.getUUID()),
+                        "normal R did not leave an indexed OPEN continuation pinned to exact A");
+                requireEmptyPendingRecovery(server);
+                var actor = server.getPlayerList().getPlayer(playerId);
+                var draftBefore = attachmentValue(observedAttachments.findDraft(
+                        actor, revisionA.skillId()));
+                retiredAProjectileId = projectile.getUUID();
+                long catalogBeforeB = observedPresentationOwner().catalogGenerationForTesting();
+                require(catalogBeforeB > 0L, "B reload requires an active server catalog");
+                reloadOwnedTemplate(server, 5_000L, () -> {
+                    var diagnostic = observedRuntime.p9TerminalDiagnosticForTesting(
+                            server, permit.skillInstanceId);
+                    require(permit.state == RuntimeProjectileContinuationPermit.State.CLOSED_NO_HIT
+                                    && !observedRuntime.ownsOpenedContinuation(
+                                            permit, projectile.getUUID())
+                                    && diagnostic != null
+                                    && diagnostic.exactReference().equals(revisionA)
+                                    && diagnostic.terminalReason() == ProjectileClosureReason.RELOAD_INVALIDATED
+                                    && diagnostic.cleanupDisposition() == P9RuntimeCleanupDisposition.RELEASED
+                                    && projectile.isRemoved() && serverLeaveObserved
+                                    && server.overworld().getEntity(projectile.getId()) != projectile
+                                    && target == null && activeAReloadDamageCalls == 0,
+                            "B reload must release exact active A as RELOAD_INVALIDATED without damage");
+                    assertPlayerReference(server, revisionA);
+                    assertOldA(server);
+                    requireEmptyPendingRecovery(server);
+                    require(draftBefore.equals(attachmentValue(observedAttachments.findDraft(
+                                    actor, revisionA.skillId()))),
+                            "B reload mutated the normal player's Draft");
+                    requireValidation(server, "READY_CURRENT", "ACCEPTED");
+                    long catalogAfterB = observedPresentationOwner().catalogGenerationForTesting();
+                    require(catalogAfterB == Math.addExact(catalogBeforeB, 1L),
+                            "B reload did not activate the exact next server catalog generation");
+                    preparedBCatalogGeneration = catalogAfterB;
+                    activeAReloadCleanupComplete = true;
+                    p10AsyncComplete = true;
+                });
+            } catch (RuntimeException | Error failure) { asynchronousFailure = failure; }
+        });
+    }
+
+    private static void waitForBReload(Minecraft minecraft) {
+        if (!p10AsyncComplete || !clientCastGatesOpen(minecraft) || !presentationReady()) return;
+        if (clientProjectile == null || !clientProjectile.isRemoved()
+                || minecraft.level.getEntity(clientProjectile.getId()) == clientProjectile) return;
+        require(activeAReloadCleanupComplete && activeAReloadDamageCalls == 0,
+                "active A cleanup was not complete before the B mutation");
+        resetCastObservation();
+        castOrdinal = 0;
+        reloadCleanupCast = false;
+        marker("28 B_CURRENT_RELOAD_ZERO_PLAYER_MUTATION referenceA=" + revisionA
+                + " activeACleanup=RELOAD_INVALIDATED disposition=RELEASED noDamage=true noGhost=true");
+        minecraft.getConnection().sendCommand(COMMAND);
+        transition(Phase.WAIT_FOR_P10_B_COMMAND);
+    }
+
+    private static void waitForBCommand(Minecraft minecraft) {
+        if (commandCompletionCount != 3 || !clientCastGatesOpen(minecraft)
+                || !presentationReady() || !bReloadAdmissionOpen) return;
+        var state = presentationState;
+        long expectedCatalogGeneration = preparedBCatalogGeneration;
+        require(expectedCatalogGeneration > 0L,
+                "B cast has no completed reload catalog generation");
+        if (state.installedCatalogGeneration() < expectedCatalogGeneration) return;
+        var catalog = state.installedCatalogSnapshot();
+        require(catalog != null && catalog.catalogGeneration() == expectedCatalogGeneration
+                        && state.installedCatalogGeneration() == expectedCatalogGeneration
+                        && boundCatalogConnectionGeneration() == state.connectionGeneration()
+                        && boundCatalogSnapshot() == catalog,
+                "B cast is not bound to the exact completed reload catalog");
+        marker("29 B_SUCCESSOR_NORMAL_COMMAND referenceB=" + revisionB);
+        expectedDamage = 5.0F;
+        p8SoundEvents = 0;
+        castOrdinal = 4;
+        queueCastClick(minecraft);
+        transition(Phase.WAIT_FOR_P10_B_CAST);
+    }
+
+    /** Observes the real P7 owner after its normal-priority PostTick; never opens its gate. */
+    private static void observeBReloadAdmission(MinecraftServer server) {
+        require(server == activeServer && server.isSameThread(),
+                "B admission observation must use the active server thread");
+        try {
+            var events = Class.forName(
+                    "com.yo1no.gramarye.magic.network.P7ServerLifecycleEvents");
+            var field = events.getDeclaredField("LIFECYCLE");
+            field.setAccessible(true);
+            var lifecycle = field.get(null);
+            require(lifecycle != null && lifecycle.getClass().getName().equals(
+                            "com.yo1no.gramarye.magic.network.P7ServerLifecycleCoordinator"),
+                    "B admission observation did not reach the exact production lifecycle owner");
+            var gate = readField(lifecycle, "reloadGate", Object.class);
+            require(gate.getClass().getName().equals(
+                            "com.yo1no.gramarye.magic.network.P7ReloadAdmissionGate"),
+                    "B admission observation did not reach the exact production reload gate");
+            var state = readField(gate, "state", Enum.class);
+            require(state.name().equals("OPEN") || state.name().equals("RECONCILING"),
+                    "P7 reload gate state vocabulary drifted");
+            var requested = readField(gate, "closeRequested",
+                    java.util.concurrent.atomic.AtomicBoolean.class).get();
+            lastP7ReloadGateState = state.name();
+            lastP7ReloadCloseRequested = requested;
+            lastP7ReloadGateTick = server.getTickCount();
+            bReloadAdmissionOpen = state.name().equals("OPEN") && !requested;
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("fixed P7 reload readiness observation failed", failure);
+        }
+    }
+
+    private static void waitForBCast(Minecraft minecraft) {
+        if (!exactFourDamageObserved || p8SoundEvents == 0) return;
+        require(damageCalls == 1 && exactAttributionObserved,
+                "B did not produce exactly one attributed world damage call");
+        marker("30 B_EXACT_FIVE_DAMAGE_APPLIED beforeHealthBits=" + targetInitialHealthBits
+                + " afterHealthBits=" + Float.floatToIntBits(target.getHealth())
+                + " p8SoundEvents=" + p8SoundEvents);
+        p10AsyncComplete = false;
+        transition(Phase.WAIT_FOR_P10_B_SAVE);
+        activeServer.execute(() -> {
+            try {
+                assertOldA(activeServer);
+                oldAProvedBeforeBSave = true;
+                discardTarget();
+                activeServer.saveEverything(true, false, false);
+                p10AsyncComplete = true;
+            } catch (RuntimeException | Error failure) { asynchronousFailure = failure; }
+        });
+    }
+
+    private static void waitForBSave(Minecraft minecraft) {
+        if (!p10AsyncComplete) return;
+        require(oldAProvedBeforeBSave,
+                "B disconnect requires the preceding exact old-A byte, owner and 4000 resolution proof");
+        resetCastObservation();
+        activeServer.halt(false);
+        minecraft.disconnect();
+        marker("31 B_SAVED_LOGOUT_SAME_WORLD player=" + playerId);
+        transition(Phase.WAIT_FOR_P10_B_REOPEN_REQUEST);
+    }
+
+    private static void requestBReopen(Minecraft minecraft) {
+        require(minecraft.level == null && minecraft.getSingleplayerServer() == null,
+                "B disconnect did not clear the client world");
+        transition(Phase.WAIT_FOR_P10_B_REOPENED);
+        minecraft.createWorldOpenFlows().openWorld(WORLD_DIRECTORY,
+                () -> asynchronousFailure = new IllegalStateException("B reopen failed"));
+    }
+
+    private static void waitForBReopened(Minecraft minecraft) {
+        var server = minecraft.getSingleplayerServer();
+        if (server == null || minecraft.player == null || minecraft.getConnection() == null
+                || minecraft.getConnection().getCommands().getRoot().getChild("gramarye") == null) return;
+        require(minecraft.player.getUUID().equals(playerId), "B reopen changed the normal player UUID");
+        if (serverPreparationGeneration == 2) {
+            require(server != activeServer, "B reopen reused the old server");
+            activeServer = server;
+            serverPreparationGeneration = -3;
+            server.execute(() -> prepareServerPlayer(server, playerId, 3));
+            return;
+        }
+        if (serverPreparationGeneration != 3 || !clientCastGatesOpen(minecraft)) return;
+        require(recoveryBTerminal, "B pending recovery has not reached the production empty projection");
+        marker("32 B_RECOVERY_TERMINAL_SAME_UUID reference=" + revisionB);
+        p10AsyncComplete = false;
+        transition(Phase.WAIT_FOR_P10_C_RELOAD);
+        server.execute(() -> {
+            try {
+                assertPlayerReference(server, revisionB);
+                reloadOwnedTemplate(server, 4_000L, () -> {
+                    assertPlayerReference(server, revisionB);
+                    assertHeldRevision(server);
+                    requireValidation(server, "READY_CURRENT", "ACCEPTED");
+                    p10AsyncComplete = true;
+                });
+            } catch (RuntimeException | Error failure) { asynchronousFailure = failure; }
+        });
+    }
+
+    private static void waitForCReload(Minecraft minecraft) {
+        if (!p10AsyncComplete || !clientCastGatesOpen(minecraft) || !presentationReady()) return;
+        minecraft.getConnection().sendCommand(COMMAND);
+        transition(Phase.WAIT_FOR_P10_C_COMMAND);
+    }
+
+    private static void waitForCCommand(Minecraft minecraft) {
+        if (commandCompletionCount != 4) return;
+        marker("33 C_ROLLBACK_NEW_SUCCESSOR referenceC=" + revisionC + " originalA=" + revisionA);
+        p10AsyncComplete = false;
+        transition(Phase.WAIT_FOR_P10_CONTROLS);
+        activeServer.execute(() -> exerciseInvalidOverrides(activeServer, 0));
+    }
+
+    private static void waitForP10Controls(Minecraft minecraft) {
+        if (!p10AsyncComplete) return;
+        marker("34 INVALID_OVERRIDE_MATRIX_RETAINS_VALID_LKG unknown=true migration=true"
+                + " malformed=true future=true semantic=true");
+        marker("35 OVERRIDE_REMOVAL_PUBLISHES_BUILTIN_CURRENT noPlayerMutation=true");
+        require(p8WrongThreadRejected && p8WrongServerRejected && wrongServerProbe == null,
+                "P8 root handoff negative controls did not complete with released fixture ownership");
+        require(oldAProvedBeforeBSave,
+                "same-JAR sequence omitted the required old-A exact resolution before B save/reconnect");
+        require(frozenProductionJarHash.equals(productionJarHash(frozenProductionJar)),
+                "production JAR changed during the A/B/C sequence");
+        marker("36 TERMINAL_PASS productionJarSha256=" + frozenProductionJarHash);
+        pass(minecraft);
+    }
+
+    private static void captureFrozenProductionJar() {
+        var configured = System.getProperty("gramarye.p10.frozenJar");
+        require(configured != null && !configured.isBlank(), "frozen production JAR path is missing");
+        frozenProductionJar = Path.of(configured).toAbsolutePath().normalize();
+        require(Files.isRegularFile(frozenProductionJar) && !Files.isSymbolicLink(frozenProductionJar),
+                "frozen production JAR is not a regular owned artifact");
+        var roots = Arrays.stream(System.getProperty("fml.modFolders", "")
+                        .split(java.util.regex.Pattern.quote(java.io.File.pathSeparator)))
+                .filter(value -> value.startsWith("p9S5ClientRuntimeHarness%%"))
+                .map(value -> Path.of(value.substring("p9S5ClientRuntimeHarness%%".length()))
+                        .toAbsolutePath().normalize()).toList();
+        require(roots.contains(frozenProductionJar), "production JAR is not in the actual loaded mod roots");
+        var mainClass = "com/yo1no/gramarye/Gramarye.class";
+        var runtimeRoots = Arrays.stream(System.getProperty("java.class.path", "")
+                        .split(java.util.regex.Pattern.quote(java.io.File.pathSeparator)))
+                .filter(value -> !value.isBlank())
+                .map(value -> Path.of(value).toAbsolutePath().normalize()).toList();
+        for (var root : runtimeRoots) {
+            require(!Files.isDirectory(root) || !Files.exists(root.resolve(mainClass)),
+                    "JVM runtime classpath contains exploded production classes");
+        }
+        for (var root : roots) {
+            if (!root.equals(frozenProductionJar)) {
+                require(Files.isDirectory(root) || !Files.exists(root), "unexpected extra mod artifact");
+                require(!Files.exists(root.resolve(mainClass)), "exploded production classes shadow the frozen JAR");
+            }
+        }
+        try (var jar = new JarFile(frozenProductionJar.toFile());
+                var loaded = Gramarye.class.getResourceAsStream("/" + mainClass)) {
+            require(jar.getEntry("com/yo1no/gramarye/P9S5ClientRuntimeHarness.class") == null,
+                    "test controller leaked into the production JAR");
+            require(loaded != null, "loaded production class is missing");
+            var entry = jar.getJarEntry(mainClass);
+            require(entry != null, "production JAR has no root class");
+            try (var archived = jar.getInputStream(entry)) {
+                require(Arrays.equals(loaded.readAllBytes(), archived.readAllBytes()),
+                        "loaded production root differs from the frozen JAR");
+            }
+        } catch (IOException failure) {
+            throw new IllegalStateException("frozen JAR load identity could not be observed", failure);
+        }
+        frozenProductionJarHash = productionJarHash(frozenProductionJar);
+    }
+
+    private static String productionJarHash(Path path) {
+        try (var input = Files.newInputStream(path)) {
+            var digest = MessageDigest.getInstance("SHA-256");
+            var buffer = new byte[8192];
+            for (int read; (read = input.read(buffer)) != -1;) digest.update(buffer, 0, read);
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (IOException | NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("frozen JAR digest could not be observed", failure);
+        }
+    }
+
+    /** Fixed read-only product-owner observation, confined to this excluded harness source set. */
+    private static void observeExistingProductionPorts() {
+        try {
+            var field = P7ServerAuthorizationBoundary.class.getDeclaredField("installedRootIngress");
+            field.setAccessible(true);
+            var ingress = field.get(null);
+            require(ingress != null && ingress.getClass() == P7AuthenticatedPlayerCastIngress.class,
+                    "P10 observation did not reach the unique production P7 owner");
+            var store = readField(ingress, "storeService", SkillDefinitionStoreService.class);
+            var attachments = readField(ingress, "attachmentService", PlayerSkillAttachmentService.class);
+            var runtime = readField(ingress, "runtimeService", SkillRuntimeService.class);
+            require(observedStore == null || observedStore == store, "root Store port identity changed");
+            require(observedAttachments == null || observedAttachments == attachments,
+                    "root Attachment port identity changed");
+            require(observedRuntime == null || observedRuntime == runtime,
+                    "root runtime owner identity changed");
+            observedStore = store;
+            observedAttachments = attachments;
+            observedRuntime = runtime;
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("fixed read-only P7 owner observation failed", failure);
+        }
+    }
+
+    private static void observeCommittedReference(MinecraftServer server, int ordinal) {
+        var skillId = P9StarterSkillIdentityV0.forPlayer(playerId);
+        var reference = storeValue(observedStore.latestReference(server, skillId)).orElseThrow();
+        assertPlayerReference(server, reference);
+        require(reference.skillId().equals(skillId), "starter changed deterministic lineage");
+        if (ordinal == 1) {
+            require(reference.revision().value() == 0, "A first revision is not zero");
+            revisionA = reference;
+            revisionABytes = documentBytes(storeValue(observedStore.find(server, reference)).orElseThrow());
+            requireMagnitude(server, reference, 4_000L);
+            requirePendingSubmission(server, Optional.empty(), reference);
+        } else if (ordinal == 2) {
+            require(reference.equals(revisionA), "repeat starter allocated another revision");
+        } else if (ordinal == 3) {
+            require(reference.revision().value() == revisionA.revision().value() + 1,
+                    "B did not create the exact next revision");
+            revisionB = reference;
+            revisionBBytes = documentBytes(storeValue(observedStore.find(server, reference)).orElseThrow());
+            requireMagnitude(server, reference, 5_000L);
+            assertOldA(server);
+            requirePendingSubmission(server, Optional.of(revisionA), reference);
+        } else if (ordinal == 4) {
+            require(reference.revision().value() == revisionB.revision().value() + 1
+                    && !reference.equals(revisionA), "rollback moved latest backward instead of creating C");
+            revisionC = reference;
+            revisionCBytes = documentBytes(storeValue(observedStore.find(server, reference)).orElseThrow());
+            requireMagnitude(server, reference, 4_000L);
+            assertHeldRevision(server);
+        }
+    }
+
+    private static void assertRootHandoffWrongThread(Minecraft minecraft, MinecraftServer server) {
+        require(minecraft.isSameThread() && !server.isSameThread(),
+                "P8 wrong-thread control must use the actual client thread and live server");
+        var owner = observedPresentationOwner();
+        long generation = owner.catalogGenerationForTesting();
+        int activeEntries = owner.activeEntryCountForTesting();
+        int activeBytes = owner.activeCatalogBodyBytesForTesting();
+        int pendingEntries = owner.pendingEntryCountForTesting();
+        int pendingBytes = owner.pendingCatalogBodyBytesForTesting();
+        boolean rejected = false;
+        try {
+            owner.activateMatchingCandidateForRoot(server);
+        } catch (IllegalStateException expected) {
+            rejected = "P8 catalog lifecycle requires the server thread".equals(expected.getMessage());
+        }
+        require(rejected && generation > 0L
+                        && owner.catalogGenerationForTesting() == generation
+                        && owner.activeEntryCountForTesting() == activeEntries
+                        && owner.activeCatalogBodyBytesForTesting() == activeBytes
+                        && owner.pendingEntryCountForTesting() == pendingEntries
+                        && owner.pendingCatalogBodyBytesForTesting() == pendingBytes,
+                "actual root P8 wrong-thread call must fail before changing catalog or pending state");
+        p8WrongThreadRejected = true;
+    }
+
+    private static P8ServerPresentationService observedPresentationOwner() {
+        var adapter = readField(observedRuntime, "executionPort", RuntimeExecutionPort.class);
+        require(adapter.getClass() == P6RuntimeExecutionPortAdapter.class,
+                "P8 observation did not reach the exact production execution adapter");
+        return readField(adapter, "presentationService", P8ServerPresentationService.class);
+    }
+
+    private static synchronized void startWrongServerProbe(MinecraftServer server) {
+        if (terminal) return;
+        require(server == firstServer && server.isSameThread() && wrongServerProbe == null,
+                "wrong-server fixture must start once on the first real server thread");
+        var prepared = P8ServerPresentationService.loadCandidateForTesting(
+                MagicRegistries.profileTypeRegistry(), Map.of());
+        // This bounded test owner is never registered with any event bus.
+        var probe = P8ServerPresentationService.create();
+        try {
+            probe.startForTesting(server, prepared);
+            wrongServerProbe = probe;
+        } finally {
+            if (wrongServerProbe != probe) probe.stopForTesting();
+        }
+    }
+
+    private static synchronized void assertRootHandoffWrongServer(MinecraftServer server) {
+        var probe = wrongServerProbe;
+        require(probe != null && server != firstServer && server.isSameThread()
+                        && server.isRunning() && !server.isStopped(),
+                "wrong-server control must use the genuinely reopened live server on its own thread");
+        long generation = probe.catalogGenerationForTesting();
+        int activeEntries = probe.activeEntryCountForTesting();
+        int activeBytes = probe.activeCatalogBodyBytesForTesting();
+        int pendingEntries = probe.pendingEntryCountForTesting();
+        int pendingBytes = probe.pendingCatalogBodyBytesForTesting();
+        try {
+            boolean rejected = false;
+            try {
+                probe.activateMatchingCandidateForRoot(server);
+            } catch (IllegalStateException expected) {
+                rejected = "P8 root full-sync requires the active server".equals(expected.getMessage());
+            }
+            require(rejected && generation == 1L
+                            && probe.catalogGenerationForTesting() == generation
+                            && probe.activeEntryCountForTesting() == activeEntries
+                            && probe.activeCatalogBodyBytesForTesting() == activeBytes
+                            && probe.pendingEntryCountForTesting() == pendingEntries
+                            && probe.pendingCatalogBodyBytesForTesting() == pendingBytes,
+                    "P8 wrong-server call must reject without changing its exact catalog coordinates");
+            p8WrongServerRejected = true;
+        } finally {
+            stopWrongServerProbe();
+        }
+    }
+
+    private static synchronized void stopWrongServerProbe() {
+        var probe = wrongServerProbe;
+        if (probe != null) {
+            probe.stopForTesting();
+            wrongServerProbe = null;
+        }
+    }
+
+    private static void assertPlayerReference(MinecraftServer server, SkillReference expected) {
+        var actor = server.getPlayerList().getPlayer(playerId);
+        requireCurrentActor(server, actor);
+        require(storeValue(observedStore.latestReference(server, expected.skillId())).equals(Optional.of(expected)),
+                "authoritative latest changed unexpectedly");
+        require(attachmentValue(observedAttachments.equippedAt(actor, 0)).equals(Optional.of(expected)),
+                "slot zero does not contain the exact expected revision");
+        require(storeValue(observedStore.ownerOf(server, expected.skillId()))
+                .equals(Optional.of(new SkillOwnerId(playerId))), "Store owner changed");
+    }
+
+    private static void assertOldA(MinecraftServer server) {
+        assertStoredRevision(server, revisionA, revisionABytes, 4_000L);
+    }
+
+    private static void assertHeldRevision(MinecraftServer server) {
+        // Startup reclaim may discard unrooted A after its required pre-B-save proof.
+        // Observe the actual current held revision; never manufacture a retention pin.
+        var reference = revisionC != null ? revisionC : revisionB;
+        require(reference != null && oldAProvedBeforeBSave,
+                "post-B-recovery observation requires the preceding old-A proof and actual held revision");
+        assertPlayerReference(server, reference);
+        assertStoredRevision(server, reference,
+                revisionC != null ? revisionCBytes : revisionBBytes,
+                revisionC != null ? 4_000L : 5_000L);
+    }
+
+    private static void assertStoredRevision(MinecraftServer server, SkillReference reference,
+            String expectedBytes, long expectedMagnitude) {
+        var document = storeValue(observedStore.find(server, reference)).orElseThrow();
+        require(documentBytes(document).equals(expectedBytes), "immutable exact document bytes changed");
+        require(storeValue(observedStore.ownerOf(server, reference.skillId()))
+                .equals(Optional.of(new SkillOwnerId(playerId))), "immutable exact owner changed");
+        requireMagnitude(server, reference, expectedMagnitude);
+    }
+
+    private static void requireMagnitude(MinecraftServer server, SkillReference reference, long magnitude) {
+        var document = storeValue(observedStore.find(server, reference)).orElseThrow();
+        var projection = new P5RuntimeProjector(ProfileAvailabilityView.unknown()).project(
+                reference, document, new ValidationContext(MagicPolicyLimits.DEFAULTS));
+        require(projection instanceof P5RuntimeProjector.Projection.Available,
+                "exact committed revision failed formal production resolution");
+        var definition = ((P5RuntimeProjector.Projection.Available) projection).definition();
+        require(P9StarterSkillContent.hasSupportedStarterGameplay(definition)
+                && ((P9DamageActionPayloadV0) definition.nodes().get(1).action().payload()).magnitude() == magnitude,
+                "exact revision resolved to the wrong damage meaning");
+    }
+
+    private static void requirePendingSubmission(
+            MinecraftServer server, Optional<SkillReference> expectedBase, SkillReference targetReference) {
+        var actor = server.getPlayerList().getPlayer(playerId);
+        requireCurrentActor(server, actor);
+        require(actor.getUUID().equals(playerId), "pending observation changed the normal player UUID");
+        var pending = observedStore.submissionPort().observePendingRecovery(
+                server, new SkillOwnerId(actor.getUUID()));
+        require(pending instanceof SkillDefinitionStoreSubmissionPort.PendingRecoveryProjection.Available ready
+                        && ready.chains().size() == 1,
+                "real submission must leave exactly one pending chain for this normal player");
+        var chain = ((SkillDefinitionStoreSubmissionPort.PendingRecoveryProjection.Available) pending)
+                .chains().getFirst();
+        require(chain.skillId().equals(targetReference.skillId()) && chain.steps().size() == 1,
+                "real submission journal must name only its exact deterministic target route");
+        var step = chain.steps().getFirst();
+        require(step.expectedPointer().equals(expectedBase)
+                        && step.targetPointer().equals(targetReference)
+                        && PlayerSkillAttachmentService.isChangedGenerationSuccessor(
+                                step.expectedGeneration(), step.targetGeneration()),
+                "real submission journal must retain its exact base-to-target transition before logout");
+    }
+
+    private static void requireEmptyPendingRecovery(MinecraftServer server) {
+        var pending = observedStore.submissionPort().observePendingRecovery(server, new SkillOwnerId(playerId));
+        require(pending instanceof SkillDefinitionStoreSubmissionPort.PendingRecoveryProjection.Available ready
+                && ready.chains().isEmpty(), "login persisted-readback recovery did not reach Available(empty)");
+    }
+
+    private static <T> T storeValue(SkillSubsystemResult<T> result) {
+        require(result instanceof SkillSubsystemResult.Available<?>, "Store observation unavailable");
+        return ((SkillSubsystemResult.Available<T>) result).value();
+    }
+
+    private static <T> T attachmentValue(PlayerSkillAttachmentService.Result<T> result) {
+        require(result instanceof PlayerSkillAttachmentService.Available<?>, "Attachment observation unavailable");
+        return ((PlayerSkillAttachmentService.Available<T>) result).value();
+    }
+
+    private static String documentBytes(SkillDocument document) {
+        var encoded = SkillDocument.CODEC.encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, document).getOrThrow();
+        try {
+            var bytes = new java.io.ByteArrayOutputStream();
+            net.minecraft.nbt.NbtIo.write((net.minecraft.nbt.CompoundTag) encoded,
+                    new java.io.DataOutputStream(bytes));
+            return java.util.Base64.getEncoder().encodeToString(bytes.toByteArray());
+        } catch (IOException failure) { throw new IllegalStateException("document byte observation failed", failure); }
+    }
+
+    private static void requireValidation(MinecraftServer server, String primary, String lastAttempt) {
+        var actor = server.getPlayerList().getPlayer(playerId);
+        requireCurrentActor(server, actor);
+        observeExistingProductionPorts();
+        var storeIdentity = observedStore;
+        var submissionIdentity = observedStore.submissionPort();
+        var attachmentIdentity = observedAttachments;
+        var runtimeIdentity = observedRuntime;
+        var skillId = P9StarterSkillIdentityV0.forPlayer(playerId);
+        var owner = storeValue(observedStore.ownerOf(server, skillId));
+        var latest = storeValue(observedStore.latestReference(server, skillId));
+        var equipped = attachmentValue(observedAttachments.equippedAt(actor, 0));
+        var draft = attachmentValue(observedAttachments.findDraft(actor, skillId));
+        var pending = submissionIdentity.observePendingRecovery(server, new SkillOwnerId(playerId));
+        require(pending instanceof SkillDefinitionStoreSubmissionPort.PendingRecoveryProjection.Available,
+                "validate observation requires an available exact-owner pending projection");
+        var observedTarget = revisionC != null ? revisionC
+                : revisionB != null ? revisionB : revisionA;
+        var observedTargetBytes = observedTarget == null ? null
+                : documentBytes(storeValue(observedStore.find(server, observedTarget)).orElseThrow());
+        var messages = new ArrayList<String>();
+        var result = new int[] {Integer.MIN_VALUE};
+        var observer = new CommandSource() {
+            @Override public void sendSystemMessage(Component component) { messages.add(component.getString()); }
+            @Override public boolean acceptsSuccess() { return true; }
+            @Override public boolean acceptsFailure() { return true; }
+            @Override public boolean shouldInformAdmins() { return false; }
+        };
+        var source = server.createCommandSourceStack().withSource(observer)
+                .withCallback((success, code) -> result[0] = code);
+        require(source.hasPermission(2) && !actor.createCommandSourceStack().hasPermission(1),
+                "operator diagnostics changed normal-player authority");
+        server.getCommands().performPrefixedCommand(source, "skill validate template gramarye:starter_bolt_v0");
+        require(result[0] == 1 && !messages.isEmpty()
+                && messages.getFirst().startsWith(primary + " lastAttempt=" + lastAttempt + " "),
+                "validate returned the wrong independent primary/latest-attempt axes: " + messages);
+        require(messages.size() <= 17 && messages.stream().allMatch(value -> value.length() <= 1_024)
+                && messages.stream().mapToInt(String::length).sum() <= 17_408, "validate exceeded output bounds");
+        observeExistingProductionPorts();
+        require(observedStore == storeIdentity && observedStore.submissionPort() == submissionIdentity
+                        && observedAttachments == attachmentIdentity && observedRuntime == runtimeIdentity
+                        && server.getPlayerList().getPlayer(playerId) == actor,
+                "read-only validate replaced an exact authority or actor identity");
+        require(owner.equals(storeValue(observedStore.ownerOf(server, skillId)))
+                && latest.equals(storeValue(observedStore.latestReference(server, skillId)))
+                && equipped.equals(attachmentValue(observedAttachments.equippedAt(actor, 0)))
+                && draft.equals(attachmentValue(observedAttachments.findDraft(actor, skillId)))
+                && pending.equals(submissionIdentity.observePendingRecovery(server, new SkillOwnerId(playerId))),
+                "read-only validate mutated exact owner, player routes, or pending recovery steps");
+        if (observedTarget != null) {
+            var targetAfter = revisionC != null ? revisionC
+                    : revisionB != null ? revisionB : revisionA;
+            require(observedTarget.equals(targetAfter)
+                            && observedTargetBytes.equals(documentBytes(
+                                    storeValue(observedStore.find(server, observedTarget)).orElseThrow())),
+                    "read-only validate changed the exact held reference or immutable document bytes");
+        }
+    }
+
+    private static Path ownedTemplatePath(MinecraftServer server) {
+        return server.getWorldPath(LevelResource.DATAPACK_DIR).resolve("p10-owned-template").resolve(TEMPLATE_JSON);
+    }
+
+    private static com.google.gson.JsonObject templateJson(long magnitude) {
+        try (var input = P9S5ClientRuntimeHarness.class.getResourceAsStream("/" + TEMPLATE_JSON)) {
+            require(input != null, "built-in template resource is absent from candidate");
+            var body = com.google.gson.JsonParser.parseString(new String(input.readAllBytes(), StandardCharsets.UTF_8))
+                    .getAsJsonObject();
+            body.getAsJsonArray("nodes").get(1).getAsJsonObject().getAsJsonObject("action")
+                    .getAsJsonObject("payload").addProperty("magnitude", magnitude);
+            return body;
+        } catch (IOException failure) { throw new IllegalStateException("built-in fixture read failed", failure); }
+    }
+
+    private static void reloadOwnedTemplate(MinecraftServer server, long magnitude, Runnable accepted) {
+        writeOwnedTemplate(server, templateJson(magnitude));
+        reloadSelectedTemplate(server, accepted);
+    }
+
+    private static void writeOwnedTemplate(MinecraftServer server, com.google.gson.JsonObject body) {
+        try {
+            var packRoot = server.getWorldPath(LevelResource.DATAPACK_DIR).resolve("p10-owned-template");
+            var path = ownedTemplatePath(server);
+            require(!Files.isSymbolicLink(packRoot) && !Files.isSymbolicLink(path), "owned pack became a symlink");
+            Files.createDirectories(path.getParent());
+            Files.writeString(packRoot.resolve("pack.mcmeta"), "{\"pack\":{\"pack_format\":"
+                    + net.minecraft.SharedConstants.getCurrentVersion().getPackVersion(PackType.SERVER_DATA)
+                    + ",\"description\":\"P10 owned same-candidate template\"}}", StandardCharsets.UTF_8);
+            Files.writeString(path, body.toString(), StandardCharsets.UTF_8);
+        } catch (IOException failure) { throw new IllegalStateException("owned template write failed", failure); }
+    }
+
+    private static void reloadSelectedTemplate(MinecraftServer server, Runnable accepted) {
+        server.getPackRepository().reload();
+        var selected = new ArrayList<>(server.getPackRepository().getSelectedIds());
+        if (!selected.contains(TEMPLATE_PACK)) selected.add(TEMPLATE_PACK);
+        require(server.getPackRepository().isAvailable(TEMPLATE_PACK), "owned external pack is not available");
+        server.reloadResources(selected).whenComplete((ignored, failure) -> {
+            if (failure != null) { asynchronousFailure = failure; return; }
+            try { accepted.run(); }
+            catch (RuntimeException | Error problem) { asynchronousFailure = problem; }
+        });
+    }
+
+    private static void exerciseInvalidOverrides(MinecraftServer server, int index) {
+        try {
+            var kinds = List.of("UNKNOWN_TYPE", "MIGRATION_FAILED", "DECODE_FAILED", "FUTURE_SCHEMA", "SEMANTIC_INVALID");
+            if (index == kinds.size()) {
+                Files.delete(ownedTemplatePath(server));
+                reloadSelectedTemplate(server, () -> {
+                    assertPlayerReference(server, revisionC);
+                    assertHeldRevision(server);
+                    requireValidation(server, "READY_CURRENT", "ACCEPTED");
+                    p10AsyncComplete = true;
+                });
+                return;
+            }
+            var body = templateJson(5_000L);
+            var action = body.getAsJsonArray("nodes").get(1).getAsJsonObject().getAsJsonObject("action");
+            switch (index) {
+                case 0 -> action.addProperty("type", "gramarye:missing_p10_type");
+                case 1 -> action.addProperty("schema_version", 0);
+                case 2 -> action.getAsJsonObject("payload").remove("mana_cost");
+                case 3 -> action.addProperty("schema_version", 2);
+                case 4 -> action.getAsJsonObject("payload").addProperty("magnitude", 4_500L);
+                default -> throw new IllegalStateException("unknown negative control");
+            }
+            writeOwnedTemplate(server, body);
+            reloadSelectedTemplate(server, () -> {
+                assertPlayerReference(server, revisionC);
+                assertHeldRevision(server);
+                requireValidation(server, "READY_LKG", kinds.get(index));
+                server.execute(() -> exerciseInvalidOverrides(server, index + 1));
+            });
+        } catch (IOException | RuntimeException | Error failure) { asynchronousFailure = failure; }
+    }
+
+    private static void discardTarget() {
+        if (target != null && !target.isRemoved()) target.discard();
     }
 
     private static void prepareServerPlayer(
@@ -1081,7 +1873,33 @@ final class P9S5ClientRuntimeHarness {
                         "console/entity-substituted starter command was not rejected");
                 spoofedProvisionRejected = true;
             }
-            serverPreparationGeneration = generation;
+            observeExistingProductionPorts();
+            if (generation == 1) {
+                startWrongServerProbe(server);
+                var presentationOwner = observedPresentationOwner();
+                long catalogBeforeA = presentationOwner.catalogGenerationForTesting();
+                require(catalogBeforeA > 0L,
+                        "supported A reload did not start with an active server catalog");
+                reloadOwnedTemplate(server, 4_000L, () -> {
+                    requireValidation(server, "READY_CURRENT", "ACCEPTED");
+                    require(observedPresentationOwner() == presentationOwner,
+                            "supported A reload replaced the production P8 owner");
+                    long catalogAfterA = presentationOwner.catalogGenerationForTesting();
+                    require(catalogAfterA == Math.addExact(catalogBeforeA, 1L),
+                            "supported A reload did not activate the exact next server catalog generation");
+                    preparedACatalogGeneration = catalogAfterA;
+                    serverPreparationGeneration = generation;
+                });
+            } else {
+                if (generation == 2) assertRootHandoffWrongServer(server);
+                requireEmptyPendingRecovery(server);
+                if (generation == 2) recoveryATerminal = true;
+                if (generation == 3) {
+                    assertHeldRevision(server);
+                    recoveryBTerminal = true;
+                }
+                serverPreparationGeneration = generation;
+            }
         } catch (RuntimeException | Error failure) {
             asynchronousFailure = failure;
         }
@@ -1096,6 +1914,7 @@ final class P9S5ClientRuntimeHarness {
                     "starter command did not return exact success for ordinal " + ordinal);
             require(ordinal == commandCompletionCount + 1,
                     "starter command results completed out of order");
+            observeCommittedReference(server, ordinal);
             commandCompletionCount = ordinal;
         } catch (RuntimeException | Error failure) {
             asynchronousFailure = failure;
@@ -1144,9 +1963,10 @@ final class P9S5ClientRuntimeHarness {
         }
         require(exactTarget.isAddedToLevel() && !exactTarget.isRemoved(),
                 "P6 damage removed the controlled target");
-        exactFourDamageObserved = Float.floatToIntBits(exactTarget.getHealth())
+        exactFourDamageObserved = damageCalls == 1 && exactAttributionObserved
+                && Float.floatToIntBits(exactTarget.getHealth())
                 == Float.floatToIntBits(
-                        Float.intBitsToFloat(targetInitialHealthBits) - 4.0F);
+                        Float.intBitsToFloat(targetInitialHealthBits) - expectedDamage);
     }
 
     private static void queueCastClick(Minecraft minecraft) {
@@ -1255,6 +2075,10 @@ final class P9S5ClientRuntimeHarness {
                 + ",catalogResourceGeneration="
                 + state.catalogEvaluationResourceGeneration()
                 + ",catalogEntries=" + (snapshot == null ? 0 : snapshot.entries().size())
+                + ",expectedBCatalogGeneration=" + preparedBCatalogGeneration
+                + ",p7ReloadGateState=" + lastP7ReloadGateState
+                + ",p7ReloadCloseRequested=" + lastP7ReloadCloseRequested
+                + ",p7ReloadGateTick=" + lastP7ReloadGateTick
                 + "]";
     }
 
@@ -1291,6 +2115,8 @@ final class P9S5ClientRuntimeHarness {
         serverImpactObserved = false;
         serverLeaveObserved = false;
         exactFourDamageObserved = false;
+        damageCalls = 0;
+        exactAttributionObserved = false;
     }
 
     private static void requireNoAsynchronousFailure() {
@@ -1321,6 +2147,7 @@ final class P9S5ClientRuntimeHarness {
         terminal = true;
         phase = Phase.TERMINAL;
         try {
+            stopWrongServerProbe();
             writeResult("RESULT=PASS");
         } finally {
             minecraft.stop();
@@ -1343,7 +2170,11 @@ final class P9S5ClientRuntimeHarness {
         try {
             writeResult("RESULT=FAIL");
         } finally {
-            minecraft.stop();
+            try {
+                stopWrongServerProbe();
+            } finally {
+                minecraft.stop();
+            }
         }
     }
 
@@ -1461,6 +2292,17 @@ final class P9S5ClientRuntimeHarness {
         WAIT_FOR_REOPENED_WORLD,
         WAIT_FOR_REOPEN_FLUSH,
         WAIT_FOR_SECOND_CAST,
+        WAIT_FOR_P10_A_RELOAD_PREPARATION,
+        WAIT_FOR_P10_A_RELOAD_CAST,
+        WAIT_FOR_P10_B_RELOAD,
+        WAIT_FOR_P10_B_COMMAND,
+        WAIT_FOR_P10_B_CAST,
+        WAIT_FOR_P10_B_SAVE,
+        WAIT_FOR_P10_B_REOPEN_REQUEST,
+        WAIT_FOR_P10_B_REOPENED,
+        WAIT_FOR_P10_C_RELOAD,
+        WAIT_FOR_P10_C_COMMAND,
+        WAIT_FOR_P10_CONTROLS,
         TERMINAL
     }
 }

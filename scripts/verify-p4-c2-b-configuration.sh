@@ -587,7 +587,8 @@ is_approved_p8_s5_resource_path() {
     case "$1" in
         src/main/resources/META-INF/accesstransformer.cfg | \
         src/main/resources/assets/gramarye/lang/en_us.json | \
-        src/main/resources/assets/gramarye/lang/zh_tw.json)
+        src/main/resources/assets/gramarye/lang/zh_tw.json | \
+        src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json)
             return 0
             ;;
         *)
@@ -666,6 +667,7 @@ verify_production_freeze() {
         src/main/resources \
         ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
         ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+        ':(exclude)src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json' \
         ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' || status=$?
     if [[ "${status}" -ne 0 ]]; then
         fail 'P4-D3-A must not modify tracked production resources'

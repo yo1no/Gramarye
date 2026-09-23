@@ -489,8 +489,11 @@ final class P8S2BoundaryTest {
     }
 
     @Test
-    void serverCatalogOwnerIsFinalPackagePrivateAndHasNoExternalMembers() {
+    void serverCatalogOwnerIsFinalPackagePrivateAndHasNoExternalMembers() throws Exception {
         var type = P8ServerPresentationService.class;
+        var outcome = P8ServerPresentationService.P8RootFullSyncOutcome.class;
+        var rootHandoff = type.getDeclaredMethod(
+                "activateMatchingCandidateForRoot", net.minecraft.server.MinecraftServer.class);
 
         assertAll(
                 () -> assertEquals("com.yo1no.gramarye", type.getPackageName()),
@@ -504,7 +507,35 @@ final class P8S2BoundaryTest {
                 () -> assertTrue(Arrays.stream(type.getDeclaredFields())
                         .noneMatch(P8S2BoundaryTest::isPublicOrProtected)),
                 () -> assertTrue(Arrays.stream(type.getDeclaredClasses())
-                        .noneMatch(nested -> isPublicOrProtected(nested.getModifiers()))));
+                        .noneMatch(nested -> isPublicOrProtected(nested.getModifiers()))),
+                () -> assertTrue(isPackagePrivate(rootHandoff.getModifiers())),
+                () -> assertEquals(outcome, rootHandoff.getReturnType()),
+                () -> assertEquals(0, rootHandoff.getExceptionTypes().length),
+                () -> assertSame(type, outcome.getEnclosingClass()),
+                () -> assertTrue(isPackagePrivate(outcome.getModifiers())),
+                () -> assertEquals(
+                        List.of("ACTIVATED_CURRENT", "NO_MATCHING_CANDIDATE", "GENERATION_EXHAUSTED"),
+                        Arrays.stream(outcome.getEnumConstants()).map(Enum::name).toList()),
+                () -> assertEquals(
+                        Set.of("ACTIVATED_CURRENT", "NO_MATCHING_CANDIDATE", "GENERATION_EXHAUSTED"),
+                        Arrays.stream(outcome.getDeclaredFields())
+                                .filter(field -> !field.isSynthetic())
+                                .filter(P8S2BoundaryTest::isPublicOrProtected)
+                                .map(java.lang.reflect.Field::getName)
+                                .collect(Collectors.toUnmodifiableSet())),
+                () -> assertTrue(Arrays.stream(outcome.getDeclaredFields())
+                        .filter(field -> !field.isSynthetic())
+                        .allMatch(field -> field.isEnumConstant()
+                                && Modifier.isPublic(field.getModifiers())
+                                && Modifier.isStatic(field.getModifiers())
+                                && Modifier.isFinal(field.getModifiers()))),
+                () -> assertEquals(
+                        Set.of("values", "valueOf"),
+                        Arrays.stream(outcome.getDeclaredMethods())
+                                .filter(method -> !method.isSynthetic())
+                                .filter(P8S2BoundaryTest::isPublicOrProtected)
+                                .map(java.lang.reflect.Method::getName)
+                                .collect(Collectors.toUnmodifiableSet())));
     }
 
     @Test
@@ -850,9 +881,9 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
-                () -> assertEquals(118_692L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
+                () -> assertEquals(120_436L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
                 () -> assertEquals(
-                        "fc89587d12a123ef8bc94f68040d43783c6023173d48e500b72e07db1559d97f",
+                        "cebe78c6e92df3656d4e85644ac085e752211c9cb240f7e9397540bf5eb76587",
                         sha256(P7_LOGIN_ISOLATION_SOURCE)));
     }
 

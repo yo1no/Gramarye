@@ -580,7 +580,8 @@ is_approved_p8_s5_resource_path() {
     case "$1" in
         src/main/resources/META-INF/accesstransformer.cfg | \
         src/main/resources/assets/gramarye/lang/en_us.json | \
-        src/main/resources/assets/gramarye/lang/zh_tw.json)
+        src/main/resources/assets/gramarye/lang/zh_tw.json | \
+        src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json)
             return 0
             ;;
         *)
@@ -862,7 +863,8 @@ verify_changed_paths() {
                     ;;
                 src/main/resources/META-INF/accesstransformer.cfg | \
                 src/main/resources/assets/gramarye/lang/en_us.json | \
-                src/main/resources/assets/gramarye/lang/zh_tw.json) ;;
+                src/main/resources/assets/gramarye/lang/zh_tw.json | \
+                src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json) ;;
                 *.java | *.md) ;;
                 *) fail "allowed E1-A path has an unexpected file type: $path" ;;
             esac

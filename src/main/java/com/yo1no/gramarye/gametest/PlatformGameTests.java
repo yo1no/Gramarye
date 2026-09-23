@@ -148,6 +148,13 @@ public final class PlatformGameTests {
                 "com.yo1no.gramarye.P9DamageActionType",
                 "com.yo1no.gramarye.P9DamageActionPayloadV0",
                 damagePayload);
+        damagePayload.addProperty("magnitude", 5_000);
+        assertActionPayload(
+                helper,
+                registry.getOptional(damage).orElseThrow(),
+                "com.yo1no.gramarye.P9DamageActionType",
+                "com.yo1no.gramarye.P9DamageActionPayloadV0",
+                damagePayload);
     }
 
     private static void assertDescriptorRegistryShell(
@@ -225,9 +232,13 @@ public final class PlatformGameTests {
         helper.assertTrue(
                 descriptor.getClass().getName().equals(expectedDescriptorClass),
                 "Action descriptor class identity differs from the P9 authority");
+        var damage = expectedDescriptorClass.equals("com.yo1no.gramarye.P9DamageActionType");
         helper.assertTrue(
-                descriptor.currentPayloadSchemaVersion() == 0,
-                "Action descriptor schema must be zero");
+                descriptor.currentPayloadSchemaVersion() == (damage ? 1 : 0),
+                "Damage alone must use current schema one; spawn remains schema zero");
+        helper.assertTrue(
+                descriptor.payloadMigrationPlan().steps().size() == (damage ? 1 : 0),
+                "Damage alone must own the real adjacent V0-to-V1 migration edge");
         P payload = descriptor.payloadCodec().codec()
                 .parse(JsonOps.INSTANCE, expectedPayload)
                 .getOrThrow();

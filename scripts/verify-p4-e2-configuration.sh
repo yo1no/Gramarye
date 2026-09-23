@@ -118,6 +118,15 @@ require_fixed_count() {
         || fail "${message}: expected ${expected}, found ${count}"
 }
 
+verify_direct_extension_registration() {
+    local file="$1"
+    require_fixed_count "${file}" 'registerExtensionPoint(' 1 \
+        'Gramarye must have exactly one extension registration call'
+    require_fixed_count "${file}" \
+        'exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);' 1 \
+        'Gramarye must use the direct-object extension registration overload exactly once'
+}
+
 forbid_fixed() {
     local file="$1"
     local needle="$2"
@@ -1043,6 +1052,33 @@ self_regression() {
         'self-test rejected a present marker'
     forbid_fixed "${SELF_TEST_ROOT}/present.txt" 'absent-marker' \
         'self-test accepted an absent forbidden marker'
+    printf '%s\n' \
+        'exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);' \
+        'private static void finishP10Reload(java.util.function.Supplier<P8RootFullSyncOutcome> activateP8) {}' \
+        > "${SELF_TEST_ROOT}/extension-direct.txt"
+    verify_direct_extension_registration "${SELF_TEST_ROOT}/extension-direct.txt"
+    printf '%s\n' \
+        'exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, () -> exactFacade);' \
+        > "${SELF_TEST_ROOT}/extension-supplier.txt"
+    if (verify_direct_extension_registration "${SELF_TEST_ROOT}/extension-supplier.txt") \
+            > "${SELF_TEST_ROOT}/extension-supplier.log" 2>&1; then
+        fail 'self-test accepted Supplier extension registration'
+    fi
+    require_fixed "${SELF_TEST_ROOT}/extension-supplier.log" \
+        'direct-object extension registration overload exactly once' \
+        'self-test rejected Supplier registration for an unrelated reason'
+    printf '%s\n' \
+        'exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);' \
+        'exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, () -> exactFacade);' \
+        > "${SELF_TEST_ROOT}/extension-extra.txt"
+    if (verify_direct_extension_registration "${SELF_TEST_ROOT}/extension-extra.txt") \
+            > "${SELF_TEST_ROOT}/extension-extra.log" 2>&1; then
+        fail 'self-test accepted an additional Supplier extension registration'
+    fi
+    require_fixed "${SELF_TEST_ROOT}/extension-extra.log" \
+        'exactly one extension registration call' \
+        'self-test rejected the extra registration for an unrelated reason'
+    printf '%s\n' 'Verified E2 direct-object registration controls: private Supplier accepted; Supplier registration and extra call rejected.'
     printf '%s\n' before BEGIN inside END after > "${SELF_TEST_ROOT}/slice-source.txt"
     : > "${SELF_TEST_ROOT}/slice-output.txt"
     append_exclusive_slice \
@@ -1358,11 +1394,7 @@ require_only_owner 'new P4E2QualificationFacade()' "${GRAMARYE}" 1 \
     'qualification facade construction must have one exact composition-root owner'
 require_only_owner 'registerExtensionPoint(' "${GRAMARYE}" 1 \
     'extension registration must have one exact composition-root owner'
-require_fixed "${GRAMARYE}" \
-    'exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);' \
-    'Gramarye must use the direct-object extension registration overload'
-forbid_fixed "${GRAMARYE}" 'Supplier' \
-    'Gramarye must not use Supplier extension registration'
+verify_direct_extension_registration "${GRAMARYE}"
 forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" 'getCustomExtension(' \
     'production code must not retrieve the qualification extension'
 forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" 'ModLoadingContext' \
@@ -1674,6 +1706,7 @@ git diff --quiet HEAD -- \
     docs/codex-spec src/main/resources src/test/resources \
     ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
     ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+    ':(exclude)src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json' \
     ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \
     || fail 'P4-E2 must not change authority/resource/version truth'
 git diff --quiet HEAD -- \

@@ -282,7 +282,7 @@ enum ProductionP6RuntimeExecutionInputMapper implements P6RuntimeExecutionInputM
                 && context.node().action().descriptor() == P9DamageActionType.INSTANCE
                 && context.node().action().payload()
                         instanceof P9DamageActionPayloadV0 action
-                && action.magnitude() == 4_000L
+                && (action.magnitude() == 4_000L || action.magnitude() == 5_000L)
                 && action.magnitude() % 1_000L == 0L
                 && action.manaCost() == 0L
                 && event.executionData() instanceof ProjectileHitExecutionDataV0 hit

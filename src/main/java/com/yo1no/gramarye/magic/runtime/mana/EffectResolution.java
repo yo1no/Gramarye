@@ -77,7 +77,8 @@ final class DamageEffectResolver implements EffectResolver {
             if (damageRequest.requestId().value()
                             != damageRequest.sourceEventId().value()
                     || damageRequest.magnitude() % 1_000L != 0
-                    || damageRequest.magnitude() != 4_000L
+                    || (damageRequest.magnitude() != 4_000L
+                            && damageRequest.magnitude() != 5_000L)
                     || damageRequest.manaCost() != 0) {
                 return new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST);
             }

@@ -21,6 +21,9 @@ import com.yo1no.gramarye.magic.definition.document.DraftTriggerSlot;
 import com.yo1no.gramarye.magic.definition.document.SkillDraft;
 import com.yo1no.gramarye.magic.definition.document.SkillDocument;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
+import com.yo1no.gramarye.magic.definition.document.NodeDocument;
+import com.yo1no.gramarye.magic.definition.action.ResolvedActionDefinition;
+import com.yo1no.gramarye.magic.definition.trigger.ResolvedTriggerDefinition;
 import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
 import com.yo1no.gramarye.magic.definition.inspection.ReferenceRole;
 import com.yo1no.gramarye.magic.definition.inspection.SourceSelection;
@@ -49,7 +52,12 @@ final class P9StarterSkillContent {
     static final Codec<Long> EXACT_LONG = exactLongCodec();
 
     private static final StarterGameplayFingerprintV0 CANONICAL_FINGERPRINT =
-            new StarterGameplayFingerprintV0(
+            starterFingerprint(4_000L);
+    private static final StarterGameplayFingerprintV0 P10_ALTERNATE_FINGERPRINT =
+            starterFingerprint(5_000L);
+
+    private static StarterGameplayFingerprintV0 starterFingerprint(long magnitude) {
+        return new StarterGameplayFingerprintV0(
                     0,
                     ACTIVE_CAST_ID,
                     SPAWN_PROJECTILE_ID,
@@ -64,8 +72,9 @@ final class P9StarterSkillContent {
                     0,
                     true,
                     DAMAGE_ID,
-                    4_000L,
+                    magnitude,
                     0L);
+    }
 
     private static final ValidationContext CANONICAL_VALIDATION_CONTEXT =
             new ValidationContext(MagicPolicyLimits.DEFAULTS);
@@ -138,10 +147,84 @@ final class P9StarterSkillContent {
             SkillReference reference, SkillDocument document) {
         Objects.requireNonNull(reference, "reference");
         Objects.requireNonNull(document, "document");
+        return projectSupported(reference, document)
+                .map(P9StarterSkillContent::hasCanonicalGameplayFingerprint).orElse(false);
+    }
+
+    /** P10 support is separate from the immutable legacy P9 golden fingerprint. */
+    static boolean hasSupportedStarterGameplay(ValidatedSkillDefinition definition) {
+        return fingerprintOf(definition)
+                .map(value -> CANONICAL_FINGERPRINT.equals(value)
+                        || P10_ALTERNATE_FINGERPRINT.equals(value))
+                .orElse(false);
+    }
+
+    static boolean hasSupportedStarterGameplay(
+            SkillReference reference, SkillDocument document) {
+        return projectSupported(reference, document).isPresent();
+    }
+
+    /** Content equality excludes identity and revision but includes every appearance value. */
+    static Optional<NormalizedStarterContent> normalizedContent(
+            SkillReference reference, SkillDocument document) {
+        return projectSupported(reference, document)
+                .map(definition -> normalizedContent(definition, document));
+    }
+
+    static boolean sameNormalizedContent(
+            SkillReference leftReference, SkillDocument left,
+            SkillReference rightReference, SkillDocument right) {
+        var normalizedLeft = normalizedContent(leftReference, left);
+        var normalizedRight = normalizedContent(rightReference, right);
+        return normalizedLeft.isPresent() && normalizedLeft.equals(normalizedRight);
+    }
+
+    private static Optional<ValidatedSkillDefinition> projectSupported(
+            SkillReference reference, SkillDocument document) {
         var projection = CANONICAL_PROJECTOR.project(
                 reference, document, CANONICAL_VALIDATION_CONTEXT);
         return projection instanceof P5RuntimeProjector.Projection.Available available
-                && hasCanonicalGameplayFingerprint(available.definition());
+                        && hasSupportedStarterGameplay(available.definition())
+                ? Optional.of(available.definition()) : Optional.empty();
+    }
+
+    static NormalizedStarterContent normalizedContent(
+            ValidatedSkillDefinition definition, SkillDocument document) {
+        Objects.requireNonNull(definition, "definition");
+        Objects.requireNonNull(document, "document");
+        if (!hasSupportedStarterGameplay(definition)
+                || !definition.reference().equals(
+                        new SkillReference(document.skillId(), document.revision()))) {
+            throw new IllegalArgumentException("Expected exact supported starter projection");
+        }
+        var nodes = definition.nodes().stream().map(node -> new NodeDocument(
+                normalizedTrigger(document.nodes().get(node.nodeIndex()).trigger().typeId(),
+                        node.trigger()),
+                normalizedAction(document.nodes().get(node.nodeIndex()).action().typeId(),
+                        node.action()),
+                document.nodes().get(node.nodeIndex()).appearanceOverride())).toList();
+        return new NormalizedStarterContent(nodes, document.appearance());
+    }
+
+    private static <P extends TriggerPayload> DefinitionEnvelope normalizedTrigger(
+            ResourceLocation id, ResolvedTriggerDefinition<P> definition) {
+        return new DefinitionEnvelope(id, definition.schemaVersion(), new Dynamic<>(JsonOps.INSTANCE,
+                definition.descriptor().payloadCodec().codec()
+                        .encodeStart(JsonOps.INSTANCE, definition.payload()).getOrThrow()));
+    }
+
+    private static <P extends ActionPayload> DefinitionEnvelope normalizedAction(
+            ResourceLocation id, ResolvedActionDefinition<P> definition) {
+        return new DefinitionEnvelope(id, definition.schemaVersion(), new Dynamic<>(JsonOps.INSTANCE,
+                definition.descriptor().payloadCodec().codec()
+                        .encodeStart(JsonOps.INSTANCE, definition.payload()).getOrThrow()));
+    }
+
+    record NormalizedStarterContent(List<NodeDocument> nodes, AppearanceDocument appearance) {
+        NormalizedStarterContent {
+            nodes = List.copyOf(nodes);
+            Objects.requireNonNull(appearance, "appearance");
+        }
     }
 
     static Optional<StarterGameplayFingerprintV0> fingerprintOf(

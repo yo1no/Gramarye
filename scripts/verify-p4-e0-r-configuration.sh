@@ -1132,6 +1132,7 @@ verify_prohibited_paths_unchanged() {
         src/main/resources \
         ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
         ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+        ':(exclude)src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json' \
         ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \
         docs/codex-spec \
         gradle.properties \
@@ -1140,6 +1141,7 @@ verify_prohibited_paths_unchanged() {
         src/main/resources docs/codex-spec \
         ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
         ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+        ':(exclude)src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json' \
         ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json')" || status=$?
     [[ "${status}" -eq 0 ]] || fail 'git failed while checking prohibited untracked paths'
     [[ -z "${untracked}" ]] \
@@ -1380,7 +1382,7 @@ verify_build_contract() {
         "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
         'dependsOn(verifyP9S5ClientRuntimeResultParser)' \
         "tasks.named(p9S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
-        "add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
+        "add(p9S5ClientHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)"; do
         require_fixed scripts/verify-p4-b2-b-configuration.sh "${marker}" \
             "P4-E0-R1 exact B2 runtime allowlist is missing ${marker}"
     done
@@ -1417,7 +1419,7 @@ verify_build_contract() {
         "tasks.named('runP9S5ClientRuntimeHarness', JavaExec)" \
         "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
         'dependsOn(verifyP9S5ClientRuntimeResultParser)' \
-        "add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
+        "add(p9S5ClientHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)"; do
         require_fixed_count \
             build.gradle \
             "${marker}" \
@@ -1966,7 +1968,7 @@ verify_jar_isolation() {
         require_jar_class_family \
             "${JAR_LISTING}" \
             'com/yo1no/gramarye/P9StarterCommand' \
-            2 \
+            3 \
             'P9-S5 starter command'
         require_jar_class_family \
             "${JAR_LISTING}" \

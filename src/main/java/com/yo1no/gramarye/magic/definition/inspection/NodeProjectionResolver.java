@@ -19,30 +19,42 @@ import java.util.Optional;
 /** The single P3-B3-B seam that invokes typed inspectors without validation or re-resolution. */
 public final class NodeProjectionResolver {
     public InspectedSkillCandidate inspect(ResolvedSkillCandidate candidate) {
+        return inspect(candidate, false);
+    }
+
+    /** Ordered-ingress helper that does not turn unexpected inspector faults into data failures. */
+    public InspectedSkillCandidate inspectPropagating(ResolvedSkillCandidate candidate) {
+        return inspect(candidate, true);
+    }
+
+    private InspectedSkillCandidate inspect(
+            ResolvedSkillCandidate candidate, boolean propagateUnexpected) {
         Objects.requireNonNull(candidate, "candidate");
         var projections = new ArrayList<NodeReferenceProjection>(candidate.nodes().size());
         for (var node : candidate.nodes()) {
             projections.add(new NodeReferenceProjection(
                     node.nodeIndex(),
-                    inspectTrigger(node.trigger()),
-                    inspectAction(node.action())));
+                    inspectTrigger(node.trigger(), propagateUnexpected),
+                    inspectAction(node.action(), propagateUnexpected)));
         }
         return new InspectedSkillCandidate(candidate, projections);
     }
 
-    private static TriggerInspectionState inspectTrigger(TriggerResolution resolution) {
+    private static TriggerInspectionState inspectTrigger(
+            TriggerResolution resolution, boolean propagateUnexpected) {
         if (resolution instanceof TriggerResolution.Resolved<?> resolved) {
-            return inspectResolvedTrigger(resolved.definition());
+            return inspectResolvedTrigger(resolved.definition(), propagateUnexpected);
         }
         return TriggerInspectionState.NotResolved.INSTANCE;
     }
 
     private static <P extends TriggerPayload> TriggerInspectionState inspectResolvedTrigger(
-            ResolvedTriggerDefinition<P> definition) {
+            ResolvedTriggerDefinition<P> definition, boolean propagateUnexpected) {
         Optional<TriggerPayloadInspector<P>> inspector;
         try {
             inspector = definition.descriptor().payloadInspector();
         } catch (RuntimeException exception) {
+            if (propagateUnexpected) throw exception;
             return new TriggerInspectionState.Failed(exceptionFailure(exception));
         }
         if (inspector == null) {
@@ -58,8 +70,10 @@ public final class NodeProjectionResolver {
             }
             return toTriggerState(result);
         } catch (InspectionContractViolationException exception) {
+            if (propagateUnexpected) throw exception;
             return triggerContractViolation(exception.metadata());
         } catch (RuntimeException exception) {
+            if (propagateUnexpected) throw exception;
             return new TriggerInspectionState.Failed(exceptionFailure(exception));
         }
     }
@@ -78,19 +92,21 @@ public final class NodeProjectionResolver {
         };
     }
 
-    private static ActionInspectionState inspectAction(ActionResolution resolution) {
+    private static ActionInspectionState inspectAction(
+            ActionResolution resolution, boolean propagateUnexpected) {
         if (resolution instanceof ActionResolution.Resolved<?> resolved) {
-            return inspectResolvedAction(resolved.definition());
+            return inspectResolvedAction(resolved.definition(), propagateUnexpected);
         }
         return ActionInspectionState.NotResolved.INSTANCE;
     }
 
     private static <P extends ActionPayload> ActionInspectionState inspectResolvedAction(
-            ResolvedActionDefinition<P> definition) {
+            ResolvedActionDefinition<P> definition, boolean propagateUnexpected) {
         Optional<ActionPayloadInspector<P>> inspector;
         try {
             inspector = definition.descriptor().payloadInspector();
         } catch (RuntimeException exception) {
+            if (propagateUnexpected) throw exception;
             return new ActionInspectionState.Failed(exceptionFailure(exception));
         }
         if (inspector == null) {
@@ -106,8 +122,10 @@ public final class NodeProjectionResolver {
             }
             return toActionState(result);
         } catch (InspectionContractViolationException exception) {
+            if (propagateUnexpected) throw exception;
             return actionContractViolation(exception.metadata());
         } catch (RuntimeException exception) {
+            if (propagateUnexpected) throw exception;
             return new ActionInspectionState.Failed(exceptionFailure(exception));
         }
     }

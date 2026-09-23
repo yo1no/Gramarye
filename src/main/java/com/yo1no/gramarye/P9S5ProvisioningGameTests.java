@@ -5,6 +5,10 @@ import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.api.id.SkillRevision;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
+import com.yo1no.gramarye.magic.definition.document.SkillDraft;
+import com.yo1no.gramarye.magic.definition.document.DraftNode;
+import com.yo1no.gramarye.magic.definition.document.DraftActionSlot;
+import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentGameTests;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
@@ -31,6 +35,7 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.CommandSource;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.ByteTag;
@@ -82,13 +87,13 @@ public final class P9S5ProvisioningGameTests {
             UUID.fromString("95a50000-0000-4000-8000-000000000007");
     private static final UUID DRAFT_CAP_PLAYER_ID =
             UUID.fromString("95a50000-0000-4000-8000-000000000008");
+    private static final UUID VALIDATE_AUDIENCE_PLAYER_ID =
+            UUID.fromString("95a50000-0000-4000-8000-000000000009");
 
     private static final SkillId SECOND_CANONICAL_SKILL_ID = new SkillId(
             UUID.fromString("95a50000-0000-4000-9000-000000000011"));
     private static final SkillId MISSING_SKILL_ID = new SkillId(
             UUID.fromString("95a50000-0000-4000-9000-000000000012"));
-    private static final SkillId STALE_SKILL_ID = new SkillId(
-            UUID.fromString("95a50000-0000-4000-9000-000000000013"));
 
     private static final SavedData.Factory<SavedData> CACHE_HIT_ONLY_FACTORY =
             new SavedData.Factory<>(
@@ -122,6 +127,9 @@ public final class P9S5ProvisioningGameTests {
             var primary = players.placeOwned(PRIMARY_PLAYER_ID, "p9s5-primary");
             var primaryReference = exerciseFreshRepeatReuseAndAmbiguity(
                     helper, server, attachments, store, primary);
+            exerciseRegisteredTemplateValidation(helper, server, attachments, store, primary,
+                    primaryReference,
+                    players.placeOwned(VALIDATE_AUDIENCE_PLAYER_ID, "p10-val-audience"));
 
             exercisePreStoreCanonicalDraftRecovery(
                     helper,
@@ -140,7 +148,7 @@ public final class P9S5ProvisioningGameTests {
                     server,
                     attachments,
                     store,
-                    players.place(DRAFT_CAP_PLAYER_ID, "p9s5-draftcap"));
+                    players.placeOwned(DRAFT_CAP_PLAYER_ID, "p9s5-draftcap"));
             exerciseOccupiedMissing(
                     helper,
                     server,
@@ -172,6 +180,136 @@ public final class P9S5ProvisioningGameTests {
                     players.place(UNAVAILABLE_PLAYER_ID, "p9s5-badatt"));
         }
         helper.succeed();
+    }
+
+    private static void exerciseRegisteredTemplateValidation(
+            GameTestHelper helper,
+            MinecraftServer server,
+            PlayerSkillAttachmentService attachments,
+            StoreFixture store,
+            OwnedPlayer ownedPlayer,
+            SkillReference exactReference,
+            OwnedPlayer audience) {
+        var player = ownedPlayer.current();
+        var owner = new SkillOwnerId(player.getUUID());
+        var exactPort = store.port();
+        var beforeOwner = requireStoreValue(store.service().ownerOf(server, exactReference.skillId()),
+                "validate exact Store owner");
+        var beforeLatest = requireStoreValue(store.service().latestReference(server, exactReference.skillId()),
+                "validate exact Store latest");
+        var beforeDocument = requireStoreValue(store.service().find(server, exactReference),
+                "validate pinned Store revision");
+        var beforeDraft = requireAttachmentValue(attachments.findDraft(player, exactReference.skillId()),
+                "validate selected Draft");
+        var beforeLatestRoute = requireAttachmentValue(
+                attachments.findLatestState(player, exactReference.skillId()), "validate latest route");
+        var beforeEquipped = requireEquipped(attachments, player);
+        var beforePending = exactPort.observePendingRecovery(server, owner);
+        var beforeHistoryCount = requireCommittedCount(store.service(), server, owner);
+        var command = "skill validate template gramarye:starter_bolt_v0";
+        var skillNode = server.getCommands().getDispatcher().getRoot().getChild("skill");
+        helper.assertTrue(skillNode != null && skillNode.getChild("validate") != null,
+                "actual dispatcher must register /skill validate");
+        var callbacks = new int[1];
+        var deniedSource = player.createCommandSourceStack().withPermission(0)
+                .withCallback((successful, result) -> callbacks[0]++);
+        helper.assertTrue(!skillNode.getChild("validate").canUse(deniedSource),
+                "permission-zero source must fail the registered predicate before handler entry");
+        var deniedParse = server.getCommands().getDispatcher().parse(command, deniedSource);
+        helper.assertTrue(deniedParse.getContext().getCommand() == null,
+                "permission rejection must not bind an executable product handler");
+        server.getCommands().performPrefixedCommand(deniedSource, command);
+        helper.assertTrue(callbacks[0] == 0,
+                "permission rejection must not produce a product handler result");
+
+        ownedPlayer.clearSystemChats();
+        audience.clearSystemChats();
+        var replies = new ValidationReplySource();
+        var adminSource = server.createCommandSourceStack().withPermission(2).withSource(replies);
+        helper.assertTrue(adminSource.getEntity() == null && adminSource.hasPermission(2),
+                "operator validation must support non-player administrative sources");
+        runRegisteredCommand(helper, server, adminSource, command, 1,
+                "administrative READY_CURRENT validation");
+        replies.assertResponse(helper, "READY_CURRENT", "ACCEPTED");
+        helper.assertTrue(ownedPlayer.takeSystemChats().isEmpty() && audience.takeSystemChats().isEmpty(),
+                "administrative validation must not send any player response or broadcast");
+
+        replies.clear();
+        runRegisteredCommand(helper, server, adminSource,
+                "skill validate template gramarye:unsupported_template", 0,
+                "unsupported fixed-template ID validation");
+        replies.assertResponse(helper, "UNSUPPORTED_TEMPLATE_ID", "ACCEPTED");
+        helper.assertTrue(ownedPlayer.takeSystemChats().isEmpty() && audience.takeSystemChats().isEmpty(),
+                "unsupported ID response must remain confined to its administrative source");
+
+        runRegisteredCommand(helper, server, server.createCommandSourceStack().withPermission(2),
+                command, 1, "actual console source READY_CURRENT validation");
+        helper.assertTrue(ownedPlayer.takeSystemChats().isEmpty() && audience.takeSystemChats().isEmpty(),
+                "actual console validation must not broadcast to connected players");
+        runRegisteredCommand(helper, server, player.createCommandSourceStack().withPermission(2),
+                command, 1, "operator player READY_CURRENT validation");
+        var playerReplies = ownedPlayer.takeSystemChats();
+        helper.assertTrue(!playerReplies.isEmpty() && playerReplies.size() <= 17
+                        && playerReplies.getFirst().content().getString().startsWith("READY_CURRENT ")
+                        && audience.takeSystemChats().isEmpty(),
+                "operator player response must go only to the invoking connection");
+
+        helper.assertTrue(store.port() == exactPort
+                        && beforeOwner.equals(requireStoreValue(
+                                store.service().ownerOf(server, exactReference.skillId()), "validate owner after"))
+                        && beforeLatest.equals(requireStoreValue(
+                                store.service().latestReference(server, exactReference.skillId()), "validate latest after"))
+                        && beforeDocument.equals(requireStoreValue(
+                                store.service().find(server, exactReference), "validate exact document after"))
+                        && beforeDraft.equals(requireAttachmentValue(
+                                attachments.findDraft(player, exactReference.skillId()), "validate Draft after"))
+                        && beforeLatestRoute.equals(requireAttachmentValue(
+                                attachments.findLatestState(player, exactReference.skillId()), "validate route after"))
+                        && beforeEquipped.equals(requireEquipped(attachments, player))
+                        && beforePending.equals(exactPort.observePendingRecovery(server, owner))
+                        && beforeHistoryCount == requireCommittedCount(store.service(), server, owner),
+                "all validation variants must preserve selected authoritative owner/ref/document, "
+                        + "Draft/latest/equipment and recovery/commit coordinates");
+    }
+
+    /** Bounded test-only administrative reply sink; no template/player authority or mutation port. */
+    private static final class ValidationReplySource implements CommandSource {
+        private final List<Component> messages = new ArrayList<>();
+        private int adminBroadcastQueries;
+
+        @Override
+        public void sendSystemMessage(Component message) {
+            if (messages.size() >= 17 || message.getString().length() > 1_024) {
+                throw new AssertionError("registered validate response exceeded its component bounds");
+            }
+            messages.add(message);
+        }
+
+        @Override
+        public boolean acceptsSuccess() { return true; }
+
+        @Override
+        public boolean acceptsFailure() { return true; }
+
+        @Override
+        public boolean shouldInformAdmins() {
+            adminBroadcastQueries++;
+            return true;
+        }
+
+        private void clear() {
+            messages.clear();
+            adminBroadcastQueries = 0;
+        }
+
+        private void assertResponse(GameTestHelper helper, String primary, String latest) {
+            helper.assertTrue(!messages.isEmpty()
+                            && messages.getFirst().getString().startsWith(primary + " ")
+                            && messages.getFirst().getString().contains("lastAttempt=" + latest)
+                            && messages.stream().mapToInt(value -> value.getString().length()).sum() <= 17_408
+                            && adminBroadcastQueries == 0,
+                    "registered validate response must have its exact primary/latest and never request admin broadcast");
+        }
     }
 
     private static SkillReference exerciseFreshRepeatReuseAndAmbiguity(
@@ -313,17 +451,21 @@ public final class P9S5ProvisioningGameTests {
                 server,
                 player.createCommandSourceStack(),
                 1,
-                "unique semantic reuse");
+                "deterministic same-content re-equip");
         helper.assertTrue(
                 requireEquipped(attachments, player).equals(Optional.of(reference))
                         && requireDraftCount(attachments, player) == draftsAfterFresh
                         && requireLatestStates(attachments, player).equals(latestAfterFresh)
                         && requireCommittedCount(store.service(), server, owner) == countAfterFresh,
-                "empty slot with one canonical semantic candidate must reuse the exact reference");
+                "empty slot must re-equip the exact deterministic latest without a new revision");
+
+        reference = exerciseSuccessorAndRetainedOlder(
+                helper, server, attachments, store, ownedPlayer, reference);
+        player = ownedPlayer.current();
 
         assertApplied(
                 attachments.setEquipped(player, EQUIPPED_SLOT, Optional.empty()),
-                "clear equipped slot before semantic ambiguity");
+                "clear equipped slot before unrelated semantic-match control");
         var secondReference = submitCanonical(
                 helper,
                 server,
@@ -335,7 +477,7 @@ public final class P9S5ProvisioningGameTests {
                 !secondReference.equals(reference)
                         && requireLatestStates(attachments, player).size() == 2
                         && requireCommittedCount(store.service(), server, owner) == 2,
-                "ambiguity fixture must publish two distinct canonical semantic candidates");
+                "unrelated-match fixture must publish two distinct canonical semantic candidates");
         assertSinglePendingTransition(
                 store.port(), server, owner, secondReference,
                 "second committed publication");
@@ -353,20 +495,173 @@ public final class P9S5ProvisioningGameTests {
                                                 Optional.of(secondReference),
                                                 1)))
                         && requireCommittedCount(store.service(), server, owner) == 2,
-                "actual reconnect must preserve both ambiguity candidates and the empty slot");
-        assertPendingEmpty(store.port(), server, owner, "semantic ambiguity precondition");
+                "actual reconnect must preserve both candidates and the empty slot");
+        assertPendingEmpty(store.port(), server, owner, "unrelated-match precondition");
         runStarter(
                 helper,
                 server,
                 player.createCommandSourceStack(),
-                0,
-                "greater-than-one semantic ambiguity");
+                1,
+                "unrelated semantic match is not scanned or adopted");
         helper.assertTrue(
-                requireEquipped(attachments, player).isEmpty()
+                requireEquipped(attachments, player).equals(Optional.of(reference))
                         && requireLatestStates(attachments, player).size() == 2
                         && requireCommittedCount(store.service(), server, owner) == 2,
-                "ambiguous command must preserve the empty slot and both candidates unchanged");
+                "deterministic route must re-equip without scanning/adopting the other ID");
+        var arbitraryDraft = draftAfterFresh.withNodes(List.of());
+        assertApplied(attachments.putDraft(player, arbitraryDraft),
+                "already-current arbitrary Draft preservation control");
+        var beforeAlreadyCurrent = attachmentPayload(player);
+        runStarter(helper, server, player.createCommandSourceStack(), 1,
+                "already-current bypasses Draft and recovery mutation gates");
+        helper.assertTrue(attachmentPayload(player).equals(beforeAlreadyCurrent)
+                        && requireAttachmentValue(attachments.findDraft(player, reference.skillId()),
+                                "arbitrary Draft after already-current").equals(Optional.of(arbitraryDraft)),
+                "already-current must preserve even an incomplete user Draft byte-for-byte");
         return reference;
+    }
+
+    private static SkillReference exerciseSuccessorAndRetainedOlder(
+            GameTestHelper helper,
+            MinecraftServer server,
+            PlayerSkillAttachmentService attachments,
+            StoreFixture store,
+            OwnedPlayer ownedPlayer,
+            SkillReference original) {
+        var player = ownedPlayer.current();
+        var owner = new SkillOwnerId(player.getUUID());
+        var originalDocument = requireStoreValue(store.service().find(server, original),
+                "old A exact document before successor").orElseThrow();
+        var legacy = P9StarterSkillContent.canonicalDraft(original.skillId());
+        var hit = legacy.nodes().get(1);
+        var payload = P9DamageActionType.INSTANCE.payloadCodec().codec()
+                .encodeStart(com.mojang.serialization.JsonOps.INSTANCE,
+                        new P9DamageActionPayloadV0(5_000L, 0L)).getOrThrow();
+        var changedHit = new DraftNode(hit.trigger(), DraftActionSlot.present(new DefinitionEnvelope(
+                P9StarterSkillContent.DAMAGE_ID, 1,
+                new com.mojang.serialization.Dynamic<>(com.mojang.serialization.JsonOps.INSTANCE, payload))),
+                hit.appearanceOverride());
+        var draftB = new SkillDraft(legacy.draftSchemaVersion(), original.skillId(),
+                Optional.of(original.revision()), List.of(legacy.nodes().getFirst(), changedHit), legacy.appearance());
+        assertApplied(attachments.putDraft(player, draftB), "supported B fixture Draft publication");
+        var submitted = SkillDefinitionSubmissionService.production(attachments, store.port(),
+                SkillSubmissionPolicyProvider.defaults(), ProfileAvailabilityView.unknown())
+                .submit(player, original.skillId());
+        helper.assertTrue(submitted instanceof SkillSubmissionCompositionOutcome.Committed,
+                "supported 5000 fixture must be a real immutable successor submission");
+        var referenceB = ((SkillSubmissionCompositionOutcome.Committed) submitted).reference();
+        helper.assertTrue(referenceB.skillId().equals(original.skillId())
+                        && referenceB.revision().value() == original.revision().value() + 1
+                        && requireEquipped(attachments, player).equals(Optional.of(original)),
+                "fixture submission must not equip or alter the captured retained older A");
+        assertPendingSnapshot(store.port(), server, owner,
+                new SkillDefinitionStoreSubmissionPort.PendingRecoveryProjection.Available(List.of(
+                        new SkillDefinitionStoreSubmissionPort.PendingSkillRecoveryChain(original.skillId(), List.of(
+                                new SkillDefinitionStoreSubmissionPort.PendingRecoveryStep(
+                                        Optional.of(original), 1, referenceB, 2))))),
+                referenceB, "supported B persisted recovery boundary");
+        player = ownedPlayer.reconnect();
+        assertPendingEmpty(store.port(), server, owner, "B real login recovery terminal");
+        var beforeConflict = new SkillDraft(draftB.draftSchemaVersion(), draftB.skillId(),
+                Optional.of(new SkillRevision(100)), draftB.nodes(), draftB.appearance());
+        assertApplied(attachments.putDraft(player, beforeConflict),
+                "identical latest body but illegal base control");
+        var preservedConflict = attachmentPayload(player);
+        runStarter(helper, server, player.createCommandSourceStack(), 0,
+                "body-equal illegal base cannot be silently rebased");
+        helper.assertTrue(attachmentPayload(player).equals(preservedConflict)
+                        && requireStoreValue(store.service().latestReference(server, original.skillId()),
+                                "illegal-base latest remains B").equals(Optional.of(referenceB)),
+                "illegal-base conflict must preserve Draft, latest, and retained older slot");
+        assertApplied(attachments.putDraft(player, draftB),
+                "restore closed clean B body with immediate predecessor base");
+        runStarter(helper, server, player.createCommandSourceStack(), 1,
+                "VALID_OLDER A plus supported non-target B creates monotonic target C");
+        var referenceC = requireEquipped(attachments, player).orElseThrow();
+        helper.assertTrue(referenceC.skillId().equals(original.skillId())
+                        && referenceC.revision().value() == referenceB.revision().value() + 1
+                        && requireStoreValue(store.service().latestReference(server, original.skillId()),
+                                "successor C latest").equals(Optional.of(referenceC))
+                        && requireStoreValue(store.service().find(server, original),
+                                "original A preserved after C").equals(Optional.of(originalDocument)),
+                "command must use authoritative latest B as base, never roll latest back to old A");
+        assertCanonicalOwnedReference(helper, store.service(), server, owner, referenceC);
+        player = ownedPlayer.reconnect();
+        assertPendingEmpty(store.port(), server, owner, "C real login recovery terminal");
+        var draftD = new SkillDraft(draftB.draftSchemaVersion(), draftB.skillId(),
+                Optional.of(referenceC.revision()), draftB.nodes(), draftB.appearance());
+        assertApplied(attachments.putDraft(player, draftD), "supported D current-nontarget fixture");
+        var submissionD = SkillDefinitionSubmissionService.production(attachments, store.port(),
+                SkillSubmissionPolicyProvider.defaults(), ProfileAvailabilityView.unknown())
+                .submit(player, original.skillId());
+        helper.assertTrue(submissionD instanceof SkillSubmissionCompositionOutcome.Committed,
+                "current-nontarget fixture must formally commit D");
+        var referenceD = ((SkillSubmissionCompositionOutcome.Committed) submissionD).reference();
+        assertApplied(attachments.setEquipped(player, EQUIPPED_SLOT, Optional.of(referenceD)),
+                "equip supported authoritative latest non-target D");
+        player = ownedPlayer.reconnect();
+        assertPendingEmpty(store.port(), server, owner, "D real login recovery terminal");
+        var retryTarget = new SkillDraft(legacy.draftSchemaVersion(), original.skillId(),
+                Optional.of(referenceD.revision()), legacy.nodes(), legacy.appearance());
+        assertApplied(attachments.putDraft(player, retryTarget),
+                "already prepared target Draft with the exact current base D");
+        runStarter(helper, server, player.createCommandSourceStack(), 1,
+                "VALID_CURRENT_NON_TARGET retries the current-base target Draft as E");
+        var referenceE = requireEquipped(attachments, player).orElseThrow();
+        helper.assertTrue(referenceE.skillId().equals(original.skillId())
+                        && referenceE.revision().value() == referenceD.revision().value() + 1
+                        && requireAttachmentValue(attachments.findDraft(player, original.skillId()),
+                                "retained current-base retry Draft").equals(Optional.of(retryTarget))
+                        && requireStoreValue(store.service().find(server, original),
+                                "old A after current-nontarget update").equals(Optional.of(originalDocument)),
+                "current non-target route must advance once and preserve original A");
+        assertCanonicalOwnedReference(helper, store.service(), server, owner, referenceE);
+        player = ownedPlayer.reconnect();
+        assertPendingEmpty(store.port(), server, owner, "E real login recovery terminal");
+        var draftF = new SkillDraft(draftB.draftSchemaVersion(), draftB.skillId(),
+                Optional.of(referenceE.revision()), draftB.nodes(), draftB.appearance());
+        assertApplied(attachments.putDraft(player, draftF), "supported F absent-Draft fixture");
+        var submissionF = SkillDefinitionSubmissionService.production(attachments, store.port(),
+                SkillSubmissionPolicyProvider.defaults(), ProfileAvailabilityView.unknown())
+                .submit(player, original.skillId());
+        helper.assertTrue(submissionF instanceof SkillSubmissionCompositionOutcome.Committed,
+                "absent-Draft fixture must formally commit F");
+        var referenceF = ((SkillSubmissionCompositionOutcome.Committed) submissionF).reference();
+        player = ownedPlayer.reconnect();
+        assertPendingEmpty(store.port(), server, owner, "F real login recovery terminal");
+        assertApplied(attachments.removeDraft(player, original.skillId()),
+                "remove only the owned deterministic Draft before successor admission");
+        helper.assertTrue(requireAttachmentValue(attachments.findDraft(player, original.skillId()),
+                        "absent successor Draft precondition").isEmpty(),
+                "successor admission must observe an actually absent Draft route");
+        runStarter(helper, server, player.createCommandSourceStack(), 1,
+                "supported latest F with absent Draft creates target successor G");
+        var referenceG = requireEquipped(attachments, player).orElseThrow();
+        var newDraft = requireAttachmentValue(attachments.findDraft(player, original.skillId()),
+                "new successor Draft after absent-route admission").orElseThrow();
+        helper.assertTrue(referenceG.skillId().equals(original.skillId())
+                        && referenceG.revision().value() == referenceF.revision().value() + 1
+                        && newDraft.baseRevision().equals(Optional.of(referenceF.revision()))
+                        && requireStoreValue(store.service().find(server, original),
+                                "old A after absent-Draft successor").equals(Optional.of(originalDocument)),
+                "absent-route successor must materialize once from authoritative F and retain old A");
+        assertCanonicalOwnedReference(helper, store.service(), server, owner, referenceG);
+        player = ownedPlayer.reconnect();
+        assertPendingEmpty(store.port(), server, owner, "G real login recovery terminal");
+        assertApplied(attachments.setEquipped(player, EQUIPPED_SLOT, Optional.of(original)),
+                "retained older same-content reference control");
+        var draftBeforeReequip = requireAttachmentValue(attachments.findDraft(player, original.skillId()),
+                "Draft before same-content older re-equip");
+        runStarter(helper, server, player.createCommandSourceStack(), 1,
+                "VALID_OLDER same content re-equips authoritative G without successor");
+        helper.assertTrue(requireEquipped(attachments, player).equals(Optional.of(referenceG))
+                        && requireAttachmentValue(attachments.findDraft(player, original.skillId()),
+                                "Draft after same-content older re-equip").equals(draftBeforeReequip)
+                        && requireStoreValue(store.service().latestReference(server, original.skillId()),
+                                "same-content older re-equip latest").equals(Optional.of(referenceG)),
+                "same-content re-equip must not touch Draft or create a further revision");
+        assertPendingEmpty(store.port(), server, owner, "same-content re-equip zero-submission terminal");
+        return referenceG;
     }
 
     private static void exercisePreStoreCanonicalDraftRecovery(
@@ -485,7 +780,8 @@ public final class P9S5ProvisioningGameTests {
             MinecraftServer server,
             PlayerSkillAttachmentService attachments,
             StoreFixture store,
-            ServerPlayer player) {
+            OwnedPlayer ownedPlayer) {
+        var player = ownedPlayer.current();
         var owner = new SkillOwnerId(player.getUUID());
         var skillId = P9StarterSkillIdentityV0.forPlayer(player.getUUID());
         for (var index = 0; index < MagicSafetyCeilings.MAX_PLAYER_DRAFTS; index++) {
@@ -540,6 +836,50 @@ public final class P9S5ProvisioningGameTests {
                                 .isEmpty(),
                 "Draft-cap rejection must not create a thirty-third Draft, submit, or equip");
         assertPendingEmpty(store.port(), server, owner, "Draft cap terminal");
+
+        assertApplied(attachments.removeDraft(player, new SkillId(new UUID(0x15A5000000004000L, 1L))),
+                "replace only one known filler route with the owned deterministic fixture");
+        var canonical = P9StarterSkillContent.canonicalDraft(skillId);
+        var hit = canonical.nodes().get(1);
+        var payload = P9DamageActionType.INSTANCE.payloadCodec().codec()
+                .encodeStart(com.mojang.serialization.JsonOps.INSTANCE,
+                        new P9DamageActionPayloadV0(5_000L, 0L)).getOrThrow();
+        var changedHit = new DraftNode(hit.trigger(), DraftActionSlot.present(new DefinitionEnvelope(
+                P9StarterSkillContent.DAMAGE_ID, 1,
+                new com.mojang.serialization.Dynamic<>(com.mojang.serialization.JsonOps.INSTANCE, payload))),
+                hit.appearanceOverride());
+        var nonTarget = new SkillDraft(canonical.draftSchemaVersion(), skillId, Optional.empty(),
+                List.of(canonical.nodes().getFirst(), changedHit), canonical.appearance());
+        assertApplied(attachments.putDraft(player, nonTarget), "32nd same-ID replacement fixture");
+        var submitted = SkillDefinitionSubmissionService.production(attachments, store.port(),
+                SkillSubmissionPolicyProvider.defaults(), ProfileAvailabilityView.unknown())
+                .submit(player, skillId);
+        helper.assertTrue(submitted instanceof SkillSubmissionCompositionOutcome.Committed,
+                "32-route fixture must formally commit the supported non-target revision");
+        var nonTargetReference = ((SkillSubmissionCompositionOutcome.Committed) submitted).reference();
+        assertApplied(attachments.setEquipped(player, EQUIPPED_SLOT, Optional.of(nonTargetReference)),
+                "equip the supported current non-target at the Draft route cap");
+        player = ownedPlayer.reconnect();
+        assertPendingEmpty(store.port(), server, owner, "32-route replacement recovery precondition");
+        runStarter(helper, server, player.createCommandSourceStack(), 1,
+                "32 routes permit clean replacement of the existing same-ID Draft");
+        var replacement = requireEquipped(attachments, player).orElseThrow();
+        helper.assertTrue(requireDraftCount(attachments, player) == MagicSafetyCeilings.MAX_PLAYER_DRAFTS
+                        && replacement.skillId().equals(skillId)
+                        && replacement.revision().value() == nonTargetReference.revision().value() + 1
+                        && requireStoreValue(store.service().latestReference(server, skillId),
+                                "32-route replacement authoritative latest").equals(Optional.of(replacement)),
+                "same-ID replacement must advance once without allocating a thirty-third Draft route");
+        for (var index = 1; index < MagicSafetyCeilings.MAX_PLAYER_DRAFTS; index++) {
+            var fillerId = new SkillId(new UUID(0x15A5000000004000L, index + 1L));
+            helper.assertTrue(requireAttachmentValue(attachments.findDraft(player, fillerId),
+                            "unchanged unrelated Draft at route cap").equals(Optional.of(
+                                    P9StarterSkillContent.canonicalDraft(fillerId).withNodes(List.of()))),
+                    "same-ID replacement must preserve each of the 31 unrelated Draft routes");
+        }
+        assertCanonicalOwnedReference(helper, store.service(), server, owner, replacement);
+        ownedPlayer.reconnect();
+        assertPendingEmpty(store.port(), server, owner, "32-route replacement terminal recovery");
     }
 
     private static void exerciseOccupiedMissing(
@@ -575,7 +915,8 @@ public final class P9S5ProvisioningGameTests {
         var player = ownedPlayer.current();
         var owner = new SkillOwnerId(player.getUUID());
         var committed = submitCanonical(
-                helper, server, attachments, store, player, STALE_SKILL_ID);
+                helper, server, attachments, store, player,
+                P9StarterSkillIdentityV0.forPlayer(player.getUUID()));
         assertSinglePendingTransition(
                 store.port(), server, owner, committed,
                 "occupied-stale committed fixture");
@@ -608,8 +949,9 @@ public final class P9S5ProvisioningGameTests {
         assertApplied(
                 attachments.setEquipped(player, EQUIPPED_SLOT, Optional.of(stale)),
                 "occupied stale fixture");
-        runStarterExpectingSlotOccupied(
-                helper, server, ownedPlayer, nonRecipient, "occupied stale");
+        runStarterExpectingSlotResponse(
+                helper, server, ownedPlayer, nonRecipient, "occupied stale",
+                "commands.gramarye.starter.slot_unavailable");
         helper.assertTrue(
                 requireEquipped(attachments, player).equals(Optional.of(stale)),
                 "occupied stale rejection must not replace the stale exact reference");
@@ -625,6 +967,8 @@ public final class P9S5ProvisioningGameTests {
             OwnedPlayer nonRecipient) {
         var player = ownedPlayer.current();
         var owner = new SkillOwnerId(player.getUUID());
+        foreignReference = submitCanonical(helper, server, attachments, store,
+                nonRecipient.current(), P9StarterSkillIdentityV0.forPlayer(player.getUUID()));
         helper.assertTrue(
                 requireStoreValue(
                                 store.service().find(server, foreignReference),
@@ -638,12 +982,23 @@ public final class P9S5ProvisioningGameTests {
                                 .isPresent()
                         && requireEquipped(attachments, player).isEmpty(),
                 "wrong-owner fixture must otherwise resolve one real unambiguous reference");
+        var foreignDocument = requireStoreValue(store.service().find(server, foreignReference),
+                "wrong-owner document before empty-slot rejection");
+        runStarterExpectingSlotResponse(helper, server, ownedPlayer, nonRecipient,
+                "deterministic route wrong-owner while slot empty",
+                "commands.gramarye.starter.starter_identity_not_authorized");
+        helper.assertTrue(requireEquipped(attachments, player).isEmpty()
+                        && requireDraftCount(attachments, player) == 0
+                        && requireStoreValue(store.service().find(server, foreignReference),
+                                "wrong-owner document after empty-slot rejection").equals(foreignDocument),
+                "empty-slot owner rejection must preserve foreign data without creating a player Draft");
         assertApplied(
                 attachments.setEquipped(
                         player, EQUIPPED_SLOT, Optional.of(foreignReference)),
                 "occupied wrong-owner fixture");
-        runStarterExpectingSlotOccupied(
-                helper, server, ownedPlayer, nonRecipient, "occupied wrong owner");
+        runStarterExpectingSlotResponse(
+                helper, server, ownedPlayer, nonRecipient, "occupied wrong owner",
+                "commands.gramarye.starter.slot_unavailable");
         helper.assertTrue(
                 requireEquipped(attachments, player).equals(Optional.of(foreignReference)),
                 "wrong-owner rejection must not overwrite the foreign exact reference");
@@ -663,10 +1018,10 @@ public final class P9S5ProvisioningGameTests {
                 server,
                 new SkillOwnerId(exactPlayer.getUUID()),
                 exactReference);
-        assertApplied(
-                attachments.setEquipped(
-                        exactPlayer, EQUIPPED_SLOT, Optional.of(exactReference)),
-                "entity-substitution exact-reference positive-control equip");
+        helper.assertTrue(
+                requireEquipped(attachments, exactPlayer).equals(Optional.of(exactReference)),
+                "entity-substitution positive control must retain the exact reference "
+                        + "already equipped by the normal deterministic command");
         runStarter(
                 helper,
                 server,
@@ -788,6 +1143,16 @@ public final class P9S5ProvisioningGameTests {
             CommandSourceStack source,
             int expectedResult,
             String stage) {
+        runRegisteredCommand(helper, server, source, "/gramarye starter", expectedResult, stage);
+    }
+
+    private static void runRegisteredCommand(
+            GameTestHelper helper,
+            MinecraftServer server,
+            CommandSourceStack source,
+            String command,
+            int expectedResult,
+            String stage) {
         var callbackCalls = new int[1];
         var callbackSuccess = new boolean[1];
         var callbackResult = new int[1];
@@ -797,7 +1162,7 @@ public final class P9S5ProvisioningGameTests {
                     callbackSuccess[0] = successful;
                     callbackResult[0] = result;
                 }),
-                "/gramarye starter");
+                command);
         helper.assertTrue(
                 callbackCalls[0] == 1
                         && callbackSuccess[0]
@@ -818,6 +1183,17 @@ public final class P9S5ProvisioningGameTests {
             OwnedPlayer recipient,
             OwnedPlayer nonRecipient,
             String stage) {
+        runStarterExpectingSlotResponse(helper, server, recipient, nonRecipient, stage,
+                SLOT_OCCUPIED_KEY);
+    }
+
+    private static void runStarterExpectingSlotResponse(
+            GameTestHelper helper,
+            MinecraftServer server,
+            OwnedPlayer recipient,
+            OwnedPlayer nonRecipient,
+            String stage,
+            String key) {
         recipient.clearSystemChats();
         nonRecipient.clearSystemChats();
         runStarter(
@@ -828,7 +1204,7 @@ public final class P9S5ProvisioningGameTests {
                 stage);
         var expected = new ClientboundSystemChatPacket(
                 Component.empty()
-                        .append(Component.translatable(SLOT_OCCUPIED_KEY))
+                        .append(Component.translatable(key, "CURRENT"))
                         .withStyle(ChatFormatting.RED),
                 false);
         var recipientPackets = recipient.takeSystemChats();

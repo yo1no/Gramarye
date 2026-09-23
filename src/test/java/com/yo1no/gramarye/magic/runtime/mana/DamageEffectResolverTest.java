@@ -31,6 +31,24 @@ final class DamageEffectResolverTest {
     }
 
     @Test
+    void p10DiscreteDamageSetPreservesExactMagnitudeInTheOrderedPlan() {
+        for (long magnitude : new long[] {4_000L, 5_000L}) {
+            var request = EffectTestFixtures.request(magnitude, 0L);
+            var accepted = (AcceptedEffectResolution) resolver.resolve(request, 0);
+            var step = (DamageEffectStep) accepted.plan().steps().getFirst();
+            assertEquals(1, accepted.plan().steps().size());
+            assertEquals(request.target(), step.target());
+            assertEquals(magnitude, step.magnitude());
+            assertEquals(0, step.index());
+            assertEquals(0, step.declaredChildIntentUpperBound());
+        }
+        for (long magnitude : new long[] {1L, 3_999L, 4_001L, 4_500L, 5_001L, 6_000L}) {
+            assertEquals(new RejectedEffectResolution(EffectRejectReason.INVALID_REQUEST),
+                    resolver.resolve(EffectTestFixtures.request(magnitude, 0L), 0));
+        }
+    }
+
+    @Test
     void rejectsNoncanonicalP9DamageMagnitudeCostAndCurrentEventIdentity() {
         DamageEffectRequest canonical = EffectTestFixtures.request();
         for (DamageEffectRequest invalid : List.of(

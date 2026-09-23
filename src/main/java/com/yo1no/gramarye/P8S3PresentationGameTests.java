@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
@@ -32,9 +33,11 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.profiling.InactiveProfiler;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import net.neoforged.neoforge.network.registration.NetworkRegistry;
@@ -75,6 +78,7 @@ public final class P8S3PresentationGameTests {
         var transport = new RecordingTransport(player.getUUID());
         var service = new P8ServerPresentationService(transport);
         try {
+            assertRootFullSyncHandoff(helper, server, service);
             service.startForTesting(server, emptyCatalog());
             P7S4LoginManaGameTests.withP9CallScopedRuntimeContext(
                     helper, server, player, 0x8101L, (ignoredRoot, injectedContext) -> {
@@ -809,6 +813,100 @@ public final class P8S3PresentationGameTests {
             stopServicesAndRemovePlayers(server, services, players);
             throw failure;
         }
+    }
+
+    private static void assertRootFullSyncHandoff(
+            GameTestHelper helper,
+            MinecraftServer server,
+            P8ServerPresentationService service) {
+        boolean unstartedRejected = false;
+        try {
+            service.activateMatchingCandidateForRoot(server);
+        } catch (IllegalStateException expected) {
+            unstartedRejected = expected.getMessage().equals(
+                    "P8 root full-sync requires the active server");
+        }
+        helper.assertTrue(unstartedRejected
+                        && service.catalogGenerationForTesting() == 0L
+                        && service.captureAppearanceResolutionSnapshot().isEmpty(),
+                "root handoff must reject a real server before this owner starts");
+        try {
+            service.startForTesting(server, emptyCatalog());
+            helper.assertTrue(service.activateMatchingCandidateForRoot(server)
+                            == P8ServerPresentationService.P8RootFullSyncOutcome
+                                    .NO_MATCHING_CANDIDATE
+                            && service.catalogGenerationForTesting() == 1L,
+                    "root handoff without a candidate must preserve the active catalog");
+            service.stageCandidateForTesting(
+                    P8ServerPresentationService.newReloadIdentityForTesting(), emptyCatalog());
+            int unmatchedEntries = service.pendingEntryCountForTesting();
+            helper.assertTrue(unmatchedEntries > 0
+                            && service.activateMatchingCandidateForRoot(server)
+                                    == P8ServerPresentationService.P8RootFullSyncOutcome
+                                            .NO_MATCHING_CANDIDATE
+                            && service.pendingEntryCountForTesting() == unmatchedEntries
+                            && service.catalogGenerationForTesting() == 1L,
+                    "root handoff must retain a candidate that lacks this platform identity");
+
+            stageCurrentPlatformCatalog(helper, server, service);
+            int preparedEntries = service.pendingEntryCountForTesting();
+            helper.assertTrue(preparedEntries > 0
+                            && service.activateMatchingCandidateForRoot(server)
+                                    == P8ServerPresentationService.P8RootFullSyncOutcome
+                                            .ACTIVATED_CURRENT
+                            && service.catalogGenerationForTesting() == 2L
+                            && service.activeEntryCountForTesting() == preparedEntries
+                            && service.pendingEntryCountForTesting() == 0,
+                    "actual reload preparation must activate once under its real resources identity");
+            helper.assertTrue(service.activateMatchingCandidateForRoot(server)
+                            == P8ServerPresentationService.P8RootFullSyncOutcome
+                                    .NO_MATCHING_CANDIDATE
+                            && service.catalogGenerationForTesting() == 2L,
+                    "an activated candidate must not be published a second time");
+
+            service.setCatalogGenerationHighWaterForTesting(Long.MAX_VALUE);
+            var activeSound = service.activeConfigurationForTesting(
+                    AppearanceSemantics.DEFAULT_SOUND_PROFILE);
+            int activeEntries = service.activeEntryCountForTesting();
+            int activeBodyBytes = service.activeCatalogBodyBytesForTesting();
+            stageCurrentPlatformCatalog(helper, server, service);
+            helper.assertTrue(activeSound.isPresent()
+                            && service.pendingEntryCountForTesting() > 0
+                            && service.activateMatchingCandidateForRoot(server)
+                                    == P8ServerPresentationService.P8RootFullSyncOutcome
+                                            .GENERATION_EXHAUSTED
+                            && service.catalogGenerationForTesting() == Long.MAX_VALUE
+                            && service.activeEntryCountForTesting() == activeEntries
+                            && service.activeCatalogBodyBytesForTesting() == activeBodyBytes
+                            && service.activeConfigurationForTesting(
+                                            AppearanceSemantics.DEFAULT_SOUND_PROFILE)
+                                    .equals(activeSound)
+                            && service.pendingEntryCountForTesting() == 0,
+                    "exhaustion must release the matching candidate and preserve the active catalog");
+        } finally {
+            service.stopForTesting();
+        }
+    }
+
+    private static void stageCurrentPlatformCatalog(
+            GameTestHelper helper,
+            MinecraftServer server,
+            P8ServerPresentationService service) {
+        var event = new AddReloadListenerEvent(
+                server.getServerResources().managers(), server.registryAccess());
+        service.addReloadListener(event);
+        helper.assertTrue(event.getListeners().size() == 1,
+                "controlled P8 owner must register exactly its actual profile listener");
+        // Both platform phases execute inline; no work survives this method's return.
+        var completion = event.getListeners().getFirst().reload(
+                CompletableFuture::completedFuture,
+                server.getResourceManager(),
+                InactiveProfiler.INSTANCE,
+                InactiveProfiler.INSTANCE,
+                Runnable::run,
+                Runnable::run);
+        helper.assertTrue(completion.isDone() && !completion.isCompletedExceptionally(),
+                "actual P8 profile prepare and apply must complete synchronously");
     }
 
     private static EncodedPayload readOnlyP8Payload(

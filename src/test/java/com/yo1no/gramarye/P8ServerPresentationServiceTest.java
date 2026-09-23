@@ -3,6 +3,7 @@ package com.yo1no.gramarye;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,6 +26,58 @@ import org.junit.jupiter.api.Test;
 final class P8ServerPresentationServiceTest {
     private static final ResourceLocation OVERWORLD =
             ResourceLocation.fromNamespaceAndPath("minecraft", "overworld");
+
+    @Test
+    void rootHandoffHasExactThreeOutcomesAndReleasesOnlyMatchingCandidate() throws Exception {
+        var service = P8ServerPresentationService.create();
+        var activation = P8ServerPresentationService.class.getDeclaredMethod(
+                "activateRootMatchingCandidate", P8ServerPresentationService.ReloadIdentity.class);
+        activation.setAccessible(true);
+        var first = P8ServerPresentationService.newReloadIdentityForTesting();
+        var other = P8ServerPresentationService.newReloadIdentityForTesting();
+        service.stageCandidateForTesting(first, candidate(Map.of()));
+        assertEquals(P8ServerPresentationService.P8RootFullSyncOutcome.NO_MATCHING_CANDIDATE,
+                activation.invoke(service, other));
+        assertEquals(3, service.pendingEntryCountForTesting());
+        assertEquals(P8ServerPresentationService.P8RootFullSyncOutcome.ACTIVATED_CURRENT,
+                activation.invoke(service, first));
+        assertEquals(1L, service.catalogGenerationForTesting());
+        assertEquals(0, service.pendingEntryCountForTesting());
+        assertEquals(P8ServerPresentationService.P8RootFullSyncOutcome.NO_MATCHING_CANDIDATE,
+                activation.invoke(service, first));
+        assertEquals(1L, service.catalogGenerationForTesting());
+        service.setCatalogGenerationHighWaterForTesting(Long.MAX_VALUE);
+        var exhausted = P8ServerPresentationService.newReloadIdentityForTesting();
+        service.stageCandidateForTesting(exhausted, candidate(Map.of()));
+        assertEquals(P8ServerPresentationService.P8RootFullSyncOutcome.GENERATION_EXHAUSTED,
+                activation.invoke(service, exhausted));
+        assertEquals(0, service.pendingEntryCountForTesting());
+        assertEquals(Long.MAX_VALUE, service.catalogGenerationForTesting());
+        assertEquals(3, service.activeEntryCountForTesting());
+    }
+
+    @Test
+    void playerSyncCannotActivateAndRootHandoffRequiresLiveExactServerThread() throws Exception {
+        var cursor = java.nio.file.Path.of("").toAbsolutePath();
+        while (cursor != null && !java.nio.file.Files.isRegularFile(cursor.resolve("build.gradle"))) {
+            cursor = cursor.getParent();
+        }
+        assertNotNull(cursor, "project root");
+        var source = java.nio.file.Files.readString(cursor.resolve(
+                "src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java"));
+        var playerSync = source.substring(source.indexOf("void handleDatapackSync("),
+                source.indexOf("P8RootFullSyncOutcome activateMatchingCandidateForRoot("));
+        assertFalse(playerSync.contains("activateMatchingCandidate"));
+        assertFalse(playerSync.contains("activateRootMatchingCandidate"));
+        assertTrue(playerSync.contains("if (event.getPlayer() != null)"));
+        assertTrue(playerSync.contains("connectionAuthority.schedule("));
+        var handoff = source.substring(source.indexOf("P8RootFullSyncOutcome activateMatchingCandidateForRoot("),
+                source.indexOf("enum P8RootFullSyncOutcome"));
+        assertTrue(handoff.contains("requireServerThread(server);"));
+        assertTrue(handoff.contains("activeServer != server || !server.isRunning() || server.isStopped()"));
+        assertTrue(handoff.contains("server.getServerResources().managers()"));
+        assertFalse(handoff.contains("catch ("));
+    }
 
     @Test
     void pendingIsInaccessibleAndOnlyReferenceIdenticalTokenActivatesIt() {

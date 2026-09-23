@@ -1011,16 +1011,41 @@ final class P8ServerPresentationService {
             }
             return;
         }
-        var server = Objects.requireNonNull(
-                event.getPlayerList().getServer(), "datapack-sync server");
+    }
+
+    P8RootFullSyncOutcome activateMatchingCandidateForRoot(MinecraftServer server) {
+        Objects.requireNonNull(server, "server");
         requireServerThread(server);
         synchronized (this) {
-            if (activeServer != server) {
-                return;
+            if (activeServer != server || !server.isRunning() || server.isStopped()) {
+                throw new IllegalStateException("P8 root full-sync requires the active server");
             }
-            activateMatchingCandidate(new ReloadIdentity(
+            return activateRootMatchingCandidate(new ReloadIdentity(
                     server.getServerResources().managers()));
         }
+    }
+
+    enum P8RootFullSyncOutcome {
+        ACTIVATED_CURRENT,
+        NO_MATCHING_CANDIDATE,
+        GENERATION_EXHAUSTED
+    }
+
+    private P8RootFullSyncOutcome activateRootMatchingCandidate(ReloadIdentity exactIdentity) {
+        var pending = pendingCandidate;
+        if (pending == null
+                || currentReloadMarker != pending.cycle.marker
+                || !pending.cycle.identity.matches(exactIdentity)) {
+            return P8RootFullSyncOutcome.NO_MATCHING_CANDIDATE;
+        }
+        if (catalogGenerationHighWater == Long.MAX_VALUE) {
+            releasePending(pending);
+            return P8RootFullSyncOutcome.GENERATION_EXHAUSTED;
+        }
+        if (!activateMatchingCandidate(exactIdentity)) {
+            throw new IllegalStateException("P8 matching activation lost its exclusive state");
+        }
+        return P8RootFullSyncOutcome.ACTIVATED_CURRENT;
     }
 
     private void handlePlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {

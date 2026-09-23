@@ -318,7 +318,7 @@ final class SkillRuntimeService {
                 || sourceEvent.depth() != 0
                 || sourceEvent.childSequence() != 0
                 || !(sourceEvent.executionData() instanceof CastGeometryExecutionDataV0 geometry)
-                || !P9StarterSkillContent.hasCanonicalGameplayFingerprint(
+                || !P9StarterSkillContent.hasSupportedStarterGameplay(
                         instance.lease.definition)) {
             return continuationRejected(
                     RuntimeProjectileContinuationOpenRejectionReason.INVARIANT_REJECTED);
@@ -1845,7 +1845,7 @@ final class SkillRuntimeService {
         } else {
             if (event.executionData() instanceof CastGeometryExecutionDataV0
                     && event.nodeIndex() == 0
-                    && P9StarterSkillContent.hasCanonicalGameplayFingerprint(
+                    && P9StarterSkillContent.hasSupportedStarterGameplay(
                             lease.definition)) {
                 recordP9Stage(slot, instance, P9RuntimeDiagnosticStage.NODE0_MATCHED);
             }
@@ -3055,7 +3055,7 @@ final class SkillRuntimeService {
                 || instance.terminal
                 || instance.lease.pin.isClosed()
                 || !instance.lease.reference.equals(event.skillReference())
-                || !P9StarterSkillContent.hasCanonicalGameplayFingerprint(
+                || !P9StarterSkillContent.hasSupportedStarterGameplay(
                         instance.lease.definition)) {
             throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
         }
@@ -3342,7 +3342,7 @@ final class SkillRuntimeService {
         }
         var capabilities = definition.nodes().get(spec.nodeIndex())
                 .trigger().descriptor().capabilities();
-        var canonicalP9 = P9StarterSkillContent.hasCanonicalGameplayFingerprint(definition);
+        var canonicalP9 = P9StarterSkillContent.hasSupportedStarterGameplay(definition);
         if (spec.executionData() instanceof CastGeometryExecutionDataV0) {
             if (spec.nodeIndex() != 0 || !canonicalP9) {
                 return Optional.of(InvalidEventReason.INVALID_EXECUTION_DATA);
@@ -3390,7 +3390,7 @@ final class SkillRuntimeService {
         if (p9Hit) {
             var hit = (ProjectileHitExecutionDataV0) child.executionData();
             if (child.nodeIndex() != 1
-                    || !P9StarterSkillContent.hasCanonicalGameplayFingerprint(definition)
+                    || !P9StarterSkillContent.hasSupportedStarterGameplay(definition)
                     || !(child.origin() instanceof PlayerOrigin playerOrigin)
                     || !(child.target().orElse(null) instanceof EntityTarget entityTarget)
                     || entityTarget.expectedKind() != RuntimeEntityKind.LIVING_ENTITY

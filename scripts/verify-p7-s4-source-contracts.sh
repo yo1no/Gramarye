@@ -2,6 +2,38 @@
 set -euo pipefail
 
 # Direct shared inventory for the existing P4/P7 consumers. This is not a phase Gate.
+# §68 exact direct consumers; no directory or prefix admission.
+is_p10_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P10TemplateBody.java | \
+        src/main/java/com/yo1no/gramarye/P10TemplateCodec.java | \
+        src/main/java/com/yo1no/gramarye/P10TemplateService.java | \
+        src/main/java/com/yo1no/gramarye/P10TemplateValidation.java | \
+        src/main/java/com/yo1no/gramarye/P10TemplateValidateCommand.java | \
+        src/main/java/com/yo1no/gramarye/P9DamageActionType.java | \
+        src/p8S2GameTest/java/com/yo1no/gramarye/P8S2ReloadFailureHarness.java | \
+        src/main/java/com/yo1no/gramarye/gametest/PlatformGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/migration/SkillCandidateResolver.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/migration/PayloadMigrator.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/codec/ActionDefinitionCodec.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/codec/TriggerDefinitionCodec.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/inspection/NodeProjectionResolver.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/validation/SkillValidationAnalyzer.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/migration/SkillCandidateResolverOrderedTest.java | \
+        scripts/run-dedicated-server-smoke.sh | \
+        src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json | \
+        src/test/java/com/yo1no/gramarye/P10TemplateCodecTest.java | \
+        src/test/java/com/yo1no/gramarye/P10TemplateServiceTest.java | \
+        src/test/java/com/yo1no/gramarye/P10TemplateValidationTest.java | \
+        src/test/java/com/yo1no/gramarye/P10TemplateValidateCommandTest.java | \
+        src/test/java/com/yo1no/gramarye/P10StarterCommandTest.java | \
+        src/test/java/com/yo1no/gramarye/P8ServerPresentationServiceTest.java | \
+        src/test/java/com/yo1no/gramarye/P9StarterSkillContentTest.java)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 is_s4_path() {
     case "$1" in
         scripts/verify-p7-s4-source-contracts.sh | \
@@ -757,7 +789,7 @@ case "${1:-}" in
         [[ "$#" -eq 2 ]] \
             && { is_s4_path "$2" || is_p9_s3_path "$2" \
                 || is_p9_s3_dc1_path "$2" || is_p9_s4_path "$2" \
-                || is_p9_s4_wc1_path "$2" || is_p9_s5_path "$2"; } ;;
+                || is_p9_s4_wc1_path "$2" || is_p9_s5_path "$2" || is_p10_path "$2"; } ;;
     --is-p9-s5-path)
         [[ "$#" -eq 2 ]] && is_p9_s5_path "$2" ;;
     --check-game-test-worker-source)

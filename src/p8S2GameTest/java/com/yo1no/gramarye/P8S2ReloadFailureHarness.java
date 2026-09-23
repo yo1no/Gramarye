@@ -37,7 +37,15 @@ final class P8S2ReloadFailureHarness {
             "P8-S2 test-owned failure after production reload listeners applied";
     private static final int LOCKED_NEOFORGE_RELOAD_LISTENERS = 3;
     private static final int EXPECTED_PRECEDING_RELOAD_LISTENERS =
-            LOCKED_NEOFORGE_RELOAD_LISTENERS + 1;
+            LOCKED_NEOFORGE_RELOAD_LISTENERS + 2;
+    private static final String LOCKED_LISTENER_WRAPPER =
+            "net.neoforged.neoforge.event.AddReloadListenerEvent$WrappedStateAwareListener";
+    private static final List<String> EXPECTED_PRECEDING_LISTENER_TYPES = List.of(
+            "net.neoforged.neoforge.common.loot.LootModifierManager",
+            "net.neoforged.neoforge.registries.DataMapLoader",
+            "net.neoforged.neoforge.common.CreativeModeTabRegistry$1",
+            "com.yo1no.gramarye.P8ServerPresentationService$ProfileCatalogReloadListener",
+            "com.yo1no.gramarye.P10TemplateService$TemplateReloadListener");
     private static final ResourceLocation PROFILE_FIXTURE =
             ResourceLocation.fromNamespaceAndPath(
                     "gramarye_p8_s2_reload",
@@ -52,6 +60,8 @@ final class P8S2ReloadFailureHarness {
     private static int baselineGlobalSyncCount;
     private static int failureApplyCount;
     private static int recoveryApplyCount;
+    private static P10TemplateService templateOwner;
+    private static P10TemplateService.Capture startupTemplate;
 
     private P8S2ReloadFailureHarness() {}
 
@@ -74,6 +84,9 @@ final class P8S2ReloadFailureHarness {
         requireServerThread(activeServer);
         startupResources = Objects.requireNonNull(
                 activeServer.getServerResources().managers(), "startup resources");
+        startupTemplate = Objects.requireNonNull(templateOwner, "observed production P10 owner")
+                .capture(activeServer);
+        requireCurrentTemplate(startupTemplate);
         phase = Phase.READY;
         marker("STARTUP_READY");
         marker("TEST_ID=" + TEST_ID);
@@ -89,10 +102,7 @@ final class P8S2ReloadFailureHarness {
         Objects.requireNonNull(event, "event");
         var resources = Objects.requireNonNull(
                 event.getServerResources(), "candidate server resources");
-        if (event.getListeners().size() != EXPECTED_PRECEDING_RELOAD_LISTENERS) {
-            throw new IllegalStateException(
-                    "P8-S2 requires locked platform listeners plus one production P8 listener");
-        }
+        observeExactPredecessors(event);
         var kind = switch (phase) {
             case FAILURE_ARMED -> CycleKind.FAILURE;
             case RECOVERY_ARMED -> CycleKind.RECOVERY;
@@ -199,6 +209,7 @@ final class P8S2ReloadFailureHarness {
             throw new AssertionError(
                     "failed global reload changed publication or lost exact apply evidence");
         }
+        requireUnchangedTemplate(server);
         phase = Phase.FAILURE_OBSERVED;
     }
 
@@ -219,6 +230,13 @@ final class P8S2ReloadFailureHarness {
             throw new AssertionError(
                     "successful recovery did not publish one fresh exact resource identity");
         }
+        var recovered = templateOwner.capture(server);
+        requireCurrentTemplate(recovered);
+        if (recovered.publicationToken() == startupTemplate.publicationToken()
+                || recovered.body().orElseThrow() == startupTemplate.body().orElseThrow()) {
+            throw new AssertionError("P10 recovery did not publish its freshly prepared body/token");
+        }
+        startupTemplate = null;
         phase = Phase.COMPLETE;
     }
 
@@ -233,6 +251,7 @@ final class P8S2ReloadFailureHarness {
             return;
         }
         requireServerThread(activeServer);
+        requireUnchangedTemplate(activeServer);
         if (kind == CycleKind.FAILURE) {
             requirePhase(Phase.FAILURE_ARMED);
             if (exactResources != failedCandidateResources || failureApplyCount != 0) {
@@ -251,6 +270,62 @@ final class P8S2ReloadFailureHarness {
         recoveryApplyCount++;
         phase = Phase.RECOVERY_APPLIED;
         marker("RECOVERY_PREDECESSORS_APPLIED");
+    }
+
+    /** Locked wrapper/owner fields are observed only; no platform or product identity is set. */
+    private static void observeExactPredecessors(AddReloadListenerEvent event) {
+        var listeners = event.getListeners();
+        if (listeners.size() != EXPECTED_PRECEDING_RELOAD_LISTENERS) {
+            throw new IllegalStateException("P8-S2 requires exact locked platform -> P8 -> P10 listeners");
+        }
+        try {
+            for (int index = 0; index < listeners.size(); index++) {
+                var wrapper = listeners.get(index);
+                if (!wrapper.getClass().getName().equals(LOCKED_LISTENER_WRAPPER)) {
+                    throw new AssertionError("P8-S2 locked reload wrapper changed at " + index);
+                }
+                var wrapped = wrapper.getClass().getDeclaredField("wrapped");
+                wrapped.setAccessible(true);
+                var listener = Objects.requireNonNull(wrapped.get(wrapper), "wrapped reload listener");
+                if (!listener.getClass().getName().equals(EXPECTED_PRECEDING_LISTENER_TYPES.get(index))) {
+                    throw new AssertionError("P8-S2 exact predecessor order changed at " + index
+                            + ": " + listener.getClass().getName());
+                }
+                if (index == LOCKED_NEOFORGE_RELOAD_LISTENERS + 1) {
+                    var ownerField = listener.getClass().getDeclaredField("owner");
+                    ownerField.setAccessible(true);
+                    var observed = P10TemplateService.class.cast(ownerField.get(listener));
+                    if (templateOwner != null && templateOwner != observed) {
+                        throw new AssertionError("P10 root owner identity changed across actual reloads");
+                    }
+                    templateOwner = Objects.requireNonNull(observed, "production P10 owner");
+                }
+            }
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError("P8-S2 locked read-only listener observation failed", failure);
+        }
+    }
+
+    private static void requireCurrentTemplate(P10TemplateService.Capture captured) {
+        if (captured.body().isEmpty() || captured.publicationToken() == null
+                || captured.origin() != P10TemplateService.Origin.CURRENT
+                || !captured.contextCurrent()
+                || captured.lastAttempt().classification() != P10TemplateService.Classification.ACCEPTED) {
+            throw new AssertionError("P10 expected a current accepted active template");
+        }
+    }
+
+    private static void requireUnchangedTemplate(MinecraftServer server) {
+        var captured = templateOwner.capture(server);
+        requireCurrentTemplate(captured);
+        if (startupTemplate == null
+                || captured.body().orElseThrow() != startupTemplate.body().orElseThrow()
+                || captured.publicationToken() != startupTemplate.publicationToken()
+                || captured.origin() != startupTemplate.origin()
+                || captured.lastAttempt() != startupTemplate.lastAttempt()
+                || captured.contextCurrent() != startupTemplate.contextCurrent()) {
+            throw new AssertionError("P10 preinstall failure changed its exact active publication tuple");
+        }
     }
 
     private static void requireIsolatedWorld(MinecraftServer server) {
@@ -305,6 +380,7 @@ final class P8S2ReloadFailureHarness {
     private static synchronized void resetIfExact(MinecraftServer server) {
         if (activeServer == server) {
             reset();
+            templateOwner = null;
         }
     }
 
@@ -318,6 +394,7 @@ final class P8S2ReloadFailureHarness {
         baselineGlobalSyncCount = 0;
         failureApplyCount = 0;
         recoveryApplyCount = 0;
+        startupTemplate = null;
     }
 
     private enum Phase {

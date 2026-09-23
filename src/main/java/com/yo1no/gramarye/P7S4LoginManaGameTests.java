@@ -90,11 +90,25 @@ public final class P7S4LoginManaGameTests {
             ServerPlayer actor,
             long fixtureId,
             AppearanceDocument appearance) {
+        return openP9GameTestFixture(helper, actor, fixtureId, appearance, 0, 4_000L);
+    }
+
+    static P9GameTestFixture openP9GameTestFixture(
+            GameTestHelper helper,
+            ServerPlayer actor,
+            long fixtureId,
+            AppearanceDocument appearance,
+            int damageSchema,
+            long magnitude) {
         Objects.requireNonNull(helper, "helper");
         Objects.requireNonNull(actor, "actor");
         Objects.requireNonNull(appearance, "appearance");
         if (fixtureId <= 0) {
             throw new IllegalArgumentException("P9 GameTest fixture identity must be positive");
+        }
+        if (!((damageSchema == 0 && magnitude == 4_000L)
+                || (damageSchema == 1 && (magnitude == 4_000L || magnitude == 5_000L)))) {
+            throw new IllegalArgumentException("Fixture requires a supported exact damage input");
         }
         var server = helper.getLevel().getServer();
         helper.assertTrue(server.isSameThread()
@@ -112,11 +126,28 @@ public final class P7S4LoginManaGameTests {
             var canonical = P9StarterSkillContent.canonicalDraft(new SkillId(new UUID(
                     0x7900000000004000L,
                     0x8000000000000000L | fixtureId)));
+            var nodes = canonical.nodes();
+            if (damageSchema == 1) {
+                var damagePayload = P9DamageActionType.INSTANCE.payloadCodec().codec()
+                        .encodeStart(com.mojang.serialization.JsonOps.INSTANCE,
+                                new P9DamageActionPayloadV0(magnitude, 0L)).getOrThrow();
+                var originalHit = nodes.get(1);
+                var hit = new com.yo1no.gramarye.magic.definition.document.DraftNode(
+                        originalHit.trigger(),
+                        com.yo1no.gramarye.magic.definition.document.DraftActionSlot.present(
+                                new com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope(
+                                        P9StarterSkillContent.DAMAGE_ID, 1,
+                                        new com.mojang.serialization.Dynamic<>(
+                                                com.mojang.serialization.JsonOps.INSTANCE,
+                                                damagePayload))),
+                        originalHit.appearanceOverride());
+                nodes = List.of(nodes.getFirst(), hit);
+            }
             var draft = new SkillDraft(
                     canonical.draftSchemaVersion(),
                     canonical.skillId(),
                     canonical.baseRevision(),
-                    canonical.nodes(),
+                    nodes,
                     appearance);
             var reference = submitCanonical(
                     helper,

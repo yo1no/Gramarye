@@ -8,6 +8,7 @@ readonly P8_RELOADED_CATALOG_SIGNAL='Gramarye P8 Profile catalog activated at ge
 readonly STOPPING_SIGNAL='Stopping server'
 readonly CLIENT_CLASS_LOAD_FAILURE='Attempted to load class net/minecraft/client'
 readonly CLIENT_DIST_FAILURE='Invalid dist DEDICATED_SERVER for net.minecraft.client'
+readonly TEMPLATE_READY_SIGNAL='READY_CURRENT lastAttempt=ACCEPTED displayOmitted=0 upstreamTruncated=false'
 readonly RELOAD_TIMEOUT_SECONDS=60
 readonly SHUTDOWN_TIMEOUT_SECONDS=60
 
@@ -50,7 +51,12 @@ cleanup() {
         terminate_process_tree "$server_pid"
         wait "$server_pid" 2>/dev/null || true
     fi
-    rm -rf -- "$smoke_root"
+    # Preserve the actual producer log/world for diagnosis; this is a uniquely owned temp root.
+    # CI also retains the full producer output in its ordinary job log, including failed starts.
+    if [[ -f "$server_log" ]]; then
+        cat "$server_log"
+    fi
+    echo "Dedicated server evidence retained at: $smoke_root"
 }
 trap cleanup EXIT INT TERM
 
@@ -104,6 +110,29 @@ if (( initial_catalog == 0 )); then
     exit 1
 fi
 
+validate_current_template() {
+    local expected_count="$1"
+    local deadline=$(( $(date +%s) + RELOAD_TIMEOUT_SECONDS ))
+    printf 'skill validate template gramarye:starter_bolt_v0\n' >&3
+    while kill -0 "$server_pid" 2>/dev/null; do
+        local observed
+        observed="$(grep -F -c "$TEMPLATE_READY_SIGNAL" "$server_log" || true)"
+        if (( observed == expected_count )); then
+            return
+        fi
+        if (( observed > expected_count || $(date +%s) >= deadline )); then
+            echo 'Dedicated console did not observe the current accepted template.' >&2
+            show_failure_log
+            exit 1
+        fi
+        sleep 1
+    done
+    echo 'Dedicated server exited before template validation completed.' >&2
+    show_failure_log
+    exit 1
+}
+
+validate_current_template 1
 printf 'reload\n' >&3
 reload_deadline=$(( $(date +%s) + RELOAD_TIMEOUT_SECONDS ))
 reloaded=0
@@ -126,6 +155,7 @@ if (( reloaded == 0 )); then
     exit 1
 fi
 
+validate_current_template 2
 printf 'stop\n' >&3
 shutdown_deadline=$(( $(date +%s) + SHUTDOWN_TIMEOUT_SECONDS ))
 while kill -0 "$server_pid" 2>/dev/null; do
@@ -164,4 +194,4 @@ if [[ -e "$primary_saved_data" || -L "$primary_saved_data" ]]; then
     exit 1
 fi
 
-echo "Dedicated server activated initial and reloaded P8 catalogs, kept absent SavedData clean, and stopped cleanly."
+echo "Dedicated server activated initial and reloaded P8 catalogs, validated CURRENT templates from console, kept absent SavedData clean, and stopped cleanly."

@@ -144,6 +144,49 @@ final class P5RuntimeKernelTest {
     }
 
     @Test
+    void p10RuntimeProjectionPinsBothDamageChoicesAndRejectsChangedReference() throws Exception {
+        var projector = new P5RuntimeProjector(ProfileAvailabilityView.unknown());
+        var context = new ValidationContext(MagicPolicyLimits.DEFAULTS);
+        var legacy = P9StarterSkillContent.canonicalDraft(SKILL_REFERENCE.skillId());
+        var originalNodes = legacy.nodes().stream().map(node -> new NodeDocument(
+                ((com.yo1no.gramarye.magic.definition.document.DraftTriggerSlot.Present)
+                        node.trigger()).definition(),
+                ((com.yo1no.gramarye.magic.definition.document.DraftActionSlot.Present)
+                        node.action()).definition(), node.appearanceOverride())).toList();
+        var shape = SkillRuntimeService.class.getDeclaredMethod("validateRootDefinitionShape",
+                com.yo1no.gramarye.magic.definition.validation.ValidatedSkillDefinition.class,
+                RuntimeRootEventSpec.class);
+        assertTrue(shape.trySetAccessible());
+        var playerId = new RuntimePlayerId(new UUID(41L, 43L));
+        var origin = new PlayerOrigin(SERVER_TOKEN, net.minecraft.world.level.Level.OVERWORLD, playerId);
+        var geometry = new CastGeometryExecutionDataV0(origin.dimension().location(),
+                0.0, 64.0, 0.0, 32_767, 0, 0, 0);
+        var spec = new RuntimeRootEventSpec(SKILL_REFERENCE, 0,
+                new RuntimeScheduleSpec(0, 100, RuntimeSchedulePersistence.MEMORY_ONLY),
+                new PlayerRuntimeBudgetAttribution(SERVER_TOKEN, playerId), origin, Optional.empty(),
+                new RootTriggerCause(new TriggerEventKind(P9StarterSkillContent.ACTIVE_CAST_ID)), geometry);
+        for (long magnitude : new long[] {4_000L, 5_000L}) {
+            var payload = P9DamageActionType.INSTANCE.payloadCodec().codec()
+                    .encodeStart(JsonOps.INSTANCE, new P9DamageActionPayloadV0(magnitude, 0L)).getOrThrow();
+            var originalHit = originalNodes.get(1);
+            var document = new SkillDocument(SkillDocument.CURRENT_SCHEMA_VERSION,
+                    SKILL_REFERENCE.skillId(), SKILL_REFERENCE.revision(), List.of(
+                            originalNodes.getFirst(), new NodeDocument(originalHit.trigger(),
+                                    new DefinitionEnvelope(P9StarterSkillContent.DAMAGE_ID, 1,
+                                            new Dynamic<>(JsonOps.INSTANCE, payload)),
+                                    originalHit.appearanceOverride())), legacy.appearance());
+            var available = assertInstanceOf(P5RuntimeProjector.Projection.Available.class,
+                    projector.project(SKILL_REFERENCE, document, context));
+            assertEquals(magnitude, ((P9DamageActionPayloadV0)
+                    available.definition().nodes().get(1).action().payload()).magnitude());
+            assertTrue(P9StarterSkillContent.hasSupportedStarterGameplay(available.definition()));
+            assertEquals(Optional.empty(), shape.invoke(null, available.definition(), spec));
+            assertSame(P5RuntimeProjector.Projection.Unavailable.INSTANCE, projector.project(
+                    new SkillReference(SKILL_REFERENCE.skillId(), new SkillRevision(4)), document, context));
+        }
+    }
+
+    @Test
     void loadedReferenceFailureClassificationIsClosedAndPreservesExactReason() {
         var missingReasons = List.of(
                 RuntimeReferenceFailureReason.MISSING,

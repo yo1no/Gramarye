@@ -15,7 +15,7 @@ fail() {
     exit 1
 }
 
-for required_tool in grep find mktemp rm jar dirname pwd; do
+for required_tool in grep find mktemp rm jar unzip cmp dirname pwd; do
     command -v "${required_tool}" >/dev/null 2>&1 \
         || fail "P4-B2-B configuration verifier cannot find required tool: ${required_tool}"
 done
@@ -34,6 +34,7 @@ PROBE_SOURCE_LIST=''
 GAME_TEST_SOURCE_LIST=''
 JAR_FILE_LIST=''
 JAR_LISTING=''
+P10_JAR_TEMPLATE=''
 B2_JOB_BLOCK=''
 A3_JOB_BLOCK=''
 HELPER_FIXTURE=''
@@ -189,6 +190,85 @@ require_jar_class_family() {
             "${expected_family_count}" \
             "${description} exact B.class/B\$*.class family changed"
     fi
+}
+
+verify_p10_jar_inventory() {
+    local listing="$1"
+    local jar_path="$2"
+    local source_template="$3"
+    local class_entry=''
+    local actual=''
+    local status=0
+    local template_entry='data/gramarye/gramarye/skill_templates/starter_bolt_v0.json'
+    local expected_classes=(
+        'com/yo1no/gramarye/P10TemplateBody.class'
+        'com/yo1no/gramarye/P10TemplateCodec$DecodeReason.class'
+        'com/yo1no/gramarye/P10TemplateCodec$Decoded.class'
+        'com/yo1no/gramarye/P10TemplateCodec$IngressFailure.class'
+        'com/yo1no/gramarye/P10TemplateCodec$Parsed.class'
+        'com/yo1no/gramarye/P10TemplateCodec$Parser.class'
+        'com/yo1no/gramarye/P10TemplateCodec$PayloadByteCounter.class'
+        'com/yo1no/gramarye/P10TemplateCodec$PayloadLimit.class'
+        'com/yo1no/gramarye/P10TemplateCodec$Rejected.class'
+        'com/yo1no/gramarye/P10TemplateCodec$Result.class'
+        'com/yo1no/gramarye/P10TemplateCodec.class'
+        'com/yo1no/gramarye/P10TemplateService$AttemptStatus.class'
+        'com/yo1no/gramarye/P10TemplateService$Capture.class'
+        'com/yo1no/gramarye/P10TemplateService$Classification.class'
+        'com/yo1no/gramarye/P10TemplateService$Cycle.class'
+        'com/yo1no/gramarye/P10TemplateService$Origin.class'
+        'com/yo1no/gramarye/P10TemplateService$Prepared.class'
+        'com/yo1no/gramarye/P10TemplateService$Staged.class'
+        'com/yo1no/gramarye/P10TemplateService$TemplateReloadListener.class'
+        'com/yo1no/gramarye/P10TemplateService$Ticket.class'
+        'com/yo1no/gramarye/P10TemplateService.class'
+        'com/yo1no/gramarye/P10TemplateValidateCommand$Primary.class'
+        'com/yo1no/gramarye/P10TemplateValidateCommand$Response.class'
+        'com/yo1no/gramarye/P10TemplateValidateCommand.class'
+        'com/yo1no/gramarye/P10TemplateValidation$1.class'
+        'com/yo1no/gramarye/P10TemplateValidation$Classification.class'
+        'com/yo1no/gramarye/P10TemplateValidation$Result.class'
+        'com/yo1no/gramarye/P10TemplateValidation.class'
+    )
+
+    # Cardinality alone cannot reject a same-count renamed or substituted nested class.
+    for class_entry in "${expected_classes[@]}"; do
+        status=0
+        actual="$(LC_ALL=C grep -Fxc -- "${class_entry}" "${listing}")" || status=$?
+        case "${status}" in
+            0) ;;
+            1) actual=0 ;;
+            *) grep_failed "${listing}" "${status}" ;;
+        esac
+        [[ "${actual}" -eq 1 ]] \
+            || fail "P10 production JAR exact class entry must occur once: ${class_entry} (found ${actual})"
+    done
+    require_ere_count "${listing}" \
+        '^com/yo1no/gramarye/P10[^/]*\.class$' "${#expected_classes[@]}" \
+        'P10 production JAR exact root class inventory changed'
+    require_ere_count "${listing}" \
+        '^data/gramarye/gramarye/skill_templates/starter_bolt_v0\.json$' 1 \
+        'P10 production JAR must contain its exact built-in template once'
+    require_ere_count "${listing}" \
+        '^data/gramarye/gramarye/skill_templates/.+' 1 \
+        'P10 production JAR fixed template resource exact-set changed'
+    require_regular_file "${source_template}" \
+        'P10 production template source is missing'
+    P10_JAR_TEMPLATE="$(mktemp "${TMPDIR:-/tmp}/gramarye-p10-jar-template.XXXXXX")" \
+        || fail 'P10 verifier could not create its archived-template comparison file'
+    status=0
+    unzip -p "${jar_path}" "${template_entry}" > "${P10_JAR_TEMPLATE}" || status=$?
+    [[ "${status}" -eq 0 ]] \
+        || fail "P10 template extraction failed for ${jar_path} (exit ${status})"
+    status=0
+    cmp -s -- "${source_template}" "${P10_JAR_TEMPLATE}" || status=$?
+    case "${status}" in
+        0) ;;
+        1) fail 'P10 production JAR built-in template bytes differ from source' ;;
+        *) fail "P10 template byte comparison failed (exit ${status})" ;;
+    esac
+    rm -f -- "${P10_JAR_TEMPLATE}"
+    P10_JAR_TEMPLATE=''
 }
 
 forbid_jar_class_family() {
@@ -417,6 +497,7 @@ cleanup() {
         "${GAME_TEST_SOURCE_LIST}" \
         "${JAR_FILE_LIST}" \
         "${JAR_LISTING}" \
+        "${P10_JAR_TEMPLATE}" \
         "${B2_JOB_BLOCK}" \
         "${A3_JOB_BLOCK}" \
         "${HELPER_FIXTURE}"; do
@@ -669,7 +750,7 @@ verify_b2_build_contracts() {
         "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
         'dependsOn(verifyP9S5ClientRuntimeResultParser)' \
         "tasks.named(p9S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile)" \
-        "add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)" \
+        "add(p9S5ClientHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)" \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, sourceSets.main.output)' \
         'add(p4B2ProbeSourceSet.implementationConfigurationName, p4A3ProbeSourceSet.output)' \
         'add(p4B2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)' \
@@ -721,7 +802,7 @@ verify_b2_build_contracts() {
         "tasks.named('runP9S5ClientRuntimeHarness', JavaExec)" \
         "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
         'dependsOn(verifyP9S5ClientRuntimeResultParser)' \
-        "add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)"; do
+        "add(p9S5ClientHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)"; do
         require_fixed_count \
             build.gradle \
             "${literal}" \
@@ -1625,8 +1706,10 @@ verify_production_jar_isolation() {
         require_jar_class_family \
             "${JAR_LISTING}" \
             'com/yo1no/gramarye/P9StarterCommand' \
-            2 \
+            3 \
             'P9-S5 starter command'
+        verify_p10_jar_inventory "${JAR_LISTING}" "${jar_path}" \
+            'src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json'
         require_jar_class_family \
             "${JAR_LISTING}" \
             'com/yo1no/gramarye/P9StarterSkillIdentityV0' \

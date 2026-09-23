@@ -109,7 +109,7 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
         if (command.requestId() != command.sourceEventId()
                 || command.requestId() <= 0L
                 || !command.targetId().equals(hit.targetId())
-                || command.magnitude() != 4_000L
+                || (command.magnitude() != 4_000L && command.magnitude() != 5_000L)
                 || command.magnitude() % 1_000L != 0L
                 || command.manaCost() != 0L) {
             return CommitDisposition.NOT_APPLIED;
@@ -117,7 +117,7 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
         var convertedDamage = (float) (command.magnitude() / 1_000.0D);
         if (!Float.isFinite(convertedDamage)
                 || convertedDamage <= 0.0F
-                || convertedDamage != 4.0F
+                || (convertedDamage != 4.0F && convertedDamage != 5.0F)
                 || !currentActor(hit.dimension())) {
             return CommitDisposition.NOT_APPLIED;
         }
@@ -148,7 +148,7 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
         }
 
         return target.hurt(
-                        serverLevel.damageSources().indirectMagic(projectile, actor), 4.0F)
+                        serverLevel.damageSources().indirectMagic(projectile, actor), convertedDamage)
                 ? CommitDisposition.APPLIED
                 : CommitDisposition.NOT_APPLIED;
     }

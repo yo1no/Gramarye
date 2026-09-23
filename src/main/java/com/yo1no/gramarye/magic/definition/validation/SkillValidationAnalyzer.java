@@ -29,6 +29,7 @@ import com.yo1no.gramarye.magic.definition.inspection.TargetSelection;
 import com.yo1no.gramarye.magic.definition.inspection.TriggerInspectionState;
 import com.yo1no.gramarye.magic.definition.inspection.TriggerReferenceProjection;
 import com.yo1no.gramarye.magic.definition.migration.PayloadMigrationFailure;
+import com.yo1no.gramarye.magic.definition.migration.SkillCandidateResolver;
 import com.yo1no.gramarye.magic.definition.resolution.ActionResolution;
 import com.yo1no.gramarye.magic.definition.resolution.ResolvedNodeCandidate;
 import com.yo1no.gramarye.magic.definition.resolution.ResolvedSkillCandidate;
@@ -72,8 +73,28 @@ public final class SkillValidationAnalyzer {
             ResolvedSkillCandidate candidate,
             ValidationContext context) {
         Objects.requireNonNull(candidate, "candidate");
+        return analyze(candidate, context, new ValidationCollector(), false, candidate.nodes().size());
+    }
+
+    /** Completes only an unforgeable resolver-owned ordered semantic handoff. */
+    public SkillValidationAnalysis analyzeOrdered(
+            SkillCandidateResolver.OrderedSemanticHandoff handoff,
+            ValidationCollector collector) {
+        Objects.requireNonNull(handoff, "handoff");
+        if (!handoff.ownsDiagnostics(Objects.requireNonNull(collector, "collector"))) {
+            throw new IllegalArgumentException("ordered diagnostic collector identity mismatch");
+        }
+        return analyze(handoff.candidate(), handoff.context(), collector, true, handoff.originalNodeCount());
+    }
+
+    private SkillValidationAnalysis analyze(
+            ResolvedSkillCandidate candidate,
+            ValidationContext context,
+            ValidationCollector collector,
+            boolean propagateUnexpected,
+            int originalNodeCount) {
+        Objects.requireNonNull(candidate, "candidate");
         Objects.requireNonNull(context, "context");
-        var collector = new ValidationCollector();
 
         if (candidate.skillSchemaVersion() != SkillDocument.CURRENT_SCHEMA_VERSION) {
             error(
@@ -85,14 +106,15 @@ public final class SkillValidationAnalyzer {
             return new SkillValidationAnalysis(candidate, Optional.empty(), collector.result());
         }
 
-        var inspection = projectionResolver.inspect(candidate);
+        var inspection = propagateUnexpected
+                ? projectionResolver.inspectPropagating(candidate) : projectionResolver.inspect(candidate);
         verifyPairing(candidate, inspection);
         var states = createStates(candidate, inspection);
 
         mapReadReport(candidate, collector);
         // Pipeline facts remain provenance/debug data on the candidate and never become issues.
-        validateGlobalStructure(candidate, context, collector);
-        mapResolutionStates(states, collector);
+        validateGlobalStructure(originalNodeCount, context, collector);
+        if (!propagateUnexpected) mapResolutionStates(states, collector);
         validateAppearance(candidate.appearance(), APPEARANCE_PATH, context, collector);
         for (var state : states) {
             validateAppearance(
@@ -102,12 +124,12 @@ public final class SkillValidationAnalyzer {
                     collector);
         }
         mapInspectionStates(states, collector);
-        snapshotCapabilities(states, collector);
+        snapshotCapabilities(states, collector, propagateUnexpected);
         validateLocalReferences(states, collector);
         validateCapabilityConsistency(states, collector);
-        runSemanticValidators(states, context, collector);
+        if (!propagateUnexpected) runSemanticValidators(states, context, collector);
         validateCrossNodeReferences(states, collector);
-        validateProfiles(candidate, states, collector);
+        validateProfiles(candidate, states, collector, propagateUnexpected);
 
         return new SkillValidationAnalysis(
                 candidate, Optional.of(inspection), collector.result());
@@ -206,10 +228,10 @@ public final class SkillValidationAnalyzer {
     }
 
     private static void validateGlobalStructure(
-            ResolvedSkillCandidate candidate,
+            int originalNodeCount,
             ValidationContext context,
             ValidationCollector collector) {
-        if (candidate.nodes().isEmpty()) {
+        if (originalNodeCount == 0) {
             error(
                     collector,
                     SkillValidationIssueCodes.SKILL_EMPTY_NODES,
@@ -217,12 +239,12 @@ public final class SkillValidationAnalyzer {
                     ValidationIssueMetadata.none());
         }
         var maximum = context.policyLimits().maxNodes();
-        if (candidate.nodes().size() > maximum) {
+        if (originalNodeCount > maximum) {
             error(
                     collector,
                     SkillValidationIssueCodes.SKILL_NODE_COUNT_POLICY_EXCEEDED,
                     NODES_PATH,
-                    new ValidationIssueMetadata.Limit(candidate.nodes().size(), maximum));
+                    new ValidationIssueMetadata.Limit(originalNodeCount, maximum));
         }
     }
 
@@ -351,7 +373,8 @@ public final class SkillValidationAnalyzer {
 
     private static void snapshotCapabilities(
             List<NodeState> states,
-            ValidationCollector collector) {
+            ValidationCollector collector,
+            boolean propagateUnexpected) {
         for (var state : states) {
             if (state.trigger.resolution instanceof TriggerResolution.Resolved<?> resolved) {
                 try {
@@ -364,6 +387,7 @@ public final class SkillValidationAnalyzer {
                                 ValidationIssueMetadata.none());
                     }
                 } catch (RuntimeException exception) {
+                    if (propagateUnexpected) throw exception;
                     error(
                             collector,
                             SkillValidationIssueCodes.DESCRIPTOR_CAPABILITIES_EXCEPTION,
@@ -382,6 +406,7 @@ public final class SkillValidationAnalyzer {
                                 ValidationIssueMetadata.none());
                     }
                 } catch (RuntimeException exception) {
+                    if (propagateUnexpected) throw exception;
                     error(
                             collector,
                             SkillValidationIssueCodes.DESCRIPTOR_CAPABILITIES_EXCEPTION,
@@ -655,57 +680,79 @@ public final class SkillValidationAnalyzer {
                         resolved.definition(),
                         context,
                         triggerPayloadRoot(state.nodeIndex()),
-                        collector);
+                        collector, false);
             }
             if (state.action.resolution instanceof ActionResolution.Resolved<?> resolved) {
                 validateActionDefinition(
                         resolved.definition(),
                         context,
                         actionPayloadRoot(state.nodeIndex()),
-                        collector);
+                        collector, false);
             }
         }
     }
 
-    private static <P extends TriggerPayload> void validateTriggerDefinition(
+    /** Records this trigger's resolution before later envelopes, then runs its semantic rules once. */
+    public static boolean validateOrderedEnvelope(
+            TriggerResolution resolution, ValidationContext context, int nodeIndex,
+            ValidationCollector collector) {
+        mapTriggerResolution(resolution, triggerRoot(nodeIndex), collector);
+        return !(resolution instanceof TriggerResolution.Resolved<?> resolved)
+                || validateTriggerDefinition(resolved.definition(), context, triggerPayloadRoot(nodeIndex), collector, true);
+    }
+
+    /** Records this action's resolution before later envelopes, then runs its semantic rules once. */
+    public static boolean validateOrderedEnvelope(
+            ActionResolution resolution, ValidationContext context, int nodeIndex,
+            ValidationCollector collector) {
+        mapActionResolution(resolution, actionRoot(nodeIndex), collector);
+        return !(resolution instanceof ActionResolution.Resolved<?> resolved)
+                || validateActionDefinition(resolved.definition(), context, actionPayloadRoot(nodeIndex), collector, true);
+    }
+
+    private static <P extends TriggerPayload> boolean validateTriggerDefinition(
             ResolvedTriggerDefinition<P> definition,
             ValidationContext context,
             ValidationPath payloadRoot,
-            ValidationCollector collector) {
+            ValidationCollector collector,
+            boolean propagateUnexpected) {
         ValidationResult result;
         try {
             result = definition.descriptor().validate(definition.payload(), context);
         } catch (RuntimeException exception) {
+            if (propagateUnexpected) throw exception;
             error(
                     collector,
                     SkillValidationIssueCodes.DESCRIPTOR_VALIDATOR_EXCEPTION,
                     payloadRoot,
                     ValidationIssueMetadata.ExceptionClass.from(exception.getClass()));
-            return;
+            return true;
         }
-        addDescriptorResult(result, payloadRoot, collector);
+        return addDescriptorResult(result, payloadRoot, collector);
     }
 
-    private static <P extends ActionPayload> void validateActionDefinition(
+    private static <P extends ActionPayload> boolean validateActionDefinition(
             ResolvedActionDefinition<P> definition,
             ValidationContext context,
             ValidationPath payloadRoot,
-            ValidationCollector collector) {
+            ValidationCollector collector,
+            boolean propagateUnexpected) {
         ValidationResult result;
         try {
             result = definition.descriptor().validate(definition.payload(), context);
         } catch (RuntimeException exception) {
+            if (propagateUnexpected) throw exception;
             error(
                     collector,
                     SkillValidationIssueCodes.DESCRIPTOR_VALIDATOR_EXCEPTION,
                     payloadRoot,
                     ValidationIssueMetadata.ExceptionClass.from(exception.getClass()));
-            return;
+            return true;
         }
-        addDescriptorResult(result, payloadRoot, collector);
+        return addDescriptorResult(result, payloadRoot, collector);
     }
 
-    private static void addDescriptorResult(
+    private static boolean addDescriptorResult(
             ValidationResult result,
             ValidationPath payloadRoot,
             ValidationCollector collector) {
@@ -715,14 +762,16 @@ public final class SkillValidationAnalyzer {
                     SkillValidationIssueCodes.DESCRIPTOR_VALIDATOR_CONTRACT_VIOLATION,
                     payloadRoot,
                     ValidationIssueMetadata.none());
-            return;
+            return true;
         }
+        var fatal = result.hasErrors();
         for (var issue : result.issues()) {
             var prefixed = PayloadPathPrefixer.prefix(payloadRoot, issue.path());
             if (prefixed instanceof PayloadPathPrefixer.Result.Success success) {
                 collector.add(new ValidationIssue(
                         issue.code(), issue.severity(), success.path(), issue.metadata()));
             } else {
+                fatal = true;
                 var overflow = (PayloadPathPrefixer.Result.Overflow) prefixed;
                 error(
                         collector,
@@ -732,6 +781,7 @@ public final class SkillValidationAnalyzer {
             }
         }
         collector.inheritReportState(result);
+        return fatal;
     }
 
     private static void validateCrossNodeReferences(
@@ -922,9 +972,10 @@ public final class SkillValidationAnalyzer {
     private void validateProfiles(
             ResolvedSkillCandidate candidate,
             List<NodeState> states,
-            ValidationCollector collector) {
+            ValidationCollector collector,
+            boolean propagateUnexpected) {
         if (candidate.appearance() instanceof AppearanceDocument.Decoded decoded) {
-            validateProfiles(decoded.definition(), APPEARANCE_PATH, collector);
+            validateProfiles(decoded.definition(), APPEARANCE_PATH, collector, propagateUnexpected);
         }
         for (var state : states) {
             if (state.candidate.appearanceOverride()
@@ -932,7 +983,7 @@ public final class SkillValidationAnalyzer {
                 validateProfiles(
                         decoded.override(),
                         appearanceOverridePath(state.nodeIndex()),
-                        collector);
+                        collector, propagateUnexpected);
             }
         }
     }
@@ -940,28 +991,31 @@ public final class SkillValidationAnalyzer {
     private void validateProfiles(
             AppearanceDefinition appearance,
             ValidationPath root,
-            ValidationCollector collector) {
-        validateProfile(appearance.soundProfile(), AppearanceField.SOUND_PROFILE, root, collector);
+            ValidationCollector collector,
+            boolean propagateUnexpected) {
+        validateProfile(appearance.soundProfile(), AppearanceField.SOUND_PROFILE, root, collector, propagateUnexpected);
         validateProfile(
-                appearance.particleProfile(), AppearanceField.PARTICLE_PROFILE, root, collector);
-        validateProfile(appearance.trailProfile(), AppearanceField.TRAIL_PROFILE, root, collector);
+                appearance.particleProfile(), AppearanceField.PARTICLE_PROFILE, root, collector, propagateUnexpected);
+        validateProfile(appearance.trailProfile(), AppearanceField.TRAIL_PROFILE, root, collector, propagateUnexpected);
     }
 
     private void validateProfiles(
             AppearanceOverride appearance,
             ValidationPath root,
-            ValidationCollector collector) {
-        validateProfile(appearance.soundProfile(), AppearanceField.SOUND_PROFILE, root, collector);
+            ValidationCollector collector,
+            boolean propagateUnexpected) {
+        validateProfile(appearance.soundProfile(), AppearanceField.SOUND_PROFILE, root, collector, propagateUnexpected);
         validateProfile(
-                appearance.particleProfile(), AppearanceField.PARTICLE_PROFILE, root, collector);
-        validateProfile(appearance.trailProfile(), AppearanceField.TRAIL_PROFILE, root, collector);
+                appearance.particleProfile(), AppearanceField.PARTICLE_PROFILE, root, collector, propagateUnexpected);
+        validateProfile(appearance.trailProfile(), AppearanceField.TRAIL_PROFILE, root, collector, propagateUnexpected);
     }
 
     private void validateProfile(
             ProfileSelection selection,
             AppearanceField field,
             ValidationPath root,
-            ValidationCollector collector) {
+            ValidationCollector collector,
+            boolean propagateUnexpected) {
         if (!(selection instanceof ProfileSelection.Specified specified)) {
             return;
         }
@@ -970,6 +1024,7 @@ public final class SkillValidationAnalyzer {
         try {
             availability = profileAvailability.availability(field, specified.id());
         } catch (RuntimeException exception) {
+            if (propagateUnexpected) throw exception;
             warning(
                     collector,
                     SkillValidationIssueCodes.APPEARANCE_PROFILE_AVAILABILITY_EXCEPTION,

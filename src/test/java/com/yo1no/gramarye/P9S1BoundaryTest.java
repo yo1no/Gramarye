@@ -133,6 +133,7 @@ final class P9S1BoundaryTest {
             "P9ActiveCastTriggerType.class",
             "P9DamageActionPayloadV0.class",
             "P9DamageActionType.class",
+            "P9DamageActionType$LegacyDamageMigration.class",
             "P9EffectHitTriggerPayloadV0.class",
             "P9EffectHitTriggerType.class",
             "P9RuntimeCleanupDisposition.class",
@@ -151,14 +152,17 @@ final class P9S1BoundaryTest {
             "P9S5ProvisioningGameTests$OwnedPlayers.class",
             "P9S5ProvisioningGameTests$PlayerdataClaim.class",
             "P9S5ProvisioningGameTests$StoreFixture.class",
+            "P9S5ProvisioningGameTests$ValidationReplySource.class",
             "P9SpawnProjectileActionPayloadV0.class",
             "P9SpawnProjectileActionType.class",
             "P9StarterCommand.class",
-            "P9StarterCommand$ReferenceCheck.class",
+            "P9StarterCommand$Fine.class",
+            "P9StarterCommand$1.class",
             "P9StarterProjectile.class",
             "P9StarterProjectileClientEvents.class",
             "P9StarterProjectileRegistration.class",
             "P9StarterSkillContent.class",
+            "P9StarterSkillContent$NormalizedStarterContent.class",
             "P9StarterSkillContent$1.class",
             "P9StarterSkillContent$2.class",
             "P9StarterSkillContent$3.class",
@@ -365,7 +369,11 @@ final class P9S1BoundaryTest {
                 () -> assertTrue(handoff.contains(
                         "target.hurt(\n"
                                 + "                        serverLevel.damageSources()"
-                                + ".indirectMagic(projectile, actor), 4.0F)")),
+                                + ".indirectMagic(projectile, actor), convertedDamage)")),
+                () -> assertTrue(handoff.contains(
+                        "command.magnitude() != 4_000L && command.magnitude() != 5_000L")),
+                () -> assertTrue(handoff.contains(
+                        "convertedDamage != 4.0F && convertedDamage != 5.0F")),
                 () -> assertTrue(handoff.indexOf("command.magnitude() != 4_000L")
                         < handoff.indexOf("var convertedDamage =")),
                 () -> assertTrue(handoff.indexOf("convertedDamage != 4.0F")
@@ -570,7 +578,8 @@ final class P9S1BoundaryTest {
         assertEquals(
                 List.of(
                         Path.of("src/main/resources/assets/gramarye/lang/en_us.json"),
-                        Path.of("src/main/resources/assets/gramarye/lang/zh_tw.json")),
+                        Path.of("src/main/resources/assets/gramarye/lang/zh_tw.json"),
+                        Path.of("src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json")),
                 sourceJsonResources);
     }
 
@@ -624,12 +633,15 @@ final class P9S1BoundaryTest {
                 () -> assertTrue(Modifier.isFinal(instanceField.getModifiers())),
                 () -> assertFalse(Modifier.isPublic(instanceField.getModifiers())),
                 () -> assertSame(instance, instanceField.get(null)),
-                () -> assertEquals(5, exposedOperations.size()),
+                () -> assertEquals(type == P9DamageActionType.class ? 6 : 5,
+                        exposedOperations.size()),
                 () -> assertTrue(exposedOperations.stream()
                         .allMatch(method -> Modifier.isPublic(method.getModifiers())
                                 && !Modifier.isStatic(method.getModifiers()))),
                 () -> assertEquals(
-                        Set.of(
+                        type == P9DamageActionType.class ? Set.of(
+                                "currentPayloadSchemaVersion", "payloadInspector", "payloadCodec",
+                                "capabilities", "validate", "payloadMigrationPlan") : Set.of(
                                 "currentPayloadSchemaVersion",
                                 "payloadInspector",
                                 "payloadCodec",
@@ -637,7 +649,7 @@ final class P9S1BoundaryTest {
                                 "validate"),
                         publicOperationNames),
                 () -> assertEquals(
-                        0,
+                        type == P9DamageActionType.class ? 1 : 0,
                         Arrays.stream(type.getDeclaredMethods())
                                 .filter(method -> method.getName().equals("payloadMigrationPlan"))
                                 .count()));

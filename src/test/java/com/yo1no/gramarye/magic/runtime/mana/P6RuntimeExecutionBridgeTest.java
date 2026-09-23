@@ -163,6 +163,20 @@ final class P6RuntimeExecutionBridgeTest {
     }
 
     @Test
+    void p10DamageInvocationAndProductionPlanRetainTheExactSelectedMagnitude() {
+        for (long magnitude : new long[] {4_000L, 5_000L}) {
+            var invocation = (DamageActionInvocation) P6RuntimeExecutionBridge.invocation(
+                    new P6RuntimeExecutionBridge.DamageInvocation(
+                            KEY, 1L, 1L, TARGET_ID, magnitude, 0L));
+            assertEquals(magnitude, invocation.magnitude());
+            assertEquals(0L, invocation.manaCost());
+            var request = EffectTestFixtures.request(magnitude, 0L);
+            var plan = ((AcceptedEffectResolution) new DamageEffectResolver().resolve(request, 0)).plan();
+            assertEquals(magnitude, ((DamageEffectStep) plan.steps().getFirst()).magnitude());
+        }
+    }
+
+    @Test
     void invocationSeamRejectsEveryNullAndOutOfRangeScalar() {
         assertInvocationRejected(null, 1, 1, TARGET_ID, 1, 0);
         assertInvocationRejected(KEY, 1, 1, null, 1, 0);

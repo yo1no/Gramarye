@@ -791,7 +791,8 @@ is_approved_p8_s5_resource_path() {
     case "$1" in
         src/main/resources/META-INF/accesstransformer.cfg | \
         src/main/resources/assets/gramarye/lang/en_us.json | \
-        src/main/resources/assets/gramarye/lang/zh_tw.json)
+        src/main/resources/assets/gramarye/lang/zh_tw.json | \
+        src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json)
             return 0
             ;;
         *)
@@ -870,6 +871,7 @@ verify_change_boundary() {
         src/main/resources \
         ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
         ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
+        ':(exclude)src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json' \
         ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \
         || fail 'P4-E1-A must not modify production resources'
     changed="$(git diff --name-only HEAD -- src/main/java)" || status=$?

@@ -1,0 +1,33 @@
+{
+  "nodes": [
+    {
+      "trigger": {
+        "type": "gramarye:active_cast",
+        "schema_version": 0,
+        "payload": {}
+      },
+      "action": {
+        "type": "gramarye:spawn_projectile",
+        "schema_version": 0,
+        "payload": {"profile_code": 0, "mana_cost": 0}
+      }
+    },
+    {
+      "trigger": {
+        "type": "gramarye:effect_hit",
+        "schema_version": 0,
+        "payload": {
+          "source_node_index": 0,
+          "source_output_ordinal": 0,
+          "include_derived": true
+        }
+      },
+      "action": {
+        "type": "gramarye:damage",
+        "schema_version": 1,
+        "payload": {"magnitude": 4000, "mana_cost": 0}
+      }
+    }
+  ],
+  "appearance": {}
+}

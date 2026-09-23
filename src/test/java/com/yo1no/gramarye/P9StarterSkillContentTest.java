@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
+import com.mojang.serialization.Dynamic;
 import com.mojang.serialization.MapCodec;
 import com.yo1no.gramarye.magic.action.type.ActionPayload;
 import com.yo1no.gramarye.magic.action.type.ActionType;
@@ -32,6 +33,7 @@ import com.yo1no.gramarye.magic.definition.action.ResolvedActionDefinition;
 import com.yo1no.gramarye.magic.definition.document.AppearanceDefinition;
 import com.yo1no.gramarye.magic.definition.document.AppearanceDocument;
 import com.yo1no.gramarye.magic.definition.document.AppearanceOverrideDocument;
+import com.yo1no.gramarye.magic.definition.document.AppearanceOverride;
 import com.yo1no.gramarye.magic.definition.document.DraftActionSlot;
 import com.yo1no.gramarye.magic.definition.document.DraftTriggerSlot;
 import com.yo1no.gramarye.magic.definition.document.NodeDocument;
@@ -50,6 +52,9 @@ import com.yo1no.gramarye.magic.definition.inspection.TriggerReferenceProjection
 import com.yo1no.gramarye.magic.definition.lookup.ActionTypeLookup;
 import com.yo1no.gramarye.magic.definition.lookup.TriggerTypeLookup;
 import com.yo1no.gramarye.magic.definition.migration.PayloadMigrationPlan;
+import com.yo1no.gramarye.magic.definition.migration.DescriptorMigrationAudit;
+import com.yo1no.gramarye.magic.definition.migration.PayloadMigrationFailure;
+import com.yo1no.gramarye.magic.definition.resolution.ActionResolution;
 import com.yo1no.gramarye.magic.definition.migration.SkillCandidateResolver;
 import com.yo1no.gramarye.magic.definition.trigger.ResolvedTriggerDefinition;
 import com.yo1no.gramarye.magic.definition.validation.ProfileAvailabilityView;
@@ -68,6 +73,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
 import org.junit.jupiter.api.Test;
 
 final class P9StarterSkillContentTest {
@@ -136,12 +143,131 @@ final class P9StarterSkillContentTest {
         for (var descriptor : List.of(
                 P9ActiveCastTriggerType.INSTANCE,
                 P9EffectHitTriggerType.INSTANCE,
-                P9SpawnProjectileActionType.INSTANCE,
-                P9DamageActionType.INSTANCE)) {
+                P9SpawnProjectileActionType.INSTANCE)) {
             assertEquals(0, schemaVersion(descriptor));
             assertSame(PayloadMigrationPlan.empty(), migrationPlan(descriptor));
             assertTrue(migrationPlan(descriptor).verifyCoverage(0).isSuccess());
         }
+        assertEquals(1, P9DamageActionType.INSTANCE.currentPayloadSchemaVersion());
+        assertEquals(1, P9DamageActionType.INSTANCE.payloadMigrationPlan().steps().size());
+        assertTrue(P9DamageActionType.INSTANCE.payloadMigrationPlan().verifyCoverage(1).isSuccess());
+    }
+
+    @Test
+    void productionDamageMigrationAuditAndLegacyGuardUseTheRealDescriptor() {
+        assertTrue(DescriptorMigrationAudit.audit(
+                List.of(P9ActiveCastTriggerType.INSTANCE, P9EffectHitTriggerType.INSTANCE),
+                List.of(P9SpawnProjectileActionType.INSTANCE, P9DamageActionType.INSTANCE))
+                .isEmpty());
+        var old = damageDocument(0, "{\"magnitude\":4000,\"mana_cost\":0}");
+        var original = old.nodes().get(1).action();
+        var oldBytes = SkillDocument.CODEC.encodeStart(JsonOps.INSTANCE, old).getOrThrow();
+        var migrated = assertInstanceOf(ActionResolution.Resolved.class, resolveDamage(old));
+        assertEquals(1, migrated.definition().schemaVersion());
+        assertEquals(new P9DamageActionPayloadV0(4_000L, 0L), migrated.definition().payload());
+        assertSame(original, migrated.sourceEnvelope());
+        assertEquals(oldBytes, SkillDocument.CODEC.encodeStart(JsonOps.INSTANCE, old).getOrThrow());
+        assertEquals(0, original.schemaVersion());
+
+        for (var payload : List.of(
+                "{\"magnitude\":5000,\"mana_cost\":0}",
+                "{\"magnitude\":4000,\"mana_cost\":1}",
+                "{\"magnitude\":4000,\"mana_cost\":0,\"extra\":0}",
+                "{\"magnitude\":4000}",
+                "{\"magnitude\":\"4000\",\"mana_cost\":0}",
+                "{\"magnitude\":4000.5,\"mana_cost\":0}")) {
+            var document = damageDocument(0, payload);
+            var failure = assertInstanceOf(ActionResolution.MigrationFailed.class,
+                    resolveDamage(document));
+            assertEquals(PayloadMigrationFailure.Code.STEP_FAILED, failure.failure().code());
+            assertSame(document.nodes().get(1).action(), failure.originalEnvelope());
+            assertEquals(JsonParser.parseString(payload), failure.originalEnvelope()
+                    .copyRawPayload().convert(JsonOps.INSTANCE).getValue());
+        }
+    }
+
+    @Test
+    void damageCurrentSchemaDistinguishesDecodeSemanticAndFutureFailures() {
+        var malformed = assertInstanceOf(ActionResolution.DecodeFailed.class,
+                resolveDamage(damageDocument(1, "{\"magnitude\":5000}")));
+        assertEquals(1, malformed.originalEnvelope().schemaVersion());
+        var future = assertInstanceOf(ActionResolution.MigrationFailed.class,
+                resolveDamage(damageDocument(2, "{\"magnitude\":4000,\"mana_cost\":0}")));
+        assertEquals(PayloadMigrationFailure.Code.FUTURE_SCHEMA_VERSION, future.failure().code());
+        for (long magnitude : new long[] {Long.MIN_VALUE, -1, 0, 3999, 4001, 4500, 5001, Long.MAX_VALUE}) {
+            var resolved = assertInstanceOf(ActionResolution.Resolved.class, resolveDamage(
+                    damageDocument(1, "{\"magnitude\":" + magnitude + ",\"mana_cost\":0}")));
+            assertTrue(resolved.definition().validate(CONTEXT).hasErrors());
+        }
+        for (long magnitude : new long[] {4_000L, 5_000L}) {
+            var definition = validate(damageDocument(1,
+                    "{\"magnitude\":" + magnitude + ",\"mana_cost\":0}"));
+            assertTrue(P9StarterSkillContent.hasSupportedStarterGameplay(definition));
+            assertEquals(magnitude == 4_000L,
+                    P9StarterSkillContent.hasCanonicalGameplayFingerprint(definition));
+        }
+    }
+
+    @Test
+    void productionLegacyMigrationPreservesNbtFamilyAndFailedOriginalSnapshot() {
+        for (long magnitude : new long[] {4_000L, 5_000L}) {
+            var payload = new CompoundTag();
+            payload.putLong("magnitude", magnitude);
+            payload.putLong("mana_cost", 0L);
+            var source = new DefinitionEnvelope(P9StarterSkillContent.DAMAGE_ID, 0,
+                    new Dynamic<>(NbtOps.INSTANCE, payload));
+            var original = damageDocument(0, "{\"magnitude\":4000,\"mana_cost\":0}");
+            var hit = original.nodes().get(1);
+            var document = new SkillDocument(original.schemaVersion(), original.skillId(),
+                    original.revision(), List.of(original.nodes().getFirst(),
+                            new NodeDocument(hit.trigger(), source, hit.appearanceOverride())),
+                    original.appearance());
+            var resolution = resolveDamage(document);
+            if (magnitude == 4_000L) {
+                var resolved = assertInstanceOf(ActionResolution.Resolved.class, resolution);
+                assertEquals(new P9DamageActionPayloadV0(4_000L, 0L), resolved.definition().payload());
+                assertSame(source, resolved.sourceEnvelope());
+                var step = P9DamageActionType.INSTANCE.payloadMigrationPlan().stepFrom(0).orElseThrow();
+                assertSame(NbtOps.INSTANCE, step.migrate(new Dynamic<>(NbtOps.INSTANCE, payload))
+                        .getOrThrow().migratedPayload().getOps());
+            } else {
+                var failure = assertInstanceOf(ActionResolution.MigrationFailed.class, resolution);
+                assertEquals(PayloadMigrationFailure.Code.STEP_FAILED, failure.failure().code());
+                assertSame(source, failure.originalEnvelope());
+            }
+            assertSame(NbtOps.INSTANCE, source.copyRawPayload().getOps());
+            assertEquals(payload, source.copyRawPayload().getValue());
+        }
+    }
+
+    @Test
+    void normalizedContentUsesMigratedEnvelopesAndAllAppearanceButNotIdentity() {
+        var legacy = damageDocument(0, "{\"magnitude\":4000,\"mana_cost\":0}");
+        var current = damageDocument(1, "{\"mana_cost\":0,\"magnitude\":4000}");
+        var renamed = new SkillDocument(current.schemaVersion(), SECOND_SKILL,
+                new SkillRevision(77), current.nodes(), current.appearance());
+        var legacyContent = P9StarterSkillContent.normalizedContent(validate(legacy), legacy);
+        assertEquals(legacyContent, P9StarterSkillContent.normalizedContent(validate(current), current));
+        assertEquals(legacyContent, P9StarterSkillContent.normalizedContent(validate(renamed), renamed));
+        var different = damageDocument(1, "{\"magnitude\":5000,\"mana_cost\":0}");
+        assertNotEquals(legacyContent,
+                P9StarterSkillContent.normalizedContent(validate(different), different));
+        var appearance = AppearanceDocument.decoded(new AppearanceDefinition(
+                OptionalInt.of(0x7f00ff00), OptionalInt.empty(), ProfileSelection.inherit(),
+                ProfileSelection.inherit(), ProfileSelection.inherit(), OptionalInt.of(500)));
+        var customized = new SkillDocument(current.schemaVersion(), current.skillId(),
+                current.revision(), current.nodes(), appearance);
+        assertNotEquals(legacyContent,
+                P9StarterSkillContent.normalizedContent(validate(customized), customized));
+        var first = current.nodes().getFirst();
+        var override = AppearanceOverrideDocument.decoded(new AppearanceOverride(
+                OptionalInt.empty(), OptionalInt.of(0xff112233), ProfileSelection.inherit(),
+                ProfileSelection.inherit(), ProfileSelection.inherit(), OptionalInt.empty()));
+        var customizedNode = new SkillDocument(current.schemaVersion(), current.skillId(),
+                current.revision(), List.of(new NodeDocument(first.trigger(), first.action(), override),
+                        current.nodes().get(1)), current.appearance());
+        assertNotEquals(legacyContent,
+                P9StarterSkillContent.normalizedContent(validate(customizedNode), customizedNode));
     }
 
     @Test
@@ -445,6 +571,21 @@ final class P9StarterSkillContentTest {
                 new SkillRevision(revision),
                 nodes,
                 draft.appearance());
+    }
+
+    private static SkillDocument damageDocument(int schema, String payload) {
+        var original = formalDocument(P9StarterSkillContent.canonicalDraft(FIRST_SKILL), 0);
+        var hit = original.nodes().get(1);
+        var action = new DefinitionEnvelope(P9StarterSkillContent.DAMAGE_ID, schema,
+                new Dynamic<>(JsonOps.INSTANCE, JsonParser.parseString(payload)));
+        return new SkillDocument(original.schemaVersion(), original.skillId(), original.revision(),
+                List.of(original.nodes().getFirst(), new NodeDocument(
+                        hit.trigger(), action, hit.appearanceOverride())), original.appearance());
+    }
+
+    private static ActionResolution resolveDamage(SkillDocument document) {
+        return new SkillCandidateResolver(new ExactTriggerLookup(), new ExactActionLookup())
+                .resolve(document, new SkillDocumentReadReport(List.of(), false)).nodes().get(1).action();
     }
 
     private static ValidatedSkillDefinition validate(SkillDocument document) {

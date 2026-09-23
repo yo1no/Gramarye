@@ -195,7 +195,7 @@ final class P6S4BoundaryTest {
                 () -> assertTrue(adapter.contains(
                         "context.node().action().descriptor() == P9DamageActionType.INSTANCE")),
                 () -> assertTrue(adapter.contains(
-                        "action.magnitude() == 4_000L")
+                        "action.magnitude() == 4_000L || action.magnitude() == 5_000L")
                         && adapter.contains("action.magnitude() % 1_000L == 0L")
                         && adapter.contains("action.manaCost() == 0L")),
                 () -> assertTrue(adapter.contains(

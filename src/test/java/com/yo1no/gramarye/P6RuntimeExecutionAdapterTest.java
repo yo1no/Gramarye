@@ -38,6 +38,20 @@ final class P6RuntimeExecutionAdapterTest {
     }
 
     @Test
+    void p10TypedDamageFlowsUnmodifiedThroughAdapterAndExactWorldConversion() throws IOException {
+        var adapter = Files.readString(ADAPTER_SOURCE);
+        var handoff = Files.readString(HANDOFF_SOURCE);
+        assertTrue(adapter.contains("action.magnitude() == 4_000L || action.magnitude() == 5_000L"));
+        assertTrue(adapter.contains("hit.targetId(),\n                            action.magnitude(),"));
+        assertTrue(handoff.contains("command.magnitude() != 4_000L && command.magnitude() != 5_000L"));
+        assertTrue(handoff.contains("command.magnitude() % 1_000L != 0L"));
+        assertTrue(handoff.contains("(float) (command.magnitude() / 1_000.0D)"));
+        assertTrue(handoff.contains("convertedDamage != 4.0F && convertedDamage != 5.0F"));
+        assertTrue(handoff.contains(".indirectMagic(projectile, actor), convertedDamage)"));
+        assertEquals(1, occurrences(handoff, ".hurt("));
+    }
+
+    @Test
     void publishedEventIdentityMapsLosslesslyToBothBridgeIds() {
         P6RuntimeExecutionIdentity identity =
                 P6RuntimeExecutionIdentity.fromPublishedEventId(9_223_372_036_854L);

@@ -527,7 +527,7 @@ final class ManaBoundaryTest {
                         ManaBoundaryTest::usesManaPackage)),
                 () -> assertTrue(relocatedTests.stream().allMatch(
                         ManaBoundaryTest::usesManaPackage)),
-                () -> assertEquals(99, relocatedTestCoordinates.size()));
+                () -> assertEquals(100, relocatedTestCoordinates.size()));
     }
 
     private static void assertGuardPrecedes(String section, String... accesses) {

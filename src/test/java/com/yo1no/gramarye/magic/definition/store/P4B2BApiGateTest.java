@@ -13,13 +13,16 @@ import java.io.StringWriter;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.spi.ToolProvider;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Phase-local API, source-set, task, CI, and later-domain gate for P4-B2-B. */
 class P4B2BApiGateTest {
@@ -42,6 +45,129 @@ class P4B2BApiGateTest {
     private static final Set<String> GAME_TEST_FILES = Set.of(
             "P4B2ProbeServerLifecycle.java",
             "P4B2MemoryGameTests.java");
+    private static final String P10_TEMPLATE =
+            "data/gramarye/gramarye/skill_templates/starter_bolt_v0.json";
+    private static final List<String> P10_CLASSES = List.of(
+            "P10TemplateBody.class",
+            "P10TemplateCodec$DecodeReason.class",
+            "P10TemplateCodec$Decoded.class",
+            "P10TemplateCodec$IngressFailure.class",
+            "P10TemplateCodec$Parsed.class",
+            "P10TemplateCodec$Parser.class",
+            "P10TemplateCodec$PayloadByteCounter.class",
+            "P10TemplateCodec$PayloadLimit.class",
+            "P10TemplateCodec$Rejected.class",
+            "P10TemplateCodec$Result.class",
+            "P10TemplateCodec.class",
+            "P10TemplateService$AttemptStatus.class",
+            "P10TemplateService$Capture.class",
+            "P10TemplateService$Classification.class",
+            "P10TemplateService$Cycle.class",
+            "P10TemplateService$Origin.class",
+            "P10TemplateService$Prepared.class",
+            "P10TemplateService$Staged.class",
+            "P10TemplateService$TemplateReloadListener.class",
+            "P10TemplateService$Ticket.class",
+            "P10TemplateService.class",
+            "P10TemplateValidateCommand$Primary.class",
+            "P10TemplateValidateCommand$Response.class",
+            "P10TemplateValidateCommand.class",
+            "P10TemplateValidation$1.class",
+            "P10TemplateValidation$Classification.class",
+            "P10TemplateValidation$Result.class",
+            "P10TemplateValidation.class");
+
+    @Test
+    void p10JarReaderRequiresLiteralNestedNamesAndNoExtraRootClasses(
+            @TempDir Path fixtures) throws Exception {
+        var entries = new ArrayList<>(P10_CLASSES.stream()
+                .map(name -> "com/yo1no/gramarye/" + name).toList());
+        entries.add(P10_TEMPLATE);
+        var template = Files.readAllBytes(PROJECT_ROOT.resolve("src/main/resources")
+                .resolve(P10_TEMPLATE));
+        assertP10JarReader(fixtures, "exact", entries, template, true);
+
+        var renamed = new ArrayList<>(entries);
+        renamed.set(renamed.indexOf("com/yo1no/gramarye/P10TemplateCodec$Parsed.class"),
+                "com/yo1no/gramarye/P10TemplateCodec$Substitute.class");
+        assertP10JarReader(fixtures, "same-count-renamed", renamed, template, false);
+        var missing = new ArrayList<>(entries);
+        missing.remove("com/yo1no/gramarye/P10TemplateService$Ticket.class");
+        assertP10JarReader(fixtures, "missing-nested", missing, template, false);
+        var extra = new ArrayList<>(entries);
+        extra.add("com/yo1no/gramarye/P10Unexpected.class");
+        assertP10JarReader(fixtures, "extra-root", extra, template, false);
+        extra.set(extra.size() - 1, "com/yo1no/gramarye/P10TemplateCodec$Unexpected.class");
+        assertP10JarReader(fixtures, "extra-nested", extra, template, false);
+
+        // A duplicate ZIP entry is malformed inventory even when all expected names exist.
+        var duplicate = new ArrayList<>(entries);
+        duplicate.add("com/yo1no/gramarye/P10TemplateCodec$Parser.class");
+        assertP10JarReader(fixtures, "duplicate-class", duplicate, template, false);
+    }
+
+    @Test
+    void p10JarReaderRequiresExactTemplateSetAndArchivedSourceBytes(
+            @TempDir Path fixtures) throws Exception {
+        var entries = new ArrayList<>(P10_CLASSES.stream()
+                .map(name -> "com/yo1no/gramarye/" + name).toList());
+        entries.add(P10_TEMPLATE);
+        var template = Files.readAllBytes(PROJECT_ROOT.resolve("src/main/resources")
+                .resolve(P10_TEMPLATE));
+        var changed = template.clone();
+        changed[changed.length - 1] ^= 1;
+        assertP10JarReader(fixtures, "changed-bytes", entries, changed, false);
+        assertP10JarReader(fixtures, "empty-bytes", entries, new byte[0], false);
+        var missing = new ArrayList<>(entries);
+        missing.remove(P10_TEMPLATE);
+        assertP10JarReader(fixtures, "missing-template", missing, template, false);
+        var renamed = new ArrayList<>(entries);
+        renamed.set(renamed.indexOf(P10_TEMPLATE),
+                "data/gramarye/gramarye/skill_templates/renamed.json");
+        assertP10JarReader(fixtures, "renamed-template", renamed, template, false);
+        var extra = new ArrayList<>(entries);
+        extra.add("data/gramarye/gramarye/skill_templates/extra.json");
+        assertP10JarReader(fixtures, "extra-template", extra, template, false);
+        var duplicate = new ArrayList<>(entries);
+        duplicate.add(P10_TEMPLATE);
+        assertP10JarReader(fixtures, "duplicate-template", duplicate, template, false);
+    }
+
+    private static void assertP10JarReader(
+            Path fixtures, String name, List<String> entries, byte[] template,
+            boolean accepted) throws Exception {
+        var jar = fixtures.resolve(name + ".jar");
+        // The existing dependency permits deliberate duplicate entries for negative controls.
+        try (var output = new org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream(
+                jar.toFile())) {
+            for (var entry : entries) {
+                output.putArchiveEntry(
+                        new org.apache.commons.compress.archivers.zip.ZipArchiveEntry(entry));
+                output.write(entry.equals(P10_TEMPLATE) ? template : new byte[] {0});
+                output.closeArchiveEntry();
+            }
+        }
+        var log = fixtures.resolve(name + ".log");
+        var process = new ProcessBuilder(
+                "bash", "-c", "source \"$1\"; trap cleanup EXIT; "
+                        + "jar tf \"$2\" > \"$3\"; "
+                        + "verify_p10_jar_inventory \"$3\" \"$2\" \"$4\"",
+                "p10-jar-reader",
+                PROJECT_ROOT.resolve("scripts/verify-p4-b2-b-configuration.sh").toString(),
+                jar.toString(), fixtures.resolve(name + ".listing").toString(),
+                PROJECT_ROOT.resolve("src/main/resources").resolve(P10_TEMPLATE).toString())
+                .directory(PROJECT_ROOT.toFile()).redirectErrorStream(true)
+                .redirectOutput(log.toFile()).start();
+        if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS), "reader process did not terminate");
+            throw new AssertionError("P10 JAR reader timed out: " + name);
+        }
+        assertEquals(accepted ? 0 : 1, process.exitValue(), () -> name + ": " + read(log));
+        if (!accepted) {
+            assertTrue(read(log).contains("P10 production JAR"), () -> name + ": " + read(log));
+        }
+    }
 
     @Test
     void exactProbeFilesStayInTheirTwoIsolatedSourceSets() throws Exception {

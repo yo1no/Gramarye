@@ -215,6 +215,15 @@ def p8S5ClientHarnessSourceSet = sourceSets.create('p8S5ClientHarness')
 def p9S3ClientHarnessSourceSet = sourceSets.create('p9S3ClientHarness')
 // P9-S5's normal-player composition harness is process-isolated and never packaged.
 def p9S5ClientHarnessSourceSet = sourceSets.create('p9S5ClientHarness')
+// The existing actual-client cohort loads the production artifact, not exploded main output.
+// Only its excluded controller classes are joined with that unchanged JAR in the test mod.
+p9S5ClientHarnessSourceSet.output.dir(
+        [builtBy: tasks.named('jar')], tasks.named('jar', Jar).flatMap { it.archiveFile })
+// This run loads Commons Compress from the unchanged production JAR's JarJar entry.
+// A second standalone copy would create two org.apache.commons.compress modules.
+configurations.named(p9S5ClientHarnessSourceSet.runtimeClasspathConfigurationName) {
+    exclude(group: 'org.apache.commons', module: 'commons-compress')
+}
 def p8S5ClientHarnessJvmArgs = [
         '-Xms512m',
         '-Xmx1536m',
@@ -644,7 +653,17 @@ def p9S5ClientRuntimeExpectedMarkers = [
         '23 SECOND_SERVER_AUTHORITATIVE_HIT_OBSERVED',
         '24 SECOND_EXACT_FOUR_DAMAGE_APPLIED',
         '25 NEW_SESSION_SEQUENCE_RESET_ACCEPTED',
-        '26 TERMINAL_PASS',
+        '26 P9_REGRESSION_COMPLETE',
+        '27 A_RECOVERY_TERMINAL_SAME_UUID',
+        '28 B_CURRENT_RELOAD_ZERO_PLAYER_MUTATION',
+        '29 B_SUCCESSOR_NORMAL_COMMAND',
+        '30 B_EXACT_FIVE_DAMAGE_APPLIED',
+        '31 B_SAVED_LOGOUT_SAME_WORLD',
+        '32 B_RECOVERY_TERMINAL_SAME_UUID',
+        '33 C_ROLLBACK_NEW_SUCCESSOR',
+        '34 INVALID_OVERRIDE_MATRIX_RETAINS_VALID_LKG',
+        '35 OVERRIDE_REMOVAL_PUBLISHES_BUILTIN_CURRENT',
+        '36 TERMINAL_PASS',
 ]
 def prepareP9S5ClientRuntimeHarness =
         tasks.register('prepareP9S5ClientRuntimeHarness', Delete) {
@@ -757,7 +776,6 @@ neoForge {
         // One finite actual-client normal-player composition cohort. Its controller remains
         // outside main while entering solely through the command and registered R-key surfaces.
         p9S5ClientRuntimeHarness {
-            sourceSet(sourceSets.main)
             sourceSet(p9S5ClientHarnessSourceSet)
         }
     }
@@ -1291,14 +1309,19 @@ neoForge {
         p9S5ClientRuntimeHarness {
             client()
             sourceSet = p9S5ClientHarnessSourceSet
+            additionalRuntimeClasspathConfiguration.exclude(
+                    group: 'org.apache.commons', module: 'commons-compress')
             gameDirectory = p9S5ClientRuntimeGameDirectory.get().asFile
             systemProperty 'gramarye.p9s5.clientHarnessResult',
                     p9S5ClientRuntimeResult.get().asFile.absolutePath
             systemProperty 'gramarye.p9s5.clientHarnessOwnedPlayer',
                     p9S5ClientRuntimeOwnedPlayer.get().asFile.absolutePath
+            systemProperty 'gramarye.p10.frozenJar',
+                    tasks.named('jar', Jar).get().archiveFile.get().asFile.absolutePath
             jvmArguments.addAll(p9S5ClientHarnessJvmArgs)
             disableIdeRun()
             taskBefore(prepareP9S5ClientRuntimeHarness)
+            taskBefore(tasks.named('jar'))
             taskBefore(tasks.named(p9S5ClientHarnessSourceSet.classesTaskName))
         }
 
@@ -1686,6 +1709,25 @@ def verifyP9S5ClientRuntimeResultParser =
 tasks.named('runP9S5ClientRuntimeHarness', JavaExec).configure {
     dependsOn(verifyP9S5ClientRuntimeResultParser)
     timeout.set(java.time.Duration.ofMinutes(10))
+    // Capture supported file/provider values, never SourceSet or Project in task actions.
+    def frozenJarFile = tasks.named('jar', Jar).flatMap { it.archiveFile }
+    def runtimeClasspathFiles = p9S5ClientHarnessSourceSet.runtimeClasspath
+    def mainOutputFiles = sourceSets.main.output.files.collect { it.canonicalFile }.toSet()
+    def standaloneCompressName = "commons-compress-${commonsCompressVersion}.jar".toString()
+    doFirst {
+        def frozenJar = frozenJarFile.get().asFile.canonicalFile
+        def runtimeFiles = runtimeClasspathFiles.files
+                .collect { it.canonicalFile }.toSet()
+        if (!runtimeFiles.contains(frozenJar)) {
+            throw new GradleException('P10 same-JAR client runtime classpath is missing the frozen JAR')
+        }
+        if (runtimeFiles.any { mainOutputFiles.contains(it) }) {
+            throw new GradleException('P10 same-JAR client runtime classpath contains exploded main output')
+        }
+        if (runtimeFiles.any { it.name == standaloneCompressName }) {
+            throw new GradleException('P10 same-JAR client runtime classpath duplicates the bundled Compress module')
+        }
+    }
     doLast {
         def resultFile = p9S5ClientRuntimeResult.get().asFile
         if (!resultFile.isFile()) {
@@ -1887,7 +1929,7 @@ dependencies {
     add(p8S2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
-    add(p9S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p9S5ClientHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
     testImplementation p4C2ProbeSourceSet.output

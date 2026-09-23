@@ -242,7 +242,6 @@ class P4C1ApiGateTest {
                 () -> assertEquals(
                         Set.of(
                                 ceilingPath,
-                                "com/yo1no/gramarye/P9StarterCommand.java",
                                 "com/yo1no/gramarye/magic/definition/player/"
                                         + "PlayerSkillAttachmentPersistenceBridge.java",
                                 "com/yo1no/gramarye/magic/definition/player/"

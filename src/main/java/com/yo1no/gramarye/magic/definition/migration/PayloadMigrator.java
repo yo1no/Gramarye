@@ -18,6 +18,16 @@ final class PayloadMigrator {
             PayloadMigrationPlan plan,
             int nodeIndex,
             PipelineFactCollector facts) {
+        return migrate(source, currentSchemaVersion, plan, nodeIndex, facts, false);
+    }
+
+    static Result migrate(
+            DefinitionEnvelope source,
+            int currentSchemaVersion,
+            PayloadMigrationPlan plan,
+            int nodeIndex,
+            PipelineFactCollector facts,
+            boolean propagateUnexpected) {
         if (currentSchemaVersion < 0) {
             throw new IllegalArgumentException("currentSchemaVersion must be non-negative");
         }
@@ -46,6 +56,7 @@ final class PayloadMigrator {
                         selectedStep,
                         currentEnvelope.copyRawPayload());
             } catch (RuntimeException exception) {
+                if (propagateUnexpected) throw exception;
                 return new Result.Failure(PayloadMigrationFailure.forStepException(
                         version, version + 1, stepIndex, exception));
             }

@@ -13,6 +13,7 @@ import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvi
 import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import java.util.Objects;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
@@ -38,6 +39,8 @@ public final class Gramarye {
     private final SkillRuntimeService skillRuntimeService;
     private final P8ServerPresentationService p8ServerPresentationService;
     private final P9StarterCommand p9StarterCommand;
+    private final P10TemplateService p10TemplateService;
+    private final P10TemplateValidateCommand p10TemplateValidateCommand;
 
     public Gramarye(IEventBus modBus, ModContainer exactContainer) {
         Objects.requireNonNull(modBus, "modBus");
@@ -92,13 +95,22 @@ public final class Gramarye {
         P7ServerAuthorizationBoundary.install(
                 runtimeCapability,
                 p7AuthenticatedPlayerCastIngress);
+        var p10TemplateValidation = new P10TemplateValidation(
+                skillSubmissionPolicyProvider, p8ServerPresentationService);
+        p10TemplateService = new P10TemplateService(p10TemplateValidation);
         p9StarterCommand = new P9StarterCommand(
                 playerSkillAttachmentService,
                 skillDefinitionSubmissionService,
-                skillDefinitionStoreService);
+                skillDefinitionStoreService,
+                p10TemplateService,
+                p10TemplateValidation);
+        p10TemplateValidateCommand = new P10TemplateValidateCommand(
+                p10TemplateService, p10TemplateValidation);
         NeoForge.EVENT_BUS.addListener(p9StarterCommand::register);
+        NeoForge.EVENT_BUS.addListener(p10TemplateValidateCommand::register);
         NeoForge.EVENT_BUS.addListener(this::handleP9ReloadStarted);
-        NeoForge.EVENT_BUS.addListener(this::handleP9ReloadCompleted);
+        p10TemplateService.registerAfterP8(NeoForge.EVENT_BUS);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, this::handleP9ReloadCompleted);
         NeoForge.EVENT_BUS.addListener(this::handleP5RuntimeStarted);
         exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);
     }
@@ -111,12 +123,28 @@ public final class Gramarye {
     private void handleP9ReloadCompleted(OnDatapackSyncEvent event) {
         Objects.requireNonNull(event, "event");
         if (event.getPlayer() == null) {
-            skillRuntimeService.completeP9Reload(event.getPlayerList().getServer());
+            var server = event.getPlayerList().getServer();
+            finishP10Reload(
+                    () -> p10TemplateService.beginPostInstall(server),
+                    () -> p8ServerPresentationService.activateMatchingCandidateForRoot(server),
+                    outcome -> p10TemplateService.completeInstalled(server, outcome),
+                    () -> skillRuntimeService.completeP9Reload(server));
         }
+    }
+
+    private static void finishP10Reload(Runnable markInstalled,
+            java.util.function.Supplier<P8ServerPresentationService.P8RootFullSyncOutcome> activateP8,
+            java.util.function.Consumer<P8ServerPresentationService.P8RootFullSyncOutcome> settleP10,
+            Runnable reopenP5) {
+        markInstalled.run();
+        var outcome = activateP8.get();
+        settleP10.accept(outcome);
+        reopenP5.run();
     }
 
     private void handleP5RuntimeStarted(ServerStartedEvent event) {
         p8ServerPresentationService.handleServerStarted(event);
+        p10TemplateService.handleServerStarted(event);
         var limits = p5ServerRuntimeConfig.snapshotForStarted();
         skillRuntimeService.handleRuntimeStarted(event, limits);
     }
