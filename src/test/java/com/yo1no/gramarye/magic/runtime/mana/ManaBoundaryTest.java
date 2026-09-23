@@ -125,6 +125,12 @@ final class ManaBoundaryTest {
 
     @Test
     void registrationAndPersistentSchemaAreExact() throws Exception {
+        assertEquals("\"\" \"\" '' '' NeoForgeRegistries.Keys.ATTACHMENT_TYPES;",
+                code("\"" + "a".repeat(65_536)
+                        + "NeoForgeRegistries.Keys.ATTACHMENT_TYPES;\" \""
+                        + "\\\"\\\\".repeat(16_384)
+                        + "NeoForgeRegistries.Keys.ATTACHMENT_TYPES;\" '\\'' '\\\\' "
+                        + "NeoForgeRegistries.Keys.ATTACHMENT_TYPES;"));
         var playerRegistration = code(PLAYER_MAIN.resolve("PlayerSkillAttachments.java"));
         var manaDefinition = code(MANA_MAIN.resolve("ManaAttachments.java"));
         var bridge = code(MANA_MAIN.resolve("ManaAttachmentDefinitionBridge.java"));
@@ -605,14 +611,18 @@ final class ManaBoundaryTest {
 
     private static String code(Path path) {
         try {
-            return Files.readString(path)
-                    .replaceAll("(?s)/\\*.*?\\*/", " ")
-                    .replaceAll("(?m)//.*$", " ")
-                    .replaceAll("\"(?:\\\\.|[^\"\\\\])*\"", "\"\"")
-                    .replaceAll("'(?:\\\\.|[^'\\\\])*'", "''");
+            return code(Files.readString(path));
         } catch (IOException exception) {
             throw new AssertionError("unable to inspect " + path, exception);
         }
+    }
+
+    private static String code(String source) {
+        return source
+                .replaceAll("(?s)/\\*.*?\\*/", " ")
+                .replaceAll("(?m)//.*$", " ")
+                .replaceAll("\"(?:\\\\.|[^\"\\\\])*+\"", "\"\"")
+                .replaceAll("'(?:\\\\.|[^'\\\\])*+'", "''");
     }
 
     private static Path projectRoot() {

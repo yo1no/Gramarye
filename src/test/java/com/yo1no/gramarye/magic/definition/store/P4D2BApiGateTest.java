@@ -204,6 +204,10 @@ final class P4D2BApiGateTest {
 
     @Test
     void uniqueMutationOwnersAndLaterPhaseAbsenceRemainClosed() throws Exception {
+        assertEquals("        setData(real);",
+                withoutCommentsAndLiterals("\"" + "a".repeat(65_536)
+                        + "setData(hidden);\" \"" + "\\\"\\\\".repeat(16_384)
+                        + "setData(hidden);\" '\\'' '\\\\' setData(real);"));
         assertEquals(Set.of("SkillDefinitionStoreSubmissionPort.java"),
                 relativeSourcesMatching(STORE_COMMIT_CALL));
         assertEquals(Set.of("PlayerSkillAttachmentService.java", "ManaAttachments.java"),
@@ -402,7 +406,7 @@ final class P4D2BApiGateTest {
         return source
                 .replaceAll("(?s)/\\*.*?\\*/", " ")
                 .replaceAll("(?m)//.*$", " ")
-                .replaceAll("(?s)\"(?:\\\\.|[^\"\\\\])*\"", " ")
-                .replaceAll("(?s)'(?:\\\\.|[^'\\\\])*'", " ");
+                .replaceAll("(?s)\"(?:\\\\.|[^\"\\\\])*+\"", " ")
+                .replaceAll("(?s)'(?:\\\\.|[^'\\\\])*+'", " ");
     }
 }

@@ -76,6 +76,12 @@ class P4C2AApiGateTest {
     @Test
     void registrationOwnsTheStableTypeAndWiresFreshDefaultSerializerDeathAndNoSync()
             throws Exception {
+        assertEquals("\"\" \"\" '' '' NeoForgeRegistries.Keys.ATTACHMENT_TYPES;",
+                withoutCommentsAndLiterals("\"" + "a".repeat(65_536)
+                        + "NeoForgeRegistries.Keys.ATTACHMENT_TYPES;\" \""
+                        + "\\\"\\\\".repeat(16_384)
+                        + "NeoForgeRegistries.Keys.ATTACHMENT_TYPES;\" '\\'' '\\\\' "
+                        + "NeoForgeRegistries.Keys.ATTACHMENT_TYPES;"));
         var registrationPath = PLAYER_ROOT.resolve("PlayerSkillAttachments.java");
         var registration = read(registrationPath);
         var code = withoutCommentsAndLiterals(registration);
@@ -678,7 +684,7 @@ class P4C2AApiGateTest {
         return source
                 .replaceAll("(?s)/\\*.*?\\*/", " ")
                 .replaceAll("(?m)//.*$", " ")
-                .replaceAll("\"(?:\\\\.|[^\"\\\\])*\"", "\"\"")
-                .replaceAll("'(?:\\\\.|[^'\\\\])*'", "''");
+                .replaceAll("\"(?:\\\\.|[^\"\\\\])*+\"", "\"\"")
+                .replaceAll("'(?:\\\\.|[^'\\\\])*+'", "''");
     }
 }

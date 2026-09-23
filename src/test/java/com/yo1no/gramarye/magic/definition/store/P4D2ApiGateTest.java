@@ -210,6 +210,10 @@ final class P4D2ApiGateTest {
     @Test
     void typedTaxonomyAndStaticOwnershipHaveNoStringInferenceOrDuplicateOwners()
             throws Exception {
+        assertEquals("        getMessage(real);",
+                withoutCommentsAndLiterals("\"" + "a".repeat(65_536)
+                        + "getMessage(hidden);\" \"" + "\\\"\\\\".repeat(16_384)
+                        + "getMessage(hidden);\" '\\'' '\\\\' getMessage(real);"));
         var port = read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/magic/definition/store/"
                         + "SkillDefinitionStoreSubmissionPort.java"));
@@ -468,7 +472,7 @@ final class P4D2ApiGateTest {
         return source
                 .replaceAll("(?s)/\\*.*?\\*/", " ")
                 .replaceAll("(?m)//.*$", " ")
-                .replaceAll("(?s)\"(?:\\\\.|[^\"\\\\])*\"", " ")
-                .replaceAll("(?s)'(?:\\\\.|[^'\\\\])*'", " ");
+                .replaceAll("(?s)\"(?:\\\\.|[^\"\\\\])*+\"", " ")
+                .replaceAll("(?s)'(?:\\\\.|[^'\\\\])*+'", " ");
     }
 }

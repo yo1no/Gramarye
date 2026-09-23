@@ -293,6 +293,12 @@ final class P6S3BoundaryTest {
     @Test
     void attachmentBridgeRegistrationOwnerAndNineteenGameTestsRemainExact()
             throws Exception {
+        assertEquals("\"\" \"\" '' '' NeoForgeRegistries.Keys.ATTACHMENT_TYPES;",
+                code("\"" + "a".repeat(65_536)
+                        + "NeoForgeRegistries.Keys.ATTACHMENT_TYPES;\" \""
+                        + "\\\"\\\\".repeat(16_384)
+                        + "NeoForgeRegistries.Keys.ATTACHMENT_TYPES;\" '\\'' '\\\\' "
+                        + "NeoForgeRegistries.Keys.ATTACHMENT_TYPES;"));
         Class<?> bridge = ManaAttachmentDefinitionBridge.class;
         Set<String> methods = Arrays.stream(bridge.getDeclaredMethods())
                 .map(method -> method.getName())
@@ -363,11 +369,15 @@ final class P6S3BoundaryTest {
     }
 
     private static String code(Path path) {
-        return readSource(path)
+        return code(readSource(path));
+    }
+
+    private static String code(String source) {
+        return source
                 .replaceAll("(?s)/\\*.*?\\*/", " ")
                 .replaceAll("(?m)//.*$", " ")
-                .replaceAll("\"(?:\\\\.|[^\"\\\\])*\"", "\"\"")
-                .replaceAll("'(?:\\\\.|[^'\\\\])*'", "''");
+                .replaceAll("\"(?:\\\\.|[^\"\\\\])*+\"", "\"\"")
+                .replaceAll("'(?:\\\\.|[^'\\\\])*+'", "''");
     }
 
     private static List<Path> javaSources(Path root) throws IOException {

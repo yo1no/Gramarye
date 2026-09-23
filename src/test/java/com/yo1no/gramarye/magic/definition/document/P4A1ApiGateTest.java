@@ -179,6 +179,10 @@ class P4A1ApiGateTest {
 
     @Test
     void productionUsesNeitherOpsSingletonIdentityNorDynamicConversion() throws Exception {
+        assertEquals("\"\" \"\" '' '' .convertTo(real);",
+                withoutCommentsAndLiterals("\"" + "a".repeat(65_536)
+                        + ".convertTo(hidden);\" \"" + "\\\"\\\\".repeat(16_384)
+                        + ".convertTo(hidden);\" '\\'' '\\\\' .convertTo(real);"));
         for (var source : productionSources()) {
             var code = withoutCommentsAndLiterals(source.contents());
             assertAll(
@@ -440,8 +444,8 @@ class P4A1ApiGateTest {
         return source
                 .replaceAll("(?s)/\\*.*?\\*/", " ")
                 .replaceAll("(?m)//.*$", " ")
-                .replaceAll("\"(?:\\\\.|[^\"\\\\])*\"", "\"\"")
-                .replaceAll("'(?:\\\\.|[^'\\\\])*'", "''");
+                .replaceAll("\"(?:\\\\.|[^\"\\\\])*+\"", "\"\"")
+                .replaceAll("'(?:\\\\.|[^'\\\\])*+'", "''");
     }
 
     private static Path projectRoot() {
