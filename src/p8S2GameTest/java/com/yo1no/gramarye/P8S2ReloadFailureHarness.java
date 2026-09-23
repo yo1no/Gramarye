@@ -3,8 +3,11 @@ package com.yo1no.gramarye;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import net.minecraft.resources.ResourceLocation;
@@ -40,10 +43,11 @@ final class P8S2ReloadFailureHarness {
             LOCKED_NEOFORGE_RELOAD_LISTENERS + 2;
     private static final String LOCKED_LISTENER_WRAPPER =
             "net.neoforged.neoforge.event.AddReloadListenerEvent$WrappedStateAwareListener";
-    private static final List<String> EXPECTED_PRECEDING_LISTENER_TYPES = List.of(
+    private static final Set<String> EXPECTED_PLATFORM_LISTENER_TYPES = Set.of(
             "net.neoforged.neoforge.common.loot.LootModifierManager",
             "net.neoforged.neoforge.registries.DataMapLoader",
-            "net.neoforged.neoforge.common.CreativeModeTabRegistry$1",
+            "net.neoforged.neoforge.common.CreativeModeTabRegistry$1");
+    private static final List<String> EXPECTED_PRODUCT_LISTENER_TYPES = List.of(
             "com.yo1no.gramarye.P8ServerPresentationService$ProfileCatalogReloadListener",
             "com.yo1no.gramarye.P10TemplateService$TemplateReloadListener");
     private static final ResourceLocation PROFILE_FIXTURE =
@@ -68,6 +72,7 @@ final class P8S2ReloadFailureHarness {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     static synchronized void onServerAboutToStart(ServerAboutToStartEvent event) {
         Objects.requireNonNull(event, "event");
+        verifyPredecessorTypeControls();
         if (activeServer != null && activeServer != event.getServer()) {
             throw new IllegalStateException("P8-S2 reload harness server lifetime overlapped");
         }
@@ -279,6 +284,8 @@ final class P8S2ReloadFailureHarness {
             throw new IllegalStateException("P8-S2 requires exact locked platform -> P8 -> P10 listeners");
         }
         try {
+            var listenerTypes = new ArrayList<String>(EXPECTED_PRECEDING_RELOAD_LISTENERS);
+            Object templateListener = null;
             for (int index = 0; index < listeners.size(); index++) {
                 var wrapper = listeners.get(index);
                 if (!wrapper.getClass().getName().equals(LOCKED_LISTENER_WRAPPER)) {
@@ -287,23 +294,78 @@ final class P8S2ReloadFailureHarness {
                 var wrapped = wrapper.getClass().getDeclaredField("wrapped");
                 wrapped.setAccessible(true);
                 var listener = Objects.requireNonNull(wrapped.get(wrapper), "wrapped reload listener");
-                if (!listener.getClass().getName().equals(EXPECTED_PRECEDING_LISTENER_TYPES.get(index))) {
-                    throw new AssertionError("P8-S2 exact predecessor order changed at " + index
-                            + ": " + listener.getClass().getName());
-                }
+                listenerTypes.add(listener.getClass().getName());
                 if (index == LOCKED_NEOFORGE_RELOAD_LISTENERS + 1) {
-                    var ownerField = listener.getClass().getDeclaredField("owner");
-                    ownerField.setAccessible(true);
-                    var observed = P10TemplateService.class.cast(ownerField.get(listener));
-                    if (templateOwner != null && templateOwner != observed) {
-                        throw new AssertionError("P10 root owner identity changed across actual reloads");
-                    }
-                    templateOwner = Objects.requireNonNull(observed, "production P10 owner");
+                    templateListener = listener;
                 }
             }
+            requireExactPredecessorTypes(listenerTypes);
+            var exactTemplateListener = Objects.requireNonNull(templateListener, "P10 listener");
+            var ownerField = exactTemplateListener.getClass().getDeclaredField("owner");
+            ownerField.setAccessible(true);
+            var observed = P10TemplateService.class.cast(ownerField.get(exactTemplateListener));
+            if (templateOwner != null && templateOwner != observed) {
+                throw new AssertionError("P10 root owner identity changed across actual reloads");
+            }
+            templateOwner = Objects.requireNonNull(observed, "production P10 owner");
         } catch (ReflectiveOperationException failure) {
             throw new AssertionError("P8-S2 locked read-only listener observation failed", failure);
         }
+    }
+
+    private static void requireExactPredecessorTypes(List<String> listenerTypes) {
+        if (listenerTypes.size() != EXPECTED_PRECEDING_RELOAD_LISTENERS) {
+            throw new AssertionError("P8-S2 exact predecessor count changed");
+        }
+        // Locked NeoForge registers its NORMAL-priority handlers by reflection, whose method
+        // order is unspecified. Their exact set precedes the explicitly ordered P8/P10 pair.
+        var remainingPlatformTypes = new HashSet<>(EXPECTED_PLATFORM_LISTENER_TYPES);
+        for (int index = 0; index < listenerTypes.size(); index++) {
+            var listenerType = listenerTypes.get(index);
+            if (index < LOCKED_NEOFORGE_RELOAD_LISTENERS) {
+                if (!remainingPlatformTypes.remove(listenerType)) {
+                    throw new AssertionError("P8-S2 exact platform predecessor set changed at " + index
+                            + ": " + listenerType);
+                }
+            } else if (!EXPECTED_PRODUCT_LISTENER_TYPES.get(
+                    index - LOCKED_NEOFORGE_RELOAD_LISTENERS).equals(listenerType)) {
+                throw new AssertionError("P8-S2 exact predecessor order changed at " + index
+                        + ": " + listenerType);
+            }
+        }
+    }
+
+    private static void verifyPredecessorTypeControls() {
+        var localOrder = List.of(
+                "net.neoforged.neoforge.common.loot.LootModifierManager",
+                "net.neoforged.neoforge.registries.DataMapLoader",
+                "net.neoforged.neoforge.common.CreativeModeTabRegistry$1",
+                EXPECTED_PRODUCT_LISTENER_TYPES.get(0),
+                EXPECTED_PRODUCT_LISTENER_TYPES.get(1));
+        requireExactPredecessorTypes(localOrder);
+        requireExactPredecessorTypes(List.of(
+                localOrder.get(2), localOrder.get(0), localOrder.get(1),
+                localOrder.get(3), localOrder.get(4)));
+
+        var duplicate = new ArrayList<>(localOrder);
+        duplicate.set(1, duplicate.get(0));
+        requireRejectedPredecessorTypes(duplicate);
+        requireRejectedPredecessorTypes(localOrder.subList(0, localOrder.size() - 1));
+        var extra = new ArrayList<>(localOrder);
+        extra.add(localOrder.get(0));
+        requireRejectedPredecessorTypes(extra);
+        requireRejectedPredecessorTypes(List.of(
+                localOrder.get(0), localOrder.get(1), localOrder.get(2),
+                localOrder.get(4), localOrder.get(3)));
+    }
+
+    private static void requireRejectedPredecessorTypes(List<String> listenerTypes) {
+        try {
+            requireExactPredecessorTypes(listenerTypes);
+        } catch (AssertionError expected) {
+            return;
+        }
+        throw new AssertionError("P8-S2 predecessor negative control was accepted");
     }
 
     private static void requireCurrentTemplate(P10TemplateService.Capture captured) {
