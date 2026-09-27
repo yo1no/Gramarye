@@ -506,7 +506,10 @@ final class ManaBoundaryTest {
                                 "src/main/java/com/yo1no/gramarye/Gramarye.java",
                                 "src/main/java/com/yo1no/gramarye/P5RuntimeProjector.java",
                                 "src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java",
+                                // P11 §12.1 extends the existing SERVER config owner, not P5 limits.
+                                "src/main/java/com/yo1no/gramarye/P5ServerRuntimeConfig.java",
                                 "src/main/java/com/yo1no/gramarye/SkillRuntimeService.java",
+                                "src/test/java/com/yo1no/gramarye/P5RuntimeConfigurationTest.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeHardLimitWorkloadTest.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeKernelTest.java",
                                 "src/test/java/com/yo1no/gramarye/P5RuntimeVocabularyTest.java",

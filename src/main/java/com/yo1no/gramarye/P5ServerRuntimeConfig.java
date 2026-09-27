@@ -2,6 +2,7 @@ package com.yo1no.gramarye;
 
 import com.electronwill.nightconfig.core.CommentedConfig;
 import com.electronwill.nightconfig.core.UnmodifiableCommentedConfig;
+import com.electronwill.nightconfig.core.concurrent.ConcurrentCommentedConfig;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -14,8 +15,8 @@ import net.neoforged.fml.event.config.ModConfigEvent;
 final class P5ServerRuntimeConfig {
     static final String CONFIG_FILE_NAME = "gramarye-server.toml";
 
-    private final AtomicReference<P5RuntimeLimitLoadState> nextSlotState =
-            new AtomicReference<>(P5RuntimeLimitLoadState.Unavailable.INSTANCE);
+    private final AtomicReference<P11ServerConfigCandidate> nextSlotState =
+            new AtomicReference<>(P11ServerConfigCandidate.unavailable());
     private final AtomicReference<Optional<P5RuntimeReloadDisposition>> reloadDisposition =
             new AtomicReference<>(Optional.empty());
     private final P5RawServerConfigSpec rawSpec;
@@ -34,7 +35,13 @@ final class P5ServerRuntimeConfig {
 
     P5RuntimeLimits snapshotForStarted() {
         var candidate = nextSlotState.get();
-        return snapshotCandidate(candidate);
+        return snapshotCandidate(candidate.p5State());
+    }
+
+    P11StartupSnapshot snapshotAllForStarted() {
+        var candidate = nextSlotState.get();
+        return new P11StartupSnapshot(
+                snapshotCandidate(candidate.p5State()), candidate.p11State());
     }
 
     Optional<P5RuntimeReloadDisposition> latestReloadDisposition() {
@@ -46,7 +53,7 @@ final class P5ServerRuntimeConfig {
         if (!matchesRuntimeConfig(rawSpec, event.getConfig())) {
             return;
         }
-        var acceptedState = nextSlotState.get();
+        var acceptedState = nextSlotState.get().p5State();
         reloadDisposition.set(Optional.of(reloadDispositionFor(acceptedState)));
     }
 
@@ -55,7 +62,7 @@ final class P5ServerRuntimeConfig {
         if (!matchesRuntimeConfig(rawSpec, event.getConfig())) {
             return;
         }
-        nextSlotState.set(P5RuntimeLimitLoadState.Unavailable.INSTANCE);
+        nextSlotState.set(P11ServerConfigCandidate.unavailable());
         reloadDisposition.set(Optional.empty());
     }
 
@@ -96,9 +103,9 @@ final class P5ServerRuntimeConfig {
 final class P5RawServerConfigSpec implements IConfigSpec {
     private static final P5RuntimeLimitKey[] ORDERED_KEYS = P5RuntimeLimitKey.values();
 
-    private final AtomicReference<P5RuntimeLimitLoadState> nextSlotState;
+    private final AtomicReference<P11ServerConfigCandidate> nextSlotState;
 
-    P5RawServerConfigSpec(AtomicReference<P5RuntimeLimitLoadState> nextSlotState) {
+    P5RawServerConfigSpec(AtomicReference<P11ServerConfigCandidate> nextSlotState) {
         this.nextSlotState = Objects.requireNonNull(nextSlotState, "nextSlotState");
         Objects.requireNonNull(nextSlotState.get(), "nextSlotState value");
     }
@@ -135,7 +142,7 @@ final class P5RawServerConfigSpec implements IConfigSpec {
     @Override
     public void acceptConfig(ILoadedConfig loadedConfig) {
         if (loadedConfig == null) {
-            nextSlotState.set(P5RuntimeLimitLoadState.Unavailable.INSTANCE);
+            nextSlotState.set(P11ServerConfigCandidate.unavailable());
             return;
         }
         acceptRawConfig(loadedConfig.config());
@@ -143,7 +150,16 @@ final class P5RawServerConfigSpec implements IConfigSpec {
 
     void acceptRawConfig(UnmodifiableCommentedConfig rawConfig) {
         Objects.requireNonNull(rawConfig, "rawConfig");
-        nextSlotState.set(decode(rawConfig));
+        // Concurrent NightConfig inputs are observed under one read scope. Platform-owned
+        // plain inputs are stable for the duration of acceptConfig; no raw view is retained.
+        var candidate = rawConfig instanceof ConcurrentCommentedConfig concurrent
+                ? concurrent.bulkCommentedRead(P5RawServerConfigSpec::decodeCandidate)
+                : decodeCandidate(rawConfig);
+        nextSlotState.set(candidate);
+    }
+
+    private static P11ServerConfigCandidate decodeCandidate(UnmodifiableCommentedConfig rawConfig) {
+        return new P11ServerConfigCandidate(decode(rawConfig), P11ConfigurationValidation.decode(rawConfig));
     }
 
     private static P5RuntimeLimitLoadState decode(UnmodifiableCommentedConfig rawConfig) {

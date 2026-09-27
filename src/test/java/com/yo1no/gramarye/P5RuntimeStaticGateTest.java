@@ -130,10 +130,12 @@ final class P5RuntimeStaticGateTest {
                 "/** Returns the controlled server skill subsystem port");
         assertInOrder(
                 bridge,
-                "p5ServerRuntimeConfig.snapshotForStarted()",
+                "p5ServerRuntimeConfig.snapshotAllForStarted()",
+                "var limits = snapshot.p5Limits()",
+                "p11FoundationService.started(event, snapshot.p11State())",
                 "skillRuntimeService.handleRuntimeStarted(event, limits)");
         assertAll(
-                () -> assertEquals(1, occurrences(bridge, "snapshotForStarted()")),
+                () -> assertEquals(1, occurrences(bridge, "snapshotAllForStarted()")),
                 () -> assertFalse(bridge.contains("catch ("),
                         "invalid configuration must escape before the service is entered"));
 

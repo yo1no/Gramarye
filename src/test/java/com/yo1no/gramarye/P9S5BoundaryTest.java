@@ -158,7 +158,9 @@ final class P9S5BoundaryTest {
                         runtimeStarted,
                         "p8ServerPresentationService.handleServerStarted(event);",
                         "p10TemplateService.handleServerStarted(event);",
-                        "p5ServerRuntimeConfig.snapshotForStarted();",
+                        "p5ServerRuntimeConfig.snapshotAllForStarted();",
+                        "var limits = snapshot.p5Limits();",
+                        "p11FoundationService.started(event, snapshot.p11State());",
                         "skillRuntimeService.handleRuntimeStarted(event, limits);"));
     }
 

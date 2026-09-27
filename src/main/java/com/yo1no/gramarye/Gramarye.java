@@ -36,6 +36,7 @@ public final class Gramarye {
     private final SkillDefinitionSubmissionService skillDefinitionSubmissionService;
     private final SkillSubmissionRecoveryService skillSubmissionRecoveryService;
     private final P5ServerRuntimeConfig p5ServerRuntimeConfig;
+    private final P11FoundationService p11FoundationService;
     private final SkillRuntimeService skillRuntimeService;
     private final P8ServerPresentationService p8ServerPresentationService;
     private final P9StarterCommand p9StarterCommand;
@@ -80,6 +81,7 @@ public final class Gramarye {
                 exactFacade.submissionView());
         skillSubmissionRecoveryService.registerOn(NeoForge.EVENT_BUS);
         p5ServerRuntimeConfig = new P5ServerRuntimeConfig(modBus, exactContainer);
+        p11FoundationService = new P11FoundationService();
         skillRuntimeService = SkillRuntimeService.create(
                 NeoForge.EVENT_BUS,
                 skillDefinitionStoreService,
@@ -112,6 +114,8 @@ public final class Gramarye {
         p10TemplateService.registerAfterP8(NeoForge.EVENT_BUS);
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, this::handleP9ReloadCompleted);
         NeoForge.EVENT_BUS.addListener(this::handleP5RuntimeStarted);
+        NeoForge.EVENT_BUS.addListener(p11FoundationService::stopping);
+        NeoForge.EVENT_BUS.addListener(p11FoundationService::stopped);
         exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);
     }
 
@@ -145,7 +149,9 @@ public final class Gramarye {
     private void handleP5RuntimeStarted(ServerStartedEvent event) {
         p8ServerPresentationService.handleServerStarted(event);
         p10TemplateService.handleServerStarted(event);
-        var limits = p5ServerRuntimeConfig.snapshotForStarted();
+        var snapshot = p5ServerRuntimeConfig.snapshotAllForStarted();
+        var limits = snapshot.p5Limits();
+        p11FoundationService.started(event, snapshot.p11State());
         skillRuntimeService.handleRuntimeStarted(event, limits);
     }
 

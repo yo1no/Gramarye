@@ -49,7 +49,7 @@ final class P5RuntimeConfigurationTest {
                     raw.<Integer>get(P5RawServerConfigSpec.rawPath(key)));
         }
         spec.acceptRawConfig(raw);
-        var requested = assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get());
+        var requested = assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get().p5State());
         var snapshot = P5ServerRuntimeConfig.snapshotCandidate(requested);
 
         assertAll(
@@ -87,7 +87,7 @@ final class P5RuntimeConfigurationTest {
 
         spec.acceptRawConfig(raw);
 
-        var requested = assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get());
+        var requested = assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get().p5State());
         var snapshot = P5ServerRuntimeConfig.snapshotCandidate(requested);
         assertAll(
                 () -> assertEquals(1, snapshot.pendingEventsPerSkillInstance()),
@@ -123,7 +123,7 @@ final class P5RuntimeConfigurationTest {
 
         spec.acceptRawConfig(raw);
 
-        var requested = assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get());
+        var requested = assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get().p5State());
         var snapshot = P5ServerRuntimeConfig.snapshotCandidate(requested);
         assertAll(
                 () -> assertRequestedValues(requested.limits(), hardValues),
@@ -146,7 +146,7 @@ final class P5RuntimeConfigurationTest {
 
         spec.acceptRawConfig(raw);
 
-        var requested = assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get());
+        var requested = assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get().p5State());
         var snapshot = P5ServerRuntimeConfig.snapshotCandidate(requested);
         assertAll(
                 () -> assertRequestedValues(requested.limits(), rawValues),
@@ -176,7 +176,7 @@ final class P5RuntimeConfigurationTest {
 
         spec.acceptRawConfig(missingFirst);
         assertFailure(
-                state.get(),
+                state.get().p5State(),
                 P5RuntimeConfigurationFailureReason.MISSING_REQUIRED_VALUE,
                 P5RuntimeLimitKey.PENDING_EVENTS_PER_SKILL_INSTANCE,
                 Optional.empty());
@@ -186,7 +186,7 @@ final class P5RuntimeConfigurationTest {
                 P5RuntimeLimitKey.PENDING_EVENTS_PER_SKILL_INSTANCE), 256.0D);
         spec.acceptRawConfig(wrongType);
         assertFailure(
-                state.get(),
+                state.get().p5State(),
                 P5RuntimeConfigurationFailureReason.WRONG_VALUE_TYPE,
                 P5RuntimeLimitKey.PENDING_EVENTS_PER_SKILL_INSTANCE,
                 Optional.empty());
@@ -198,7 +198,7 @@ final class P5RuntimeConfigurationTest {
                 P5RuntimeLimitKey.PENDING_EVENTS_PER_SERVER), 0L);
         spec.acceptRawConfig(orderedRange);
         assertFailure(
-                state.get(),
+                state.get().p5State(),
                 P5RuntimeConfigurationFailureReason.ABOVE_HARD_MAXIMUM,
                 P5RuntimeLimitKey.PENDING_EVENTS_PER_ATTRIBUTION,
                 Optional.empty());
@@ -214,7 +214,7 @@ final class P5RuntimeConfigurationTest {
                     P5RuntimeLimitValidation.minimum(key) - 1);
             new P5RawServerConfigSpec(belowState).acceptRawConfig(below);
             assertFailure(
-                    belowState.get(),
+                    belowState.get().p5State(),
                     P5RuntimeConfigurationFailureReason.BELOW_MINIMUM,
                     key,
                     Optional.empty());
@@ -226,7 +226,7 @@ final class P5RuntimeConfigurationTest {
                     (long) P5RuntimeLimitValidation.hardMaximum(key) + 1L);
             new P5RawServerConfigSpec(aboveState).acceptRawConfig(above);
             assertFailure(
-                    aboveState.get(),
+                    aboveState.get().p5State(),
                     P5RuntimeConfigurationFailureReason.ABOVE_HARD_MAXIMUM,
                     key,
                     Optional.empty());
@@ -335,7 +335,7 @@ final class P5RuntimeConfigurationTest {
             var state = unavailableState();
             new P5RawServerConfigSpec(state).acceptRawConfig(rawConfig(relationCase.values()));
             assertFailure(
-                    state.get(),
+                    state.get().p5State(),
                     P5RuntimeConfigurationFailureReason.RELATION_VIOLATION,
                     relationCase.primary(),
                     Optional.of(relationCase.related()));
@@ -379,9 +379,9 @@ final class P5RuntimeConfigurationTest {
         assertEquals("P5_RUNTIME_CONFIG_CORRECT_NONEMPTY", failure.getMessage());
 
         spec.acceptRawConfig(raw);
-        assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get());
+        assertInstanceOf(P5RuntimeLimitLoadState.Requested.class, state.get().p5State());
         spec.acceptConfig(null);
-        assertEquals(P5RuntimeLimitLoadState.Unavailable.INSTANCE, state.get());
+        assertEquals(P5RuntimeLimitLoadState.Unavailable.INSTANCE, state.get().p5State());
     }
 
     @Test
@@ -389,7 +389,7 @@ final class P5RuntimeConfigurationTest {
         var state = unavailableState();
         var spec = new P5RawServerConfigSpec(state);
         spec.acceptRawConfig(rawConfig(hardValues()));
-        var activeSnapshot = P5ServerRuntimeConfig.snapshotCandidate(state.get());
+        var activeSnapshot = P5ServerRuntimeConfig.snapshotCandidate(state.get().p5State());
         var activeSlot = new ServerSlot(new RuntimeServerToken(1L), activeSnapshot);
         activeSlot.committedPending = 4;
         activeSlot.rootAdmissionsThisTick = 2;
@@ -399,8 +399,8 @@ final class P5RuntimeConfigurationTest {
         spec.acceptRawConfig(rawConfig(minimumValues()));
         assertEquals(
                 P5RuntimeReloadDisposition.DEFERRED_UNTIL_NEXT_SERVER_SLOT,
-                P5ServerRuntimeConfig.reloadDispositionFor(state.get()));
-        var nextSnapshot = P5ServerRuntimeConfig.snapshotCandidate(state.get());
+                P5ServerRuntimeConfig.reloadDispositionFor(state.get().p5State()));
+        var nextSnapshot = P5ServerRuntimeConfig.snapshotCandidate(state.get().p5State());
 
         assertAll(
                 () -> assertSame(activeSnapshot, activeSlot.limits),
@@ -418,11 +418,11 @@ final class P5RuntimeConfigurationTest {
         spec.acceptRawConfig(CommentedConfig.inMemory());
         assertEquals(
                 P5RuntimeReloadDisposition.INVALID_FOR_NEXT_SERVER_SLOT,
-                P5ServerRuntimeConfig.reloadDispositionFor(state.get()));
+                P5ServerRuntimeConfig.reloadDispositionFor(state.get().p5State()));
         spec.acceptConfig(null);
         assertEquals(
                 P5RuntimeReloadDisposition.INVALID_FOR_NEXT_SERVER_SLOT,
-                P5ServerRuntimeConfig.reloadDispositionFor(state.get()));
+                P5ServerRuntimeConfig.reloadDispositionFor(state.get().p5State()));
     }
 
     @Test
@@ -513,8 +513,45 @@ final class P5RuntimeConfigurationTest {
                 () -> assertTrue(unavailable.failure().relatedKey().isEmpty()));
     }
 
-    private static AtomicReference<P5RuntimeLimitLoadState> unavailableState() {
-        return new AtomicReference<>(P5RuntimeLimitLoadState.Unavailable.INSTANCE);
+    @Test
+    void combinedStartupUsesExactRegistrationAndReloadUnloadOnlyChangeNextSlot() {
+        var container = new CapturingModContainer(Gramarye.MOD_ID);
+        var runtimeConfig = new P5ServerRuntimeConfig(container.eventBus(), container);
+        var spec = assertInstanceOf(P5RawServerConfigSpec.class, container.registeredSpec());
+        var raw = P11StartupConfigurationTest.diagnosticRawProfile();
+        spec.acceptRawConfig(raw);
+        var active = runtimeConfig.snapshotAllForStarted();
+        var activeLimits = assertInstanceOf(P11StartupLoadState.Ready.class, active.p11State()).limits();
+        assertEquals(4, activeLimits.maxUuids());
+        assertEquals(4_096, active.p5Limits().pendingEventsPerServer());
+
+        raw.set("p11.retention.maxUuids", 5);
+        spec.acceptRawConfig(raw);
+        container.eventBus().post(new ModConfigEvent.Reloading(container.registeredConfig()));
+        var next = runtimeConfig.snapshotAllForStarted();
+        assertEquals(5, assertInstanceOf(P11StartupLoadState.Ready.class, next.p11State()).limits().maxUuids());
+        assertEquals(4, activeLimits.maxUuids());
+        container.eventBus().post(new ModConfigEvent.Unloading(container.registerUnrelatedServerConfig()));
+        assertEquals(next, runtimeConfig.snapshotAllForStarted());
+
+        raw.remove("p11.control.tryBurst");
+        spec.acceptRawConfig(raw);
+        var isolated = runtimeConfig.snapshotAllForStarted();
+        assertInstanceOf(P11StartupLoadState.Invalid.class, isolated.p11State());
+        assertEquals(4_096, isolated.p5Limits().pendingEventsPerServer());
+        assertEquals(4, activeLimits.maxUuids());
+        container.eventBus().post(new ModConfigEvent.Unloading(container.registeredConfig()));
+        assertThrows(P5RuntimeConfigurationException.class, runtimeConfig::snapshotAllForStarted);
+        assertEquals(4, activeLimits.maxUuids());
+
+        var p5Only = rawConfig(hardValues());
+        spec.acceptRawConfig(p5Only);
+        assertInstanceOf(P11StartupLoadState.Invalid.class, runtimeConfig.snapshotAllForStarted().p11State());
+        assertEquals(4_096, runtimeConfig.snapshotForStarted().pendingEventsPerServer());
+    }
+
+    private static AtomicReference<P11ServerConfigCandidate> unavailableState() {
+        return new AtomicReference<>(P11ServerConfigCandidate.unavailable());
     }
 
     private static int[] hardValues() {
