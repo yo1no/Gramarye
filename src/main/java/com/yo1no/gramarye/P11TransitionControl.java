@@ -78,6 +78,11 @@ final class P11TransitionControl {
         waiting = new P11ControlBudgets.AdmissionWait(admissionWaitMillis);
         listener = new Listener(++listenerSerial, identity.actorGeneration() == 0
                 ? Scope.CONFIG : Scope.PLAY);
+        // Validation precedes the irreversible claim. An actor/phase change or retirement
+        // cannot mint another owner to reset this exact connection's counters or buckets.
+        if (!identity.currentBinding() || !connection.claimControl()) {
+            throw new IllegalStateException("P11_CONTROL_OWNER_ALREADY_CLAIMED_OR_STALE");
+        }
     }
 
     synchronized Listener listener() { return listener; }

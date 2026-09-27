@@ -346,6 +346,7 @@ final class P11IdentityOwner {
         private final UUID uuid;
         private final long epoch;
         private volatile boolean currentConnection = true;
+        private boolean controlClaimed;
 
         private ConnectionKey(SlotKey slot, UUID uuid, long epoch) {
             this.slot = slot;
@@ -357,6 +358,14 @@ final class P11IdentityOwner {
         UUID uuid() { return uuid; }
         long epoch() { return epoch; }
         boolean currentConnection() { return currentConnection; }
+
+        synchronized boolean claimControl() {
+            if (!currentConnection || controlClaimed) {
+                return false;
+            }
+            controlClaimed = true;
+            return true;
+        }
     }
 
     static final class ActorKey {

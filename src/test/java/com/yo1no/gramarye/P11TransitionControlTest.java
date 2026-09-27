@@ -19,11 +19,16 @@ class P11TransitionControlTest {
             P11IdentityOwner.CapturedIdentity actor, P11TransitionControl control) { }
 
     private static Fixture play(long sequence) {
+        var fixture = unstarted(sequence, 0, 0);
+        assertTrue(fixture.control.openPlayScene(fixture.actor, Kind.DEATH));
+        return fixture;
+    }
+
+    private static Fixture unstarted(long sequence, long scene, long version) {
         var identities = P11IdentityOwner.isolatedModel(4);
         var channel = identities.modelConnection();
         var actor = identities.bindModel(identities.modelActor(UUID.randomUUID(), 7), channel).orElseThrow();
-        var control = P11TransitionControl.isolatedAtCounters(actor, limits(), 0, sequence, 0, 0);
-        assertTrue(control.openPlayScene(actor, Kind.DEATH));
+        var control = P11TransitionControl.isolatedAtCounters(actor, limits(), 0, sequence, scene, version);
         return new Fixture(identities, channel, actor, control);
     }
 
@@ -55,6 +60,60 @@ class P11TransitionControlTest {
         assertTrue(control.begin(drain, P11TransitionControl.Gate.ACTIVE_OPERATION, time).isEmpty());
         assertTrue(control.finishDrain(drain));
         assertEquals(Outcome.NOT_STARTED, control.state().orElseThrow().outcome());
+    }
+
+    @Test
+    void exactConnectionHasOneControlOwnerAcrossActorChangesAndRetirement() {
+        var f = play(40);
+        assertThrows(IllegalStateException.class, () -> new P11TransitionControl(f.actor, limits(), 0));
+        assertThrows(IllegalStateException.class,
+                () -> P11TransitionControl.isolatedAtCounters(f.actor, limits(), 0, 0, 0, 0));
+        var b = f.identities.bindModel(f.identities.modelActor(f.actor.uuid(), 7), f.channel).orElseThrow();
+        assertThrows(IllegalStateException.class, () -> new P11TransitionControl(b, limits(), 0));
+        f.control.retire();
+        assertThrows(IllegalStateException.class, () -> new P11TransitionControl(b, limits(), 0));
+        var actorless = f.identities.modelActorless(f.actor.uuid(), f.channel).orElseThrow();
+        assertThrows(IllegalStateException.class, () -> new P11TransitionControl(actorless, limits(), 0));
+        var reconnected = f.identities.modelActorless(f.actor.uuid(), f.identities.modelConnection()).orElseThrow();
+        assertNotSame(f.actor.connection(), reconnected.connection());
+        var replacement = new P11TransitionControl(reconnected, limits(), 0);
+        assertTrue(replacement.openServerScene(Scope.CONFIG, Kind.JOIN));
+    }
+
+    @Test
+    void invalidOrStaleConstructionCannotConsumeTheCurrentConnectionClaim() {
+        var identities = P11IdentityOwner.isolatedModel(1);
+        var channel = identities.modelConnection();
+        var a = identities.bindModel(identities.modelActor(UUID.randomUUID(), 7), channel).orElseThrow();
+        assertThrows(IllegalArgumentException.class, () -> new P11TransitionControl(a, limits(), -1));
+        var b = identities.bindModel(identities.modelActor(a.uuid(), 7), channel).orElseThrow();
+        assertThrows(IllegalStateException.class, () -> new P11TransitionControl(a, limits(), 0));
+        var owner = new P11TransitionControl(b, limits(), 0);
+        assertTrue(owner.openPlayScene(b, Kind.DEATH));
+        assertEquals(0, owner.fence());
+    }
+
+    @Test
+    void concurrentConstructorsShareOneAtomicExactConnectionClaim() throws Exception {
+        var identities = P11IdentityOwner.isolatedModel(1);
+        var identity = identities.modelActorless(UUID.randomUUID(), identities.modelConnection()).orElseThrow();
+        var start = new CountDownLatch(1);
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<Integer> create = () -> {
+                assertTrue(start.await(5, TimeUnit.SECONDS));
+                try {
+                    new P11TransitionControl(identity, limits(), 0);
+                    return 1;
+                } catch (IllegalStateException rejected) {
+                    assertEquals("P11_CONTROL_OWNER_ALREADY_CLAIMED_OR_STALE", rejected.getMessage());
+                    return 0;
+                }
+            };
+            var first = workers.submit(create);
+            var second = workers.submit(create);
+            start.countDown();
+            assertEquals(1, first.get(5, TimeUnit.SECONDS) + second.get(5, TimeUnit.SECONDS));
+        }
     }
 
     @Test
@@ -355,8 +414,8 @@ class P11TransitionControlTest {
 
     @Test
     void enterConfigClosesWithoutActorFrameThenAcceptsExactActorlessReturnScene() {
-        var f = play(0);
-        var c = new P11TransitionControl(f.actor, limits(), 0);
+        var f = unstarted(0, 0, 0);
+        var c = f.control;
         assertTrue(c.openServerScene(Scope.PLAY, Kind.ENTER_CONFIG));
         var initial = c.reserveServerDrain(c.listener()).orElseThrow();
         var attempt = c.begin(initial, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
@@ -375,17 +434,15 @@ class P11TransitionControlTest {
 
     @Test
     void counterExhaustionClosesAdmissionWithoutWrapOrNewSceneReset() {
-        var f = play(0);
-        var maxSequence = P11TransitionControl.isolatedAtCounters(
-                f.actor, limits(), 0, Long.MAX_VALUE, 0, 0);
+        var f = unstarted(Long.MAX_VALUE, 0, 0);
+        var maxSequence = f.control;
         assertFalse(maxSequence.openPlayScene(f.actor, Kind.DEATH));
         assertEquals(P11TransitionControl.Disposition.EXHAUSTED, maxSequence.disposition());
-        var maxScene = P11TransitionControl.isolatedAtCounters(
-                f.actor, limits(), 0, 0, Long.MAX_VALUE, 0);
-        assertFalse(maxScene.openPlayScene(f.actor, Kind.DEATH));
-        var maxStatus = P11TransitionControl.isolatedAtCounters(
-                f.actor, limits(), 0, 0, 0, Long.MAX_VALUE - 1);
-        assertTrue(maxStatus.openPlayScene(f.actor, Kind.DEATH));
+        var sceneFixture = unstarted(0, Long.MAX_VALUE, 0);
+        assertFalse(sceneFixture.control.openPlayScene(sceneFixture.actor, Kind.DEATH));
+        var statusFixture = unstarted(0, 0, Long.MAX_VALUE - 1);
+        var maxStatus = statusFixture.control;
+        assertTrue(maxStatus.openPlayScene(statusFixture.actor, Kind.DEATH));
         assertEquals(Long.MAX_VALUE, maxStatus.state().orElseThrow().statusVersion());
         assertEquals(P11TransitionControl.Offer.CLOSED,
                 maxStatus.offer(maxStatus.listener(), request(maxStatus, 1, Command.TRY), 0));
