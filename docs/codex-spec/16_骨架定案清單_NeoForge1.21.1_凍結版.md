@@ -9,8 +9,10 @@
 > P3 資料模型與 P3-D Store 邊界的已核准範圍限定修訂記錄於
 > [`17_P3資料模型修正案.md`](17_P3資料模型修正案.md)；P4 persistence、Attachment、
 > composition、recovery、reconciliation 與 offline-root 邊界記錄於
-> [`18_P4持久化與組合修正案.md`](18_P4持久化與組合修正案.md)。兩份修正案只在各自
-> 明示範圍內優先，本文相關條文已同步其核心邊界。
+> [`18_P4持久化與組合修正案.md`](18_P4持久化與組合修正案.md)；P11 持久化、多人、
+> 冷卻基礎與必要原生整合記錄於
+> [`19_P11持久化與多人修正案.md`](19_P11持久化與多人修正案.md)。各修正案只在各自
+> 明示取代範圍內優先；未取代的 P3／P4 與其他凍結要求仍有效。
 
 ---
 
@@ -1147,11 +1149,13 @@ PresentationEvent
 - 重複：有次數、間隔、deadline 與 owner instance。
 - 【禁止】用單一「技能仍在運作」boolean 代表全部狀態。
 - 【多實例預設】同一技能可同時存在多個 SkillInstance；冷卻結束後的新施放不會取消仍有標記、造物或排程的舊實例。若未來需要唯一實例，使用逐技能 policy flag 在施放檢查中限制，不改資料形狀。
+- 【P11 冷卻基礎】正式 revision-bound policy、唯一冷卻 owner、ARM／NO_RELEASE、零政策、captured-bound 恢復與持久／同步契約依[19 號修正案 §11](19_P11持久化與多人修正案.md)。此能力不以前置發布新技能或實作技能切換為條件；多段 continuation 仍屬後續階段。
 
 ## 27. 玩家死亡、登出、維度切換
 
 - 【死亡】逐 Attachment、SkillInstance 與效果類型明確決定保留／取消；不得依預設隱式行為。
 - 【登出】冷卻與需持久化狀態保存；非持久化輸入接續可取消。
+- 【P11 已接受短期工作】同一運作中伺服器正常登出前已真正接受的 pre-spawn、自然 OPEN 與 claimed child，依 19 號修正案 §4 保留原期限、loaded-only 與生命週期；P7 新輸入失效不等於取消這些工作。不增加命中等待、不降為 null-causer，也不自動跨死亡、維度切換、reload、卸載或 restart。
 - 【End 返回】永久 player skill Attachment 使用 NeoForge serialize + `copyOnDeath` policy；
   End 返回不得再手動 double-copy。其他 Attachment 仍須按各自政策區分死亡重生與終界返回。
 - 【維度切換】所有 Anchor 與投射物引用重新 resolve，不保存舊 Level reference。
@@ -1163,6 +1167,7 @@ PresentationEvent
 - 【伺服器關閉】第一版暫停，不補算真實世界時間。
 - 【重啟】載入後，已過期物件立即進入受預算限制的清理佇列，不在載入函式中一次大量觸發效果。
 - 【注意】若未來加入離線自然回魔，必須是獨立政策，不得混入一般 tick 到期模型。
+- 【P11 時鐘分離】冷卻採 Overworld gameTime 與首次捕獲的可信上界，不因重連重設；C4a playerless 入場等待的 monotonic elapsed 只管控制期限，不是玩法冷卻或普通 PLAY 玩家 TTL。完整條件依 19 號修正案 §7–8、§10–11。
 
 ## 29. SkillInstance 清除與孤兒回收
 
@@ -1198,6 +1203,8 @@ PresentationEvent
 - 【禁止】任何 visited set、runtime tag 或 lineage collection 無上限增長。
 
 ## 32. 多段主動施放
+
+本節治理後續多段 continuation；P11 的單段 `active_cast` 冷卻基礎依 19 號修正案 §11，不因此新增 continuation pointer、技能切換或冷卻中推進入口。
 
 - 非冷卻時按鍵建立新 SkillInstance 並觸發第一階段。
 - 冷卻中按鍵只能推進 `activeContinuationInstanceId` 指向的實例。
@@ -1548,6 +1555,10 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - StreamCodec payload。
 - 兩人連線、分享魔力、惡意 payload 測試。
 
+工程 P11 的完整系統範圍與原八項接受依[19 號修正案](19_P11持久化與多人修正案.md)：正常離線的已接受短期工作與 R1 獎勵、原生 clone／單次 load、qualified source 與各自唯一 writer、canonical advancement reload／初始同步、F1 有限恢復、C4a 非斷線控制、C6 啟動配置，以及正式冷卻基礎。新規範要求不等於相關 runtime 已實作或驗證。
+
+本階段不發布新玩家技能、學習／裝備新入口或技能切換；既有 starter／R／slot0 保持。非零冷卻以隔離的工程資料準備接正式 validation／submission／owner 通路，再以真認證輸入、P5 ARM、保存與讀回驗證，不改 starter、不用假 runtime，也不以上架內容為前提。必要重生／End／登入控制介面不屬排除的技能切換介面。
+
 ## 2. 來源繼承
 
 - SourceContext／EffectState。
@@ -1555,6 +1566,8 @@ P4 ordering／outcome／recovery以[18號P4修正案](18_P4持久化與組合修
 - 原始／包含衍生 Trigger 範圍。
 
 ## 3. 多段施放與冷卻
+
+P11 已承擔的冷卻基礎依 19 號修正案；本後續階段擴充多段 continuation，不延後或重建 P11 的唯一冷卻真相。
 
 ## 4. 標記
 

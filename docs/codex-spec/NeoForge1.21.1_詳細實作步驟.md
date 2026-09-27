@@ -3,8 +3,8 @@
 本文件把凍結骨架拆成可交給 Codex 逐階段執行的工程工作包。
 
 P3 相關工作包已依 `17_P3資料模型修正案.md` 同步；P4-A1～A3與P4-B～P4-E 已依
-`18_P4持久化與組合修正案.md` 同步。兩份修正案只在各自明確範圍內優先，其他架構仍以
-凍結規格為準。若P4條文尚未同步而形成實質衝突，停止受影響工作，不自行選邊。
+`18_P4持久化與組合修正案.md` 同步；P11 系統工作包依
+[`19_P11持久化與多人修正案.md`](19_P11持久化與多人修正案.md)同步。各修正案只在各自明確取代範圍內優先，未取代的 P3／P4 與其他凍結要求仍有效。若條文尚未同步而形成實質衝突，停止受影響工作，不自行選邊。
 
 ## 階段名稱映射
 
@@ -2224,18 +2224,34 @@ Action: damage
 
 ## 目標
 
-完成真正的長期世界與雙人環境。
+完成[19 號修正案](19_P11持久化與多人修正案.md)的持久化與多人系統：L1／R1／F1、C1–C6 及正式冷卻基礎。文件採用不等於 production runtime 已存在、動態接受通過或發布權威鏈已閉合。
+
+本階段不發布新玩家技能內容、學習／裝備新入口或技能切換；不新增 Z/X、selection payload、E/V/q/F、跨鍵 FIFO 或選擇 HUD。既有 starter／R／slot0 與正常入口保持，不為驗證修改其傷害、冷卻或輸入節奏。C4a 的重生／End／登入控制介面仍是必要系統能力。
+
+## 施工依賴
+
+1. 規範採用與直接一致性成立後，建立同配置 owner 的啟動 limits、exact 身份與 finite state／首 TRY 基礎。
+2. 完成 qualified source／provenance、原各 writer 保護與 P4 persisted readback／同 owner continuation。
+3. 接合原生 lifecycle、canonical reward／reload 進度／初始同步及 F1 有限恢復。
+4. 完成 C4a PLAY／client／configuration、parking／handoff／keepalive 與獨立 control channel。
+5. 在 source／reward／control 保護成立後接合 P5 已接受短期工作的正常離線延續；不得先解除 logout 取消 guard。
+6. 冷卻政策輸入、狀態與 schema 可按依賴先做；P5 ARM、保存、clone、重連與最小同步須待相應唯一 owner 到位，不以新技能或 selection 為前置。
+7. 以真正非零工程資料完成冷卻端到端、原八項、F1／首 TRY／configuration／reload／source-save-readback 矩陣及負載觀測。工程準備、測試值與方法由實作者負責；不得以模型或歷史 PASS 替代新 runtime 證據。
+
+隔離工程準備器僅建立合法測試定義／revision，經正式 validation／submission／owner 通路準備或裝備；執行仍走 production policy producer、認證輸入、P5 admission／ARM、唯一 cooldown service 及正常 save/load。準備器與測試資料不得註冊進正式發行 JAR／預設 datapack；不得覆寫 production class、跳過 guards、直接寫 Attachment internal state、mint P5 grant 或用測試 SkillId 特判 D。只在工程自有測試世界查讀、故障注入與重啟，不修改使用者真存檔。
 
 ## 測試情境
 
-1. 玩家 A 提交技能但未施放，重啟後仍在。
-2. A 施放後登出，延遲效果仍解析固定 revision。
-3. A 編輯新 revision，舊投射物仍使用舊版。
-4. A 冷卻中重登，不能洗冷卻。
-5. 兩名玩家同時施放，不共享 sequence／instance。
-6. 惡意客戶端重播 CastIntent。
-7. client profile 缺失，只 fallback。
-8. dedicated server 不載 client renderer。
+1. 正常提交／裝備後未施放，經正常保存、同測試世界新 server 讀回仍在；不重新 provision，不拿 RAM 或另一次已施放案例代替。
+2. 真認證玩家在自然已接受效果期間正常登出，同一 server 依 exact revision、原期限及 loaded-only/native policy 繼續；R1 正常 reward 保存／重連可見。pre-spawn／OPEN／claimed 與 F1 故障分層，不人工加 hit delay。
+3. 舊 A 工作活躍時正式提交新 revision B，A ref／pin 與既有語意不變；不靠取消 A 的 reload 冒充。資料準備不要求新增玩家 GUI、學習或切換產品。
+4. 非零冷卻的真實系統通路與持久化：在隔離工程測試環境，以正式資料驗證與 owner 通路準備合法正 D 定義，交真認證輸入、P5 admission／ARM 及唯一 cooldown service，實際建立正值義務；正常保存、同 server 重連及同測試世界新 server 讀回後，未到期拒絕、到期允許，另驗適用 clone、零政策、隔離、已知結果與合法未知 captured bound。不得以空 snapshot、手填 deadline、假 ARM、單獨模型或改 starter 取代；不要求發布新技能、學習／裝備新指令或切換功能。
+5. 真雙認證玩家同期施放，sequence 可相同但 instance／owner／target／資源不串；新 session 不洗既有 owner 預算。healthy host 的 F0 拒絕不踢 LAN，真退出另作對照。
+6. 同 session 重播、舊 capture 晚到與新 session 合法首包分開；control 查詢／fresh retry 不授予舊 P5 工作，不以 rate／cooldown 拒絕遮蔽 replay 原因。
+7. server 資料合法而 client 缺 profile／asset，依原 fallback；不重傷害／reward／transition，不以 UI 狀態當 data ready。
+8. 真 packaged dedicated 的新 common owners／codecs 不載 client UI／renderer；須直接查核載入／依賴，不能只以無 crash 證明。
+
+canonical reload 不倒退尚未成功保存的進度；新客戶端 advancement、recipe、P7 技能／魔力／冷卻初始同步各自驗證，不相互替代，也不 replay reward。F1 isolation-only 分支預期為正確錯誤、保資料、不重播及如實顯示未完整交付，不得標 full reward 成功。容量驗收同時觀察正確性、成功吞吐、拒絕率與時序，未量測不宣稱營運人數或 heap 安全；具體契約與矩陣依 19 號修正案 §5–12。
 
 ---
 
@@ -2266,6 +2282,8 @@ Action: damage
 ---
 
 # 階段 P13：多段施放與冷卻
+
+P11 已承擔的正式冷卻基礎依 19 號修正案；本階段增加多段 continuation 與其 pointer／stage 語意，不延後或另建 P11 的冷卻真相。
 
 ## 工作
 

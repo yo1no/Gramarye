@@ -1,10 +1,10 @@
 # Codex 實作總規格 Prompt
 ## Minecraft 1.21.1 / NeoForge 21.1.x 魔法 Node 系統
 
-> 使用方式：將本檔與 `18_P4持久化與組合修正案.md`、`17_P3資料模型修正案.md`、
+> 使用方式：將本檔與 `19_P11持久化與多人修正案.md`、`18_P4持久化與組合修正案.md`、`17_P3資料模型修正案.md`、
 > `16_骨架定案清單_NeoForge1.21.1_凍結版.md` 一起交給 Codex。
 >
-> 本檔是實作契約；18號修正案只在明示的P4 persistence／Attachment／composition範圍內
+> 本檔是實作契約；19號修正案只在明示的P11取代範圍內優先；18號修正案只在明示的P4 persistence／Attachment／composition範圍內
 > 優先，17號修正案只在明示的P3範圍內優先，其他範圍以凍結版骨架為架構真相。若文件
 > 尚未同步而存在實質衝突，停止實作並回報，不得自行選邊或改變骨架。
 
@@ -1778,6 +1778,8 @@ optional bounded target hint
 
 不要用一個巨大萬用 payload。
 
+P11 的最小 cooldown snapshot／producer／唯讀 consumer 依[19 號修正案 §11](19_P11持久化與多人修正案.md)：以同一 coherent source、既有 P7 session／newest 規則投射真可用性與 remaining，區分 no-data、可信就緒、ACTIVE、pending/recovery 與 unavailable，不依賴 selection 或 E/V/q/F。CastIntent／ACK／mana 原形狀除具名必要 delta 外保持；C4a 36/54-byte transition control 是另一個 required channel，不混用 P7 冷卻同步。
+
 ---
 
 # 12. Presentation Layer 規格
@@ -1890,6 +1892,8 @@ payload：
 1. `active_cast`
 2. `effect_hit`
 3. 可選：`cooldown_active_cast`，只在階段 3 實作
+
+此可選 Trigger 屬後續多段 continuation；不阻擋 P11 依 19 號修正案為既有 `active_cast` 增加 revision-bound 冷卻政策資料與正式 service，也不因此提前發布新玩家技能。
 
 ## Action
 
@@ -2055,6 +2059,18 @@ composition outcome、report identity、journal與recovery以
 - CAST_RELEASE／HIT 走 clientbound presentation payload。
 - 客戶端關閉粒子不影響傷害。
 - trace 能解釋每一步。
+
+---
+
+# 15-B. 工程 P11 持久化與多人系統
+
+完整規範以[19_P11持久化與多人修正案.md](19_P11持久化與多人修正案.md)及架構 scoped ledger 為準，僅在其明列範圍內取代舊要求。L1／R1／F1、C1–C6 與冷卻規則已確認；文件採用、production 實作、runtime 接受與發布身份分開，不以工作樹文件存在宣稱功能完成。
+
+必做系統包含已接受短期工作正常離線延續、原因果與完整合法 reward recipient、原生 clone／單次 load、qualified source／唯一 writer、P4 persisted proof 與同 owner continuation、canonical advancement reload 不倒退 dirty progress與各類初始同步、有限故障保護、C4a／首 TRY、exact connection capture、啟動資源配置，以及正式冷卻 policy／ARM／持久／可用性同步。保持 server authority、immutable revision／pin、P5/P6/P7/P8 owners 及未被取代的 P3／P4 契約。
+
+本階段不發布新技能內容、學習／裝備新入口、Z/X、selection payload、E/V/q/F、跨鍵 FIFO 或選擇 HUD；既有 starter／R／slot0 不變。非零冷卻使用隔離工程準備器產生經正式驗證／提交／owner 通路的合法定義，由 production policy producer、真認證輸入、P5 admission／ARM、唯一 cooldown service 及正常 save/load 執行。不得手填 deadline、假 ARM、硬編碼測試 SkillId→D，或為驗證修改 starter；資料準備不等於上架新內容。必要重生／End／登入控制介面仍在範圍內。
+
+實作依賴與原八項接受依 19 號修正案 §12；冷卻資料能力可按 owner 依賴先做，L1 不得先解除 logout guard 後才補 source／reward／control。多段 continuation 與日後技能產品保持後續範圍。
 
 ---
 

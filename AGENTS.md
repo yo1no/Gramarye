@@ -25,11 +25,12 @@ Do not use `java.example.gramarye`, `com.example.gramarye`, or another placehold
 
 Read these files before planning or editing architecture:
 
-1. `docs/codex-spec/18_P4持久化與組合修正案.md`
-2. `docs/codex-spec/17_P3資料模型修正案.md`
-3. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
-4. `docs/codex-spec/Codex_實作總規格Prompt.md`
-5. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
+1. `docs/codex-spec/19_P11持久化與多人修正案.md`
+2. `docs/codex-spec/18_P4持久化與組合修正案.md`
+3. `docs/codex-spec/17_P3資料模型修正案.md`
+4. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
+5. `docs/codex-spec/Codex_實作總規格Prompt.md`
+6. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
 
 Priority:
 
@@ -46,6 +47,13 @@ Approved scoped amendment within its stated scope
 persistence, Attachment, and composition scope. `17_P3資料模型修正案.md` retains the same
 scoped precedence for the P3 clauses that it explicitly identifies. All P0-P3 and other rules not
 amended by those documents remain governed by the frozen architecture specification.
+
+`19_P11持久化與多人修正案.md` governs P11 only within its explicitly identified supersession
+scope. Follow its body and the architecture document's scoped replacement/preservation ledger;
+all requirements not explicitly replaced remain effective. Historical external proposals are
+references, not authority merely because they are newer, more detailed, or use mandatory wording.
+Worktree specification adoption does not establish published authority closure or implemented,
+runtime-qualified P11 capability.
 
 If the P4 amendment and another authoritative document have not been synchronized and still
 contain a substantive conflict, stop the affected work and report the exact conflict; do not choose
