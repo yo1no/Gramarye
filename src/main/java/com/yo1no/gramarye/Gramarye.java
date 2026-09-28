@@ -54,7 +54,8 @@ public final class Gramarye {
         MagicRegistries.register(modBus);
         P9StarterProjectileRegistration.register(modBus);
         new DescriptorMigrationAudit().register(modBus);
-        playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus);
+        var p11SourceProvenance = new P11SourceProvenance();
+        playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus, p11SourceProvenance);
         p8ServerPresentationService = P8ServerPresentationService.create();
         var profileAvailability = p8ServerPresentationService.profileAvailabilityView();
         var runtimeCapability = P6RuntimeExecutionCapability.forRuntimeAdapter();
@@ -81,7 +82,7 @@ public final class Gramarye {
                 exactFacade.submissionView());
         skillSubmissionRecoveryService.registerOn(NeoForge.EVENT_BUS);
         p5ServerRuntimeConfig = new P5ServerRuntimeConfig(modBus, exactContainer);
-        p11FoundationService = new P11FoundationService();
+        p11FoundationService = new P11FoundationService(p11SourceProvenance, playerSkillAttachmentService);
         skillRuntimeService = SkillRuntimeService.create(
                 NeoForge.EVENT_BUS,
                 skillDefinitionStoreService,

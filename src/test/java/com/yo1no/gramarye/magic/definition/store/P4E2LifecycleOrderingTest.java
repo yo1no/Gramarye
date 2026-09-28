@@ -208,7 +208,7 @@ final class P4E2LifecycleOrderingTest {
                 "\n    private boolean invalidationCurrent(");
         var publisher = slice(
                 player,
-                "    private static void publishReplacement(\n"
+                "    private void publishReplacement(\n"
                         + "            ServerPlayer player,"
                         + " PlayerSkillAttachmentReady replacement) {",
                 "\n    private static MutationRejectionCode mapBuildFailure(");

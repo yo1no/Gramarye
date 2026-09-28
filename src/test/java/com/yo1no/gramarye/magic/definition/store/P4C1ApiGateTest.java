@@ -185,7 +185,12 @@ class P4C1ApiGateTest {
                                         + "OpaqueSkillDocumentMigrationFacade.java",
                                 "com/yo1no/gramarye/magic/definition/player/AttachmentTagSize.java"),
                         relativeFilesContaining(production, "NbtIo.writeAnyTag(")),
-                () -> assertTrue(relativeFilesContaining(production, "writeUnnamedTag").isEmpty()),
+                // P11 documents the locked whole-root framing; this is not a new serializer call.
+                () -> assertEquals(Set.of("com/yo1no/gramarye/P11StrictNbtSize.java"),
+                        relativeFilesContaining(production, "writeUnnamedTag")),
+                () -> assertFalse(production.stream().map(P4C1ApiGateTest::read)
+                        .map(P4C1ApiGateTest::withoutCommentsAndLiterals)
+                        .anyMatch(source -> source.contains("writeUnnamedTag"))),
                 () -> assertFalse(counterSource.contains("ByteArrayOutputStream")),
                 () -> assertFalse(sizeSource.contains("byte[]")),
                 () -> assertTrue(Modifier.isFinal(counter.getModifiers())),

@@ -98,6 +98,7 @@ public final class P7GameTestInventory {
         var normalized = path.toAbsolutePath().normalize();
         var root = projectRoot().resolve(MAIN);
         return normalized.equals(root.resolve("P7S4LoginManaGameTests.java"))
+                || normalized.equals(root.resolve("P4E2RecoveryGameTestObservation.java"))
                 || normalized.equals(root.resolve(
                         "magic/definition/store/SkillSubmissionRecoveryGameTests.java"))
                 || normalized.equals(root.resolve("magic/network/P7S4NetworkGameTests.java"));
@@ -141,6 +142,7 @@ public final class P7GameTestInventory {
         return Set.of("magic/network/P7ReloadAdmissionGate.java",
                 "magic/network/P7ServerLifecycleCoordinator.java",
                 "P7S4LoginManaGameTests.java",
+                "P4E2RecoveryGameTestObservation.java",
                 "magic/definition/store/SkillSubmissionRecoveryGameTests.java",
                 "magic/network/P7S4NetworkGameTests.java").contains(relative);
     }

@@ -13,7 +13,8 @@ public final class P4E2QualificationFacade implements IExtensionPoint {
         CLEARED_AND_REPLAYED,
         CONFLICT,
         TARGET_INVALID,
-        UNAVAILABLE
+        UNAVAILABLE,
+        CURRENT_PUBLICATION
     }
 
     public enum RecoveryDetail {

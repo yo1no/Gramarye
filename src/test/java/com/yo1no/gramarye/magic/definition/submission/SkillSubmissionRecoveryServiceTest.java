@@ -87,6 +87,7 @@ final class SkillSubmissionRecoveryServiceTest {
         assertFalse(directClassification.contains("default"));
         for (var exactVariant : List.of(
                 "case NoPending",
+                "case CurrentPublication",
                 "case Cleared ",
                 "case Replayed ",
                 "case ClearedAndReplayed ",
@@ -106,6 +107,171 @@ final class SkillSubmissionRecoveryServiceTest {
 
         assertEquals("P4E2_RECOVERY_CONTINUATION_ALREADY_CONSUMED",
                 failure.getMessage());
+    }
+
+    @Test
+    void currentVolatileFinalPublicationContinuesWithoutClearingOrReinstalling() {
+        var step = step(Optional.empty(), 0, reference(SKILL_A, 1), 1);
+        var dependencies = finalStateDependencies(step);
+        dependencies.provenance = currentProvenance(Optional.empty());
+
+        var result = recover(dependencies);
+
+        assertSame(SkillSubmissionRecoveryService.CurrentPublication.INSTANCE, result);
+        assertEquals(P4E2OnlineReconciliationDependency.RecoveryKind.CURRENT_PUBLICATION,
+                result.e2Kind());
+        assertEquals(List.of("journal", "latest"), dependencies.calls);
+    }
+
+    @Test
+    void persistedIntermediateAndLaterVolatileFinalClearOnlyTheReadBackPrefix() {
+        var first = step(Optional.empty(), 0, reference(SKILL_A, 1), 1);
+        var second = step(Optional.of(first.targetPointer()), 1, reference(SKILL_A, 2), 2);
+        var dependencies = new FakeDependencies(available(chain(SKILL_A, first, second)));
+        dependencies.setLatest(latest(SKILL_A, Optional.of(second.targetPointer()), 2));
+        dependencies.provenance = currentProvenance(Optional.of(List.of(
+                latest(SKILL_A, Optional.of(first.targetPointer()), 1))));
+
+        var result = assertInstanceOf(SkillSubmissionRecoveryService.Cleared.class,
+                recover(dependencies));
+
+        assertEquals(1, result.entriesCleared());
+        assertEquals(1, dependencies.invocationsStartingWith("clear-prepare:"));
+        assertEquals(0, dependencies.invocationsStartingWith("prepare:"));
+        assertEquals(0, dependencies.invocationsStartingWith("publish:"));
+    }
+
+    @Test
+    void volatileIntermediateSkipsInstalledPrefixButReplaysItsMissingSuffix() {
+        var first = step(Optional.empty(), 0, reference(SKILL_A, 1), 1);
+        var second = step(Optional.of(first.targetPointer()), 1, reference(SKILL_A, 2), 2);
+        var dependencies = new FakeDependencies(available(chain(SKILL_A, first, second)));
+        dependencies.setLatest(latest(SKILL_A, Optional.of(first.targetPointer()), 1));
+        dependencies.provenance = currentProvenance(Optional.of(List.of()));
+
+        var result = assertInstanceOf(SkillSubmissionRecoveryService.Replayed.class,
+                recover(dependencies));
+
+        assertEquals(1, result.stepsReplayed());
+        assertEquals(0, dependencies.invocationsStartingWith("clear-"));
+        assertEquals(1, dependencies.invocationsStartingWith("publish:"));
+        assertEquals(new FakeTuple(Optional.of(second.targetPointer()), 2),
+                dependencies.live.get(SKILL_A));
+    }
+
+    @Test
+    void unknownMatchingRamDoesNotClearOrBlindlyPublish() {
+        var step = step(Optional.empty(), 0, reference(SKILL_A, 1), 1);
+        var dependencies = finalStateDependencies(step);
+        dependencies.provenance = new SkillSubmissionRecoveryService.RecoveryProvenance(
+                SkillSubmissionRecoveryService.ProvenanceKind.UNKNOWN,
+                0, 0, Optional.empty());
+
+        assertInstanceOf(SkillSubmissionRecoveryService.Conflict.class, recover(dependencies));
+        assertEquals(List.of("journal", "latest"), dependencies.calls);
+    }
+
+    @Test
+    void managedMixedChainsContinueIndependentRecoveryWithoutClearingVolatileTarget() {
+        var first = step(Optional.empty(), 0, reference(SKILL_A, 1), 1);
+        var second = step(Optional.empty(), 0, reference(SKILL_B, 1), 1);
+        var third = step(Optional.empty(), 0, reference(SKILL_C, 1), 1);
+        var dependencies = new FakeDependencies(available(
+                chain(SKILL_A, first), chain(SKILL_B, second), chain(SKILL_C, third)));
+        dependencies.setLatest(List.of(
+                latest(SKILL_A, Optional.of(first.targetPointer()), 1),
+                latest(SKILL_B, Optional.of(reference(SKILL_B, 99)), 99)));
+        dependencies.provenance = currentProvenance(Optional.of(List.of()));
+
+        var result = assertInstanceOf(SkillSubmissionRecoveryService.Conflict.class,
+                recover(dependencies));
+
+        assertEquals(SKILL_B, result.skillId());
+        assertEquals(0, result.entriesClearedBeforeFailure());
+        assertEquals(1, result.stepsReplayedBeforeFailure());
+        assertEquals(0, dependencies.invocationsStartingWith("clear-"));
+        assertEquals(1, dependencies.invocationsStartingWith("publish:3"));
+        assertEquals(0, dependencies.invocationsStartingWith("publish:1"));
+    }
+
+    @Test
+    void readbackProofLostAfterClearPreparationNeverCommitsClear() {
+        var step = step(Optional.empty(), 0, reference(SKILL_A, 1), 1);
+        var dependencies = finalStateDependencies(step);
+        dependencies.provenance = currentProvenance(Optional.of(List.of(
+                latest(SKILL_A, Optional.of(step.targetPointer()), 1))));
+        dependencies.provenanceStillCurrent = false;
+
+        assertInstanceOf(SkillSubmissionRecoveryService.Conflict.class, recover(dependencies));
+        assertEquals(1, dependencies.invocationsStartingWith("clear-prepare:"));
+        assertEquals(0, dependencies.invocationsStartingWith("clear-commit"));
+        assertEquals(0, dependencies.invocationsStartingWith("publish:"));
+    }
+
+    @Test
+    void managedPersistedBaseStillReplaysTheOriginalChainWithoutClearingIt() {
+        var step = step(Optional.empty(), 0, reference(SKILL_A, 1), 1);
+        var dependencies = baseDependencies(step);
+        dependencies.provenance = currentProvenance(Optional.of(List.of()));
+
+        var result = assertInstanceOf(SkillSubmissionRecoveryService.Replayed.class,
+                recover(dependencies));
+
+        assertEquals(1, result.stepsReplayed());
+        assertEquals(0, dependencies.invocationsStartingWith("clear-"));
+        assertEquals(1, dependencies.invocationsStartingWith("publish:"));
+    }
+
+    @Test
+    void managedRealPersistedFinalClearsWithoutReplayingTheInstalledTarget() {
+        var step = step(Optional.empty(), 0, reference(SKILL_A, 1), 1);
+        var dependencies = finalStateDependencies(step);
+        dependencies.provenance = currentProvenance(Optional.of(List.of(
+                latest(SKILL_A, Optional.of(step.targetPointer()), 1))));
+
+        var result = assertInstanceOf(SkillSubmissionRecoveryService.Cleared.class,
+                recover(dependencies));
+
+        assertEquals(1, result.entriesCleared());
+        assertEquals(1, dependencies.invocationsStartingWith("clear-commit"));
+        assertEquals(0, dependencies.invocationsStartingWith("publish:"));
+    }
+
+    @Test
+    void persistedPrefixAheadOfCurrentStateIsNotUsedToHideARegression() {
+        var step = step(Optional.empty(), 0, reference(SKILL_A, 1), 1);
+        var dependencies = baseDependencies(step);
+        dependencies.provenance = currentProvenance(Optional.of(List.of(
+                latest(SKILL_A, Optional.of(step.targetPointer()), 1))));
+
+        assertInstanceOf(SkillSubmissionRecoveryService.Conflict.class, recover(dependencies));
+        assertEquals(0, dependencies.invocationsStartingWith("clear-"));
+        assertEquals(0, dependencies.invocationsStartingWith("publish:"));
+    }
+
+    @Test
+    void olderNonMatchingDiskTupleDoesNotEraseAProvenCurrentVolatilePublication() {
+        var first = step(Optional.of(reference(SKILL_A, 4)), 4, reference(SKILL_A, 5), 5);
+        var second = step(Optional.of(first.targetPointer()), 5, reference(SKILL_A, 6), 6);
+        var dependencies = new FakeDependencies(available(chain(SKILL_A, first, second)));
+        dependencies.setLatest(latest(SKILL_A, Optional.of(first.targetPointer()), 5));
+        dependencies.provenance = currentProvenance(Optional.of(List.of(
+                latest(SKILL_A, Optional.of(reference(SKILL_A, 1)), 1))));
+
+        var result = assertInstanceOf(SkillSubmissionRecoveryService.Replayed.class,
+                recover(dependencies));
+
+        assertEquals(1, result.stepsReplayed());
+        assertEquals(0, dependencies.invocationsStartingWith("clear-"));
+        assertEquals(1, dependencies.invocationsStartingWith("publish:"));
+        assertEquals(new FakeTuple(Optional.of(second.targetPointer()), 6),
+                dependencies.live.get(SKILL_A));
+    }
+
+    private static SkillSubmissionRecoveryService.RecoveryProvenance currentProvenance(
+            Optional<List<PlayerSkillAttachmentService.LatestStateView>> persisted) {
+        return new SkillSubmissionRecoveryService.RecoveryProvenance(
+                SkillSubmissionRecoveryService.ProvenanceKind.CURRENT, 3, 7, persisted);
     }
 
     @Test
@@ -708,6 +874,7 @@ final class SkillSubmissionRecoveryServiceTest {
         assertEquals(
                 Set.of(
                         "NoPending",
+                        "CurrentPublication",
                         "Cleared",
                         "Replayed",
                         "ClearedAndReplayed",
@@ -839,6 +1006,11 @@ final class SkillSubmissionRecoveryServiceTest {
         private SkillSubmissionRecoveryService.TransitionPublication transitionPublication =
                 SkillSubmissionRecoveryService.TransitionPublication.Applied.INSTANCE;
         private boolean forceNoOpTransition;
+        private SkillSubmissionRecoveryService.RecoveryProvenance provenance =
+                new SkillSubmissionRecoveryService.RecoveryProvenance(
+                        SkillSubmissionRecoveryService.ProvenanceKind.LEGACY_NATIVE,
+                        0, 0, Optional.empty());
+        private boolean provenanceStillCurrent = true;
         private int expectedGenerationOffset;
         private String runtimeStage;
         private String errorStage;
@@ -883,13 +1055,29 @@ final class SkillSubmissionRecoveryServiceTest {
         }
 
         @Override
+        public SkillSubmissionRecoveryService.RecoveryProvenance observeProvenance(
+                Object player) {
+            assertSame(PLAYER, player);
+            return provenance;
+        }
+
+        @Override
+        public boolean provenanceCurrent(
+                Object player, SkillSubmissionRecoveryService.RecoveryProvenance observed) {
+            assertSame(PLAYER, player);
+            return provenanceStillCurrent && provenance.equals(observed);
+        }
+
+        @Override
         public SkillSubmissionRecoveryService.ClearPreparation prepareClear(
+                Object player,
                 Object server,
                 SkillOwnerId owner,
                 SkillId skillId,
                 int confirmedTargetGeneration,
                 SkillReference confirmedTargetPointer) {
             assertSame(SERVER, server);
+            assertSame(PLAYER, player);
             assertEquals(OWNER, owner);
             assertEquals(skillId, confirmedTargetPointer.skillId());
             calls.add("clear-prepare:" + skillId.value().getLeastSignificantBits()

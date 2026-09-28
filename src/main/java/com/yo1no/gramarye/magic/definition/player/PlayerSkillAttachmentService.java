@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.definition.player;
 
 import com.yo1no.gramarye.P4E2QualificationFacade;
+import com.yo1no.gramarye.P11SourceProvenance;
 import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.definition.document.SkillDraft;
@@ -12,13 +13,16 @@ import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoverySer
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.UUID;
+import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.server.players.PlayerList;
 import net.neoforged.bus.api.IEventBus;
 
@@ -27,15 +31,128 @@ public final class PlayerSkillAttachmentService {
     private static final long CLEARED_ENCODED_WIDTH = -1L;
     private static final int MAX_RECONCILIATION_EXCEPTION_CLASS_LENGTH = 160;
     private final PlayerSkillAttachmentAdmission rootAuditAdmission;
+    private final P11SourceProvenance sourceProvenance;
 
     PlayerSkillAttachmentService() {
-        this.rootAuditAdmission = new PlayerSkillAttachmentAdmission();
+        this(null);
     }
 
-    /** Registers the unique Attachment type on the mod bus and returns a stateless service. */
+    private PlayerSkillAttachmentService(P11SourceProvenance sourceProvenance) {
+        this.rootAuditAdmission = new PlayerSkillAttachmentAdmission();
+        this.sourceProvenance = sourceProvenance;
+    }
+
+    /** Registers the unique Attachment type on the mod bus without a qualified-source capability. */
     public static PlayerSkillAttachmentService registerOn(IEventBus modBus) {
         PlayerSkillAttachments.register(Objects.requireNonNull(modBus, "modBus"));
         return new PlayerSkillAttachmentService();
+    }
+
+    /** Root-only capability injection; registration remains owned by this one service. */
+    public static PlayerSkillAttachmentService registerOn(
+            IEventBus modBus, P11SourceProvenance sourceProvenance) {
+        PlayerSkillAttachments.register(Objects.requireNonNull(modBus, "modBus"));
+        return new PlayerSkillAttachmentService(
+                Objects.requireNonNull(sourceProvenance, "sourceProvenance"));
+    }
+
+    /** Non-installing exact observation, available only to this service's injected capability. */
+    public P11AttachmentSnapshot captureP11Source(
+            ServerPlayer player, P11SourceProvenance capability) {
+        if (capability == null || capability != sourceProvenance) {
+            throw new IllegalArgumentException("P11_ATTACHMENT_CAPABILITY_MISMATCH");
+        }
+        requireServerThread(player);
+        return captureP11Source(player);
+    }
+
+    /**
+     * Root calls before native deserialization, only for a proven absent input key. A legal
+     * constructor-installed state is retained as the exact current state, not replaced by empty.
+     */
+    public P11AttachmentReadResult captureP11MissingRead(
+            ServerPlayer player, P11SourceProvenance capability) {
+        var observed = captureP11Source(player, capability);
+        return new P11AttachmentReadResult(player, observed.state, true);
+    }
+
+    static P11AttachmentReadResult p11ReadResult(
+            net.neoforged.neoforge.attachment.IAttachmentHolder holder,
+            PlayerSkillAttachmentState state) {
+        return holder instanceof ServerPlayer actor
+                ? new P11AttachmentReadResult(actor, state, false) : null;
+    }
+
+    /** Empty denotes the unchanged native-only path, never a managed unknown source. */
+    public Optional<P11SourceProvenance.Observation> observeRecoveryProvenance(
+            ServerPlayer player) {
+        requireServerThread(player);
+        return sourceProvenance == null ? Optional.empty()
+                : Optional.of(sourceProvenance.observe(player, captureP11Source(player)));
+    }
+
+    /** Issues only the exact prefix evidenced by real readback (or the explicit native-only path). */
+    public Optional<JournalClearProof> prepareJournalClearProof(
+            ServerPlayer player, SkillId skillId, int generation, SkillReference pointer) {
+        requireServerThread(player);
+        Objects.requireNonNull(skillId, "skillId");
+        Objects.requireNonNull(pointer, "pointer");
+        if (sourceProvenance == null || generation < 0 || !pointer.skillId().equals(skillId)) {
+            return Optional.empty();
+        }
+        var snapshot = captureP11Source(player);
+        var observation = sourceProvenance.observe(player, snapshot);
+        if (!readbackMatches(observation, snapshot, skillId, generation, pointer)) {
+            return Optional.empty();
+        }
+        var proof = new JournalClearProof(sourceProvenance, player, snapshot,
+                observation, skillId, generation, pointer);
+        return proof.isCurrent(player.getServer()) ? Optional.of(proof) : Optional.empty();
+    }
+
+    private static boolean readbackMatches(
+            P11SourceProvenance.Observation observation,
+            P11AttachmentSnapshot snapshot,
+            SkillId skillId, int generation, SkillReference pointer) {
+        Optional<List<LatestStateView>> readback = switch (observation.kind()) {
+            case UNKNOWN -> Optional.empty();
+            case CURRENT -> observation.persistedStates();
+            case LEGACY_NATIVE -> snapshot.latestStates()
+                    instanceof Available<List<LatestStateView>> available
+                            ? Optional.of(available.value()) : Optional.empty();
+        };
+        return readbackTupleMatches(readback, skillId, generation, pointer);
+    }
+
+    /** Pure bounded tuple check shared by proof issuance and its consume-time revalidation. */
+    static boolean readbackTupleMatches(
+            Optional<List<LatestStateView>> readback,
+            SkillId skillId, int generation, SkillReference pointer) {
+        Objects.requireNonNull(readback, "readback");
+        Objects.requireNonNull(skillId, "skillId");
+        Objects.requireNonNull(pointer, "pointer");
+        if (generation < 0 || !pointer.skillId().equals(skillId) || readback.isEmpty()
+                || readback.orElseThrow().size() > MagicSafetyCeilings.MAX_PLAYER_LATEST_STATES) {
+            return false;
+        }
+        var routes = new HashSet<SkillId>();
+        boolean matched = false;
+        for (var latest : readback.orElseThrow()) {
+            if (latest == null || !routes.add(latest.skillId())) {
+                return false;
+            }
+            if (latest.skillId().equals(skillId) && latest.mutationGeneration() == generation
+                    && latest.pointer().equals(Optional.of(pointer))) {
+                matched = true;
+            }
+        }
+        return matched;
+    }
+
+    private P11AttachmentSnapshot captureP11Source(ServerPlayer player) {
+        var type = PlayerSkillAttachments.type();
+        var state = player.hasData(type) ? player.getData(type) : null;
+        return new P11AttachmentSnapshot(this, player, state);
     }
 
     /**
@@ -354,6 +471,7 @@ public final class PlayerSkillAttachmentService {
         if (current.pointer().equals(targetPointer)) {
             var transition = new PreparedPlayerSkillTransition(
                     server,
+                    player,
                     player.getUUID(),
                     original,
                     owner,
@@ -393,6 +511,7 @@ public final class PlayerSkillAttachmentService {
         var replacement = ((PlayerSkillAttachmentBuildResult.Built) rebuilt).ready();
         var transition = new PreparedPlayerSkillTransition(
                 server,
+                player,
                 player.getUUID(),
                 original,
                 owner,
@@ -450,7 +569,8 @@ public final class PlayerSkillAttachmentService {
             return PreparedTransitionValidation.changed(
                     MutationRejectionCode.WRONG_SERVER);
         }
-        if (!player.getUUID().equals(transition.playerId)) {
+        if (player != transition.playerIdentity
+                || !player.getUUID().equals(transition.playerId)) {
             return PreparedTransitionValidation.changed(
                     MutationRejectionCode.WRONG_PLAYER);
         }
@@ -1281,7 +1401,7 @@ public final class PlayerSkillAttachmentService {
         };
     }
 
-    private static Result<MutationOutcome> publishMutation(
+    private Result<MutationOutcome> publishMutation(
             ServerPlayer player, PlayerSkillAttachmentBuildResult rebuilt) {
         if (rebuilt instanceof PlayerSkillAttachmentBuildResult.Rejected rejected) {
             return new Available<>(new MutationRejected(mapBuildFailure(rejected.failure())));
@@ -1292,16 +1412,22 @@ public final class PlayerSkillAttachmentService {
         return applied;
     }
 
-    private static void publishReplacement(
+    private void publishReplacement(
             ServerPlayer player, PlayerSkillAttachmentReady replacement) {
         publishReplacement(player, replacement, null);
     }
 
-    private static void publishReplacement(
+    private void publishReplacement(
             ServerPlayer player,
             PlayerSkillAttachmentReady replacement,
             P4E2QualificationFacade.PlayerView qualificationPlayerView) {
         var type = PlayerSkillAttachments.type();
+        var before = sourceProvenance == null ? null : captureP11Source(player);
+        if (sourceProvenance != null
+                && sourceProvenance.observe(player, before).kind()
+                        == P11SourceProvenance.Kind.UNKNOWN) {
+            throw new IllegalStateException("P11_ATTACHMENT_SOURCE_UNKNOWN");
+        }
         MinecraftServer qualificationServer = null;
         long playerMost = 0L;
         long playerLeast = 0L;
@@ -1318,6 +1444,9 @@ public final class PlayerSkillAttachmentService {
         if (qualificationPlayerView != null) {
             qualificationPlayerView.recordE2SetDataSuccess(
                     qualificationServer, playerMost, playerLeast);
+        }
+        if (sourceProvenance != null) {
+            sourceProvenance.published(player, before, captureP11Source(player));
         }
     }
 
@@ -1971,8 +2100,179 @@ public final class PlayerSkillAttachmentService {
         STATE_CHANGED
     }
 
+    /**
+     * Closed exact-state evidence. It exposes bounded semantic tuples, not the mutable carrier,
+     * native actor, Attachment type or a setter. It cannot be constructed by a caller.
+     */
+    public static final class P11AttachmentSnapshot {
+        private final PlayerSkillAttachmentService owner;
+        private final ServerPlayer actor;
+        private final PlayerSkillAttachmentState state;
+        private final Result<List<LatestStateView>> latest;
+
+        private P11AttachmentSnapshot(
+                PlayerSkillAttachmentService owner,
+                ServerPlayer actor,
+                PlayerSkillAttachmentState state) {
+            this.owner = owner;
+            this.actor = actor;
+            this.state = state;
+            ObservedPlayerSkillAttachment observed = state == null
+                    ? ObservedPlayerSkillAttachment.Missing.INSTANCE
+                    : state instanceof PlayerSkillAttachmentReady ready
+                            ? new ObservedPlayerSkillAttachment.Ready(ready)
+                            : new ObservedPlayerSkillAttachment.Quarantined(
+                                    state instanceof PlayerSkillAttachmentPreservedRaw
+                                            ? UnavailableReason.PRESERVED_RAW_QUARANTINE
+                                            : UnavailableReason.OVERSIZE_QUARANTINE);
+            this.latest = latestStateBatch(observed);
+        }
+
+        public Result<List<LatestStateView>> latestStates() {
+            return latest;
+        }
+
+        public boolean isBoundTo(ServerPlayer candidate) {
+            return actor == candidate;
+        }
+
+        public boolean isCurrent(ServerPlayer candidate) {
+            if (candidate != actor || !candidate.getServer().isSameThread()) {
+                return false;
+            }
+            var type = PlayerSkillAttachments.type();
+            return state == null ? !candidate.hasData(type)
+                    : candidate.hasData(type) && candidate.getData(type) == state;
+        }
+
+        public boolean sameState(P11AttachmentSnapshot other) {
+            return other != null && owner == other.owner
+                    && actor == other.actor && state == other.state;
+        }
+
+        public boolean belongsTo(P11SourceProvenance capability) {
+            return capability != null && owner.sourceProvenance == capability;
+        }
+    }
+
+    /** The exact serializer result before installation, not an Entity.load-return heuristic. */
+    public static final class P11AttachmentReadResult {
+        private final ServerPlayer actor;
+        private final PlayerSkillAttachmentState state;
+        private final boolean missingInputKey;
+
+        private P11AttachmentReadResult(
+                ServerPlayer actor, PlayerSkillAttachmentState state, boolean missingInputKey) {
+            this.actor = actor;
+            this.state = state;
+            this.missingInputKey = missingInputKey;
+        }
+
+        public boolean isBoundTo(ServerPlayer candidate) {
+            return candidate == actor;
+        }
+
+        public boolean matches(P11AttachmentSnapshot snapshot) {
+            return snapshot != null && snapshot.actor == actor && snapshot.state == state;
+        }
+
+        public Result<List<LatestStateView>> latestStates() {
+            if (missingInputKey) {
+                return new Available<>(List.of());
+            }
+            ObservedPlayerSkillAttachment observed = state == null
+                    ? ObservedPlayerSkillAttachment.Missing.INSTANCE
+                    : state instanceof PlayerSkillAttachmentReady ready
+                            ? new ObservedPlayerSkillAttachment.Ready(ready)
+                            : new ObservedPlayerSkillAttachment.Quarantined(
+                                    state instanceof PlayerSkillAttachmentPreservedRaw
+                                            ? UnavailableReason.PRESERVED_RAW_QUARANTINE
+                                            : UnavailableReason.OVERSIZE_QUARANTINE);
+            return latestStateBatch(observed);
+        }
+    }
+
+    /** Closed serializer result: neither a callback bit nor an equal replacement Tag proves it. */
+    public static final class P11AttachmentWriteResult {
+        private final PlayerSkillAttachmentState state;
+        private final net.minecraft.nbt.Tag output;
+
+        private P11AttachmentWriteResult(
+                PlayerSkillAttachmentState state, net.minecraft.nbt.Tag output) {
+            this.state = Objects.requireNonNull(state, "state");
+            this.output = Objects.requireNonNull(output, "output");
+        }
+
+        public boolean matches(ServerPlayer actor, net.minecraft.nbt.Tag actualOutput) {
+            var type = PlayerSkillAttachments.type();
+            return actor.getServer().isSameThread() && matchesOutput(actualOutput)
+                    && actor.hasData(type) && actor.getData(type) == state;
+        }
+
+        boolean matchesOutput(net.minecraft.nbt.Tag actualOutput) { return output == actualOutput; }
+    }
+
+    static P11AttachmentWriteResult p11WriteResult(
+            PlayerSkillAttachmentState state, net.minecraft.nbt.Tag output) {
+        return new P11AttachmentWriteResult(state, output);
+    }
+
+    /** Consume-first readback authority; neither scalar tuples nor a saved/write flag can forge it. */
+    public static final class JournalClearProof {
+        private final P11SourceProvenance capability;
+        private final ServerPlayer actor;
+        private final P11AttachmentSnapshot snapshot;
+        private final ServerGamePacketListenerImpl listener;
+        private final Connection connection;
+        private final P11SourceProvenance.Observation origin;
+        private final SkillId skillId;
+        private final int generation;
+        private final SkillReference pointer;
+        private boolean consumed;
+
+        private JournalClearProof(P11SourceProvenance capability, ServerPlayer actor,
+                P11AttachmentSnapshot snapshot, P11SourceProvenance.Observation observation,
+                SkillId skillId, int generation, SkillReference pointer) {
+            this.capability = capability;
+            this.actor = actor;
+            this.snapshot = snapshot;
+            this.listener = actor.connection;
+            this.connection = listener == null ? null : listener.getConnection();
+            this.origin = observation;
+            this.skillId = skillId;
+            this.generation = generation;
+            this.pointer = pointer;
+        }
+
+        public SkillOwnerId owner() { return new SkillOwnerId(actor.getUUID()); }
+        public SkillId skillId() { return skillId; }
+        public int generation() { return generation; }
+        public SkillReference pointer() { return pointer; }
+
+        public boolean isCurrent(MinecraftServer server) {
+            if (consumed || actor.getServer() != server || !server.isSameThread()
+                    || server.getPlayerList().getPlayer(actor.getUUID()) != actor
+                    || listener == null || connection == null || actor.connection != listener
+                    || listener.player != actor || listener.getConnection() != connection
+                    || connection.getPacketListener() != listener
+                    || !snapshot.isCurrent(actor)) {
+                return false;
+            }
+            var observation = capability.observe(actor, snapshot);
+            return origin.sameScope(observation)
+                    && readbackMatches(observation, snapshot, skillId, generation, pointer);
+        }
+
+        public boolean consume(MinecraftServer server) {
+            boolean current = isCurrent(server);
+            consumed = true;
+            return current;
+        }
+    }
+
     public static final class PreparedPlayerSkillTransition {
         private final MinecraftServer server;
+        private final ServerPlayer playerIdentity;
         private final UUID playerId;
         private final OriginalAttachmentState original;
         private final SkillOwnerId owner;
@@ -1985,6 +2285,7 @@ public final class PlayerSkillAttachmentService {
 
         private PreparedPlayerSkillTransition(
                 MinecraftServer server,
+                ServerPlayer playerIdentity,
                 UUID playerId,
                 OriginalAttachmentState original,
                 SkillOwnerId owner,
@@ -1995,6 +2296,7 @@ public final class PlayerSkillAttachmentService {
                 int targetGeneration,
                 PlayerSkillAttachmentReady replacement) {
             this.server = Objects.requireNonNull(server, "server");
+            this.playerIdentity = Objects.requireNonNull(playerIdentity, "playerIdentity");
             this.playerId = Objects.requireNonNull(playerId, "playerId");
             this.original = Objects.requireNonNull(original, "original");
             this.owner = Objects.requireNonNull(owner, "owner");

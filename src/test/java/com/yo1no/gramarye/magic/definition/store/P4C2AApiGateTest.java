@@ -194,7 +194,8 @@ class P4C2AApiGateTest {
                         read(MAIN_JAVA.resolve(manaDefinitionRelative)), "\"player_mana\"")),
                 () -> assertTrue(relativeFilesContaining(production, "\"player_skills\"")
                         .stream().allMatch(path -> path.equals(registrationRelative)
-                                || path.endsWith("PlayerSkillAttachmentGameTests.java"))),
+                                || path.endsWith("PlayerSkillAttachmentGameTests.java")
+                                || path.equals("com/yo1no/gramarye/P11NativeStorageBoundary.java"))),
                 () -> assertTrue(Modifier.isPublic(manaBridge.getModifiers())),
                 () -> assertTrue(Modifier.isFinal(manaBridge.getModifiers())),
                 () -> assertEquals(
@@ -309,6 +310,9 @@ class P4C2AApiGateTest {
                                 java.util.stream.Stream.of(service), nested.stream())
                         .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                         .filter(method -> Modifier.isPublic(method.getModifiers()))
+                        // Closed native serializer-result comparison accepts the exact output
+                        // as input, never returns a tree or exposes a public token constructor.
+                        .filter(method -> !isP11NativeWriteComparison(method))
                         .noneMatch(method -> exposesForbiddenPublicType(method.getGenericReturnType())
                                 || Arrays.stream(method.getGenericParameterTypes())
                                         .anyMatch(P4C2AApiGateTest::exposesForbiddenPublicType))),
@@ -545,8 +549,17 @@ class P4C2AApiGateTest {
                 () -> assertTrue(root.contains(
                         "private final PlayerSkillAttachmentService playerSkillAttachmentService;")),
                 () -> assertTrue(root.contains(
-                        "PlayerSkillAttachmentService.registerOn(modBus)")),
+                        "PlayerSkillAttachmentService.registerOn(modBus, p11SourceProvenance)")),
                 () -> assertFalse(root.contains("public PlayerSkillAttachmentService")));
+    }
+
+    private static boolean isP11NativeWriteComparison(java.lang.reflect.Method method) {
+        return method.getDeclaringClass().getName().equals(P4C2PhaseTypes.PLAYER_PACKAGE
+                        + "PlayerSkillAttachmentService$P11AttachmentWriteResult")
+                && method.getName().equals("matches") && method.getReturnType() == boolean.class
+                && !Modifier.isStatic(method.getModifiers())
+                && Arrays.equals(method.getParameterTypes(), new Class<?>[] {
+                        net.minecraft.server.level.ServerPlayer.class, Tag.class});
     }
 
     private static boolean exposesForbiddenPublicType(Type type) {

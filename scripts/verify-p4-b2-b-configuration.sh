@@ -15,7 +15,7 @@ fail() {
     exit 1
 }
 
-for required_tool in grep find mktemp rm jar unzip cmp dirname pwd; do
+for required_tool in grep find mktemp rm jar unzip cmp dirname pwd awk sed; do
     command -v "${required_tool}" >/dev/null 2>&1 \
         || fail "P4-B2-B configuration verifier cannot find required tool: ${required_tool}"
 done
@@ -377,6 +377,46 @@ verify_reviewed_p4_e3_error_catch() {
         || fail 'P4-B2-B could not isolate the reviewed P4-E3 cleanup/rethrow method'
 }
 
+verify_p11_observer_error_catches() {
+    LC_ALL=C awk '
+        function reject(message) {
+            print "P11 observer Error contract: " message > "/dev/stderr"
+            bad = 1; exit 1
+        }
+        BEGIN {
+            split("closeSelection respawn failWithoutReplacingPrimary retainWithoutReplacingPrimary statsMutated advancementsMutated endIndependent finish integratedSave", names, " ")
+            for (i in names) expected[names[i]] = 1
+        }
+        {
+            line = $0
+            sub(/\/\/.*$/, "", line)
+            if (line ~ /^    (public|private) static .*\(/) {
+                method = line; sub(/\(.*/, "", method); sub(/^.*[ \t]/, "", method)
+            }
+            compact = line; gsub(/[[:space:]]/, "", compact)
+            if (compact == "") next
+            if (state == 1) {
+                if (compact != "if(observerFailures!=Long.MAX_VALUE){observerFailures++;}") reject("non-diagnostic body")
+                state = 2; next
+            }
+            if (state == 2) {
+                if (compact != "}") reject("added catch behavior")
+                state = 0; next
+            }
+            if (line ~ /catch[[:space:]]*\([^)]*(Error|Throwable)/) {
+                if (line !~ /catch \(RuntimeException \| Error secondary\) \{$/) reject("changed catch type or binding")
+                if (!(method in expected) || ++seen[method] != 1) reject("unreviewed or duplicate method " method)
+                total++; state = 1
+            }
+        }
+        END {
+            if (bad) exit 1
+            if (state != 0 || total != 9) reject("incomplete exact nine catches")
+            for (method in expected) if (seen[method] != 1) reject("missing method " method)
+        }
+    ' "$1" || fail 'P11 native observer Error catches escaped the exact secondary-only contract'
+}
+
 require_regular_file() {
     local file="$1"
     local message="$2"
@@ -642,6 +682,19 @@ verify_search_helpers() {
         || "${tool_error_output}" == *'MUST_NOT_BE_REPORTED_AS_MISSING_CONFIGURATION'* ]]; then
         fail 'P4-B2-B verifier self-check could not distinguish a grep error'
     fi
+
+    local p11_boundary='src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java'
+    verify_p11_observer_error_catches "${p11_boundary}"
+    for mutation in \
+        's/Error secondary/Error failure/g' \
+        's/observerFailures++;/observerFailures++; unsafe();/g' \
+        's/void closeSelection(/void unreviewedSelection(/g'; do
+        sed "${mutation}" "${p11_boundary}" > "${HELPER_FIXTURE}"
+        if (verify_p11_observer_error_catches "${HELPER_FIXTURE}") >/dev/null 2>&1; then
+            fail 'P11 observer self-check accepted a wrong binding, added behavior, or unreviewed method'
+        fi
+    done
+    printf '%s\n' 'Verified exact nine P11 observer catches; wrong binding, added behavior, and foreign method rejected.'
 }
 
 verify_p4_a3_contract_markers() {
@@ -722,7 +775,8 @@ verify_b2_build_contracts() {
         "? p8S5ClientHarnessMod" \
         ": name == 'p9S3ClientRuntimeHarness'" \
         '? p9S3ClientHarnessMod' \
-        ": name == 'p9S5ClientRuntimeHarness'" \
+        ": (name == 'p9S5ClientRuntimeHarness'" \
+        "|| name == 'p11SourceWriterClientHarness')" \
         '? p9S5ClientHarnessMod' \
         ': productionMod' \
         "sourceSets.create('p8S5ClientHarness')" \
@@ -782,8 +836,12 @@ verify_b2_build_contracts() {
         'verifyP9S3ClientRuntimeResultParser' 4 \
         'P9-S3 parser task must remain bound to its definition, run, and required test paths'
     require_ere_count build.gradle \
-        'tasks\.named\(p9S5ClientHarnessSourceSet\.classesTaskName\)' 2 \
-        'P9-S5 harness classes must remain in both the run and required test paths'
+        'tasks\.named\(p9S5ClientHarnessSourceSet\.classesTaskName\)' 3 \
+        'P9-S5 harness classes must remain in the P9/P11 runs and required test path'
+    require_fixed_count_in_range build.gradle \
+        '        p11SourceWriterClientHarness {' '        p4E0R2QFormalCaseIndices.each { formalCaseIndex ->' \
+        'taskBefore(tasks.named(p9S5ClientHarnessSourceSet.classesTaskName))' 1 \
+        'the added P11 native harness must own exactly the third harness-class dependency'
     require_ere_count build.gradle \
         'verifyP9S5ClientRuntimeResultParser' 4 \
         'P9-S5 parser task must remain bound to its definition, run, and required test paths'
@@ -797,7 +855,8 @@ verify_b2_build_contracts() {
         'sourceSet(p9S5ClientHarnessSourceSet)' \
         "tasks.register('prepareP9S5ClientRuntimeHarness', Delete)" \
         "mods.named('p9S5ClientRuntimeHarness')" \
-        ": name == 'p9S5ClientRuntimeHarness'" \
+        ": (name == 'p9S5ClientRuntimeHarness'" \
+        "|| name == 'p11SourceWriterClientHarness')" \
         '? p9S5ClientHarnessMod' \
         "tasks.named('runP9S5ClientRuntimeHarness', JavaExec)" \
         "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
@@ -1217,6 +1276,8 @@ verify_b2_sources_and_outputs() {
     local p6_runtime_adapter='src/main/java/com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java'
     local p9_projectile='src/main/java/com/yo1no/gramarye/P9StarterProjectile.java'
     local p9_world_handoff='src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java'
+    local p11_storage_boundary='src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java'
+    local p4_recovery_game_tests='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java'
 
     PRODUCTION_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-b2-production.XXXXXX")" \
         || fail 'P4-B2-B verifier could not create its production source list'
@@ -1429,6 +1490,8 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p6_runtime_adapter}" \
                 || "${source}" == "${p9_projectile}" \
                 || "${source}" == "${p9_world_handoff}" \
+                || "${source}" == "${p11_storage_boundary}" \
+                || "${source}" == "${p4_recovery_game_tests}" \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]] \
@@ -1445,6 +1508,18 @@ verify_b2_sources_and_outputs() {
             'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
             "production Error catch escaped the reviewed P4-E3/P5 owners: ${source}"
     done < "${PRODUCTION_SOURCE_LIST}"
+    verify_p11_observer_error_catches "${p11_storage_boundary}"
+    require_ere_count "${p4_recovery_game_tests}" \
+        'catch[[:space:]]*\([^)]*(Error|Throwable)' 1 \
+        'the exact recovery GameTest must retain one primary-preserving Error catch'
+    require_fixed_count_in_range "${p4_recovery_game_tests}" \
+        '        } catch (RuntimeException | Error failure) {' '        } finally {' \
+        '            primaryFailure = failure;' 1 \
+        'recovery GameTest must retain its exact primary throwable'
+    require_fixed_count_in_range "${p4_recovery_game_tests}" \
+        '        } catch (RuntimeException | Error failure) {' '        } finally {' \
+        '            throw failure;' 1 \
+        'recovery GameTest must rethrow the identical primary'
     require_ere_count \
         "${store_service}" \
         '^    private void runP4E3StartupReclaim\(MinecraftServer server\) \{$' \

@@ -211,7 +211,7 @@ final class P9S5ClientRuntimeHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void onClientPostTick(ClientTickEvent.Post ignored) {
-        if (terminal) {
+        if (System.getProperty("gramarye.p11.sourceWriter.output") != null || terminal) {
             return;
         }
         var minecraft = Minecraft.getInstance();
@@ -263,7 +263,7 @@ final class P9S5ClientRuntimeHarness {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     static void onRenderFramePreArmIntertickFocus(RenderFrameEvent.Pre ignored) {
-        if (terminal
+        if (System.getProperty("gramarye.p11.sourceWriter.output") != null || terminal
                 || phase != Phase.WAIT_FOR_SUPPRESSION_GATE
                 || suppressionProbe != SuppressionProbe.INTERTICK_FOCUS) {
             return;
@@ -280,7 +280,7 @@ final class P9S5ClientRuntimeHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void onRenderFramePre(RenderFrameEvent.Pre ignored) {
-        if (terminal
+        if (System.getProperty("gramarye.p11.sourceWriter.output") != null || terminal
                 || phase != Phase.WAIT_FOR_SUPPRESSION_GATE
                 || suppressionProbe != SuppressionProbe.INTERTICK_FOCUS) {
             return;

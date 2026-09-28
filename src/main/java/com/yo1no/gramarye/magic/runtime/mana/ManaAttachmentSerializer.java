@@ -15,11 +15,16 @@ final class ManaAttachmentSerializer implements IAttachmentSerializer<Tag, ManaS
             IAttachmentHolder holder,
             Tag input,
             HolderLookup.Provider provider) {
-        return ManaStateCodec.decode(input);
+        var result = ManaStateCodec.decode(input);
+        com.yo1no.gramarye.P11NativeStorageBoundary.manaReadCompleted(
+                holder, P11ManaMaterial.readResult(holder, result));
+        return result;
     }
 
     @Override
     public Tag write(ManaState state, HolderLookup.Provider provider) {
-        return ManaStateCodec.encode(state);
+        var result = ManaStateCodec.encode(state);
+        com.yo1no.gramarye.P11NativeStorageBoundary.manaWritten(P11ManaMaterial.written(state, result));
+        return result;
     }
 }

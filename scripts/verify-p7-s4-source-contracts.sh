@@ -757,6 +757,7 @@ case "${1:-}" in
         source_path="${2#"${repository_root}/"}"
         case "${source_path}" in
             src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java | \
+            src/main/java/com/yo1no/gramarye/P4E2RecoveryGameTestObservation.java | \
             src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java | \
             src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java) exit 0 ;;
             *) exit 1 ;;

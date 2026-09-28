@@ -7,11 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
+import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.minecraft.server.MinecraftServer;
 import org.junit.jupiter.api.Test;
 
 final class SkillDefinitionStoreSubmissionPortApiTest {
@@ -55,6 +57,24 @@ final class SkillDefinitionStoreSubmissionPortApiTest {
             assertTrue(Arrays.stream(type.getDeclaredFields())
                     .allMatch(field -> Modifier.isPrivate(field.getModifiers())));
         }
+    }
+
+    @Test
+    void liveJournalClearRequiresClosedReadbackProofRatherThanCallerSuppliedScalars()
+            throws Exception {
+        var method = SkillDefinitionStoreSubmissionPort.class.getDeclaredMethod(
+                "prepareJournalPrefixClear", MinecraftServer.class,
+                PlayerSkillAttachmentService.JournalClearProof.class);
+        assertTrue(Modifier.isPublic(method.getModifiers()));
+        assertEquals(1, Arrays.stream(SkillDefinitionStoreSubmissionPort.class.getDeclaredMethods())
+                .filter(candidate -> candidate.getName().equals("prepareJournalPrefixClear"))
+                .count());
+        assertTrue(Arrays.stream(PlayerSkillAttachmentService.JournalClearProof.class
+                        .getDeclaredConstructors())
+                .allMatch(constructor -> Modifier.isPrivate(constructor.getModifiers())));
+        assertTrue(Arrays.stream(PlayerSkillAttachmentService.JournalClearProof.class
+                        .getDeclaredFields())
+                .allMatch(field -> Modifier.isPrivate(field.getModifiers())));
     }
 
     @Test

@@ -11,6 +11,9 @@ final class ManaLifecycle {
             ManaState source,
             IAttachmentHolder targetHolder,
             HolderLookup.Provider provider) {
-        return Objects.requireNonNull(source, "source").copy();
+        var result = Objects.requireNonNull(source, "source").copy();
+        com.yo1no.gramarye.P11NativeStorageBoundary.manaReadCompleted(
+                targetHolder, P11ManaMaterial.readResult(targetHolder, result));
+        return result;
     }
 }

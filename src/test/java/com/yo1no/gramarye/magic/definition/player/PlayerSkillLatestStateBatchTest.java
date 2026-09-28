@@ -77,6 +77,21 @@ final class PlayerSkillLatestStateBatchTest {
         assertEquals(0, occurrences(body, "findLatestState("));
     }
 
+    @Test
+    void p11PublicationObservationWrapsTheSoleSetterAndPreparedTokensBindExactActor()
+            throws IOException {
+        var source = Files.readString(SERVICE_SOURCE);
+        assertEquals(1, occurrences(source, "player.setData(type, replacement)"));
+        var setter = source.indexOf("player.setData(type, replacement)");
+        var capturedBefore = source.lastIndexOf("captureP11Source(player)", setter);
+        var publication = source.indexOf("sourceProvenance.published(player, before,", setter);
+        assertTrue(capturedBefore >= 0 && publication > setter);
+        assertTrue(source.contains("player != transition.playerIdentity"));
+        assertTrue(source.contains("private final ServerPlayer playerIdentity;"));
+        assertTrue(source.contains("private P11AttachmentSnapshot("));
+        assertTrue(source.contains("capability != sourceProvenance"));
+    }
+
     private static PlayerLatestState latest(
             long route, int generation, boolean pointerPresent) {
         var skillId = new SkillId(new UUID(0, route));

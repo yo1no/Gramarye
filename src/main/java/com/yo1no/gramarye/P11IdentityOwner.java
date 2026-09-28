@@ -14,7 +14,7 @@ import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 /**
  * A slot-local, bounded identity custodian, not an actor locator or execution grant.
  * Only this owner retains native references. Captures retained by control work are actor-free.
- * No native lifecycle producer is attached in the foundation slice.
+ * Source custody is independent of authenticated connection admission.
  */
 final class P11IdentityOwner {
     private final SlotKey slot;
@@ -45,6 +45,119 @@ final class P11IdentityOwner {
 
     SlotKey slot() {
         return slot;
+    }
+
+    /** A native source observation is not an authentication, completeness or cast grant. */
+    synchronized Optional<DataIdentity> captureSource(ServerPlayer actor) {
+        Objects.requireNonNull(actor, "actor");
+        if (server == null || stopped || !server.isSameThread() || actor.getServer() != server) {
+            return Optional.empty();
+        }
+        return captureSource(actor.getUUID(), new NativeSourceReference(actor));
+    }
+
+    synchronized Optional<DataIdentity> captureModelSource(ModelActor actor) {
+        requireModel();
+        Objects.requireNonNull(actor, "actor");
+        if (stopped || actor.slot != slot) {
+            return Optional.empty();
+        }
+        return captureSource(actor.uuid, new ModelSourceReference(actor));
+    }
+
+    private Optional<DataIdentity> captureSource(UUID uuid, SourceReference reference) {
+        var account = accounts.get(uuid);
+        if (account == null) {
+            if (accounts.size() >= maxUuids) {
+                return Optional.empty();
+            }
+            account = new Account(new AccountKey(slot, uuid));
+            accounts.put(uuid, account);
+        }
+        if (account.source != null && account.source.reference.sameActor(reference)) {
+            return Optional.of(account.source.identity);
+        }
+        if (account.candidate != null) {
+            return account.candidate.reference.sameActor(reference)
+                    ? Optional.of(account.candidate.identity) : Optional.empty();
+        }
+        var identity = new DataIdentity(account.key);
+        var custody = new SourceCustody(identity, reference);
+        if (account.source == null) {
+            account.source = custody;
+        } else {
+            account.candidate = custody;
+        }
+        account.discharge = null;
+        return Optional.of(identity);
+    }
+
+    synchronized boolean ownsData(DataIdentity identity) {
+        if (identity == null || !owns(identity.account)) {
+            return false;
+        }
+        var account = accounts.get(identity.account.uuid);
+        boolean held = (account.source != null && account.source.identity == identity)
+                || (account.candidate != null && account.candidate.identity == identity);
+        if (!held || slot.isolatedModel) { return held; }
+        var custody = sourceCustody(identity);
+        return server != null && server.isSameThread()
+                && custody.reference instanceof NativeSourceReference nativeSource
+                && nativeSource.actor.getServer() == server
+                && nativeSource.actor.getUUID().equals(identity.account.uuid);
+    }
+
+    /** Exact comparison only; no actor locator or reference is returned. */
+    synchronized boolean matchesSource(DataIdentity identity, ServerPlayer actor) {
+        if (server == null || !server.isSameThread() || actor == null || !ownsData(identity)) {
+            return false;
+        }
+        var custody = sourceCustody(identity);
+        return custody.reference instanceof NativeSourceReference nativeSource
+                && nativeSource.actor == actor && actor.getServer() == server
+                && actor.getUUID().equals(identity.uuid());
+    }
+
+    synchronized boolean matchesModelSource(DataIdentity identity, ModelActor actor) {
+        requireModel();
+        return ownsData(identity)
+                && sourceCustody(identity).reference instanceof ModelSourceReference model
+                && model.actor == actor;
+    }
+
+    private SourceCustody sourceCustody(DataIdentity identity) {
+        var account = accounts.get(identity.account.uuid);
+        return account.source != null && account.source.identity == identity
+                ? account.source : account.candidate;
+    }
+
+    synchronized boolean commitSourceCustody(ReceiptDomain domain,
+            DataIdentity expected, DataIdentity replacement) {
+        if (domain != receiptDomain || domain == null || !ownsData(expected)
+                || !ownsData(replacement) || expected.account != replacement.account) {
+            return false;
+        }
+        var account = accounts.get(expected.account.uuid);
+        if (account.source.identity != expected || account.candidate == null
+                || account.candidate.identity != replacement) {
+            return false;
+        }
+        account.source = account.candidate;
+        account.candidate = null;
+        account.discharge = null;
+        return true;
+    }
+
+    synchronized boolean releaseCandidateCustody(ReceiptDomain domain, DataIdentity identity) {
+        if (domain == null || domain != receiptDomain || !ownsData(identity)) {
+            return false;
+        }
+        var account = accounts.get(identity.account.uuid);
+        if (account.candidate == null || account.candidate.identity != identity) {
+            return false;
+        }
+        account.candidate = null;
+        return true;
     }
 
     synchronized Optional<CapturedIdentity> bindAuthenticated(
@@ -262,6 +375,18 @@ final class P11IdentityOwner {
         return OptionalLong.of(++account.lastSourceEpoch);
     }
 
+    synchronized OptionalLong nextDataSourceEpoch(ReceiptDomain domain, DataIdentity identity) {
+        if (domain == null || domain != receiptDomain || !ownsData(identity)) {
+            return OptionalLong.empty();
+        }
+        var account = accounts.get(identity.account.uuid);
+        if (account.lastSourceEpoch == Long.MAX_VALUE) {
+            return OptionalLong.empty();
+        }
+        account.discharge = null;
+        return OptionalLong.of(++account.lastSourceEpoch);
+    }
+
     synchronized boolean releaseUnboundAccount(
             P11ReceiptLedger.Discharge discharge) {
         if (discharge == null || discharge.domain() != receiptDomain
@@ -339,6 +464,18 @@ final class P11IdentityOwner {
 
         SlotKey slot() { return slot; }
         UUID uuid() { return uuid; }
+    }
+
+    /** Opaque exact actor custody token; native references remain only in this owner. */
+    static final class DataIdentity {
+        private final AccountKey account;
+
+        private DataIdentity(AccountKey account) { this.account = account; }
+
+        AccountKey account() { return account; }
+        SlotKey slot() { return account.slot; }
+        UUID uuid() { return account.uuid; }
+        boolean isolatedModel() { return account.slot.isolatedModel; }
     }
 
     static final class ConnectionKey {
@@ -445,6 +582,8 @@ final class P11IdentityOwner {
     private static final class Account {
         private final AccountKey key;
         private Binding binding;
+        private SourceCustody source;
+        private SourceCustody candidate;
         private P11ReceiptLedger.Discharge discharge;
         private long lastSourceEpoch;
 
@@ -454,6 +593,26 @@ final class P11IdentityOwner {
     }
 
     private record Binding(CapturedIdentity capture, References references, long lastActorGeneration) {}
+
+    private record SourceCustody(DataIdentity identity, SourceReference reference) {}
+
+    private sealed interface SourceReference permits NativeSourceReference, ModelSourceReference {
+        boolean sameActor(SourceReference other);
+    }
+
+    private record NativeSourceReference(ServerPlayer actor) implements SourceReference {
+        @Override
+        public boolean sameActor(SourceReference other) {
+            return other instanceof NativeSourceReference nativeOther && actor == nativeOther.actor;
+        }
+    }
+
+    private record ModelSourceReference(ModelActor actor) implements SourceReference {
+        @Override
+        public boolean sameActor(SourceReference other) {
+            return other instanceof ModelSourceReference modelOther && actor == modelOther.actor;
+        }
+    }
 
     private sealed interface References permits NativeReferences, ModelReferences,
             NativeActorlessReferences, ModelActorlessReferences {

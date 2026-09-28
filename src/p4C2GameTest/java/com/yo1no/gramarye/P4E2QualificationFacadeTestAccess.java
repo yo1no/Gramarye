@@ -150,6 +150,8 @@ public final class P4E2QualificationFacadeTestAccess {
             case REPLAYED -> P4E2QualificationObservation.RecoveryOutcome.REPLAYED;
             case CLEARED_AND_REPLAYED ->
                     P4E2QualificationObservation.RecoveryOutcome.CLEARED_AND_REPLAYED;
+            case CURRENT_PUBLICATION ->
+                    P4E2QualificationObservation.RecoveryOutcome.CURRENT_PUBLICATION;
             case CONFLICT -> P4E2QualificationObservation.RecoveryOutcome.CONFLICT;
             case TARGET_INVALID ->
                     P4E2QualificationObservation.RecoveryOutcome.TARGET_INVALID;

@@ -225,6 +225,7 @@ verify_exact_sources_and_registration() {
     local p8_client_factories='src/main/java/com/yo1no/gramarye/magic/api/registry/P8BuiltInClientProfileFactories.java'
     local p9_entity_registration='src/main/java/com/yo1no/gramarye/P9StarterProjectileRegistration.java'
     local p9_client_input='src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInput.java'
+    local p11_storage_boundary='src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java'
     local serialize_line=''
     local death_line=''
 
@@ -392,12 +393,22 @@ verify_exact_sources_and_registration() {
             "ManaAttachmentDefinitionBridge must remain mutation-free (${literal})"
     done
     forbid_fixed_outside \
-        "${PRODUCTION_SOURCE_LIST}" '"player_skills"' "${registration}" "${game_tests}" '' \
-        'stable player skill Attachment ID escaped registration/tests'
+        "${PRODUCTION_SOURCE_LIST}" '"player_skills"' "${registration}" "${game_tests}" "${p11_storage_boundary}" \
+        'stable player skill Attachment ID escaped registration/tests/exact native observation'
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" '"player_mana"' "${mana_definition}" \
-        "${mana_game_tests}" '' \
-        'stable player mana Attachment ID escaped definition/tests'
+        "${mana_game_tests}" "${p11_storage_boundary}" \
+        'stable player mana Attachment ID escaped definition/tests/exact native observation'
+    require_fixed_count "${p11_storage_boundary}" \
+        'private static final ResourceLocation SKILLS = ResourceLocation.fromNamespaceAndPath("gramarye", "player_skills");' 1 \
+        'P11 must retain the exact read-only player skill registry key'
+    require_fixed_count "${p11_storage_boundary}" \
+        'private static final ResourceLocation MANA = ResourceLocation.fromNamespaceAndPath("gramarye", "player_mana");' 1 \
+        'P11 must retain the exact read-only mana registry key'
+    require_fixed_count "${p11_storage_boundary}" '"player_skills"' 1 \
+        'P11 must not add another player skill ID use'
+    require_fixed_count "${p11_storage_boundary}" '"player_mana"' 1 \
+        'P11 must not add another mana ID use'
     for owner in "${service}" "${game_tests}" "${source_observation}" "${mana_definition}"; do
         require_fixed "${owner}" '.getData(' \
             "reviewed Attachment getData owner lost its access (${owner})"

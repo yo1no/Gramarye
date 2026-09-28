@@ -480,6 +480,391 @@ final class P11ReceiptLedgerTest {
         assertEquals(0, fixture.ledger.retainedSources());
     }
 
+    @Test
+    void sourceMaterialCanQualifyBeforeOuterLogoutTerminalWithoutGrantingReadiness() {
+        var fixture = dataFixture(false);
+        assertTrue(fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).isEmpty());
+        var material = fixture.ledger.beginMaterial(fixture.source).orElseThrow();
+        assertTrue(fixture.ledger.beginMaterial(fixture.source).isEmpty());
+        assertEquals(P11ReceiptLedger.Change.REFUSED,
+                fixture.ledger.finishMaterial(material, P11ReceiptLedger.Terminal.COMPLETED));
+        completeMaterial(fixture.ledger, material);
+        var writer = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        assertTrue(fixture.ledger.mayWrite(writer));
+        var facts = fixture.ledger.facts(fixture.source).orElseThrow();
+        assertTrue(facts.materialComplete());
+        assertNull(facts.operationTerminal());
+        assertEquals(P11ReceiptLedger.Observation.NOT_OBSERVED,
+                facts.readiness(P11ReceiptLedger.ReadinessStep.P7_SESSION));
+        assertTrue(fixture.ledger.begin(fixture.source, 1, 41,
+                P11ReceiptLedger.OperationKind.DEATH).isEmpty());
+    }
+
+    @Test
+    void writerKindsUseOnlyTheirNativeStepsAndReadbackIsSeparate() {
+        for (var kind : P11ReceiptLedger.WriterKind.values()) {
+            var fixture = dataFixture(true);
+            var writer = fixture.ledger.beginSave(fixture.source, kind).orElseThrow();
+            assertTrue(fixture.ledger.beginSave(fixture.source, kind).isEmpty());
+            assertEquals(P11ReceiptLedger.Change.REFUSED,
+                    fixture.ledger.finishSave(writer, P11ReceiptLedger.Terminal.COMPLETED));
+            completePhysical(fixture.ledger, writer);
+            assertFalse(fixture.ledger.physicalFacts(fixture.source, kind).orElseThrow().dirty());
+            assertEquals(P11ReceiptLedger.Change.DUPLICATE,
+                    fixture.ledger.finishSave(writer, P11ReceiptLedger.Terminal.COMPLETED));
+            assertFalse(fixture.ledger.mayWrite(writer));
+            if (kind == P11ReceiptLedger.WriterKind.CACHE) {
+                assertTrue(fixture.ledger.beginReadback(fixture.source, kind).isEmpty());
+            } else {
+                var readback = fixture.ledger.beginReadback(fixture.source, kind).orElseThrow();
+                assertFalse(fixture.ledger.persistedReadbackCurrent(readback));
+                assertEquals(P11ReceiptLedger.Change.RECORDED,
+                        fixture.ledger.finishReadback(readback, P11ReceiptLedger.Observation.SUCCEEDED));
+                assertTrue(fixture.ledger.persistedReadbackCurrent(readback));
+            }
+        }
+    }
+
+    @Test
+    void cacheAndJsonCannotInventReplaceOrDischargeOtherPhysicalSourceDirty() {
+        var fixture = dataFixture(true);
+        fixture.ledger.markDirty(fixture.source, P11ReceiptLedger.WriterKind.PLAYER_DATA);
+        fixture.ledger.markDirty(fixture.source, P11ReceiptLedger.WriterKind.LEVEL_PLAYER);
+        var cache = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.CACHE).orElseThrow();
+        assertEquals(P11ReceiptLedger.Change.REFUSED, fixture.ledger.physical(cache,
+                P11ReceiptLedger.PhysicalStep.WRITE, P11ReceiptLedger.Observation.SUCCEEDED));
+        completePhysical(fixture.ledger, cache);
+        assertTrue(fixture.ledger.facts(fixture.source).orElseThrow().dirty());
+        var json = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.ADVANCEMENTS).orElseThrow();
+        assertEquals(P11ReceiptLedger.Change.REFUSED, fixture.ledger.physical(json,
+                P11ReceiptLedger.PhysicalStep.REPLACE, P11ReceiptLedger.Observation.SUCCEEDED));
+        completePhysical(fixture.ledger, json);
+        assertTrue(fixture.ledger.physicalFacts(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow().dirty());
+        assertTrue(fixture.ledger.physicalFacts(fixture.source,
+                P11ReceiptLedger.WriterKind.LEVEL_PLAYER).orElseThrow().dirty());
+        var player = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        completePhysical(fixture.ledger, player);
+        assertTrue(fixture.ledger.physicalFacts(fixture.source,
+                P11ReceiptLedger.WriterKind.LEVEL_PLAYER).orElseThrow().dirty());
+        assertTrue(fixture.ledger.discharge(fixture.source).isEmpty());
+    }
+
+    @Test
+    void nativeAttemptFailureIsImmutableAndNewIoRetryDoesNotReplayMaterial() {
+        var fixture = dataFixture(true);
+        var failed = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        fixture.ledger.physical(failed, P11ReceiptLedger.PhysicalStep.ENCODE,
+                P11ReceiptLedger.Observation.SUCCEEDED);
+        fixture.ledger.physical(failed, P11ReceiptLedger.PhysicalStep.WRITE,
+                P11ReceiptLedger.Observation.SUCCEEDED);
+        fixture.ledger.physical(failed, P11ReceiptLedger.PhysicalStep.CLOSE,
+                P11ReceiptLedger.Observation.FAILED);
+        assertEquals(P11ReceiptLedger.Change.REFUSED, fixture.ledger.physical(failed,
+                P11ReceiptLedger.PhysicalStep.CLOSE, P11ReceiptLedger.Observation.SUCCEEDED));
+        assertEquals(P11ReceiptLedger.Change.REFUSED,
+                fixture.ledger.finishSave(failed, P11ReceiptLedger.Terminal.COMPLETED));
+        fixture.ledger.finishSave(failed, P11ReceiptLedger.Terminal.FAILED);
+        var snapshot = fixture.ledger.attemptFacts(failed).orElseThrow();
+        var retry = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        completePhysical(fixture.ledger, retry);
+        assertEquals(P11ReceiptLedger.Terminal.FAILED, snapshot.terminal());
+        assertEquals(P11ReceiptLedger.Observation.FAILED,
+                snapshot.observation(P11ReceiptLedger.PhysicalStep.CLOSE));
+        assertEquals(P11ReceiptLedger.Change.TERMINAL,
+                fixture.ledger.finishSave(failed, P11ReceiptLedger.Terminal.COMPLETED));
+        assertTrue(fixture.ledger.beginMaterial(fixture.source).isEmpty());
+    }
+
+    @Test
+    void failedWriteStillRecordsItsActualSuccessfulFinallyClose() {
+        var fixture = dataFixture(true);
+        var writer = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        fixture.ledger.physical(writer, P11ReceiptLedger.PhysicalStep.ENCODE,
+                P11ReceiptLedger.Observation.SUCCEEDED);
+        assertEquals(P11ReceiptLedger.Change.RECORDED, fixture.ledger.physical(writer,
+                P11ReceiptLedger.PhysicalStep.WRITE, P11ReceiptLedger.Observation.FAILED));
+        assertEquals(P11ReceiptLedger.Change.RECORDED, fixture.ledger.physical(writer,
+                P11ReceiptLedger.PhysicalStep.CLOSE, P11ReceiptLedger.Observation.SUCCEEDED));
+        assertFalse(fixture.ledger.mayWrite(writer));
+        assertEquals(P11ReceiptLedger.Change.REFUSED,
+                fixture.ledger.finishSave(writer, P11ReceiptLedger.Terminal.COMPLETED));
+        fixture.ledger.finishSave(writer, P11ReceiptLedger.Terminal.FAILED);
+        var facts = fixture.ledger.attemptFacts(writer).orElseThrow();
+        assertEquals(P11ReceiptLedger.Observation.FAILED,
+                facts.observation(P11ReceiptLedger.PhysicalStep.WRITE));
+        assertEquals(P11ReceiptLedger.Observation.SUCCEEDED,
+                facts.observation(P11ReceiptLedger.PhysicalStep.CLOSE));
+        assertTrue(fixture.ledger.physicalFacts(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow().dirty());
+    }
+
+    @Test
+    void stalePhysicalCompletionRetainsItsFactsWithoutClearingNewMutationDirty() {
+        var fixture = dataFixture(true);
+        var old = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        for (var step : new P11ReceiptLedger.PhysicalStep[] {
+                P11ReceiptLedger.PhysicalStep.ENCODE, P11ReceiptLedger.PhysicalStep.WRITE,
+                P11ReceiptLedger.PhysicalStep.CLOSE, P11ReceiptLedger.PhysicalStep.REPLACE }) {
+            fixture.ledger.physical(old, step, P11ReceiptLedger.Observation.SUCCEEDED);
+        }
+        var newer = fixture.ledger.advanceMutationVersion(fixture.source).orElseThrow();
+        assertFalse(fixture.ledger.mayWrite(old));
+        assertEquals(P11ReceiptLedger.Change.STALE,
+                fixture.ledger.finishSave(old, P11ReceiptLedger.Terminal.COMPLETED));
+        assertEquals(P11ReceiptLedger.Terminal.COMPLETED,
+                fixture.ledger.attemptFacts(old).orElseThrow().terminal());
+        assertTrue(fixture.ledger.physicalFacts(newer,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow().dirty());
+        assertTrue(fixture.ledger.beginSave(newer, P11ReceiptLedger.WriterKind.PLAYER_DATA).isPresent());
+    }
+
+    @Test
+    void sameSourceKindMutationRevokesReplacementAndReadbackWithoutChangingOtherKinds() {
+        var fixture = dataFixture(true);
+        var player = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        var stats = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.STATISTICS).orElseThrow();
+        var readback = fixture.ledger.beginReadback(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        fixture.ledger.finishReadback(readback, P11ReceiptLedger.Observation.SUCCEEDED);
+        assertTrue(fixture.ledger.persistedReadbackCurrent(readback));
+        fixture.ledger.markDirty(fixture.source, P11ReceiptLedger.WriterKind.PLAYER_DATA);
+        assertFalse(fixture.ledger.mayWrite(player));
+        assertTrue(fixture.ledger.mayWrite(stats));
+        assertFalse(fixture.ledger.persistedReadbackCurrent(readback));
+    }
+
+    @Test
+    void completeDirtyHandoffPreservesResponsibilitiesAndRevokesOldWriterBeforeCompletion() {
+        var fixture = dataFixture(true);
+        var oldWriter = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        var nextActor = fixture.identities.modelActor(UUID_A, 17);
+        var candidateIdentity = fixture.identities.captureModelSource(nextActor).orElseThrow();
+        var candidate = fixture.ledger.beginHandoff(fixture.source, candidateIdentity,
+                P11ReceiptLedger.Disposition.LIVE).orElseThrow();
+        assertSame(fixture.source, candidate.selectedSource());
+        assertTrue(fixture.ledger.publishHandoff(candidate).isEmpty());
+        assertTrue(fixture.ledger.facts(fixture.source).orElseThrow().dirty());
+        assertTrue(fixture.ledger.mayWrite(oldWriter));
+        completeMaterial(fixture.ledger, candidate);
+        var next = fixture.ledger.publishHandoff(candidate).orElseThrow();
+        assertEquals(fixture.source.epoch() + 1, next.epoch());
+        assertTrue(fixture.ledger.facts(next).orElseThrow().dirty());
+        assertTrue(fixture.ledger.physicalFacts(next,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow().dirty());
+        assertFalse(fixture.identities.ownsData(fixture.identity));
+        assertTrue(fixture.identities.matchesModelSource(next.dataIdentity(), nextActor));
+        assertFalse(fixture.ledger.mayWrite(oldWriter));
+        assertEquals(P11ReceiptLedger.Change.STALE, fixture.ledger.physical(oldWriter,
+                P11ReceiptLedger.PhysicalStep.ENCODE, P11ReceiptLedger.Observation.FAILED));
+        assertEquals(P11ReceiptLedger.Change.STALE,
+                fixture.ledger.finishSave(oldWriter, P11ReceiptLedger.Terminal.FAILED));
+        assertEquals(P11ReceiptLedger.Observation.FAILED,
+                fixture.ledger.attemptFacts(oldWriter).orElseThrow()
+                        .observation(P11ReceiptLedger.PhysicalStep.ENCODE));
+        assertTrue(fixture.ledger.beginSave(next, P11ReceiptLedger.WriterKind.PLAYER_DATA).isPresent());
+        assertTrue(fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).isEmpty());
+    }
+
+    @Test
+    void candidateCannotLaunderMissingMaterialsOrAChangedSelectedSource() {
+        var fixture = dataFixture(true);
+        var next = fixture.identities.captureModelSource(
+                fixture.identities.modelActor(UUID_A, 17)).orElseThrow();
+        var candidate = fixture.ledger.beginHandoff(fixture.source, next,
+                P11ReceiptLedger.Disposition.LIVE).orElseThrow();
+        completeMaterial(fixture.ledger, candidate);
+        var newer = fixture.ledger.advanceMutationVersion(fixture.source).orElseThrow();
+        assertTrue(fixture.ledger.publishHandoff(candidate).isEmpty());
+        assertTrue(fixture.ledger.facts(newer).orElseThrow().dirty());
+        assertTrue(fixture.identities.ownsData(fixture.identity));
+        assertTrue(fixture.ledger.facts(candidate.source()).isEmpty());
+    }
+
+    @Test
+    void failedCandidateKeepsOldSourceAndCannotBeMarkedComplete() {
+        var fixture = dataFixture(true);
+        var next = fixture.identities.captureModelSource(
+                fixture.identities.modelActor(UUID_A, 17)).orElseThrow();
+        var candidate = fixture.ledger.beginHandoff(fixture.source, next,
+                P11ReceiptLedger.Disposition.CANDIDATE).orElseThrow();
+        fixture.ledger.material(candidate, P11ReceiptLedger.MaterialStep.REQUIRED_COPY_OR_LOAD,
+                P11ReceiptLedger.Observation.UNKNOWN);
+        assertEquals(P11ReceiptLedger.Change.REFUSED, fixture.ledger.material(candidate,
+                P11ReceiptLedger.MaterialStep.REQUIRED_COPY_OR_LOAD, P11ReceiptLedger.Observation.SUCCEEDED));
+        fixture.ledger.finishMaterial(candidate, P11ReceiptLedger.Terminal.FAILED);
+        assertTrue(fixture.ledger.publishHandoff(candidate).isEmpty());
+        assertEquals(P11ReceiptLedger.Change.RECORDED, fixture.ledger.discardFailedCandidate(candidate));
+        assertFalse(fixture.identities.ownsData(next));
+        assertTrue(fixture.ledger.facts(fixture.source).orElseThrow().dirty());
+        assertTrue(fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).isPresent());
+    }
+
+    @Test
+    void sourceWriterReadbackAndMaterialReceiptsRejectOtherLedgerAndStoppedSlot() {
+        var first = dataFixture(true);
+        var second = dataFixture(true);
+        var writer = first.ledger.beginSave(first.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        var readback = first.ledger.beginReadback(first.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        assertFalse(second.ledger.mayWrite(writer));
+        assertTrue(second.ledger.attemptFacts(writer).isEmpty());
+        assertEquals(P11ReceiptLedger.Change.STALE,
+                second.ledger.finishSave(writer, P11ReceiptLedger.Terminal.FAILED));
+        assertEquals(P11ReceiptLedger.Change.STALE,
+                second.ledger.finishReadback(readback, P11ReceiptLedger.Observation.SUCCEEDED));
+        assertTrue(second.ledger.firstSource(first.identity,
+                P11ReceiptLedger.Disposition.LIVE).isEmpty());
+        first.ledger.stop();
+        first.identities.stop();
+        assertFalse(first.ledger.mayWrite(writer));
+        assertEquals(P11ReceiptLedger.Change.STALE,
+                first.ledger.finishReadback(readback, P11ReceiptLedger.Observation.SUCCEEDED));
+    }
+
+    @Test
+    void candidateCallbackMutationKeepsContextAndPublishesItsLatestVersion() {
+        var fixture = dataFixture(true);
+        var nextIdentity = fixture.identities.captureModelSource(
+                fixture.identities.modelActor(UUID_A, 17)).orElseThrow();
+        var material = fixture.ledger.beginHandoff(fixture.source, nextIdentity,
+                P11ReceiptLedger.Disposition.LIVE).orElseThrow();
+        fixture.ledger.material(material, P11ReceiptLedger.MaterialStep.CONSTRUCTOR,
+                P11ReceiptLedger.Observation.SUCCEEDED);
+        var first = material.source();
+        var mutated = fixture.ledger.advanceMutationVersion(first).orElseThrow();
+        assertSame(mutated, material.source());
+        assertSame(first.dataIdentity(), mutated.dataIdentity());
+        assertEquals(first.epoch(), mutated.epoch());
+        assertEquals(first.version() + 1, mutated.version());
+        assertTrue(fixture.ledger.advanceMutationVersion(first).isEmpty());
+        assertEquals(P11ReceiptLedger.Change.RECORDED,
+                fixture.ledger.markDirty(mutated, P11ReceiptLedger.WriterKind.PLAYER_DATA));
+        for (var step : P11ReceiptLedger.MaterialStep.values()) {
+            assertEquals(step == P11ReceiptLedger.MaterialStep.CONSTRUCTOR
+                            ? P11ReceiptLedger.Change.DUPLICATE : P11ReceiptLedger.Change.RECORDED,
+                    fixture.ledger.material(material, step, P11ReceiptLedger.Observation.SUCCEEDED));
+        }
+        fixture.ledger.finishMaterial(material, P11ReceiptLedger.Terminal.COMPLETED);
+        assertSame(mutated, fixture.ledger.publishHandoff(material).orElseThrow());
+        assertTrue(fixture.ledger.facts(mutated).orElseThrow().materialComplete());
+        assertTrue(fixture.ledger.physicalFacts(mutated,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow().dirty());
+    }
+
+    @Test
+    void independentCanonicalJsonWriterDoesNotRequireOrCompletePartialPlayerBody() {
+        var fixture = dataFixture(false);
+        var bodyMaterial = fixture.ledger.beginMaterial(fixture.source).orElseThrow();
+        fixture.ledger.material(bodyMaterial, P11ReceiptLedger.MaterialStep.REQUIRED_COPY_OR_LOAD,
+                P11ReceiptLedger.Observation.FAILED);
+        fixture.ledger.finishMaterial(bodyMaterial, P11ReceiptLedger.Terminal.FAILED);
+        assertTrue(fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).isEmpty());
+        assertTrue(fixture.ledger.beginIndependentMaterial(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).isEmpty());
+        for (var kind : new P11ReceiptLedger.WriterKind[] {
+                P11ReceiptLedger.WriterKind.STATISTICS, P11ReceiptLedger.WriterKind.ADVANCEMENTS }) {
+            var material = fixture.ledger.beginIndependentMaterial(fixture.source, kind).orElseThrow();
+            assertTrue(fixture.ledger.beginIndependentSave(material).isEmpty());
+            assertEquals(P11ReceiptLedger.Change.RECORDED, fixture.ledger.independentMaterial(
+                    material, P11ReceiptLedger.Observation.SUCCEEDED));
+            var writer = fixture.ledger.beginIndependentSave(material).orElseThrow();
+            completePhysical(fixture.ledger, writer);
+            assertFalse(fixture.ledger.physicalFacts(fixture.source, kind).orElseThrow().dirty());
+        }
+        assertFalse(fixture.ledger.facts(fixture.source).orElseThrow().materialComplete());
+        assertTrue(fixture.ledger.facts(fixture.source).orElseThrow().dirty());
+        assertTrue(fixture.ledger.discharge(fixture.source).isEmpty());
+    }
+
+    @Test
+    void independentCandidateJsonReceiptIsRevokedByExactSourceVersionOrMaterialReplacement() {
+        var fixture = dataFixture(true);
+        var nextIdentity = fixture.identities.captureModelSource(
+                fixture.identities.modelActor(UUID_A, 17)).orElseThrow();
+        var body = fixture.ledger.beginHandoff(fixture.source, nextIdentity,
+                P11ReceiptLedger.Disposition.CANDIDATE).orElseThrow();
+        var material = fixture.ledger.beginIndependentMaterial(body.source(),
+                P11ReceiptLedger.WriterKind.STATISTICS).orElseThrow();
+        fixture.ledger.independentMaterial(material, P11ReceiptLedger.Observation.SUCCEEDED);
+        var writer = fixture.ledger.beginIndependentSave(material).orElseThrow();
+        assertTrue(fixture.ledger.mayWrite(writer));
+        var newer = fixture.ledger.advanceMutationVersion(body.source()).orElseThrow();
+        assertFalse(fixture.ledger.mayWrite(writer));
+        assertTrue(fixture.ledger.beginIndependentSave(material).isEmpty());
+        assertEquals(P11ReceiptLedger.Change.STALE,
+                fixture.ledger.finishSave(writer, P11ReceiptLedger.Terminal.FAILED));
+        var current = fixture.ledger.beginIndependentMaterial(newer,
+                P11ReceiptLedger.WriterKind.STATISTICS).orElseThrow();
+        fixture.ledger.independentMaterial(current, P11ReceiptLedger.Observation.SUCCEEDED);
+        var currentWriter = fixture.ledger.beginIndependentSave(current).orElseThrow();
+        var failed = fixture.ledger.beginIndependentMaterial(newer,
+                P11ReceiptLedger.WriterKind.STATISTICS).orElseThrow();
+        assertFalse(fixture.ledger.mayWrite(currentWriter));
+        fixture.ledger.independentMaterial(failed, P11ReceiptLedger.Observation.UNKNOWN);
+        assertEquals(P11ReceiptLedger.Change.TERMINAL,
+                fixture.ledger.independentMaterial(failed, P11ReceiptLedger.Observation.SUCCEEDED));
+        assertTrue(fixture.ledger.beginIndependentSave(failed).isEmpty());
+    }
+
+    private static DataFixture dataFixture(boolean qualified) {
+        var identities = P11IdentityOwner.isolatedModel(2);
+        var identity = identities.captureModelSource(identities.modelActor(UUID_A, 17)).orElseThrow();
+        var ledger = new P11ReceiptLedger(identities);
+        var source = ledger.firstSource(identity, P11ReceiptLedger.Disposition.LIVE).orElseThrow();
+        if (qualified) {
+            completeMaterial(ledger, ledger.beginMaterial(source).orElseThrow());
+        }
+        return new DataFixture(identities, identity, ledger, source);
+    }
+
+    private static void completeMaterial(P11ReceiptLedger ledger, P11ReceiptLedger.MaterialReceipt receipt) {
+        for (var step : P11ReceiptLedger.MaterialStep.values()) {
+            assertEquals(P11ReceiptLedger.Change.RECORDED,
+                    ledger.material(receipt, step, P11ReceiptLedger.Observation.SUCCEEDED));
+        }
+        assertEquals(P11ReceiptLedger.Change.RECORDED,
+                ledger.finishMaterial(receipt, P11ReceiptLedger.Terminal.COMPLETED));
+    }
+
+    private static void completePhysical(P11ReceiptLedger ledger,
+            P11ReceiptLedger.PhysicalWriterReceipt writer) {
+        for (var step : P11ReceiptLedger.PhysicalStep.values()) {
+            boolean required = switch (writer.kind()) {
+                case CACHE -> step == P11ReceiptLedger.PhysicalStep.ENCODE
+                        || step == P11ReceiptLedger.PhysicalStep.CACHE_ASSIGNMENT;
+                case STATISTICS, ADVANCEMENTS -> step == P11ReceiptLedger.PhysicalStep.ENCODE
+                        || step == P11ReceiptLedger.PhysicalStep.WRITE || step == P11ReceiptLedger.PhysicalStep.CLOSE;
+                case PLAYER_DATA, LEVEL_PLAYER -> step != P11ReceiptLedger.PhysicalStep.CACHE_ASSIGNMENT;
+            };
+            if (required) {
+                assertEquals(P11ReceiptLedger.Change.RECORDED,
+                        ledger.physical(writer, step, P11ReceiptLedger.Observation.SUCCEEDED));
+            }
+        }
+        assertEquals(P11ReceiptLedger.Change.RECORDED,
+                ledger.finishSave(writer, P11ReceiptLedger.Terminal.COMPLETED));
+    }
+
+    private record DataFixture(P11IdentityOwner identities, P11IdentityOwner.DataIdentity identity,
+            P11ReceiptLedger ledger, P11ReceiptLedger.Source source) {}
+
     private static P11ReceiptLedger.OperationReceipt begin(Fixture fixture) {
         return fixture.ledger.begin(fixture.source, 1, 41,
                 P11ReceiptLedger.OperationKind.DEATH).orElseThrow();

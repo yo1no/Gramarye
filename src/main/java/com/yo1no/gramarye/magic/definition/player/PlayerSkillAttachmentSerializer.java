@@ -1,5 +1,6 @@
 package com.yo1no.gramarye.magic.definition.player;
 
+import com.yo1no.gramarye.P11NativeStorageBoundary;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.Optional;
@@ -37,7 +38,7 @@ final class PlayerSkillAttachmentSerializer
         } catch (IOException exception) {
             throw new IllegalStateException("In-memory NBT counting failed", exception);
         }
-        return switch (admission.admit(input, measured, Optional.ofNullable(provider))) {
+        var result = switch (admission.admit(input, measured, Optional.ofNullable(provider))) {
             case PlayerSkillAttachmentAdmission.Admitted admitted -> admitted.ready();
             case PlayerSkillAttachmentAdmission.Rejected rejected ->
                     new PlayerSkillAttachmentPreservedRaw(
@@ -45,6 +46,9 @@ final class PlayerSkillAttachmentSerializer
             case PlayerSkillAttachmentAdmission.Oversize ignored ->
                     new PlayerSkillAttachmentOversizeMarker();
         };
+        P11NativeStorageBoundary.playerSkillsReadCompleted(holder,
+                PlayerSkillAttachmentService.p11ReadResult(holder, result));
+        return result;
     }
 
     @Override
@@ -52,11 +56,14 @@ final class PlayerSkillAttachmentSerializer
             PlayerSkillAttachmentState state,
             HolderLookup.Provider provider) {
         Objects.requireNonNull(state, "state");
-        return switch (state) {
+        var result = switch (state) {
             case PlayerSkillAttachmentReady ready -> ready.carrier().copyTag();
             case PlayerSkillAttachmentPreservedRaw preserved -> preserved.copyRaw();
             case PlayerSkillAttachmentOversizeMarker ignored ->
                     PlayerSkillAttachmentMarker.freshTag();
         };
+        P11NativeStorageBoundary.playerSkillsWritten(
+                PlayerSkillAttachmentService.p11WriteResult(state, result));
+        return result;
     }
 }

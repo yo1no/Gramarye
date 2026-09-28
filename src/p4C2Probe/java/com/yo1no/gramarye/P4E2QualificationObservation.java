@@ -105,7 +105,8 @@ public record P4E2QualificationObservation(
         CLEARED_AND_REPLAYED("ClearedAndReplayed"),
         CONFLICT("Conflict"),
         TARGET_INVALID("TargetInvalid"),
-        UNAVAILABLE("Unavailable");
+        UNAVAILABLE("Unavailable"),
+        CURRENT_PUBLICATION("CurrentPublication");
 
         private final String token;
 

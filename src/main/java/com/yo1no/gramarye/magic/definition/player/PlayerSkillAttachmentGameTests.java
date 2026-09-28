@@ -307,18 +307,17 @@ public final class PlayerSkillAttachmentGameTests {
                     "same UUID on a different player identity must not satisfy currentness");
             assertMutationRejected(
                     service.publishPreparedTransition(sameUuidMissing, presentToMissing),
-                    PlayerSkillAttachmentService.MutationRejectionCode.STATE_CHANGED,
+                    PlayerSkillAttachmentService.MutationRejectionCode.WRONG_PLAYER,
                     "Present token against same-UUID Missing holder");
             helper.assertFalse(sameUuidMissing.hasData(PlayerSkillAttachments.type()),
                     "stale-token Missing rejection must not install an Attachment");
             var sameUuidQuarantined = unplacedPlayer(
                     server, player.getUUID(), "p4c2-same-uuid-quarantine");
             loadAttachmentFixture(sameUuidQuarantined, ByteTag.valueOf((byte) 19));
-            assertUnavailable(
+            assertCurrentness(
                     service.checkPreparedTransitionCurrent(
                             sameUuidQuarantined, presentToMissing),
-                    PlayerSkillAttachmentService.UnavailableReason
-                            .PRESERVED_RAW_QUARANTINE,
+                    PlayerSkillAttachmentService.TransitionCurrentness.STATE_CHANGED,
                     "currentness against same-UUID quarantined holder");
             assertUnavailable(
                     service.prepareLatestTransitionToCurrent(
@@ -326,12 +325,27 @@ public final class PlayerSkillAttachmentGameTests {
                     PlayerSkillAttachmentService.UnavailableReason
                             .PRESERVED_RAW_QUARANTINE,
                     "prepare-to-current against quarantined holder");
-            assertUnavailable(
+            assertMutationRejected(
                     service.publishPreparedTransition(
                             sameUuidQuarantined, presentToMissing),
-                    PlayerSkillAttachmentService.UnavailableReason
-                            .PRESERVED_RAW_QUARANTINE,
+                    PlayerSkillAttachmentService.MutationRejectionCode.WRONG_PLAYER,
                     "Present token against same-UUID quarantined holder");
+
+            var missingPrepared = prepared(service.prepareLatestTransition(
+                    sameUuidMissing, draft.skillId(), Optional.empty(), 0,
+                    Optional.of(replacementReference)));
+            var anotherSameUuidMissing = unplacedPlayer(
+                    server, player.getUUID(), "p11-same-uuid-missing");
+            assertCurrentness(service.checkPreparedTransitionCurrent(
+                            anotherSameUuidMissing, missingPrepared),
+                    PlayerSkillAttachmentService.TransitionCurrentness.STATE_CHANGED,
+                    "same UUID and two Missing states still require the exact actor");
+            assertMutationRejected(service.publishPreparedTransition(
+                            anotherSameUuidMissing, missingPrepared),
+                    PlayerSkillAttachmentService.MutationRejectionCode.WRONG_PLAYER,
+                    "Missing token cannot publish to a same-UUID replacement actor");
+            helper.assertFalse(anotherSameUuidMissing.hasData(PlayerSkillAttachments.type()),
+                    "same-UUID Missing rejection must not install an Attachment");
 
             var draftInvalidated = prepared(service.prepareLatestTransition(
                     player,

@@ -112,7 +112,7 @@ final class P7S3BoundaryTest {
     @Test
     void bootstrapInstallsOneIngressAfterTheExistingServiceGraph() {
         var source = read(MAIN_JAVA.resolve("com/yo1no/gramarye/Gramarye.java"));
-        var attachment = source.indexOf("PlayerSkillAttachmentService.registerOn(modBus)");
+        var attachment = source.indexOf("PlayerSkillAttachmentService.registerOn(modBus, p11SourceProvenance)");
         var store = source.indexOf("SkillDefinitionStoreService.registerOn(");
         var runtime = source.indexOf("SkillRuntimeService.create(");
         var ingress = source.indexOf("new P7AuthenticatedPlayerCastIngress(");

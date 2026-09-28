@@ -229,6 +229,69 @@ final class P11IdentityOwnerTest {
     }
 
     @Test
+    void sourceCustodyDoesNotBindOrReplaceAuthenticatedConnection() {
+        var owner = P11IdentityOwner.isolatedModel(1);
+        var actor = owner.modelActor(UUID_A, 17);
+        var data = owner.captureModelSource(actor).orElseThrow();
+        assertEquals(1, owner.retainedAccounts());
+        assertEquals(0, owner.retainedBindings());
+        assertSame(data, owner.captureModelSource(actor).orElseThrow());
+        var authenticated = owner.bindModel(actor, owner.modelConnection()).orElseThrow();
+        assertSame(data.account(), authenticated.account());
+        var nextActor = owner.modelActor(UUID_A, 17);
+        var candidate = owner.captureModelSource(nextActor).orElseThrow();
+        assertTrue(owner.current(authenticated));
+        assertTrue(authenticated.currentBinding());
+        assertTrue(owner.matchesModelSource(data, actor));
+        assertFalse(owner.matchesModelSource(data, nextActor));
+        assertTrue(owner.matchesModelSource(candidate, nextActor));
+        assertTrue(owner.retireConnection(authenticated));
+        assertTrue(owner.ownsData(data));
+        assertTrue(owner.ownsData(candidate));
+        assertFalse(owner.liveCurrent(authenticated));
+        assertFalse(owner.matchesSource(data, null));
+    }
+
+    @Test
+    void sourceCustodyHasOnlyCurrentAndCandidateAndUsesExactNotEqualActors() {
+        var owner = P11IdentityOwner.isolatedModel(1);
+        var firstActor = owner.modelActor(UUID_A, 17);
+        var secondActor = owner.modelActor(UUID_A, 17);
+        var thirdActor = owner.modelActor(UUID_A, 17);
+        var first = owner.captureModelSource(firstActor).orElseThrow();
+        var second = owner.captureModelSource(secondActor).orElseThrow();
+        assertEquals(firstActor, secondActor);
+        assertNotSame(first, second);
+        assertTrue(owner.captureModelSource(thirdActor).isEmpty());
+        assertTrue(owner.captureModelSource(owner.modelActor(UUID_B, 1)).isEmpty());
+        var domain = owner.claimReceiptDomain();
+        assertFalse(owner.commitSourceCustody(null, first, second));
+        assertTrue(owner.commitSourceCustody(domain, first, second));
+        assertFalse(owner.ownsData(first));
+        assertTrue(owner.ownsData(second));
+        assertTrue(owner.captureModelSource(thirdActor).isPresent());
+        assertEquals(1, owner.retainedAccounts());
+    }
+
+    @Test
+    void sourceCustodyRejectsForeignDomainAndStopsWithoutNativeReferencesInTokens() {
+        var owner = P11IdentityOwner.isolatedModel(1);
+        var foreign = P11IdentityOwner.isolatedModel(1);
+        assertTrue(owner.captureModelSource(foreign.modelActor(UUID_A, 1)).isEmpty());
+        var local = owner.captureModelSource(owner.modelActor(UUID_A, 1)).orElseThrow();
+        var other = foreign.captureModelSource(foreign.modelActor(UUID_A, 1)).orElseThrow();
+        assertFalse(owner.ownsData(other));
+        assertFalse(owner.matchesModelSource(other, owner.modelActor(UUID_A, 1)));
+        var domain = owner.claimReceiptDomain();
+        assertTrue(owner.nextDataSourceEpoch(domain, other).isEmpty());
+        assertEquals(1, owner.nextDataSourceEpoch(domain, local).orElseThrow());
+        owner.stop();
+        assertFalse(owner.ownsData(local));
+        assertTrue(owner.nextDataSourceEpoch(domain, local).isEmpty());
+        assertTrue(owner.captureModelSource(owner.modelActor(UUID_A, 1)).isEmpty());
+    }
+
+    @Test
     void nativeCurrentBindingRequiresInstalledExactListenerButExpectationIsNotMembership()
             throws IOException {
         // Source-boundary evidence only: isolated fixtures do not impersonate native listeners.

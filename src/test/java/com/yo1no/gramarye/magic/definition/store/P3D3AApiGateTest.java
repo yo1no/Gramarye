@@ -221,7 +221,30 @@ class P3D3AApiGateTest {
         var sites = pinConstructionSites(sourceRoot);
         var sanctionedFactory = SkillDefinitionStore.class.getDeclaredMethod(
                 "pin", SkillReference.class);
-        var publicFactories = productionClasses().stream()
+        var classes = productionClasses();
+        var p11Mixins = Set.of(
+                "P11PlayerListMixin", "P11ConfigurationSourceMixin", "P11PlayerDataStorageMixin",
+                "P11ServerPlayerMixin", "P11EntityMaterialMixin", "P11AttachmentMaterialMixin",
+                "P11BrainMaterialMixin", "P11MinecraftServerMixin", "P11LevelStorageMixin",
+                "P11LevelRawReadMixin", "P11PrimaryLevelDataMixin", "P11NbtIoMixin",
+                "P11UtilMixin", "P11StringFallbackMixin", "P11StatsMixin",
+                "P11AdvancementsMixin", "P11IntegratedPlayerListMixin").stream()
+                .map(name -> "com.yo1no.gramarye.mixin." + name)
+                .collect(Collectors.toSet());
+        assertEquals(p11Mixins, classes.stream()
+                .filter(name -> name.startsWith("com.yo1no.gramarye.mixin."))
+                .collect(Collectors.toSet()));
+        // Registered Mixins are transformer input, not classes that ModLauncher permits
+        // Class.forName to define. Their compiled constants must contain no pin type at all;
+        // all other production classes retain the original generic-return reflection gate.
+        for (var mixin : p11Mixins) {
+            var bytes = Files.readAllBytes(projectRoot().resolve("build/classes/java/main")
+                    .resolve(mixin.replace('.', '/') + ".class"));
+            assertFalse(new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+                    .contains("com/yo1no/gramarye/magic/definition/store/SkillRevisionPin"), mixin);
+        }
+        var publicFactories = classes.stream()
+                .filter(name -> !p11Mixins.contains(name))
                 .map(P3D3AApiGateTest::loadWithoutInitialization)
                 .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                 .filter(method -> Modifier.isPublic(method.getModifiers()))

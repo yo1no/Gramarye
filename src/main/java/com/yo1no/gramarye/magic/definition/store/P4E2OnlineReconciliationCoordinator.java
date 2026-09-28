@@ -1,5 +1,7 @@
 package com.yo1no.gramarye.magic.definition.store;
 
+import com.yo1no.gramarye.P11SourceProvenance;
+
 import com.yo1no.gramarye.P4E2QualificationFacade;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
@@ -286,6 +288,13 @@ final class P4E2OnlineReconciliationCoordinator
         P4E2GroupedStoreValidation.Validated validation = null;
         var accepted = earlyAccepted;
         try {
+            if (attachmentService.observeRecoveryProvenance(player)
+                    .filter(source -> source.kind() == P11SourceProvenance.Kind.UNKNOWN)
+                    .isPresent()) {
+                return failed(status, null, accepted,
+                        P4E2ReconciliationResult.FailureReason.FRESHNESS_LOST,
+                        Optional.empty());
+            }
             handle = attachmentService.observeOnlineForReconciliation(player);
             handleOwned = true;
             var state = attachmentService.onlineReconciliationState(handle);
@@ -465,7 +474,8 @@ final class P4E2OnlineReconciliationCoordinator
             RecoveryStatus status,
             SkillRetentionRootAuditService.InvalidationResult.Accepted accepted) {
         return switch (status.kind()) {
-            case NO_PENDING, CLEARED, REPLAYED, CLEARED_AND_REPLAYED -> Optional.empty();
+            case NO_PENDING, CLEARED, REPLAYED, CLEARED_AND_REPLAYED,
+                    CURRENT_PUBLICATION -> Optional.empty();
             case CONFLICT -> Optional.of(failed(
                     status,
                     null,

@@ -484,11 +484,10 @@ verify_static_ownership_and_phase_bounds() {
         'src/main/java/com/yo1no/gramarye/P9StarterSkillContent.java'
 
     require_exact_ere_owners \
-        'PlayerLoggedInEvent' 4 \
+        'PlayerLoggedInEvent' 3 \
         'PlayerLoggedInEvent escaped the exact D3-A/P8-S4 lifecycle owners' \
         'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
         'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
-        'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java'
     require_exact_ere_owners \
         'PlayerLoggedOutEvent' 3 \
@@ -536,6 +535,7 @@ verify_static_ownership_and_phase_bounds() {
         'src/main/java/com/yo1no/gramarye/magic/network/P7ReloadAdmissionGate.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java' \
         'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+        'src/main/java/com/yo1no/gramarye/P4E2RecoveryGameTestObservation.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/P4E1GroupedStoreAudit.java' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillRetentionRootAuditResult.java' \

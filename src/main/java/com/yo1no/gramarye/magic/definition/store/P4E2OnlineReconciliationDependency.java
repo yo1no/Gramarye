@@ -30,6 +30,7 @@ public sealed interface P4E2OnlineReconciliationDependency
         AUTHORITY_UNAVAILABLE,
         ATTACHMENT_PRESERVED_RAW_QUARANTINE,
         ATTACHMENT_OVERSIZE_QUARANTINE,
-        RUNTIME_EXCEPTION
+        RUNTIME_EXCEPTION,
+        CURRENT_PUBLICATION
     }
 }

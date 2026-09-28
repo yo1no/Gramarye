@@ -670,6 +670,24 @@ def prepareP9S5ClientRuntimeHarness =
     delete(p9S5ClientRuntimeRoot)
 }
 
+// P11 reuses the excluded, same-production-JAR client cohort. Each invocation must name
+// disjoint fresh directories; no prepare/finalizer deletes its input or evidence.
+def p11SourceOutputText = providers.gradleProperty('gramaryeP11SourceOutput').orElse('').get()
+def p11SourceGameText = providers.gradleProperty('gramaryeP11SourceGameDirectory').orElse('').get()
+def p11SourceCase = providers.gradleProperty('gramaryeP11SourceCase').orElse('positive').get()
+def p11SourceGameDirectory = p11SourceGameText.isBlank()
+        ? layout.buildDirectory.dir('p11-source-explicit-properties-required').get().asFile
+        : file(p11SourceGameText)
+if ((!p11SourceOutputText.isBlank() && !java.nio.file.Path.of(p11SourceOutputText).isAbsolute())
+        || (!p11SourceGameText.isBlank() && !java.nio.file.Path.of(p11SourceGameText).isAbsolute())) {
+    throw new GradleException('P11 source harness output and game properties must be absolute paths')
+}
+if (!(p11SourceCase in ['positive', 'malformed-stats', 'stats-io-fault', 'player-replace-false',
+                       'memory-handoff', 'synchronous-handoff', 'constructor-failure', 'material-mismatch',
+                       'native-respawn'])) {
+    throw new GradleException('Unknown gramaryeP11SourceCase')
+}
+
 neoForge {
     // Specify the version of NeoForge to use.
     version = project.neo_version
@@ -1325,6 +1343,22 @@ neoForge {
             taskBefore(tasks.named(p9S5ClientHarnessSourceSet.classesTaskName))
         }
 
+        p11SourceWriterClientHarness {
+            client()
+            sourceSet = p9S5ClientHarnessSourceSet
+            additionalRuntimeClasspathConfiguration.exclude(
+                    group: 'org.apache.commons', module: 'commons-compress')
+            gameDirectory = p11SourceGameDirectory
+            systemProperty 'gramarye.p11.sourceWriter.output', p11SourceOutputText
+            systemProperty 'gramarye.p11.sourceWriter.case', p11SourceCase
+            systemProperty 'gramarye.p10.frozenJar',
+                    tasks.named('jar', Jar).get().archiveFile.get().asFile.absolutePath
+            jvmArguments.addAll(p9S5ClientHarnessJvmArgs)
+            disableIdeRun()
+            taskBefore(tasks.named('jar'))
+            taskBefore(tasks.named(p9S5ClientHarnessSourceSet.classesTaskName))
+        }
+
         p4E0R2QFormalCaseIndices.each { formalCaseIndex ->
                 def formalCaseToken = String.format(
                         java.util.Locale.ROOT, '%02d', formalCaseIndex)
@@ -1452,7 +1486,8 @@ neoForge {
                                             ? p8S5ClientHarnessMod
                                             : name == 'p9S3ClientRuntimeHarness'
                                                     ? p9S3ClientHarnessMod
-                                                    : name == 'p9S5ClientRuntimeHarness'
+                                                    : (name == 'p9S5ClientRuntimeHarness'
+                                                            || name == 'p11SourceWriterClientHarness')
                                                             ? p9S5ClientHarnessMod
                                                             : productionMod])
 
@@ -1740,6 +1775,67 @@ tasks.named('runP9S5ClientRuntimeHarness', JavaExec).configure {
         }
         def resultLines = resultFile.readLines('UTF-8')
         validateP9S5ClientRuntimeResultLines(resultLines)
+    }
+}
+
+tasks.named('runP11SourceWriterClientHarness', JavaExec).configure {
+    timeout.set(java.time.Duration.ofMinutes(10))
+    def frozenJarFile = tasks.named('jar', Jar).flatMap { it.archiveFile }
+    def runtimeClasspathFiles = p9S5ClientHarnessSourceSet.runtimeClasspath
+    def mainOutputFiles = sourceSets.main.output.files.collect { it.canonicalFile }.toSet()
+    def standaloneCompressName = "commons-compress-${commonsCompressVersion}.jar".toString()
+    doFirst {
+        if (p11SourceOutputText.isBlank() || p11SourceGameText.isBlank()) {
+            throw new GradleException('P11 source harness requires -PgramaryeP11SourceOutput '
+                    + 'and -PgramaryeP11SourceGameDirectory with absolute fresh paths')
+        }
+        def output = new File(p11SourceOutputText).canonicalFile.toPath()
+        def game = new File(p11SourceGameText).canonicalFile.toPath()
+        if (output.startsWith(game) || game.startsWith(output)) {
+            throw new GradleException('P11 source harness output and game directories must be disjoint')
+        }
+        [p11SourceOutputText, p11SourceGameText].each { text ->
+            def path = java.nio.file.Path.of(text).normalize()
+            if (path.getParent() == null || java.nio.file.Files.isSymbolicLink(path)) {
+                throw new GradleException('P11 source harness directory is a root or symbolic link')
+            }
+            if (java.nio.file.Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                if (!java.nio.file.Files.isDirectory(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                    throw new GradleException('P11 source harness path is not a directory')
+                }
+                // ModDev may already have created the empty game directory while preparing
+                // launch arguments. Any prior game/evidence contents are still rejected.
+                def entries = java.nio.file.Files.list(path)
+                try {
+                    if (entries.findAny().isPresent()) {
+                        throw new GradleException('P11 source harness refuses a nonempty directory: ' + path)
+                    }
+                } finally {
+                    entries.close()
+                }
+            }
+        }
+        def runtimeFiles = runtimeClasspathFiles.files.collect { it.canonicalFile }.toSet()
+        if (!runtimeFiles.contains(frozenJarFile.get().asFile.canonicalFile)
+                || runtimeFiles.any { mainOutputFiles.contains(it) }
+                || runtimeFiles.any { it.name == standaloneCompressName }) {
+            throw new GradleException('P11 source harness must load the frozen JAR without exploded '
+                    + 'main output or a duplicate Commons Compress module')
+        }
+    }
+    doLast {
+        def result = java.nio.file.Path.of(p11SourceOutputText).resolve('result.txt')
+        if (!java.nio.file.Files.isRegularFile(result, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                || java.nio.file.Files.isSymbolicLink(result)
+                || java.nio.file.Files.size(result) < 1L || java.nio.file.Files.size(result) > 65_536L) {
+            throw new GradleException('P11 source harness result is absent, non-regular, or oversized')
+        }
+        def lines = java.nio.file.Files.readAllLines(result, java.nio.charset.StandardCharsets.UTF_8)
+        if (lines.size() < 3 || lines.first() != 'P11-NATIVE-SOURCE-WRITER-V1'
+                || lines.last() != 'RESULT=PASS'
+                || lines.count { it == 'case=' + p11SourceCase } != 1) {
+            throw new GradleException('P11 source harness result lacks its exact case or PASS terminal')
+        }
     }
 }
 

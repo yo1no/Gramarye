@@ -227,6 +227,7 @@ final class P4D3AApiGateTest {
                 () -> assertEquals(
                         Set.of(
                                 "NoPending",
+                                "CurrentPublication",
                                 "Cleared",
                                 "Replayed",
                                 "ClearedAndReplayed",

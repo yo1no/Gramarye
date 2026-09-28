@@ -579,7 +579,8 @@ final class P9S1BoundaryTest {
                 List.of(
                         Path.of("src/main/resources/assets/gramarye/lang/en_us.json"),
                         Path.of("src/main/resources/assets/gramarye/lang/zh_tw.json"),
-                        Path.of("src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json")),
+                        Path.of("src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json"),
+                        Path.of("src/main/resources/gramarye.p11.mixins.json")),
                 sourceJsonResources);
     }
 

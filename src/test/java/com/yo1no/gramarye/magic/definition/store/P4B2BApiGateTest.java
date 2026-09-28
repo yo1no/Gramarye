@@ -520,7 +520,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(100, dependencyErrorCatchCount(production)),
+                () -> assertEquals(109, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -784,6 +784,16 @@ class P4B2BApiGateTest {
                 MAIN_JAVA.resolve("com/yo1no/gramarye/P9StarterProjectile.java"))));
         var p9WorldHandoffCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(
                 MAIN_JAVA.resolve("com/yo1no/gramarye/P9WorldEffectHandoff.java"))));
+        var p11Boundary = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/P11NativeStorageBoundary.java")));
+        var p11ObservationIsolation = errorCatchBlocks(p11Boundary);
+        var p11ObservationMethods = List.of(
+                "void closeSelection(", "ServerPlayer respawn(", "void failWithoutReplacingPrimary(",
+                "void retainWithoutReplacingPrimary(", "void statsMutated(", "void advancementsMutated(",
+                "void endIndependent(", "void finish(", "void integratedSave(");
+        for (var method : p11ObservationMethods) {
+            assertEquals(1, errorCatchBlocks(bodyFollowing(p11Boundary, method)).size(), method);
+        }
         var p9OwnedCatches = List.of(
                         p6AdapterCatches, p9ProjectileCatches, p9WorldHandoffCatches)
                 .stream()
@@ -828,6 +838,12 @@ class P4B2BApiGateTest {
                 () -> assertEquals(3, p9WorldHandoffCatches.size()),
                 () -> assertEquals(7, p9Primary.size()),
                 () -> assertEquals(5, p9CleanupIsolation.size()),
+                () -> assertEquals(9, p11ObservationIsolation.size()),
+                () -> assertTrue(p11ObservationIsolation.stream().allMatch(block ->
+                        block.binding().equals("secondary")
+                                && block.body().replaceAll("\\s+", "").equals(
+                                        "if(observerFailures!=Long.MAX_VALUE){observerFailures++;}"))),
+                () -> assertEquals(0, catchTypeCount(p11Boundary, "Throwable")),
                 () -> assertEquals(1, storeCatches.size()),
                 () -> assertEquals(1, networkCatches.size()),
                 () -> assertEquals(1, syncCatches.size()),
@@ -967,9 +983,10 @@ class P4B2BApiGateTest {
                                 + p9ErrorPrimitiveIsolation.size()
                                 + p9CleanupIsolation.size()
                                 + lifecycleCatches.size()
-                                + reviewedP8S5Catches,
+                                + reviewedP8S5Catches
+                                + p11ObservationIsolation.size(),
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(100, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(109, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
                 "permit.releaseAfterEnqueueFailure();", "throw failure;");
         assertOrdered(

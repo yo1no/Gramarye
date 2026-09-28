@@ -597,18 +597,17 @@ public final class SkillDefinitionStoreSubmissionPort {
 
     public JournalClearPreparationResult prepareJournalPrefixClear(
             MinecraftServer server,
-            SkillOwnerId owner,
-            SkillId skillId,
-            int confirmedTargetGeneration,
-            SkillReference confirmedTargetPointer) {
+            PlayerSkillAttachmentService.JournalClearProof proof) {
         SkillDefinitionStoreService.requireServerThread(server);
-        return prepareJournalPrefixClearCore(
+        Objects.requireNonNull(proof, "proof");
+        if (!proof.isCurrent(server)) {
+            return new JournalClearPreparationResult.Rejected(
+                    JournalClearFailure.PREFIX_TARGET_MISMATCH);
+        }
+        return prepareJournalPrefixClearWithProof(
                 server,
                 service.installedAdapter(server),
-                owner,
-                skillId,
-                confirmedTargetGeneration,
-                confirmedTargetPointer);
+                proof.owner(), proof.skillId(), proof.generation(), proof.pointer(), proof);
     }
 
     JournalClearPreparationResult prepareJournalPrefixClearCore(
@@ -618,6 +617,21 @@ public final class SkillDefinitionStoreSubmissionPort {
             SkillId skillId,
             int confirmedTargetGeneration,
             SkillReference confirmedTargetPointer) {
+        if (serverIdentity instanceof MinecraftServer) {
+            throw new IllegalArgumentException("P11_SCALAR_CLEAR_IS_MODEL_ONLY");
+        }
+        return prepareJournalPrefixClearWithProof(serverIdentity, adapter, owner, skillId,
+                confirmedTargetGeneration, confirmedTargetPointer, null);
+    }
+
+    private JournalClearPreparationResult prepareJournalPrefixClearWithProof(
+            Object serverIdentity,
+            GramaryeSkillSavedData adapter,
+            SkillOwnerId owner,
+            SkillId skillId,
+            int confirmedTargetGeneration,
+            SkillReference confirmedTargetPointer,
+            PlayerSkillAttachmentService.JournalClearProof proof) {
         Objects.requireNonNull(serverIdentity, "serverIdentity");
         Objects.requireNonNull(adapter, "adapter");
         Objects.requireNonNull(owner, "owner");
@@ -671,6 +685,7 @@ public final class SkillDefinitionStoreSubmissionPort {
                 this,
                 new ClearPayload(
                         serverIdentity,
+                        proof,
                         ready.adapter(),
                         ready.savedDataReady(),
                         ready.savedDataReady().innerCarrier().pending(),
@@ -696,6 +711,16 @@ public final class SkillDefinitionStoreSubmissionPort {
         Objects.requireNonNull(adapterResolver, "adapterResolver");
         handle.requireOwner(this, serverIdentity);
         var payload = handle.consume();
+        if (payload.proof() != null
+                && (!(serverIdentity instanceof MinecraftServer server)
+                        || !payload.proof().consume(server))) {
+            return new JournalClearCommitResult.PreparedBaseMismatch(
+                    PreparedBaseMismatchCode.STATE_IDENTITY_CHANGED);
+        }
+        if (payload.proof() == null && serverIdentity instanceof MinecraftServer) {
+            return new JournalClearCommitResult.PreparedBaseMismatch(
+                    PreparedBaseMismatchCode.STATE_IDENTITY_CHANGED);
+        }
         var installedAdapter = Objects.requireNonNull(
                 adapterResolver.resolve(), "installedAdapter");
         if (installedAdapter != payload.adapter()
@@ -1528,6 +1553,7 @@ public final class SkillDefinitionStoreSubmissionPort {
 
     private record ClearPayload(
             Object serverIdentity,
+            PlayerSkillAttachmentService.JournalClearProof proof,
             GramaryeSkillSavedData adapter,
             SkillSavedDataState.Ready baseReady,
             OpaquePendingAttachmentUpdatesBlob basePending,

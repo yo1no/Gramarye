@@ -1,0 +1,26 @@
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "package": "com.yo1no.gramarye.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "P11PlayerListMixin",
+    "P11ConfigurationSourceMixin",
+    "P11PlayerDataStorageMixin",
+    "P11ServerPlayerMixin",
+    "P11EntityMaterialMixin",
+    "P11AttachmentMaterialMixin",
+    "P11BrainMaterialMixin",
+    "P11MinecraftServerMixin",
+    "P11LevelStorageMixin",
+    "P11LevelRawReadMixin",
+    "P11PrimaryLevelDataMixin",
+    "P11NbtIoMixin",
+    "P11UtilMixin",
+    "P11StringFallbackMixin",
+    "P11StatsMixin",
+    "P11AdvancementsMixin"
+  ],
+  "client": ["P11IntegratedPlayerListMixin"],
+  "injectors": {"defaultRequire": 1}
+}

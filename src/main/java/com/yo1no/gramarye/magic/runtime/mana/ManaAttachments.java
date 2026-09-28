@@ -27,11 +27,30 @@ final class ManaAttachments {
     }
 
     static ManaState state(ServerPlayer player) {
-        return Objects.requireNonNull(player, "player").getData(PLAYER_MANA);
+        Objects.requireNonNull(player, "player");
+        var before = P11ManaMaterial.capture(player);
+        var state = read(player, true);
+        var after = P11ManaMaterial.capture(player);
+        if (!before.sameState(after)) {
+            com.yo1no.gramarye.P11NativeStorageBoundary.manaPublished(
+                    player, P11ManaMaterial.publication(before, after));
+        }
+        return state;
+    }
+
+    static ManaState existing(ServerPlayer player) {
+        return read(player, false);
+    }
+
+    private static ManaState read(ServerPlayer player, boolean installDefault) {
+        return installDefault || player.hasData(PLAYER_MANA) ? player.getData(PLAYER_MANA) : null;
     }
 
     static void replace(ServerPlayer player, ManaState state) {
+        var before = P11ManaMaterial.capture(player);
         Objects.requireNonNull(player, "player")
                 .setData(PLAYER_MANA, Objects.requireNonNull(state, "state"));
+        com.yo1no.gramarye.P11NativeStorageBoundary.manaPublished(
+                player, P11ManaMaterial.publication(before, P11ManaMaterial.capture(player)));
     }
 }

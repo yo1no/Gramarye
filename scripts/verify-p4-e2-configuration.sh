@@ -41,6 +41,7 @@ MANA_GAME_TESTS="${MAIN_JAVA}/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycl
 RECOVERY_SERVICE="${SUBMISSION_ROOT}/SkillSubmissionRecoveryService.java"
 COORDINATOR="${STORE_ROOT}/P4E2OnlineReconciliationCoordinator.java"
 FACADE="${ROOT_PACKAGE}/P4E2QualificationFacade.java"
+RECOVERY_GAME_TEST_OBSERVATION="${ROOT_PACKAGE}/P4E2RecoveryGameTestObservation.java"
 S4_LOGIN_GAME_TESTS="${ROOT_PACKAGE}/P7S4LoginManaGameTests.java"
 GRAMARYE="${ROOT_PACKAGE}/Gramarye.java"
 TEST_ROOT="${REPOSITORY_ROOT}/src/test/java/com/yo1no/gramarye"
@@ -125,6 +126,20 @@ verify_direct_extension_registration() {
     require_fixed_count "${file}" \
         'exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);' 1 \
         'Gramarye must use the direct-object extension registration overload exactly once'
+}
+
+verify_recovery_outcome_observation() {
+    local file="$1"
+    local variant=''
+    for variant in CurrentPublication NoPending Cleared Replayed ClearedAndReplayed \
+            Conflict TargetInvalid Unavailable; do
+        require_fixed_count "${file}" "case ${variant} " 1 \
+            "actual RecoveryOutcome switch is missing or duplicates ${variant}"
+    done
+    forbid_fixed "${file}" 'default' \
+        'actual RecoveryOutcome observation must remain exhaustive without default'
+    require_fixed_count "${file}" 'exactView.recordRecovery(' 8 \
+        'each actual RecoveryOutcome variant must record one bounded direct projection'
 }
 
 forbid_fixed() {
@@ -1079,6 +1094,31 @@ self_regression() {
         'exactly one extension registration call' \
         'self-test rejected the extra registration for an unrelated reason'
     printf '%s\n' 'Verified E2 direct-object registration controls: private Supplier accepted; Supplier registration and extra call rejected.'
+    for variant in CurrentPublication NoPending Cleared Replayed ClearedAndReplayed \
+            Conflict TargetInvalid Unavailable; do
+        printf 'case %s ignored -> exactView.recordRecovery(\n' "${variant}"
+    done > "${SELF_TEST_ROOT}/recovery-exact.txt"
+    verify_recovery_outcome_observation "${SELF_TEST_ROOT}/recovery-exact.txt"
+    LC_ALL=C grep -v 'case CurrentPublication ' "${SELF_TEST_ROOT}/recovery-exact.txt" \
+        > "${SELF_TEST_ROOT}/recovery-missing.txt"
+    if (verify_recovery_outcome_observation "${SELF_TEST_ROOT}/recovery-missing.txt") \
+            > "${SELF_TEST_ROOT}/recovery-missing.log" 2>&1; then
+        fail 'self-test accepted missing CurrentPublication observation'
+    fi
+    require_fixed "${SELF_TEST_ROOT}/recovery-missing.log" \
+        'missing or duplicates CurrentPublication' \
+        'missing CurrentPublication must fail its exact branch guard'
+    { printf 'case CurrentPublication duplicate -> exactView.recordRecovery(\n'; \
+        awk '{ print }' "${SELF_TEST_ROOT}/recovery-exact.txt"; } \
+        > "${SELF_TEST_ROOT}/recovery-duplicate.txt"
+    if (verify_recovery_outcome_observation "${SELF_TEST_ROOT}/recovery-duplicate.txt") \
+            > "${SELF_TEST_ROOT}/recovery-duplicate.log" 2>&1; then
+        fail 'self-test accepted duplicate CurrentPublication observation'
+    fi
+    require_fixed "${SELF_TEST_ROOT}/recovery-duplicate.log" \
+        'missing or duplicates CurrentPublication' \
+        'duplicate CurrentPublication must fail its exact branch guard'
+    printf '%s\n' 'Verified exact eight recovery observations; missing and duplicate CurrentPublication rejected.'
     printf '%s\n' before BEGIN inside END after > "${SELF_TEST_ROOT}/slice-source.txt"
     : > "${SELF_TEST_ROOT}/slice-output.txt"
     append_exclusive_slice \
@@ -1193,7 +1233,7 @@ while IFS= read -r -d '' source; do
     case "${facade_status}" in
         0)
             case "${source}" in
-                "${S4_LOGIN_GAME_TESTS}") continue ;;
+                "${S4_LOGIN_GAME_TESTS}" | "${RECOVERY_GAME_TEST_OBSERVATION}") continue ;;
                 "${FACADE}" | \
                 "${GRAMARYE}" | \
                 "${PLAYER_SERVICE}" | \
@@ -1312,22 +1352,7 @@ require_fixed_count "${E2_PREWARM_SLICE}" \
 require_fixed_count "${E2_PREWARM_SLICE}" \
     'recoveryKind(RecoveryUnavailableReason.JOURNAL_NOT_BOOTSTRAPPED)' 1 \
     'prewarm must initialize the recovery switch map exactly once'
-for recovery_case in \
-    'case NoPending ' \
-    'case Cleared ' \
-    'case Replayed ' \
-    'case ClearedAndReplayed ' \
-    'case Conflict ' \
-    'case TargetInvalid ' \
-    'case Unavailable '; do
-    require_fixed_count "${E2_RECOVERY_OBSERVATION_SLICE}" "${recovery_case}" 1 \
-        "actual RecoveryOutcome switch is missing ${recovery_case}"
-done
-forbid_fixed "${E2_RECOVERY_OBSERVATION_SLICE}" 'default' \
-    'actual RecoveryOutcome observation must remain exhaustive without default'
-require_fixed_count "${E2_RECOVERY_OBSERVATION_SLICE}" \
-    'exactView.recordRecovery(' 7 \
-    'each actual RecoveryOutcome variant must record one bounded direct projection'
+verify_recovery_outcome_observation "${E2_RECOVERY_OBSERVATION_SLICE}"
 for result_case in \
     'case P4E2ReconciliationResult.NoChanges ' \
     'case P4E2ReconciliationResult.RecoveryChanged ' \
@@ -1395,8 +1420,17 @@ require_only_owner 'new P4E2QualificationFacade()' "${GRAMARYE}" 1 \
 require_only_owner 'registerExtensionPoint(' "${GRAMARYE}" 1 \
     'extension registration must have one exact composition-root owner'
 verify_direct_extension_registration "${GRAMARYE}"
-forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" 'getCustomExtension(' \
-    'production code must not retrieve the qualification extension'
+while IFS= read -r -d '' source; do
+    if [[ "${source}" == "${RECOVERY_GAME_TEST_OBSERVATION}" ]]; then
+        require_fixed_count "${source}" 'getCustomExtension(P4E2QualificationFacade.class)' 1 \
+            'the exact recovery GameTest observer retrieves only the existing facade'
+        require_fixed_count "${source}" 'getModContainerById(Gramarye.MOD_ID)' 1 \
+            'the exact recovery GameTest observer retrieves only the Gramarye container'
+    else
+        forbid_fixed "${source}" 'getCustomExtension(' \
+            'production code must not retrieve the qualification extension'
+    fi
+done < "${PRODUCTION_SOURCE_LIST}"
 forbid_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" 'ModLoadingContext' \
     'production code must not use ModLoadingContext as a runtime locator'
 require_fixed_count "${P4C2_ADAPTER}" 'getCustomExtension(P4E2QualificationFacade.class)' 1 \
@@ -1449,7 +1483,7 @@ require_fixed_count "${PLAYER_SERVICE}" \
     'publishReplacement(' 6 \
     'the three-call/two-overload replacement publisher topology must remain exact'
 require_fixed_count "${PLAYER_SERVICE}" \
-    '    private static void publishReplacement(' 2 \
+    '    private void publishReplacement(' 2 \
     'the replacement publisher must retain exactly its unobserved and E2-bound overloads'
 require_fixed_count "${PLAYER_SERVICE}" \
     'publishReplacement(player, transition.replacement);' 1 \

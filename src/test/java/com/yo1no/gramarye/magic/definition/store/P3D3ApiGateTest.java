@@ -297,7 +297,7 @@ class P3D3ApiGateTest {
                     Set.of("P4E2_SERVER_THREAD_CONFINEMENT"),
                     2,
                     "6dc6386d7fddb701de0fb69b0d62f3b0b11e73024f57c81503ec308b9549fb88",
-                    "0e6aa8e5291b52b3044b55bc45d5059a290faea0b3b57cd2c56c207c9dd98c38"),
+                    "731703e68e587b0885d332a3b7db9cff19ee123374f8c0c1e829ef884c053bd5"),
             new ThreadSourceAuthority(
                     STORE_SOURCE_PREFIX + "ProductThreadPrecondition.java",
                     Set.of("com.yo1no.gramarye.magic.definition.store.ProductThreadPrecondition",
@@ -357,8 +357,8 @@ class P3D3ApiGateTest {
                                     + "LSubmissionPreparationResult;",
                             "commitPreparedSubmission(LMinecraftServer;"
                                     + "LPreparedStoreSubmissionCommit;)LSubmissionCommitResult;",
-                            "prepareJournalPrefixClear(LMinecraftServer;LSkillOwnerId;LSkillId;I"
-                                    + "LSkillReference;)LJournalClearPreparationResult;",
+                            "prepareJournalPrefixClear(LMinecraftServer;LJournalClearProof;)"
+                                    + "LJournalClearPreparationResult;",
                             "commitPreparedJournalClear(LMinecraftServer;"
                                     + "LPreparedJournalPrefixClear;)LJournalClearCommitResult;"),
                     Set.of("SkillDefinitionStoreService.requireServerThread(MinecraftServer)V"),
@@ -366,7 +366,7 @@ class P3D3ApiGateTest {
                     Set.of("P4_STORE_SUBMISSION_THREAD_CONFINEMENT"),
                     11,
                     "be131adb4af55f2aed78307bb1d491ce815f2168424685efe244f43b5ce080ba",
-                    "c805797577f316e520c7b08b8c6cbb59dfd93b800aea52a638136333673a3877"),
+                    "b4d3abe108c85dfb8fa0ff86328afbbb207af380e4a1b683527568d4dc0ce84b"),
             new ThreadSourceAuthority(
                     STORE_SOURCE_PREFIX + "SkillRetentionRootAuditService.java",
                     Set.of("com.yo1no.gramarye.magic.definition.store.SkillRetentionRootAuditService",
@@ -441,7 +441,7 @@ class P3D3ApiGateTest {
                     Set.of("P4_RECOVERY_GAMETEST_THREAD_PRECONDITION"),
                     1,
                     "8f5548e0d724bf902b3f6597f386fd2c73ec202cbd54a5bc6749d5562ce566dc",
-                    "3e8d4979517449af96df542792a3d57c11f271dcb9cf3ac29a479879b601db13"),
+                    "302d5760dd90fbd1c5d84d54ad537d7c5cb1075a0d940319a7197ab5b81329b2"),
             unrelatedFutureAuthority(
                     "SkillSavedDataCarrierMigrationFailure.java",
                     "com.yo1no.gramarye.magic.definition.store."
@@ -1057,37 +1057,8 @@ class P3D3ApiGateTest {
             backgroundProjection.addAll(normalizedExpressionProjection(
                     path, executable, BACKGROUND_CANDIDATE_IDENTIFIER));
             for (var forbidden : FORBIDDEN_THREAD_SURFACES) {
-                var forbiddenSource = executable;
-                if (forbidden.role().equals("BACKGROUND_SUBMISSION")
-                        && path.equals(STORE_SOURCE_PREFIX
-                                + "SkillSubmissionRecoveryGameTests.java")) {
-                    // §59.6/§60.32: exact synchronous local-bus test realization,
-                    // not a class-wide or production background-submission exemption.
-                    var start = executable.indexOf(
-                            "private static void assertRecoveryChangedHandoffOnce(");
-                    var end = executable.indexOf(
-                            "private static InstalledRecoveryFixture installRecoveryFixture(",
-                            start);
-                    assertTrue(start >= 0 && end > start, path);
-                    var handoff = executable.substring(start, end);
-                    assertEquals(1, countMatches(Pattern.compile(Pattern.quote(
-                            "var bus = BusBuilder.builder().build();")), handoff), path);
-                    var synchronousPosts = List.of(
-                            "bus.post(new ServerStartingEvent(server));",
-                            "bus.post(new PlayerEvent.PlayerLoggedInEvent(player));",
-                            "bus.post(new ServerStoppedEvent(server));");
-                    assertEquals(synchronousPosts.stream()
-                                    .map(statement -> path + "\tpost\t" + statement).toList(),
-                            normalizedExpressionProjection(
-                                    path, handoff, Pattern.compile("\\bpost\\b")), path);
-                    for (var statement : synchronousPosts) {
-                        assertEquals(1, countMatches(
-                                Pattern.compile(Pattern.quote(statement)), executable), path);
-                        forbiddenSource = forbiddenSource.replace(statement, "");
-                    }
-                }
                 assertFalse(
-                        forbidden.pattern().matcher(forbiddenSource).find(),
+                        forbidden.pattern().matcher(executable).find(),
                         path + " contains forbidden " + forbidden.role());
             }
         }
@@ -1096,9 +1067,9 @@ class P3D3ApiGateTest {
         assertEquals(234, executableCandidateCount);
         assertEquals(97, rawCandidateCount - executableCandidateCount);
         assertEquals(authoritiesByPath.keySet(), actualAuthorityPaths);
-        assertEquals(9, backgroundProjection.size());
+        assertEquals(6, backgroundProjection.size());
         assertEquals(
-                "1154c3b33f8030214a7baee5cb5c1158fbec4ef8ac732bf08ffa7f1d781d462c",
+                "19cdf82440e233873e37100ddece5c085b20229eab2075c31caa315d3667ba84",
                 sha256(String.join("\n", backgroundProjection) + "\n"));
 
         var authorizedThreadPaths = THREAD_SOURCE_AUTHORITIES.stream()
@@ -1124,7 +1095,7 @@ class P3D3ApiGateTest {
         assertEquals(231, new LinkedHashSet<>(exactKeys).size(),
                 "exact aggregate keys must preserve the reviewed lexical multiplicities");
         assertEquals(
-                "ab23b2c64772beed36811bce902885dd43cbf91b207a553269ca0fe3a5cee595",
+                "11cdad23aac30a49627349f40163a54078c0ec011f253357a5e18347c3c0e35c",
                 sha256(String.join("\n", exactKeys) + "\n"));
         assertEquals(
                 Map.of(

@@ -144,6 +144,7 @@ public final class SkillSubmissionRecoveryService {
         var processedSkills = new HashSet<SkillId>();
         int entriesCleared = 0;
         int stepsReplayed = 0;
+        SkillId firstIsolatedChain = null;
 
         for (var chain : chains) {
             if (!processedSkills.add(chain.skillId())) {
@@ -155,21 +156,38 @@ public final class SkillSubmissionRecoveryService {
             }
             var loaded = currentBySkill.getOrDefault(chain.skillId(), LatestTuple.IMPLICIT);
             var classification = classify(loaded, steps);
-            if (classification.kind() == ClassificationKind.THIRD_STATE) {
-                return new Conflict(
-                        chain.skillId(),
-                        RecoveryConflictCode.THIRD_STATE,
-                        entriesCleared,
-                        stepsReplayed);
+            var provenance = Objects.requireNonNull(
+                    dependencies.observeProvenance(player), "source provenance");
+            if (classification.kind() == ClassificationKind.THIRD_STATE
+                    || provenance.kind() == ProvenanceKind.UNKNOWN) {
+                if (provenance.kind() == ProvenanceKind.LEGACY_NATIVE) {
+                    return new Conflict(chain.skillId(), RecoveryConflictCode.THIRD_STATE,
+                            entriesCleared, stepsReplayed);
+                }
+                if (firstIsolatedChain == null) {
+                    firstIsolatedChain = chain.skillId();
+                }
+                continue;
             }
 
-            int replayStart = 0;
-            if (classification.kind() == ClassificationKind.INTERMEDIATE_TARGET
-                    || classification.kind() == ClassificationKind.FINAL_TARGET) {
-                var confirmedPrefixLength = Math.incrementExact(classification.targetIndex());
-                var confirmed = steps.get(classification.targetIndex());
+            int replayStart = installedPrefix(classification);
+            var persisted = provenance.kind() == ProvenanceKind.LEGACY_NATIVE
+                    ? Optional.of(loaded)
+                    : provenance.persistedStates().map(states -> indexLatestStates(states)
+                            .getOrDefault(chain.skillId(), LatestTuple.IMPLICIT));
+            int confirmedPrefixLength = persisted
+                    .map(tuple -> installedPrefix(classify(tuple, steps))).orElse(0);
+            if (confirmedPrefixLength > replayStart) {
+                if (firstIsolatedChain == null) {
+                    firstIsolatedChain = chain.skillId();
+                }
+                continue;
+            }
+            if (confirmedPrefixLength > 0) {
+                var confirmed = steps.get(confirmedPrefixLength - 1);
                 var preparedClear = Objects.requireNonNull(
                         dependencies.prepareClear(
+                                player,
                                 server,
                                 owner,
                                 chain.skillId(),
@@ -191,6 +209,11 @@ public final class SkillSubmissionRecoveryService {
                             stepsReplayed);
                 }
 
+                if (!dependencies.provenanceCurrent(player, provenance)) {
+                    return new Conflict(chain.skillId(),
+                            RecoveryConflictCode.REPLAY_CURRENTNESS_CHANGED,
+                            entriesCleared, stepsReplayed);
+                }
                 var committedClear = Objects.requireNonNull(
                         dependencies.commitClear(server, prepared.handle()),
                         "journal clear commit");
@@ -216,10 +239,6 @@ public final class SkillSubmissionRecoveryService {
                             entriesCleared,
                             stepsReplayed);
                 }
-                if (classification.kind() == ClassificationKind.FINAL_TARGET) {
-                    continue;
-                }
-                replayStart = confirmedPrefixLength;
             }
 
             var current = loaded;
@@ -323,7 +342,12 @@ public final class SkillSubmissionRecoveryService {
             }
         }
 
-        return successfulOutcome(entriesCleared, stepsReplayed);
+        return firstIsolatedChain == null
+                ? entriesCleared == 0 && stepsReplayed == 0
+                        ? CurrentPublication.INSTANCE
+                        : successfulOutcome(entriesCleared, stepsReplayed)
+                : new Conflict(firstIsolatedChain, RecoveryConflictCode.THIRD_STATE,
+                        entriesCleared, stepsReplayed);
     }
 
     private void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
@@ -347,6 +371,14 @@ public final class SkillSubmissionRecoveryService {
                 var outcome = recoverPersistedPlayer(player);
                 if (observationEnabled) {
                     switch (outcome) {
+                        case CurrentPublication ignored -> exactView.recordRecovery(
+                                server,
+                                playerMost,
+                                playerLeast,
+                                P4E2QualificationFacade.RecoveryVariant.CURRENT_PUBLICATION,
+                                P4E2QualificationFacade.RecoveryDetail.NONE,
+                                0,
+                                0);
                         case NoPending ignored -> exactView.recordRecovery(
                                 server,
                                 playerMost,
@@ -534,6 +566,14 @@ public final class SkillSubmissionRecoveryService {
         return Classification.THIRD;
     }
 
+    private static int installedPrefix(Classification classification) {
+        return switch (classification.kind()) {
+            case BASE_EXPECTED, THIRD_STATE -> 0;
+            case INTERMEDIATE_TARGET, FINAL_TARGET ->
+                    Math.incrementExact(classification.targetIndex());
+        };
+    }
+
     private static RecoveryOutcome successfulOutcome(int entriesCleared, int stepsReplayed) {
         if (entriesCleared > 0 && stepsReplayed > 0) {
             return new ClearedAndReplayed(entriesCleared, stepsReplayed);
@@ -667,7 +707,12 @@ public final class SkillSubmissionRecoveryService {
                         List<PlayerSkillAttachmentService.LatestStateView>>
                 observeLatestStates(Object player);
 
+        RecoveryProvenance observeProvenance(Object player);
+
+        boolean provenanceCurrent(Object player, RecoveryProvenance observed);
+
         ClearPreparation prepareClear(
+                Object player,
                 Object server,
                 SkillOwnerId owner,
                 SkillId skillId,
@@ -682,6 +727,21 @@ public final class SkillSubmissionRecoveryService {
         TransitionCheck checkCurrent(Object player, TransitionHandle transition);
 
         TransitionPublication publishTransition(Object player, TransitionHandle transition);
+    }
+
+    enum ProvenanceKind { LEGACY_NATIVE, UNKNOWN, CURRENT }
+
+    /** Testable decision input; production values come only from the injected closed capability. */
+    record RecoveryProvenance(
+            ProvenanceKind kind,
+            long sourceEpoch,
+            long sourceVersion,
+            Optional<List<PlayerSkillAttachmentService.LatestStateView>> persistedStates) {
+        RecoveryProvenance {
+            Objects.requireNonNull(kind, "kind");
+            persistedStates = Objects.requireNonNull(persistedStates, "persistedStates")
+                    .map(List::copyOf);
+        }
     }
 
     interface ClearHandle {
@@ -808,7 +868,7 @@ public final class SkillSubmissionRecoveryService {
         }
     }
 
-    sealed interface RecoveryOutcome permits NoPending, Cleared, Replayed,
+    sealed interface RecoveryOutcome permits NoPending, CurrentPublication, Cleared, Replayed,
             ClearedAndReplayed, Conflict, TargetInvalid, Unavailable {
         P4E2OnlineReconciliationDependency.RecoveryKind e2Kind();
 
@@ -841,6 +901,25 @@ public final class SkillSubmissionRecoveryService {
         public Optional<String> e2ExceptionClass() {
             return NO_RECOVERY_EXCEPTION;
         }
+    }
+
+    /** A genuine pending journal is retained while its current volatile target is continued. */
+    enum CurrentPublication implements RecoveryOutcome {
+        INSTANCE;
+
+        @Override
+        public P4E2OnlineReconciliationDependency.RecoveryKind e2Kind() {
+            return P4E2OnlineReconciliationDependency.RecoveryKind.CURRENT_PUBLICATION;
+        }
+
+        @Override
+        public int e2EntriesCleared() { return 0; }
+
+        @Override
+        public int e2StepsReplayed() { return 0; }
+
+        @Override
+        public Optional<String> e2ExceptionClass() { return NO_RECOVERY_EXCEPTION; }
     }
 
     record Cleared(int entriesCleared) implements RecoveryOutcome {
@@ -1200,18 +1279,44 @@ public final class SkillSubmissionRecoveryService {
         }
 
         @Override
+        public RecoveryProvenance observeProvenance(Object player) {
+            return attachmentService.observeRecoveryProvenance((ServerPlayer) player)
+                    .map(observed -> new RecoveryProvenance(
+                            switch (observed.kind()) {
+                                case LEGACY_NATIVE -> ProvenanceKind.LEGACY_NATIVE;
+                                case UNKNOWN -> ProvenanceKind.UNKNOWN;
+                                case CURRENT -> ProvenanceKind.CURRENT;
+                            }, observed.sourceEpoch(), observed.sourceVersion(),
+                            observed.persistedStates()))
+                    .orElseGet(() -> new RecoveryProvenance(
+                            ProvenanceKind.LEGACY_NATIVE, 0, 0, Optional.empty()));
+        }
+
+        @Override
+        public boolean provenanceCurrent(Object player, RecoveryProvenance observed) {
+            return observed.equals(observeProvenance(player));
+        }
+
+        @Override
         public ClearPreparation prepareClear(
+                Object player,
                 Object server,
                 SkillOwnerId owner,
                 SkillId skillId,
                 int confirmedTargetGeneration,
                 SkillReference confirmedTargetPointer) {
+            var nativePlayer = (ServerPlayer) player;
+            if (nativePlayer.getServer() != server
+                    || !new SkillOwnerId(nativePlayer.getUUID()).equals(owner)) {
+                return ClearPreparation.Rejected.INSTANCE;
+            }
+            var proof = attachmentService.prepareJournalClearProof(nativePlayer,
+                    skillId, confirmedTargetGeneration, confirmedTargetPointer);
+            if (proof.isEmpty()) {
+                return ClearPreparation.Rejected.INSTANCE;
+            }
             var result = storePort.prepareJournalPrefixClear(
-                    (MinecraftServer) server,
-                    owner,
-                    skillId,
-                    confirmedTargetGeneration,
-                    confirmedTargetPointer);
+                    (MinecraftServer) server, proof.orElseThrow());
             return switch (result) {
                 case SkillDefinitionStoreSubmissionPort.JournalClearPreparationResult.Prepared
                         prepared -> new ClearPreparation.Prepared(

@@ -116,7 +116,7 @@ final class P11FoundationBoundaryTest {
         var root = Files.readString(JAVA_ROOT.resolve("Gramarye.java"));
         assertEquals(List.of(
                 "private final P11FoundationService p11FoundationService;",
-                "p11FoundationService = new P11FoundationService();",
+                "p11FoundationService = new P11FoundationService(p11SourceProvenance, playerSkillAttachmentService);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::stopping);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::stopped);",
                 "p11FoundationService.started(event, snapshot.p11State());"),
@@ -139,7 +139,11 @@ final class P11FoundationBoundaryTest {
                 "new P11IdentityOwner(exact, ready.limits().maxUuids())");
         assertTrue(service.contains("server == exact"));
         assertTrue(service.contains("if (server != exact) { return; }"));
-        assertTrue(service.contains("if (slot != null) { slot.retire(); }"));
+        assertOrdered(service, "terminalSummary = slot.sources.retire(nativeStopNormal);",
+                "provenance.stopped(exact);", "slot.retire();", "slot = null;", "server = null;");
+        var stopping = service.substring(service.indexOf("void stopping("), service.indexOf("void stopped("));
+        assertTrue(stopping.contains("source.stopping()"));
+        assertFalse(stopping.contains("retire("));
         assertTrue(service.contains("P11_START_WRONG_THREAD"));
         assertTrue(service.contains("P11_STOP_WRONG_THREAD"));
         var rawOwner = Files.readString(JAVA_ROOT.resolve("P5ServerRuntimeConfig.java"));
