@@ -733,10 +733,54 @@ final class P11SourceWriterClientHarness {
             require(actor.position().distanceToSqr(logoutPosition) < 0.01,
                     "later detached body replaced the protected normal-logout Pos envelope");
             consumeP4Login(activeServer, false);
+            if (cohortCase == CohortCase.MEMORY_HANDOFF) {
+                rejectStaleLifecycle(handoffOriginal, actor);
+            }
             handoffOriginal = null;
             handoffServerTransport = null;
             handoffCompleted = true;
         });
+    }
+
+    private static void rejectStaleLifecycle(ServerPlayer stale, ServerPlayer current) {
+        var server = activeServer;
+        require(server.isSameThread() && stale != current && stale.getUUID().equals(current.getUUID())
+                        && stale.isRemoved() && server.getPlayerList().getPlayer(playerId) == current,
+                "stale lifecycle probe lacks the exact A retained by the real memory handoff");
+        var before = P11NativeStorageBoundary.diagnostics(server, playerId);
+        var listener = current.connection;
+        var stats = current.getStats();
+        var advancements = current.getAdvancements();
+        var position = current.position();
+        var rejections = new ArrayList<String>();
+        try {
+            server.getPlayerList().respawn(stale, true,
+                    net.minecraft.world.entity.Entity.RemovalReason.CHANGED_DIMENSION);
+        } catch (P11QualifiedSourceOwner.SourceUnavailable expected) { rejections.add("STALE_A_RESPAWN"); }
+        require(rejections.size() == 1, "managed stale A reached original destructive respawn");
+        try { server.getPlayerList().remove(stale); }
+        catch (P11QualifiedSourceOwner.SourceUnavailable expected) { rejections.add("STALE_A_REMOVE"); }
+        require(rejections.size() == 2, "managed stale A reached original canonical-map cleanup");
+        try { current.restoreFrom(stale, true); }
+        catch (P11QualifiedSourceOwner.SourceUnavailable expected) { rejections.add("MANAGED_B_UNSCOPED_COPY"); }
+        require(rejections.size() == 3, "managed B accepted native copy outside the exact COPY scope");
+        var after = P11NativeStorageBoundary.diagnostics(server, playerId);
+        requireSource(after, false);
+        require(server.getPlayerList().getPlayer(playerId) == current && current.connection == listener
+                        && listener.player == current && listener.getConnection().isConnected()
+                        && current.getStats() == stats && current.getAdvancements() == advancements
+                        && current.position().equals(position)
+                        && after.sourceEpoch() == before.sourceEpoch() && after.sourceVersion() == before.sourceVersion()
+                        && after.sourceFault().equals(before.sourceFault())
+                        && after.sourceInput().equals(before.sourceInput())
+                        && after.equippedSlot0().equals(before.equippedSlot0())
+                        && after.resources().equals(before.resources()) && after.writers().equals(before.writers())
+                        && after.serializations() == before.serializations() && after.writes() == before.writes(),
+                "rejected stale lifecycle mutated B, its source responsibility, or native owners");
+        writeArtifact("03-managed-stale-lifecycle-rejections.txt",
+                "P11-NATIVE-STALE-LIFECYCLE-REJECTION-V1\nfixture=ACTUAL_RETAINED_HANDOFF_A\n"
+                        + "manualActorOrBoundaryFacts=false\nrejections=" + rejections
+                        + "\nbefore=" + before + "\nafter=" + after + "\n");
     }
 
     private static void handoffReady(Minecraft minecraft) {

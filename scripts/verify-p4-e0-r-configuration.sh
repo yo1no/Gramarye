@@ -278,6 +278,28 @@ verify_search_helpers() {
             || "${tool_error_output}" == *'WRONG_MISSING'* ]]; then
         fail 'P4-E0-R1 verifier could not distinguish a grep error from a missing contract'
     fi
+    printf '%s\n' \
+        ": (name == 'p9S5ClientRuntimeHarness'" \
+        "|| name == 'p11SourceWriterClientHarness')" > "${HELPER_FIXTURE}"
+    require_fixed_count "${HELPER_FIXTURE}" ": (name == 'p9S5ClientRuntimeHarness'" 1 \
+        'P9/P11 routing self-check lost the exact P9 branch'
+    require_fixed_count "${HELPER_FIXTURE}" "|| name == 'p11SourceWriterClientHarness')" 1 \
+        'P9/P11 routing self-check lost the exact P11 branch'
+    printf '%s\n' "|| name == 'p11SourceWriterClientHarnessExtra')" > "${HELPER_FIXTURE}"
+    status=0
+    count_output="$({ require_fixed_count "${HELPER_FIXTURE}" \
+        "|| name == 'p11SourceWriterClientHarness')" 1 'EXPECTED_NEAR_P11'; } 2>&1)" || status=$?
+    [[ "${status}" -eq 1 && "${count_output}" == EXPECTED_NEAR_P11* ]] \
+        || fail 'P11 routing self-check accepted a near-name harness'
+    for prefix in p9 p11; do
+        printf "name.startsWith('%sBroadHarness')\n" "${prefix}" > "${HELPER_FIXTURE}"
+        status=0
+        forbidden_output="$({ forbid_ere "${HELPER_FIXTURE}" \
+            "name\\.startsWith\\('p(9|11)[^']*'\\)" 'EXPECTED_PREFIX_ROUTING'; } 2>&1)" || status=$?
+        [[ "${status}" -eq 1 && "${forbidden_output}" == EXPECTED_PREFIX_ROUTING* ]] \
+            || fail 'P9/P11 routing self-check accepted a broad prefix'
+    done
+    printf '%s\n' 'Verified exact P9/P11 harness names; near-name and both broad-prefix routes rejected.'
     is_approved_p9_s3_mr1_changed_path \
         'src/test/java/com/yo1no/gramarye/magic/definition/store/SkillSavedDataNbtFramingTest.java' \
         || fail 'P4-E0-R1 verifier rejected an exact P9-S3-MR1 changed path'
@@ -1354,7 +1376,8 @@ verify_build_contract() {
         '? p8S5ClientHarnessMod' \
         ": name == 'p9S3ClientRuntimeHarness'" \
         '? p9S3ClientHarnessMod' \
-        ": name == 'p9S5ClientRuntimeHarness'" \
+        ": (name == 'p9S5ClientRuntimeHarness'" \
+        "|| name == 'p11SourceWriterClientHarness')" \
         '? p9S5ClientHarnessMod' \
         ': productionMod' \
         "sourceSets.create('p8S5ClientHarness')" \
@@ -1399,8 +1422,8 @@ verify_build_contract() {
         'verifyP9S3ClientRuntimeResultParser' 4 \
         'P9-S3 result parser escaped its exact definition/run/test topology'
     require_fixed_count build.gradle \
-        'tasks.named(p9S5ClientHarnessSourceSet.classesTaskName)' 2 \
-        'P9-S5 harness classes escaped the exact run plus required-test topology'
+        'tasks.named(p9S5ClientHarnessSourceSet.classesTaskName)' 3 \
+        'P9-S5 harness classes escaped the exact P9/P11 runs plus required-test topology'
     require_fixed_count build.gradle \
         'verifyP9S5ClientRuntimeResultParser' 4 \
         'P9-S5 result parser escaped its exact definition/run/test topology'
@@ -1414,7 +1437,8 @@ verify_build_contract() {
         'sourceSet(p9S5ClientHarnessSourceSet)' \
         "tasks.register('prepareP9S5ClientRuntimeHarness', Delete)" \
         "mods.named('p9S5ClientRuntimeHarness')" \
-        ": name == 'p9S5ClientRuntimeHarness'" \
+        ": (name == 'p9S5ClientRuntimeHarness'" \
+        "|| name == 'p11SourceWriterClientHarness')" \
         '? p9S5ClientHarnessMod' \
         "tasks.named('runP9S5ClientRuntimeHarness', JavaExec)" \
         "tasks.register('verifyP9S5ClientRuntimeResultParser')" \
@@ -1430,8 +1454,8 @@ verify_build_contract() {
         'P4-E0-R2Q formal cases must use exact generated loaded-mod membership'
     forbid_fixed build.gradle "name.startsWith('p4E0R2Q')" \
         'P4-E0-R2Q phase must not gain a broad loaded-mod prefix allowlist'
-    forbid_ere build.gradle "name\\.startsWith\\('p9[^']*'\\)" \
-        'P9 client harnesses must retain exact loaded-mod routing'
+    forbid_ere build.gradle "name\\.startsWith\\('p(9|11)[^']*'\\)" \
+        'P9/P11 client harnesses must retain exact loaded-mod routing'
 }
 
 verify_r2_build_contract() {

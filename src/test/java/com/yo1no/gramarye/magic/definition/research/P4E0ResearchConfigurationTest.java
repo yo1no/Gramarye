@@ -520,6 +520,13 @@ final class P4E0ResearchConfigurationTest {
                 () -> assertTrue(script.contains("EXPECTED_MISSING")),
                 () -> assertTrue(script.contains("EXPECTED_FORBIDDEN")),
                 () -> assertTrue(script.contains("EXPECTED_COUNT")),
+                () -> assertTrue(script.contains(": (name == 'p9S5ClientRuntimeHarness'")),
+                () -> assertTrue(script.contains("|| name == 'p11SourceWriterClientHarness')")),
+                () -> assertTrue(script.contains(
+                        "'tasks.named(p9S5ClientHarnessSourceSet.classesTaskName)' 3")),
+                () -> assertTrue(script.contains("EXPECTED_NEAR_P11")),
+                () -> assertTrue(script.contains("EXPECTED_PREFIX_ROUTING")),
+                () -> assertFalse(script.contains("\": name == 'p9S5ClientRuntimeHarness'\"")),
                 () -> assertTrue(script.contains("grep failed while checking")),
                 () -> assertFalse(script.contains("is_transient_launcher_log_path")),
                 () -> assertFalse(script.contains("logs/debug")),

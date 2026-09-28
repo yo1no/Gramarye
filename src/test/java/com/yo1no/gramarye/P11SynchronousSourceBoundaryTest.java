@@ -1,6 +1,7 @@
 package com.yo1no.gramarye;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -41,6 +42,26 @@ final class P11SynchronousSourceBoundaryTest {
     void preparedLoadRequiresTheExactRootOwnedPlacementScope() {
         assertThrows(P11QualifiedSourceOwner.SourceUnavailable.class,
                 () -> P11NativeStorageBoundary.loadPreparedPrimary(null, null, null));
+    }
+
+    @Test
+    void managedNoncanonicalLifecycleActorCannotReachOriginalMutation() {
+        var originals = new AtomicInteger();
+        assertThrows(P11QualifiedSourceOwner.SourceUnavailable.class, () -> {
+            P11NativeStorageBoundary.requireManagedLifecycleAccess(true, false);
+            originals.incrementAndGet();
+        });
+        assertEquals(0, originals.get());
+    }
+
+    @Test
+    void trulyUnmanagedLifecycleStillUsesNativePath() {
+        assertDoesNotThrow(() -> P11NativeStorageBoundary.requireManagedLifecycleAccess(false, false));
+    }
+
+    @Test
+    void exactManagedLifecycleOwnerOrCopyScopeRemainsEligibleForItsFurtherChecks() {
+        assertDoesNotThrow(() -> P11NativeStorageBoundary.requireManagedLifecycleAccess(true, true));
     }
 
     @Test

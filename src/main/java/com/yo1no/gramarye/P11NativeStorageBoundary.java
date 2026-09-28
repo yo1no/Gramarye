@@ -71,6 +71,20 @@ public final class P11NativeStorageBoundary {
         return root == null ? null : root.sourceOwner(player.getServer());
     }
 
+    private static P11QualifiedSourceOwner lifecycleOwner(ServerPlayer actor) {
+        // Use the exact server/thread guard before inspecting the managed account map.
+        var source = root == null ? null : root.writerOwner(actor.getServer());
+        if (source != null) {
+            requireManagedLifecycleAccess(source.hasAccount(actor.getUUID()), source.body(actor) != null);
+        }
+        return source;
+    }
+
+    /** Unmanaged UUIDs remain native; a managed UUID cannot fall through an unmatched hook. */
+    static void requireManagedLifecycleAccess(boolean managed, boolean exactOwnerOrScope) {
+        if (managed && !exactOwnerOrScope) { throw unavailable(); }
+    }
+
     static P11QualifiedSourceOwner.Diagnostics diagnostics(MinecraftServer server, java.util.UUID playerId) {
         var source = root == null ? null : root.sourceOwner(server);
         if (source == null) { throw new IllegalStateException("P11_SOURCE_NOT_ACTIVE"); }
@@ -640,7 +654,7 @@ public final class P11NativeStorageBoundary {
     }
 
     public static void remove(ServerPlayer player, Operation<Void> original) {
-        var source = owner(player);
+        var source = lifecycleOwner(player);
         var body = source == null ? null : source.body(player);
         if (body == null) { original.call(player); return; }
         if (body.logoutActive) { throw unavailable(); }
@@ -657,7 +671,7 @@ public final class P11NativeStorageBoundary {
 
     public static ServerPlayer respawn(ServerPlayer old, boolean keepEverything,
             Entity.RemovalReason reason, Operation<ServerPlayer> original) {
-        var source = owner(old);
+        var source = lifecycleOwner(old);
         var body = source == null ? null : source.body(old);
         if (body == null) { return original.call(old, keepEverything, reason); }
         if (COPY.get() != null || !source.canCopy(body)) { throw unavailable(); }
@@ -690,6 +704,8 @@ public final class P11NativeStorageBoundary {
             Operation<Void> original) {
         var scope = COPY.get();
         if (scope == null || scope.old != old || scope.next == null || scope.next.actor != next) {
+            var source = root == null ? null : root.writerOwner(next.getServer());
+            requireManagedLifecycleAccess(source != null && source.hasAccount(next.getUUID()), false);
             original.call(old, keepEverything); return;
         }
         if (scope.lineage == null) {
