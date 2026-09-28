@@ -205,6 +205,15 @@ final class P11QualifiedSourceOwner {
     private void initialize(Body body) {
         receipts.material(body.material, P11ReceiptLedger.MaterialStep.CONSTRUCTOR,
                 P11ReceiptLedger.Observation.SUCCEEDED);
+        // Observe the actual acquisition instant, not a later first-save approximation.
+        // These bounded metadata observations confer no material or writer permission.
+        receipts.observeRequiredWriter(body.source, P11ReceiptLedger.WriterKind.PLAYER_DATA);
+        receipts.observeRequiredWriter(body.source, P11ReceiptLedger.WriterKind.STATISTICS);
+        receipts.observeRequiredWriter(body.source, P11ReceiptLedger.WriterKind.ADVANCEMENTS);
+        if (server.isSingleplayerOwner(body.actor.getGameProfile())) {
+            receipts.observeRequiredWriter(body.source, P11ReceiptLedger.WriterKind.LEVEL_PLAYER);
+            receipts.observeRequiredWriter(body.source, P11ReceiptLedger.WriterKind.CACHE);
+        }
         body.account.dirty = resources.markDirty(body.account.resource, now()).orElseThrow();
         // Changing the P4 mirror early is intentional: a partial B can never reuse A's proof.
         provenance.manage(body.actor, body.source.epoch(), body.source.version());
@@ -658,7 +667,8 @@ final class P11QualifiedSourceOwner {
     Summary retire(boolean nativeStopNormal) {
         requireMain();
         var summary = new Summary(accounts.size(), resources.counts(), resources.dirtyAge(now()),
-                serializations, serializerNanos, writes, writeNanos, failures, nativeStopNormal);
+                serializations, serializerNanos, writes, writeNanos, failures, nativeStopNormal,
+                receipts.saveProgress());
         retired = true;
         accounts.clear();
         return summary;
@@ -696,14 +706,14 @@ final class P11QualifiedSourceOwner {
                 account == null ? "UNMANAGED" : account.fault.name(),
                 body == null ? "UNKNOWN" : body.inputKind.name(), equipped,
                 java.util.List.copyOf(writers), resources.counts(), serializations,
-                serializerNanos, writes, writeNanos, resources.dirtyAge(now()));
+                serializerNanos, writes, writeNanos, resources.dirtyAge(now()), receipts.saveProgress());
     }
 
     record Diagnostics(boolean active, long sourceEpoch, long sourceVersion, boolean bodyComplete,
             boolean candidatePresent, String sourceFault, String sourceInput, String equippedSlot0,
             java.util.List<WriterDiagnostic> writers, P11ControlBudgets.ResourceCounts resources,
             long serializations, long serializerNanos, long writes, long writeNanos,
-            P11ControlBudgets.DirtyAge dirtyAge) {}
+            P11ControlBudgets.DirtyAge dirtyAge, P11ReceiptLedger.SaveProgress saveProgress) {}
     record WriterDiagnostic(String kind, long attempt, boolean dirty, String terminal,
             String encode, String write, String close, String replace, String cacheAssignment) {}
 
@@ -718,7 +728,8 @@ final class P11QualifiedSourceOwner {
 
     record Summary(int accounts, P11ControlBudgets.ResourceCounts resources,
             P11ControlBudgets.DirtyAge dirtyAge, long serializations, long serializerNanos,
-            long writes, long writeNanos, long failures, boolean nativeStopNormal) {}
+            long writes, long writeNanos, long failures, boolean nativeStopNormal,
+            P11ReceiptLedger.SaveProgress saveProgress) {}
 
     static final class Body {
         final Account account;

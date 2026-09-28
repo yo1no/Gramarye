@@ -1,11 +1,15 @@
 package com.yo1no.gramarye;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
+import java.util.function.LongSupplier;
 
 /**
  * Bounded, slot-owned observations only. This ledger does not choose a qualified source,
@@ -29,11 +33,25 @@ final class P11ReceiptLedger {
     private final P11IdentityOwner identities;
     private final P11IdentityOwner.ReceiptDomain domain;
     private final Map<P11IdentityOwner.AccountKey, Entry> entries = new HashMap<>();
+    private final LongSupplier monotonicMillis;
+    private final long observationStartedMillis;
+    private final SuccessCount[] physicalSuccesses = new SuccessCount[WriterKind.values().length];
+    private long lastObservedMillis = -1;
+    private boolean observationClockRegressed;
+    private SaveProgress stoppedProgress;
     private boolean stopped;
 
     P11ReceiptLedger(P11IdentityOwner identities) {
+        this(identities, elapsedClock());
+    }
+
+    /** Package-private controlled clock seam; time is observation only, never save authority. */
+    P11ReceiptLedger(P11IdentityOwner identities, LongSupplier monotonicMillis) {
         this.identities = Objects.requireNonNull(identities, "identities");
+        this.monotonicMillis = Objects.requireNonNull(monotonicMillis, "monotonicMillis");
         this.domain = identities.claimReceiptDomain();
+        Arrays.fill(physicalSuccesses, new SuccessCount(0, false));
+        observationStartedMillis = observationMillis();
     }
 
     synchronized Optional<Source> firstSource(
@@ -147,6 +165,7 @@ final class P11ReceiptLedger {
         // Each original physical owner still owes the newly installed body. Retained attempts
         // may finish their own facts, but their captured old epoch cannot clear this obligation.
         for (var obligation : entry.physical.values()) { obligation.dirty = true; }
+        observeAllDirty(entry);
         return Optional.of(entry.source);
     }
 
@@ -204,6 +223,7 @@ final class P11ReceiptLedger {
         entry.dirty = true;
         entry.clearWriterFacts();
         for (var obligation : entry.physical.values()) { obligation.dirty = true; }
+        observeAllDirty(entry);
         return Optional.of(source);
     }
 
@@ -353,7 +373,7 @@ final class P11ReceiptLedger {
                 || (kind != WriterKind.STATISTICS && kind != WriterKind.ADVANCEMENTS)) {
             return Optional.empty();
         }
-        var obligation = entry.physical.computeIfAbsent(kind, ignored -> new PhysicalObligation());
+        var obligation = entry.physical.computeIfAbsent(kind, ignored -> newPhysicalObligation(entry, kind));
         if (obligation.material != null && obligation.material.source == source
                 && obligation.material.outcome == Observation.NOT_OBSERVED) {
             return Optional.empty();
@@ -383,17 +403,19 @@ final class P11ReceiptLedger {
 
     private Optional<PhysicalWriterReceipt> beginPhysical(Entry entry, Source source,
             WriterKind kind, IndependentMaterialReceipt material) {
-        var obligation = entry.physical.computeIfAbsent(kind, ignored -> new PhysicalObligation());
+        var obligation = entry.physical.computeIfAbsent(kind, ignored -> newPhysicalObligation(entry, kind));
         if (obligation.attempt != null && obligation.attempt.terminal == null) {
             return Optional.empty();
         }
         if (obligation.generation == Long.MAX_VALUE) {
             obligation.dirty = true;
+            observeDirty(entry, kind);
             return Optional.empty();
         }
         obligation.generation++;
         identities.revokeDischarge(domain, source.account());
         obligation.dirty = true;
+        observeDirty(entry, kind);
         var receipt = new PhysicalWriterReceipt(domain, source, kind, obligation.generation, material);
         obligation.attempt = receipt;
         return Optional.of(receipt);
@@ -403,8 +425,9 @@ final class P11ReceiptLedger {
         Objects.requireNonNull(kind, "kind");
         var entry = sourceEntry(source);
         if (entry == null || source.dataIdentity == null) { return Change.STALE; }
-        var obligation = entry.physical.computeIfAbsent(kind, ignored -> new PhysicalObligation());
+        var obligation = entry.physical.computeIfAbsent(kind, ignored -> newPhysicalObligation(entry, kind));
         obligation.dirty = true;
+        observeDirty(entry, kind);
         if (kind == WriterKind.PLAYER_DATA || kind == WriterKind.LEVEL_PLAYER) { entry.dirty = true; }
         identities.revokeDischarge(domain, source.account());
         if (obligation.generation == Long.MAX_VALUE) { return Change.EXHAUSTED; }
@@ -462,9 +485,21 @@ final class P11ReceiptLedger {
         }
         boolean current = currentPhysicalSource(receipt);
         receipt.terminal = terminal;
+        // A true old-version IO success is still observed once, but never discharges newer
+        // data. Cache assignment, attempt starts, failures and mere void return are not IO.
+        if (terminal == Terminal.COMPLETED && receipt.kind != WriterKind.CACHE) {
+            int index = receipt.kind.ordinal();
+            physicalSuccesses[index] = physicalSuccesses[index].increment();
+        }
         if (current && terminal == Terminal.COMPLETED) {
             var entry = entries.get(receipt.source.account());
             entry.physical.get(receipt.kind).dirty = false;
+            // A's independent writer can really finish while B is pending. That success
+            // cannot erase B's already-observed duty; publication will dirty the same kind,
+            // and the next current completion after handoff can end that observation.
+            if (entry.candidate == null) {
+                entry.observedDirtySince[receipt.kind.ordinal()] = OBSERVED_CLEAN;
+            }
             if (receipt.kind == WriterKind.PLAYER_DATA || receipt.kind == WriterKind.LEVEL_PLAYER) {
                 entry.dirty = false;
             }
@@ -496,7 +531,7 @@ final class P11ReceiptLedger {
                 || !completeMaterial(entry)) {
             return Optional.empty();
         }
-        var obligation = entry.physical.computeIfAbsent(kind, ignored -> new PhysicalObligation());
+        var obligation = entry.physical.computeIfAbsent(kind, ignored -> newPhysicalObligation(entry, kind));
         if (obligation.readback != null && obligation.readback.outcome == Observation.NOT_OBSERVED) {
             return Optional.empty();
         }
@@ -556,8 +591,104 @@ final class P11ReceiptLedger {
     }
 
     synchronized void stop() {
+        if (stopped) { return; }
+        stoppedProgress = saveProgress();
         stopped = true;
         entries.clear();
+    }
+
+    /** Records when the native source owner first actually acquires a required writer duty.
+     * It does not create physical receipts/obligations or change any qualification predicate. */
+    synchronized void observeRequiredWriter(Source source, WriterKind kind) {
+        Objects.requireNonNull(kind, "kind");
+        var entry = sourceEntry(source);
+        if (entry != null) { observeDirty(entry, kind); }
+    }
+
+    /** Fixed five-kind scalar snapshot; no attempts, actors, roots, or exception graphs escape. */
+    synchronized SaveProgress saveProgress() {
+        if (stopped) { return stoppedProgress; }
+        long now = observationMillis();
+        var elapsed = now >= 0 && observationStartedMillis >= 0 && now >= observationStartedMillis
+                ? OptionalLong.of(now - observationStartedMillis) : OptionalLong.empty();
+        var kinds = new ArrayList<KindProgress>(WriterKind.values().length);
+        for (var kind : WriterKind.values()) {
+            int dirtySources = 0;
+            long oldest = 0;
+            boolean unavailable = false;
+            for (var entry : entries.values()) {
+                long since = entry.observedDirtySince[kind.ordinal()];
+                if (since == UNOBSERVED_DIRTY || since == OBSERVED_CLEAN) { continue; }
+                dirtySources++;
+                if (since < 0 || now < 0 || now < since) { unavailable = true; }
+                else { oldest = Math.max(oldest, now - since); }
+            }
+            var age = dirtySources > 0 && !unavailable ? OptionalLong.of(oldest) : OptionalLong.empty();
+            var successes = physicalSuccesses[kind.ordinal()];
+            kinds.add(new KindProgress(kind, dirtySources, age, unavailable,
+                    successes.value(), successes.saturated()));
+        }
+        return new SaveProgress(elapsed, kinds);
+    }
+
+    record KindProgress(WriterKind kind, int dirtySources, OptionalLong oldestDirtyMillis,
+            boolean ageUnavailable, long successfulPhysicalWrites, boolean counterSaturated) {}
+
+    record SaveProgress(OptionalLong elapsedMillis, List<KindProgress> kinds) {
+        SaveProgress { kinds = List.copyOf(kinds); }
+    }
+
+    record SuccessCount(long value, boolean saturated) {
+        SuccessCount {
+            if (value < 0) { throw new IllegalArgumentException("negative success count"); }
+        }
+        SuccessCount increment() {
+            return value == Long.MAX_VALUE ? new SuccessCount(value, true)
+                    : new SuccessCount(value + 1, saturated);
+        }
+    }
+
+    private static final long UNOBSERVED_DIRTY = -2;
+    private static final long OBSERVED_CLEAN = -3;
+
+    private PhysicalObligation newPhysicalObligation(Entry entry, WriterKind kind) {
+        observeDirty(entry, kind);
+        return new PhysicalObligation();
+    }
+
+    private void observeDirty(Entry entry, WriterKind kind) {
+        long now = observationMillis();
+        int index = kind.ordinal();
+        long prior = entry.observedDirtySince[index];
+        if (prior == UNOBSERVED_DIRTY || prior == OBSERVED_CLEAN) {
+            entry.observedDirtySince[index] = now;
+        }
+    }
+
+    private void observeAllDirty(Entry entry) {
+        for (var kind : WriterKind.values()) {
+            if (entry.observedDirtySince[kind.ordinal()] != UNOBSERVED_DIRTY
+                    || entry.physical.containsKey(kind)) { observeDirty(entry, kind); }
+        }
+    }
+
+    private long observationMillis() {
+        long now = monotonicMillis.getAsLong();
+        if (now < 0 || observationClockRegressed) { return -1; }
+        if (lastObservedMillis >= 0 && now < lastObservedMillis) {
+            observationClockRegressed = true;
+            return -1;
+        }
+        lastObservedMillis = now;
+        return now;
+    }
+
+    private static LongSupplier elapsedClock() {
+        long origin = System.nanoTime();
+        return () -> {
+            long elapsed = System.nanoTime() - origin;
+            return elapsed < 0 ? -1 : elapsed / 1_000_000L;
+        };
     }
 
     private Entry matching(Source source) {
@@ -951,6 +1082,8 @@ final class P11ReceiptLedger {
         private MaterialReceipt materialReceipt;
         private MaterialReceipt candidate;
         private final EnumMap<WriterKind, PhysicalObligation> physical = new EnumMap<>(WriterKind.class);
+        // Observation metadata is deliberately separate from the authority-bearing dirty facts.
+        private final long[] observedDirtySince = new long[WriterKind.values().length];
         private final Observation[] material = new Observation[MaterialStep.values().length];
         private final Observation[] membership = new Observation[MembershipStep.values().length];
         private final Observation[] readiness = new Observation[ReadinessStep.values().length];
@@ -959,6 +1092,7 @@ final class P11ReceiptLedger {
 
         private Entry(Source source) {
             this.source = source;
+            Arrays.fill(observedDirtySince, UNOBSERVED_DIRTY);
             clearFacts();
         }
 

@@ -3,6 +3,10 @@ package com.yo1no.gramarye;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonParseException;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryPoolMXBean;
+import java.lang.management.MemoryType;
+import java.lang.management.MemoryUsage;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -101,6 +105,7 @@ final class P11SourceWriterClientHarness {
     private static volatile long failedPlayerAttempt;
     private static volatile boolean playerReplaceFaultInjected;
     private static volatile boolean materialMismatchObserved;
+    private static boolean heapObservationTaken;
     private static volatile int expectedSlotFailures;
     private static String malformedStatsSha256;
     private static final long P4_OBSERVATION_CASE = 0xB11L;
@@ -895,7 +900,7 @@ final class P11SourceWriterClientHarness {
             currentActor(server);
             // The normal synchronous original owners perform every write. Neither the boolean
             // return nor files alone is used as a substitute for actual writer outcomes.
-            boolean saved = server.saveEverything(true, false, false);
+            boolean saved = saveWithHeapObservation(server, artifact);
             var diagnostic = P11NativeStorageBoundary.diagnostics(server, playerId);
             writeArtifact(artifact, "saveEverythingReturn=" + saved + "\n" + diagnostic + "\n");
             requireSource(diagnostic, false);
@@ -910,6 +915,121 @@ final class P11SourceWriterClientHarness {
             }
             require(equippedReference.equals(requireReference(diagnostic)), "save changed equipped reference");
         });
+    }
+
+    /** Once per engineering process, around an already-required save, never an added save. */
+    private static boolean saveWithHeapObservation(MinecraftServer server, String saveArtifact) {
+        if (heapObservationTaken) { return server.saveEverything(true, false, false); }
+        heapObservationTaken = true;
+        var pools = new ArrayList<HeapPoolWindow>();
+        P11QualifiedSourceOwner.Diagnostics before = null;
+        String setupIssue = "NONE";
+        long observationStart = System.nanoTime();
+        try {
+            before = P11NativeStorageBoundary.diagnostics(server, playerId);
+            var heapPools = ManagementFactory.getMemoryPoolMXBeans().stream()
+                    .filter(pool -> pool.getType() == MemoryType.HEAP)
+                    .sorted(java.util.Comparator.comparing(MemoryPoolMXBean::getName)).toList();
+            // Evidence row bound only; it is not a player, JVM heap or native writer limit.
+            require(!heapPools.isEmpty() && heapPools.size() <= 16, "heap pool inventory unavailable or exceeds evidence row bound");
+            for (var pool : heapPools) { pools.add(new HeapPoolWindow(pool)); }
+            for (var pool : pools) {
+                try {
+                    require(pool.bean.isValid(), "heap pool became invalid before reset");
+                    pool.before = pool.bean.getUsage();
+                    require(pool.before != null, "heap pool before usage unavailable");
+                    pool.bean.resetPeakUsage();
+                    pool.resetAt = System.nanoTime();
+                    pool.issue = "NONE";
+                } catch (RuntimeException failure) { pool.issue = heapIssue(failure); }
+            }
+        } catch (RuntimeException failure) { setupIssue = heapIssue(failure); }
+
+        long nativeStart = System.nanoTime();
+        Boolean actualReturn = null;
+        Throwable primary = null;
+        try {
+            actualReturn = server.saveEverything(true, false, false);
+            return actualReturn;
+        } catch (RuntimeException | Error failure) {
+            primary = failure;
+            throw failure;
+        } finally {
+            long nativeEnd = System.nanoTime();
+            try {
+                for (var pool : pools) {
+                    if (!"NONE".equals(pool.issue)) { continue; }
+                    try {
+                        require(pool.bean.isValid(), "heap pool became invalid after native save");
+                        pool.peak = pool.bean.getPeakUsage();
+                        pool.after = pool.bean.getUsage();
+                        pool.readAt = System.nanoTime();
+                        require(pool.peak != null && pool.after != null, "heap pool peak/after usage unavailable");
+                    } catch (RuntimeException failure) { pool.issue = heapIssue(failure); }
+                }
+                long observationEnd = System.nanoTime();
+                P11QualifiedSourceOwner.Diagnostics after = null;
+                String afterIssue = "NONE";
+                try { after = P11NativeStorageBoundary.diagnostics(server, playerId); }
+                catch (RuntimeException failure) { afterIssue = heapIssue(failure); }
+                boolean observed = "NONE".equals(setupIssue) && "NONE".equals(afterIssue)
+                        && !pools.isEmpty() && pools.stream().allMatch(pool -> "NONE".equals(pool.issue));
+                var text = new StringBuilder("P11-NATIVE-SAVE-HEAP-WINDOW-V1\n")
+                        .append("status=").append(observed ? "OBSERVED" : "UNAVAILABLE").append('\n')
+                        .append("scope=WHOLE_VM_HEAP_POOLS_AROUND_EXISTING_SYNCHRONOUS_NATIVE_SAVE\n")
+                        .append("includesOtherVmThreadsGcAndObserverOverhead=true\n")
+                        .append("serializerExclusiveAllocationBytes=NOT_ISOLATED\n")
+                        .append("simultaneousHeapPeak=NOT_DERIVED_FROM_INDEPENDENT_POOL_MAXIMA\n")
+                        .append("universalMemoryBound=false\nforcedGc=false\nextraSaveOrSerializerCalls=0\n")
+                        .append("peakResetAndReadsAreSequential=true\nundefinedInitOrMax=-1\n")
+                        .append("sealedBytesMeaning=LOGICAL_RETENTION_ACCOUNTING_NOT_VM_HEAP\n")
+                        .append("saveArtifact=").append(saveArtifact).append('\n')
+                        .append("nativeSaveReturn=").append(actualReturn == null ? "THREW" : actualReturn).append('\n')
+                        .append("nativePrimary=").append(primary == null ? "NONE" : heapIssue(primary)).append('\n')
+                        .append("nativeDurationNanos=").append(nativeEnd - nativeStart).append('\n')
+                        .append("observationEnvelopeNanos=").append(observationEnd - observationStart).append('\n')
+                        .append("setupIssue=").append(setupIssue).append("\nafterDiagnosticsIssue=").append(afterIssue).append('\n');
+                for (var pool : pools) {
+                    text.append("pool=").append(pool.name).append("\nstatus=")
+                            .append("NONE".equals(pool.issue) ? "OBSERVED" : "UNAVAILABLE")
+                            .append("\nissue=").append(pool.issue)
+                            .append("\nbefore=").append(pool.before == null ? "UNAVAILABLE" : pool.before)
+                            .append("\npeak=").append(pool.peak == null ? "UNAVAILABLE" : pool.peak)
+                            .append("\nafter=").append(pool.after == null ? "UNAVAILABLE" : pool.after)
+                            .append("\nafterMinusBeforeUsedBytes=").append(pool.before == null || pool.after == null
+                                    ? "UNAVAILABLE" : Long.toString(pool.after.getUsed() - pool.before.getUsed()))
+                            .append("\nresetToReadNanos=").append("NONE".equals(pool.issue)
+                                    ? Long.toString(pool.readAt - pool.resetAt) : "UNAVAILABLE").append('\n');
+                }
+                text.append("beforeDiagnostics=").append(before == null ? "UNAVAILABLE" : before)
+                        .append("\nafterDiagnostics=").append(after == null ? "UNAVAILABLE" : after).append('\n');
+                writeArtifact("04-native-save-heap-window.txt", text.toString());
+                require(observed, "native save returned but required heap-pool observation is unavailable");
+            } catch (RuntimeException | Error observationFailure) {
+                if (primary != null) {
+                    if (primary != observationFailure) { primary.addSuppressed(observationFailure); }
+                }
+                else { throw observationFailure; }
+            }
+        }
+    }
+
+    private static String heapIssue(Throwable failure) {
+        var text = (failure.getClass().getName() + ": " + failure.getMessage()).replace('\n', ' ').replace('\r', ' ');
+        return text.length() <= 256 ? text : text.substring(0, 256);
+    }
+
+    private static final class HeapPoolWindow {
+        final MemoryPoolMXBean bean;
+        final String name;
+        MemoryUsage before, peak, after;
+        long resetAt, readAt;
+        String issue = "NOT_RESET";
+        HeapPoolWindow(MemoryPoolMXBean bean) {
+            this.bean = bean;
+            name = bean.getName();
+            require(name.length() <= 256, "heap pool name exceeds evidence bound");
+        }
     }
 
     private static void firstSaveComplete(Minecraft minecraft) {
