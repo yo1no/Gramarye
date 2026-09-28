@@ -171,6 +171,7 @@ class P4C1ApiGateTest {
     @Test
     void writeAnyTagCounterHasOneProductionCoordinateAndNoBufferingFallback()
             throws Exception {
+        assertLexicalMaskerContract();
         var production = javaSources(MAIN_JAVA);
         var counter = load(P4C1PhaseTypes.PLAYER_PACKAGE + "BoundedCountingDataOutput");
         var result = load(P4C1PhaseTypes.PLAYER_PACKAGE + "AttachmentTagSizeResult");
@@ -524,11 +525,138 @@ class P4C1ApiGateTest {
         throw new AssertionError("project root not found");
     }
 
+    private static void assertLexicalMaskerContract() {
+        var forbidden = "writeUnnamedTag";
+        var source = String.join("",
+                "/* " + forbidden + " " + "x".repeat(65_536) + " */\r\n",
+                "// " + forbidden + "\r",
+                "var longLiteral = \"" + "x".repeat(65_536) + forbidden + "\";\n",
+                "var escapes = \"" + "\\\"\\\\///*".repeat(8_192) + forbidden + "\";\n",
+                "var quote = '\\''; var slash = '\\\\';\n",
+                "var text = \"\"\"\n" + forbidden + " // /* \"\n",
+                "\\\"\"\" " + forbidden + "\n\"\"\";\n",
+                "var empty = \"\";\n",
+                "visibleCall();\n".repeat(8_192),
+                "tailCall();");
+        var masked = withoutCommentsAndLiterals(source);
+        assertEquals(source.length(), masked.length());
+        assertFalse(masked.contains(forbidden), "only comments/literals contain the forbidden name");
+        assertTrue(masked.contains("visibleCall();"));
+        assertTrue(masked.endsWith("tailCall();"));
+        for (var index = 0; index < source.length(); index++) {
+            if (source.charAt(index) == '\r' || source.charAt(index) == '\n'
+                    || masked.charAt(index) == '\r' || masked.charAt(index) == '\n') {
+                assertEquals(source.charAt(index), masked.charAt(index),
+                        "line terminator changed at " + index);
+            }
+        }
+        for (var control : List.of(
+                "NbtIo." + forbidden + "(tag, output);",
+                "/* doc */ NbtIo." + forbidden + "(tag, output); // tail",
+                "var url = \"https://example.invalid/*not a comment*/\"; NbtIo."
+                        + forbidden + "(tag, output);",
+                "var quote = '\\''; NbtIo." + forbidden + "(tag, output);",
+                "var text = \"\"\"\nignored\n\"\"\"; NbtIo."
+                        + forbidden + "(tag, output);")) {
+            assertTrue(withoutCommentsAndLiterals(control).contains(forbidden),
+                    "actual forbidden code must survive lexical masking");
+        }
+    }
+
+    /** Iterative local masker, matching the existing P4-E2 lexical approach without regex recursion. */
     private static String withoutCommentsAndLiterals(String source) {
-        return source
-                .replaceAll("(?s)/\\*.*?\\*/", " ")
-                .replaceAll("(?m)//.*$", " ")
-                .replaceAll("\"(?:\\\\.|[^\"\\\\])*\"", "\"\"")
-                .replaceAll("'(?:\\\\.|[^'\\\\])*'", "''");
+        var masked = new StringBuilder(source.length());
+        var state = LexicalState.CODE;
+        for (var index = 0; index < source.length(); index++) {
+            var current = source.charAt(index);
+            var hasNext = index + 1 < source.length();
+            var next = hasNext ? source.charAt(index + 1) : '\0';
+            switch (state) {
+                case CODE -> {
+                    if (current == '/' && next == '/') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.LINE_COMMENT;
+                    } else if (current == '/' && next == '*') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.BLOCK_COMMENT;
+                    } else if (isTextBlockOpeningDelimiterAt(source, index)) {
+                        masked.append("   ");
+                        index += 2;
+                        state = LexicalState.TEXT_BLOCK;
+                    } else if (current == '"') {
+                        masked.append(' ');
+                        state = LexicalState.STRING;
+                    } else if (current == '\'') {
+                        masked.append(' ');
+                        state = LexicalState.CHARACTER;
+                    } else {
+                        masked.append(current);
+                    }
+                }
+                case LINE_COMMENT -> {
+                    appendMasked(masked, current);
+                    if (current == '\r' || current == '\n') { state = LexicalState.CODE; }
+                }
+                case BLOCK_COMMENT -> {
+                    if (current == '*' && next == '/') {
+                        masked.append("  ");
+                        index++;
+                        state = LexicalState.CODE;
+                    } else { appendMasked(masked, current); }
+                }
+                case STRING, CHARACTER -> {
+                    appendMasked(masked, current);
+                    if (current == '\\' && hasNext) {
+                        appendMasked(masked, next);
+                        index++;
+                    } else if ((state == LexicalState.STRING && current == '"')
+                            || (state == LexicalState.CHARACTER && current == '\'')) {
+                        state = LexicalState.CODE;
+                    }
+                }
+                case TEXT_BLOCK -> {
+                    if (isTripleQuoteAt(source, index)) {
+                        masked.append("   ");
+                        index += 2;
+                        state = LexicalState.CODE;
+                    } else if (current == '\\' && hasNext) {
+                        appendMasked(masked, current);
+                        appendMasked(masked, next);
+                        index++;
+                    } else { appendMasked(masked, current); }
+                }
+            }
+        }
+        if (masked.length() != source.length()) {
+            throw new AssertionError("lexical masker changed source length");
+        }
+        return masked.toString();
+    }
+
+    private static boolean isTextBlockOpeningDelimiterAt(String source, int index) {
+        if (!isTripleQuoteAt(source, index)) { return false; }
+        for (var cursor = index + 3; cursor < source.length(); cursor++) {
+            var character = source.charAt(cursor);
+            if (character == '\r' || character == '\n') { return true; }
+            if (character != ' ' && character != '\t' && character != '\f') { return false; }
+        }
+        return false;
+    }
+
+    private static boolean isTripleQuoteAt(String source, int index) {
+        return index + 2 < source.length()
+                && source.charAt(index) == '"'
+                && source.charAt(index + 1) == '"'
+                && source.charAt(index + 2) == '"';
+    }
+
+    private static void appendMasked(StringBuilder masked, char character) {
+        masked.append(character == '\r' || character == '\n' ? character : ' ');
+    }
+
+    private enum LexicalState {
+        CODE, LINE_COMMENT, BLOCK_COMMENT, STRING, CHARACTER, TEXT_BLOCK
     }
 }
