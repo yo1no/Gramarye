@@ -258,9 +258,29 @@ final class P4E2ApiGateTest {
                 () -> assertTrue(Arrays.stream(continuation.getDeclaredFields())
                         .noneMatch(field -> Modifier.isPublic(field.getModifiers())
                                 || Modifier.isProtected(field.getModifiers()))),
-                () -> assertTrue(Arrays.stream(continuation.getDeclaredMethods())
-                        .noneMatch(method -> Modifier.isPublic(method.getModifiers())
-                                || Modifier.isProtected(method.getModifiers()))));
+                () -> assertEquals(Set.of("metadata"), Arrays.stream(continuation.getDeclaredMethods())
+                        .filter(method -> Modifier.isPublic(method.getModifiers())
+                                || Modifier.isProtected(method.getModifiers()))
+                        .map(method -> method.getName()).collect(Collectors.toSet())));
+        var metadata = nested(recovery, "MetadataContinuation");
+        assertTrue(Arrays.stream(metadata.getDeclaredConstructors())
+                .allMatch(constructor -> Modifier.isPrivate(constructor.getModifiers())));
+        assertTrue(Arrays.stream(metadata.getDeclaredFields())
+                .allMatch(field -> Modifier.isPrivate(field.getModifiers())));
+        var accessor = continuation.getDeclaredMethod("metadata",
+                P4E2OnlineReconciliationDependency.class);
+        assertEquals(metadata, accessor.getReturnType());
+        var resume = metadata.getDeclaredMethod("resume",
+                com.yo1no.gramarye.P11NativeStorageBoundary.MetadataLease.class);
+        assertEquals(boolean.class, resume.getReturnType());
+        var manaObservation = com.yo1no.gramarye.P11NativeStorageBoundary.MetadataManaObservation.class;
+        assertTrue(Arrays.stream(manaObservation.getDeclaredConstructors())
+                .allMatch(constructor -> Modifier.isPrivate(constructor.getModifiers())));
+        assertTrue(Arrays.stream(manaObservation.getDeclaredFields())
+                .allMatch(field -> Modifier.isPrivate(field.getModifiers())));
+        assertFalse(Arrays.stream(metadata.getDeclaredMethods())
+                .anyMatch(method -> method.getName().equals("setReady")
+                        || method.getName().equals("recoverPlayer")));
     }
 
     @Test
@@ -355,13 +375,13 @@ final class P4E2ApiGateTest {
                         recoveryStatus.getRecordComponents()[3]
                                 .getGenericType()
                                 .getTypeName()),
-                () -> assertEquals(Set.of("reconcileAfterRecovery"),
+                () -> assertEquals(Set.of("reconcileAfterRecovery", "resumeMissingStages"),
                         Arrays.stream(dependency.getDeclaredMethods())
                                 .filter(method -> Modifier.isPublic(method.getModifiers())
                                         || Modifier.isProtected(method.getModifiers()))
                                 .map(method -> method.getName())
                                 .collect(Collectors.toSet())),
-                () -> assertEquals(1L,
+                () -> assertEquals(2L,
                         Arrays.stream(dependency.getDeclaredMethods())
                                 .filter(method -> Modifier.isPublic(method.getModifiers())
                                         || Modifier.isProtected(method.getModifiers()))

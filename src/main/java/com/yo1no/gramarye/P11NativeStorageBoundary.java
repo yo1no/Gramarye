@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.mojang.authlib.GameProfile;
 import com.mojang.serialization.Dynamic;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService;
 import com.yo1no.gramarye.magic.runtime.mana.P11ManaMaterial;
 import java.io.File;
 import java.io.IOException;
@@ -55,7 +56,9 @@ public final class P11NativeStorageBoundary {
     private static final ThreadLocal<CacheScope> CACHE = new ThreadLocal<>();
     private static final ThreadLocal<PrimaryReadRequest> PRIMARY_READ = new ThreadLocal<>();
     private static final ThreadLocal<ConfigurationScope> CONFIGURATION = new ThreadLocal<>();
+    private static final ThreadLocal<MetadataManaObservation> METADATA_MANA = new ThreadLocal<>();
     private static final ThreadLocal<P11QualifiedSourceOwner.Body> SELECTED_SERIALIZE = new ThreadLocal<>();
+    private static final ThreadLocal<MinecraftServer> STOP_SERVER = new ThreadLocal<>();
     private static final ResourceLocation SKILLS = ResourceLocation.fromNamespaceAndPath("gramarye", "player_skills");
     private static final ResourceLocation MANA = ResourceLocation.fromNamespaceAndPath("gramarye", "player_mana");
     private static long observerFailures;
@@ -69,6 +72,286 @@ public final class P11NativeStorageBoundary {
 
     private static P11QualifiedSourceOwner owner(ServerPlayer player) {
         return root == null ? null : root.sourceOwner(player.getServer());
+    }
+
+    static P11QualifiedSourceOwner nativeSourceOwner(ServerPlayer actor) {
+        return actor == null ? null : owner(actor);
+    }
+
+    /** Minted only for the sole recovery owner's private-constructor continuation. */
+    public static MetadataLease retainMetadata(ServerPlayer actor,
+            SkillSubmissionRecoveryService.MetadataContinuation continuation) {
+        java.util.Objects.requireNonNull(continuation, "continuation");
+        if (!continuation.authorizesRetention(actor)) { return null; }
+        var source = nativeSourceOwner(actor);
+        var body = source == null ? null : source.body(actor);
+        if (body == null || !source.canSerialize(body) || !nativeDeliveryEligible(actor)) { return null; }
+        if (body.account.metadata != null) { throw unavailable(); }
+        var witness = source.captureSelection(body);
+        if (!source.retainNativeRoot(body, P11ControlBudgets.Root.TRANSITION)) { throw unavailable(); }
+        var lease = new MetadataLease(source, body, witness, actor.connection.getConnection(), continuation);
+        body.account.metadata = lease;
+        return lease;
+    }
+
+    public static boolean metadataCurrent(MetadataLease lease) {
+        return metadataSessionCurrent(lease)
+                && lease.owner.metadataCurrent(lease.body, lease.version, lease.witness);
+    }
+
+    /** Completion observation only: never authorizes resume or refresh of a stale snapshot. */
+    public static boolean metadataSessionCurrent(MetadataLease lease) {
+        return lease != null && !lease.closed && lease.body.account.metadata == lease
+                && lease.body.source.epoch() == lease.epoch && lease.owner.canSerialize(lease.body)
+                && nativeDeliveryEligible(lease.body.actor)
+                && lease.body.actor.connection.getConnection() == lease.connection;
+    }
+
+    /** Only a known completed owned publication may request this refresh, never UNKNOWN. */
+    public static boolean refreshMetadata(MetadataLease lease) {
+        if (lease == null || lease.closed || lease.body.account.metadata != lease
+                || lease.body.source.epoch() != lease.epoch || !lease.owner.canSerialize(lease.body)
+                || !nativeDeliveryEligible(lease.body.actor)
+                || lease.body.actor.connection.getConnection() != lease.connection) { return false; }
+        lease.witness = lease.owner.captureSelection(lease.body);
+        lease.version = lease.body.source;
+        return true;
+    }
+
+    public static void releaseMetadata(MetadataLease lease) {
+        if (lease == null || lease.closed) { return; }
+        lease.closed = true;
+        if (lease.body.account.metadata == lease) { lease.body.account.metadata = null; }
+        lease.owner.releaseNativeRoot(lease.body, P11ControlBudgets.Root.TRANSITION);
+    }
+
+    /** Excluded engineering companion may drive this same-owner entry, not mint its receipt. */
+    static boolean resumeMetadataAfterCauseRemoved(ServerPlayer actor) {
+        var owner = nativeSourceOwner(actor);
+        var body = owner == null ? null : owner.body(actor);
+        return body != null && resumeMetadata(body.account.metadata);
+    }
+
+    private static boolean resumeMetadata(MetadataLease lease) {
+        return metadataCurrent(lease) && lease.continuation.resume(lease);
+    }
+
+    /** Observation from the sole P7 sender; it does not mint or resume a continuation. */
+    public static void metadataInitialSync(ServerPlayer actor, long epoch,
+            SkillSubmissionRecoveryService.MetadataInitialStage stage) {
+        try {
+            var source = nativeSourceOwner(actor);
+            var body = source == null ? null : source.body(actor);
+            var lease = body == null ? null : body.account.metadata;
+            if (metadataSessionCurrent(lease)) { lease.continuation.observeInitialSync(lease, epoch, stage); }
+        } catch (RuntimeException | Error secondary) {
+            if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
+        }
+    }
+
+    /** Call-local P7 observation; only the native Mana owner can attest its one publication. */
+    public static MetadataManaObservation beginMetadataManaObservation(ServerPlayer actor, long epoch) {
+        try {
+            var source = nativeSourceOwner(actor);
+            var body = source == null ? null : source.body(actor);
+            var lease = body == null ? null : body.account.metadata;
+            if (!metadataCurrent(lease) || !lease.continuation.matchesSession(lease, epoch)) { return null; }
+            var token = new MetadataManaObservation(lease, METADATA_MANA.get());
+            METADATA_MANA.set(token);
+            return token;
+        } catch (RuntimeException | Error secondary) {
+            if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
+            return null;
+        }
+    }
+
+    static void metadataManaPublished(P11QualifiedSourceOwner owner, P11QualifiedSourceOwner.Body body,
+            P11ReceiptLedger.Source before) {
+        var token = METADATA_MANA.get();
+        if (token == null || token.closed || token.lease.owner != owner || token.lease.body != body) { return; }
+        if (token.publications != 0 || token.expected != before
+                || body.source.epoch() != before.epoch() || before.version() == Long.MAX_VALUE
+                || body.source.version() != before.version() + 1) {
+            token.unexpected = true;
+            return;
+        }
+        token.publications++;
+        token.expected = body.source;
+    }
+
+    public static void endMetadataManaObservation(MetadataManaObservation token, boolean normal) {
+        if (token == null || token.closed || METADATA_MANA.get() != token) { return; }
+        try {
+            var lease = token.lease;
+            boolean known = normal && !token.unexpected && !lease.closed && lease.body.account.metadata == lease
+                    && lease.body.source == token.expected
+                    && lease.owner.metadataSkillsCurrent(lease.body, lease.witness)
+                    && refreshMetadata(lease);
+            if (!known) { lease.continuation.manaObservationFailed(lease); }
+        } catch (RuntimeException | Error secondary) {
+            token.lease.continuation.manaObservationFailed(token.lease);
+            if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
+        } finally {
+            token.closed = true;
+            if (token.previous == null) { METADATA_MANA.remove(); } else { METADATA_MANA.set(token.previous); }
+        }
+    }
+
+    public static final class MetadataManaObservation {
+        private final MetadataLease lease;
+        private final MetadataManaObservation previous;
+        private P11ReceiptLedger.Source expected;
+        private int publications;
+        private boolean unexpected, closed;
+        private MetadataManaObservation(MetadataLease lease, MetadataManaObservation previous) {
+            this.lease = lease; this.previous = previous; expected = lease.version;
+        }
+    }
+
+    public static final class MetadataLease {
+        private final P11QualifiedSourceOwner owner;
+        private final P11QualifiedSourceOwner.Body body;
+        private final long epoch;
+        private final Connection connection;
+        private final SkillSubmissionRecoveryService.MetadataContinuation continuation;
+        private P11ReceiptLedger.Source version;
+        private P11QualifiedSourceOwner.SelectionWitness witness;
+        private boolean closed;
+        private MetadataLease(P11QualifiedSourceOwner owner, P11QualifiedSourceOwner.Body body,
+                P11QualifiedSourceOwner.SelectionWitness witness, Connection connection,
+                SkillSubmissionRecoveryService.MetadataContinuation continuation) {
+            this.owner = owner; this.body = body; this.epoch = body.source.epoch();
+            this.version = body.source; this.witness = witness; this.connection = connection;
+            this.continuation = continuation;
+        }
+    }
+
+    /** Exact canonical read, not an actor/source or writer grant. */
+    public static boolean isManagedCanonicalAdvancements(PlayerAdvancements advancements, ServerPlayer actor) {
+        var source = nativeSourceOwner(actor);
+        return source != null && source.canonicalAssociated(advancements, actor);
+    }
+
+    /** Check transport before native send can enqueue on a closed connection. Prepared B is legal. */
+    public static boolean nativeDeliveryEligible(ServerPlayer actor) {
+        if (actor == null || actor.connection == null) { return false; }
+        var listener = actor.connection;
+        var connection = listener.getConnection();
+        return connection != null && connection.isConnected()
+                && connection.getPacketListener() == listener && listener.isAcceptingMessages();
+    }
+
+    public static boolean managedRecipeReceiver(ServerPlayer actor) {
+        var source = nativeSourceOwner(actor);
+        return source != null && (source.body(actor) != null
+                || provisionalActor(actor));
+    }
+
+    public static boolean detachedPresence(ServerPlayer actor) {
+        var source = nativeSourceOwner(actor);
+        return source != null && source.detachedPresence(actor);
+    }
+
+    /** Called at the exact native listener/map-removal callsite, before destructive removal. */
+    public static boolean preserveCanonical(ServerPlayer actor, Object canonical) {
+        var source = nativeSourceOwner(actor);
+        if (source == null) { return false; }
+        var body = canonical instanceof PlayerAdvancements advancements
+                ? source.canonicalAdvancements(advancements)
+                : canonical instanceof ServerStatsCounter stats ? source.canonicalStats(stats) : null;
+        return body != null && body.actor.getUUID().equals(actor.getUUID());
+    }
+
+    private static boolean provisionalActor(ServerPlayer actor) {
+        var copy = COPY.get();
+        if (copy != null && copy.associatedActor == actor) { return true; }
+        var configuration = CONFIGURATION.get();
+        var selection = configuration == null ? null : configuration.selection;
+        return selection != null && !selection.closed && selection.associatedActor == actor;
+    }
+
+    static boolean provisionalAssociation(PlayerAdvancements advancements, ServerPlayer actor) {
+        var copy = COPY.get();
+        if (copy != null && copy.associatedActor == actor && copy.previous.advancements == advancements) { return true; }
+        var configuration = CONFIGURATION.get();
+        var selection = configuration == null ? null : configuration.selection;
+        return selection != null && !selection.closed && selection.associatedActor == actor
+                && selection.previous.advancements == advancements;
+    }
+
+    public static boolean observeAssociation(PlayerAdvancements advancements, ServerPlayer previous, ServerPlayer next) {
+        var source = nativeSourceOwner(next);
+        if (source == null) { return true; }
+        var body = source.canonicalAdvancements(advancements);
+        if (body == null || previous == next) { return true; }
+        if (body.actor != previous) { return false; }
+        var copy = COPY.get();
+        if (copy != null && copy.owner == source && copy.old == previous && copy.association == null) {
+            copy.associatedActor = next;
+            copy.association = new P11ProvisionalAssociation(advancements, previous, next,
+                    body.source, body.source.epoch(), body.source.version());
+            return true;
+        }
+        var configuration = CONFIGURATION.get();
+        var selection = configuration == null ? null : configuration.selection;
+        if (selection != null && !selection.closed && selection.owner == source
+                && selection.previous == body && selection.constructorStarted && selection.association == null) {
+            selection.associatedActor = next;
+            selection.association = new P11ProvisionalAssociation(advancements, previous, next,
+                    body.source, body.source.epoch(), body.source.version());
+            return true;
+        }
+        return false;
+    }
+
+    static void nativeEscape(ServerPlayer actor) {
+        var copy = COPY.get();
+        if (copy != null && copy.associatedActor == actor && copy.association != null) {
+            copy.association.effectOrUnknownEscape();
+        }
+        var configuration = CONFIGURATION.get();
+        var selection = configuration == null ? null : configuration.selection;
+        if (selection != null && selection.associatedActor == actor && selection.association != null) {
+            selection.association.effectOrUnknownEscape();
+        }
+    }
+
+    /** Exact named constructor callback seam; absence of a log is not no-escape evidence. */
+    public static void constructorCallback(ServerPlayer actor) { nativeEscape(actor); }
+
+    /** Required native respawn material prefix, independent from callback/caller readiness. */
+    public static void respawnMaterial(ServerPlayer player) {
+        var copy = COPY.get();
+        if (copy != null && copy.next != null && copy.next.actor == player) {
+            copy.owner.callerComplete(copy.next);
+        }
+    }
+
+    public static void preConstructorCleanupReturned(ServerPlayer old) {
+        var copy = COPY.get();
+        if (copy != null && copy.old == old) { copy.cleanupLegal = true; }
+    }
+
+    public static void nativeCleanupResult(ServerPlayer actor, P11NativeCleanup.Result result) {
+        var source = nativeSourceOwner(actor);
+        if (source != null && result != null && result.matches(actor)) {
+            source.nativeCleanup(source.body(actor), result.structuralComplete());
+        }
+    }
+
+    private static boolean withdrawAssociation(P11QualifiedSourceOwner source,
+            P11QualifiedSourceOwner.Body previous, P11ProvisionalAssociation association,
+            ServerPlayer candidate, boolean cleanupLegal) {
+        if (association == null || candidate == null || previous == null) { return false; }
+        var canonical = previous.advancements;
+        var receiver = ((P11CanonicalAdvancements.Access) canonical).p11$associatedPlayer();
+        // Removed A needs its already established original logout envelope, never a newly
+        // invented respawn capsule. An opaque/native teardown cannot establish this branch.
+        return association.withdraw(canonical, receiver, previous.source,
+                previous.source.epoch(), previous.source.version(),
+                source.associationSourceCurrent(previous),
+                cleanupLegal && (!previous.actor.isRemoved() || previous.envelope != null),
+                () -> canonical.setPlayer(previous.actor));
     }
 
     private static P11QualifiedSourceOwner lifecycleOwner(ServerPlayer actor) {
@@ -128,6 +411,7 @@ public final class P11NativeStorageBoundary {
                     && parent.selection.previous.actor.getUUID().equals(profile.getId())) { throw unavailable(); }
         }
         var selection = new LoginSelection(source, previous);
+        if (!source.retainNativeRoot(previous, P11ControlBudgets.Root.TRANSITION)) { throw unavailable(); }
         context.selection = selection;
         boolean normal = false;
         try {
@@ -180,11 +464,16 @@ public final class P11NativeStorageBoundary {
                 try { selection.owner.release(selection.memory); }
                 finally {
                     if (selection.primary != null) { selection.primary.clear(); }
-                    selection.owner.abortLoginIndependent(selection.independent);
+                    boolean withdrawn = !selection.consumed && withdrawAssociation(selection.owner,
+                            selection.previous, selection.association, selection.associatedActor,
+                            selection.previous.envelope != null);
+                    selection.owner.abortLoginIndependent(selection.independent, selection.associatedActor, withdrawn);
                 }
             }
         } catch (RuntimeException | Error secondary) {
             if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
+        } finally {
+            selection.owner.releaseNativeRoot(selection.previous, P11ControlBudgets.Root.TRANSITION);
         }
     }
 
@@ -241,7 +530,10 @@ public final class P11NativeStorageBoundary {
         } finally {
             LOAD.remove();
             closeSelection(selection);
-            if (scope != null && !normal) { failWithoutReplacingPrimary(source, scope.body, P11QualifiedSourceOwner.Fault.PARTIAL); }
+            if (scope != null && !normal) {
+                lifecycleFailureWithoutReplacingPrimary(source, scope.body);
+                faultLogoutAfterAttempt(source, scope.body);
+            }
         }
     }
 
@@ -657,15 +949,23 @@ public final class P11NativeStorageBoundary {
         var source = lifecycleOwner(player);
         var body = source == null ? null : source.body(player);
         if (body == null) { original.call(player); return; }
-        if (body.logoutActive) { throw unavailable(); }
+        if (body.logoutActive || body.logoutAttempted) { throw unavailable(); }
+        if (!source.retainNativeRoot(body, P11ControlBudgets.Root.TRANSITION)) { throw unavailable(); }
+        body.logoutAttempted = true;
         body.logoutActive = true;
+        releaseMetadata(body.account.metadata);
+        var cleanup = P11NativeCleanup.beginLogout(player);
         boolean normal = false;
         try { original.call(player); normal = true; }
         finally {
+            var outcome = P11NativeCleanup.finishLogout(cleanup, normal);
             body.logoutActive = false;
             if (normal && body.pendingEnvelope != null) { body.envelope = body.pendingEnvelope; }
             body.pendingEnvelope = null;
-            if (!normal) { failWithoutReplacingPrimary(source, body, P11QualifiedSourceOwner.Fault.CLEANUP); }
+            if (outcome != P11NativeCleanup.LogoutOutcome.WHOLE_NATIVE_COMPLETED) {
+                lifecycleFailureWithoutReplacingPrimary(source, body);
+            }
+            source.releaseNativeRoot(body, P11ControlBudgets.Root.TRANSITION);
         }
     }
 
@@ -677,6 +977,7 @@ public final class P11NativeStorageBoundary {
         if (COPY.get() != null || !source.canCopy(body)) { throw unavailable(); }
         var lineage = source.lineage(body).orElseThrow(P11NativeStorageBoundary::unavailable);
         var scope = new CopyScope(source, old, lineage);
+        if (!source.retainNativeRoot(body, P11ControlBudgets.Root.TRANSITION)) { throw unavailable(); }
         COPY.set(scope);
         boolean normal = false;
         try {
@@ -689,14 +990,21 @@ public final class P11NativeStorageBoundary {
             COPY.remove();
             if (!normal) {
                 if (scope.next != null) {
-                    failWithoutReplacingPrimary(source, scope.next, P11QualifiedSourceOwner.Fault.PARTIAL);
+                    lifecycleFailureWithoutReplacingPrimary(source, scope.next);
+                    faultLogoutAfterAttempt(source, scope.next);
                 } else {
-                    try { source.constructorEscaped(body, null); }
+                    try {
+                        if (!withdrawAssociation(source, body, scope.association,
+                                scope.associatedActor, scope.cleanupLegal)) {
+                            source.constructorEscaped(body, scope.associatedActor);
+                        }
+                    }
                     catch (RuntimeException | Error secondary) {
                         if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
                     }
                 }
             }
+            source.releaseNativeRoot(body, P11ControlBudgets.Root.TRANSITION);
         }
     }
 
@@ -712,6 +1020,7 @@ public final class P11NativeStorageBoundary {
             scope.owner.fail(scope.next, P11QualifiedSourceOwner.Fault.MATERIAL);
             throw unavailable();
         }
+        if (scope.association != null) { scope.association.copyStarted(); }
         var input = root.provenance().volatileInput(scope.lineage);
         scope.next.inputKind = P11QualifiedSourceOwner.InputKind.MEMORY;
         scope.owner.beginInput(scope.next, input);
@@ -731,6 +1040,34 @@ public final class P11NativeStorageBoundary {
             P11QualifiedSourceOwner.Body body, P11QualifiedSourceOwner.Fault reason) {
         try { owner.fail(body, reason); }
         catch (RuntimeException | Error secondary) {
+            if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
+        }
+    }
+
+    private static void lifecycleFailureWithoutReplacingPrimary(P11QualifiedSourceOwner owner,
+            P11QualifiedSourceOwner.Body body) {
+        try { owner.nativeLifecycleFailed(body); }
+        catch (RuntimeException | Error secondary) {
+            if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
+        }
+    }
+
+    /** A new exact-B native logout, only after the failed copy attempt has unwound. */
+    private static void faultLogoutAfterAttempt(P11QualifiedSourceOwner source,
+            P11QualifiedSourceOwner.Body body) {
+        var actor = body.actor;
+        var server = actor.getServer();
+        if (COPY.get() != null || !body.complete || body.logoutAttempted || body.logoutActive
+                || source.body(actor) != body || body.account.current != body
+                || body.account.candidate != null || actor.isRemoved()
+                || server.getPlayerList().getPlayer(actor.getUUID()) != actor
+                || server.getPlayerList().getPlayers().stream().noneMatch(value -> value == actor)
+                || actor.serverLevel().getEntity(actor.getId()) != actor
+                || actor.serverLevel().getEntity(actor.getUUID()) != actor) { return; }
+        try {
+            // Do not use listener.player: the original caller has not assigned B yet.
+            server.getPlayerList().remove(actor);
+        } catch (RuntimeException | Error secondary) {
             if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
         }
     }
@@ -1099,10 +1436,27 @@ public final class P11NativeStorageBoundary {
     }
 
     public static void stop(MinecraftServer server, Operation<Void> original) {
+        var previous = STOP_SERVER.get();
+        STOP_SERVER.set(server);
         boolean normal = false;
         try { original.call(); normal = true; }
         finally {
-            if (root != null) { root.nativeStopTerminal(server, normal); }
+            try { if (root != null) { root.nativeStopTerminal(server, normal); } }
+            finally { if (previous == null) { STOP_SERVER.remove(); } else { STOP_SERVER.set(previous); } }
+        }
+    }
+
+    /** Exact original stop caller, before its unique world-lock close; not a public save grant. */
+    public static void flushDetachedIndependentAtStop(MinecraftServer server,
+            LevelStorageSource.LevelStorageAccess storage) {
+        if (server == null || STOP_SERVER.get() != server || root == null) { return; }
+        try {
+            var source = root.sourceOwner(server);
+            if (source != null && root.writerOwner(storage, null) == source) {
+                source.flushDetachedIndependentAtStop();
+            }
+        } catch (RuntimeException | Error secondary) {
+            if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
         }
     }
 
@@ -1126,6 +1480,8 @@ public final class P11NativeStorageBoundary {
         P11SourceProvenance.Lineage lineage;
         PrimaryReadRequest primary;
         ServerPlayer actor;
+        ServerPlayer associatedActor;
+        P11ProvisionalAssociation association;
         boolean consumed, closed, constructorStarted;
         LoginSelection(P11QualifiedSourceOwner owner, P11QualifiedSourceOwner.Body previous) {
             this.owner = owner; this.previous = previous; this.version = previous.source;
@@ -1202,12 +1558,17 @@ public final class P11NativeStorageBoundary {
     private static final class CopyScope {
         final P11QualifiedSourceOwner owner;
         final ServerPlayer old;
+        final P11QualifiedSourceOwner.Body previous;
+        ServerPlayer associatedActor;
+        P11ProvisionalAssociation association;
         P11SourceProvenance.Lineage lineage;
         P11QualifiedSourceOwner.Body next;
         PlayerSkillAttachmentService.P11AttachmentReadResult readResult;
         boolean skillsRead, manaRead, manaReadObserved;
+        boolean cleanupLegal;
         CopyScope(P11QualifiedSourceOwner owner, ServerPlayer old, P11SourceProvenance.Lineage lineage) {
             this.owner = owner; this.old = old; this.lineage = lineage;
+            this.previous = owner.body(old);
         }
     }
 

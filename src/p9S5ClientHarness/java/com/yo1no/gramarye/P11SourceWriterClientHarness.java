@@ -105,6 +105,9 @@ final class P11SourceWriterClientHarness {
     private static volatile long failedPlayerAttempt;
     private static volatile boolean playerReplaceFaultInjected;
     private static volatile boolean materialMismatchObserved;
+    private static volatile P11NativeCanonicalProbe.Report canonicalReport;
+    private static volatile ServerPlayer cleanupActor;
+    private static volatile String cleanupPrimaryHash;
     private static boolean heapObservationTaken;
     private static volatile int expectedSlotFailures;
     private static String malformedStatsSha256;
@@ -144,6 +147,8 @@ final class P11SourceWriterClientHarness {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     static void observeNativeP4Login(PlayerEvent.PlayerLoggedInEvent event) {
         if (!enabled() || terminal || !(event.getEntity() instanceof ServerPlayer actor)) { return; }
+        if (metadataCase() || (P11NativeOwnedCopyProbe.selected() && phase == Phase.REOPEN_PLAY)) { return; }
+        // Scoped metadata/quarantine probes observe their real outcomes, not a Ready facade campaign.
         try {
             var server = actor.getServer();
             boolean restart = phase == Phase.REOPEN_PLAY;
@@ -159,7 +164,7 @@ final class P11SourceWriterClientHarness {
             if (handoff) {
                 var selected = P11NativeStorageBoundary.diagnostics(server, actor.getUUID());
                 writeArtifact("03-handoff-live-reservations.txt", selected.toString() + "\n");
-                boolean memory = cohortCase == CohortCase.MEMORY_HANDOFF;
+                boolean memory = memoryHandoffCase();
                 require(selected.bodyComplete() && !selected.candidatePresent()
                                 && selected.sourceInput().equals(memory ? "MEMORY" : "PRIMARY")
                                 && selected.resources().sealedSnapshots() == (memory ? 2 : 0)
@@ -259,6 +264,11 @@ final class P11SourceWriterClientHarness {
                 case RESPAWN_READY -> respawnReady(minecraft);
                 case STATS_IO_FAULT -> statsIoFaultComplete(minecraft);
                 case MATERIAL_MISMATCH -> materialMismatchComplete(minecraft);
+                case NATIVE_REWARD -> nativeRewardComplete(minecraft);
+                case NATIVE_END -> nativeEndComplete(minecraft);
+                case CLEANUP_FAULT -> cleanupFaultComplete(minecraft);
+                case CANONICAL_RELOAD -> canonicalReloadComplete(minecraft);
+                case CLONE_NATIVE -> cloneNativeComplete(minecraft);
                 case PLAYER_REPLACE_FAULT -> playerReplaceFaultComplete(minecraft);
                 case FIRST_SAVE -> firstSaveComplete(minecraft);
                 case FIRST_STOP -> firstStopComplete(minecraft);
@@ -313,7 +323,7 @@ final class P11SourceWriterClientHarness {
             // Locked ClientHooks.firePlayerLogout is also called by world creation with a
             // null LocalPlayer and null Connection. That is not this cohort's PLAY logout.
             if (event.getPlayer() == null && event.getConnection() == null) {
-                if (cohortCase == CohortCase.CONSTRUCTOR_FAILURE && P11NativeConstructorFaultProbe.fired()
+                if (constructorFaultFired()
                         && phase == Phase.HANDOFF_PLAY) {
                     // clearClientLevel already retired the PLAY view. The later original
                     // CONFIG failure disconnect therefore has no LocalPlayer to report.
@@ -338,7 +348,7 @@ final class P11SourceWriterClientHarness {
                             && loginCount == logoutCount + clientHandoffs + 1,
                     "logout did not retire the exact previously observed PLAY player/listener/transport");
             logoutCount = Math.incrementExact(logoutCount);
-            if (cohortCase == CohortCase.CONSTRUCTOR_FAILURE && P11NativeConstructorFaultProbe.fired()) {
+            if (constructorFaultFired()) {
                 require(constructorFaultClientDisconnects == 0, "duplicate constructor-fault client disconnect");
                 constructorFaultClientDisconnects = 1;
             }
@@ -350,26 +360,42 @@ final class P11SourceWriterClientHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void clientRespawned(ClientPlayerNetworkEvent.Clone event) {
-        if (!enabled() || terminal || cohortCase != CohortCase.NATIVE_RESPAWN) { return; }
+        if (!enabled() || terminal || (cohortCase != CohortCase.NATIVE_RESPAWN
+                && cohortCase != CohortCase.NATIVE_REWARD && cohortCase != CohortCase.NATIVE_END
+                && !P11NativeOwnedCopyProbe.selected() && !cloneCase())) { return; }
         try {
             var minecraft = Minecraft.getInstance();
-            require(minecraft.isSameThread() && phase == Phase.RESPAWN_PLAY && clientRespawns == 0
+            boolean ownedCopy = P11NativeOwnedCopyProbe.selected();
+            var expectedTransport = ownedCopy ? latestLoginTransport : firstTransport;
+            require(minecraft.isSameThread() && (phase == Phase.RESPAWN_PLAY || phase == Phase.NATIVE_REWARD
+                            || phase == Phase.CLONE_NATIVE || phase == Phase.NATIVE_END
+                            || (ownedCopy && phase == Phase.REOPEN_READY))
+                            && clientRespawns < (cohortCase == CohortCase.NATIVE_END ? 2 : 1)
                             && event.getOldPlayer() == latestLoginPlayer
                             && event.getNewPlayer() != event.getOldPlayer()
                             && event.getNewPlayer() == minecraft.player
                             && event.getNewPlayer().connection == latestLoginListener
-                            && event.getConnection() == firstTransport
-                            && latestLoginTransport == firstTransport && firstTransport.isConnected(),
+                            && event.getConnection() == expectedTransport
+                            && latestLoginTransport == expectedTransport && expectedTransport.isConnected(),
                     "native client respawn did not replace only the exact player on its existing connection");
             latestLoginPlayer = event.getNewPlayer();
-            clientRespawns = 1;
+            clientRespawns++;
         } catch (RuntimeException | Error failure) { recordFailure(failure); }
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void serverCloned(PlayerEvent.Clone event) {
-        if (!enabled() || terminal || cohortCase != CohortCase.NATIVE_RESPAWN) { return; }
+        if (!enabled() || terminal || (cohortCase != CohortCase.NATIVE_RESPAWN && cohortCase != CohortCase.NATIVE_END)) { return; }
         try {
+            if (cohortCase == CohortCase.NATIVE_END) {
+                require(phase == Phase.NATIVE_END && activeServer.isSameThread() && serverCloneEvents == 0
+                                && event.getOriginal() instanceof ServerPlayer old && old.getServer() == activeServer
+                                && event.getEntity() instanceof ServerPlayer next && next != old
+                                && next.getUUID().equals(playerId) && !event.isWasDeath(),
+                        "true End native Clone has wrong actor/phase/count");
+                serverCloneEvents++;
+                return;
+            }
             require(activeServer.isSameThread() && phase == Phase.RESPAWN_PLAY && serverCloneEvents == 0
                             && event.getOriginal() == respawnOriginal && !event.isWasDeath()
                             && event.getEntity() instanceof ServerPlayer next && next != respawnOriginal
@@ -382,8 +408,17 @@ final class P11SourceWriterClientHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void serverRespawned(PlayerEvent.PlayerRespawnEvent event) {
-        if (!enabled() || terminal || cohortCase != CohortCase.NATIVE_RESPAWN) { return; }
+        if (!enabled() || terminal || (cohortCase != CohortCase.NATIVE_RESPAWN && cohortCase != CohortCase.NATIVE_END)) { return; }
         try {
+            if (cohortCase == CohortCase.NATIVE_END) {
+                require(phase == Phase.NATIVE_END && activeServer.isSameThread() && serverCloneEvents == 1
+                                && serverRespawnEvents == 0 && event.isEndConquered()
+                                && event.getEntity() instanceof ServerPlayer next && next.getServer() == activeServer
+                                && next.getUUID().equals(playerId),
+                        "true End native respawn has wrong actor/parameter/order");
+                serverRespawnEvents++;
+                return;
+            }
             require(activeServer.isSameThread() && (phase == Phase.RESPAWN_PLAY || phase == Phase.RESPAWN_READY)
                             && serverCloneEvents == 1 && serverRespawnEvents == 0
                             && event.getEntity() == respawnClone,
@@ -412,6 +447,31 @@ final class P11SourceWriterClientHarness {
                 P11NativeConstructorFaultProbe.assertFinalWriters(event.getServer());
                 writeArtifact("03-constructor-fault-unwind.txt",
                         P11NativeConstructorFaultProbe.afterFailureReport().toString());
+            } else if (associationFaultCase()) {
+                writeArtifact("03-association-fault-unwind.txt", P11AssociationFaultProbe.report());
+                if (cohortCase == CohortCase.ASSOCIATION_FAILURE) {
+                    requireSource(diagnostic, false);
+                    requireWriters(diagnostic);
+                } else {
+                    require(!diagnostic.sourceFault().equals("NONE") && !diagnostic.candidatePresent(),
+                            "unknown constructor callback lost its isolation fault");
+                }
+            } else if (cohortCase == CohortCase.CLEANUP_FAILURE) {
+                var owner = P11NativeStorageBoundary.nativeSourceOwner(cleanupActor);
+                var body = owner == null ? null : owner.body(cleanupActor);
+                require(body != null && body.complete && body.account.cleanupUnknown
+                                && body.envelope == null && body.logoutAttempted
+                                && diagnostic.resources().dirtyUuids() == 1,
+                        "structural-only fault was erased by stop saving");
+                // A later refused whole writer may set sourceFault=WRITE; this does not erase
+                // cleanupUnknown. Independent physical outcomes are recorded, not promoted
+                // to newest-version durability if a later native stat mutation remains dirty.
+                require(writer(diagnostic, "LEVEL_PLAYER").dirty(),
+                        "unknown cleanup was turned into a whole level-player save grant");
+            } else if (cohortCase == CohortCase.FULL_B_FAULT) {
+                require(diagnostic.bodyComplete() && !diagnostic.candidatePresent(),
+                        "post-material fault lost full B material custody");
+                requireWriters(diagnostic);
             } else if (cohortCase == CohortCase.MALFORMED_STATS && expectedSlotFailures > 0) {
                 requireIndependentStatsFault(diagnostic, false);
             } else {
@@ -485,6 +545,21 @@ final class P11SourceWriterClientHarness {
             case "constructor-failure" -> CohortCase.CONSTRUCTOR_FAILURE;
             case "material-mismatch" -> CohortCase.MATERIAL_MISMATCH;
             case "native-respawn" -> CohortCase.NATIVE_RESPAWN;
+            case "native-reward" -> CohortCase.NATIVE_REWARD;
+            case "native-end" -> CohortCase.NATIVE_END;
+            case "owned-copy-raw" -> CohortCase.OWNED_COPY_RAW;
+            case "owned-copy-marker" -> CohortCase.OWNED_COPY_MARKER;
+            case "presence-handoff" -> CohortCase.PRESENCE_HANDOFF;
+            case "association-failure" -> CohortCase.ASSOCIATION_FAILURE;
+            case "association-unknown" -> CohortCase.ASSOCIATION_UNKNOWN;
+            case "cleanup-failure" -> CohortCase.CLEANUP_FAILURE;
+            case "canonical-reload" -> CohortCase.CANONICAL_RELOAD;
+            case "metadata-recovery" -> CohortCase.METADATA_RECOVERY;
+            case "metadata-reconciliation" -> CohortCase.METADATA_RECONCILIATION;
+            case "metadata-session" -> CohortCase.METADATA_SESSION;
+            case "metadata-source-change" -> CohortCase.METADATA_SOURCE_CHANGE;
+            case "clone-parity" -> CohortCase.CLONE_PARITY;
+            case "full-b-fault" -> CohortCase.FULL_B_FAULT;
             default -> throw new IllegalStateException("unknown P11 native cohort case");
         };
         require(minecraft.level == null && minecraft.player == null
@@ -542,7 +617,7 @@ final class P11SourceWriterClientHarness {
                 p11.save.oldestDirtyWarnMillis = 30000
                 """);
         String selectedFixture = fixture.toString();
-        if (cohortCase == CohortCase.MEMORY_HANDOFF || cohortCase == CohortCase.CONSTRUCTOR_FAILURE) {
+        if (memoryHandoffCase() || cohortCase == CohortCase.CONSTRUCTOR_FAILURE || associationFaultCase()) {
             selectedFixture = selectedFixture.replace("p11.save.maxSealedSnapshots = 1",
                             "p11.save.maxSealedSnapshots = 4")
                     .replace("p11.save.maxSealedBytes = 1", "p11.save.maxSealedBytes = 67108864");
@@ -577,6 +652,7 @@ final class P11SourceWriterClientHarness {
 
     private static void firstPlay(Minecraft minecraft) {
         if (!playReady(minecraft)) { return; }
+        if (metadataCase() && !P11NativeMetadataProbe.ready()) { return; }
         verifyClientTransport(minecraft);
         require(loginCount == 1 && logoutCount == 0, "unexpected initial client lifecycle count");
         firstServer = minecraft.getSingleplayerServer();
@@ -598,7 +674,8 @@ final class P11SourceWriterClientHarness {
             requireSource(diagnostic, false);
             require("ABSENT".equals(diagnostic.sourceInput()),
                     "fresh owned world did not observe true native source absence");
-            consumeP4Login(server, false);
+            if (metadataCase()) { writeArtifact("02-native-metadata.txt", P11NativeMetadataProbe.report()); }
+            else { consumeP4Login(server, false); }
             writeArtifact("02-first-play-diagnostics.txt", diagnostic.toString() + "\n");
             if (cohortCase == CohortCase.POSITIVE) {
                 var guards = P11NativeGuardProbe.run(server, currentActor(server),
@@ -615,6 +692,11 @@ final class P11SourceWriterClientHarness {
 
     private static void firstReady(Minecraft minecraft) {
         if (!serverWorkComplete) { return; }
+        if (metadataCase()) {
+            transition(Phase.FIRST_SAVE);
+            scheduleSave("04-first-save-diagnostics.txt");
+            return;
+        }
         event("NORMAL_NON_OP_PLAYER_READY");
         transition(Phase.COMMAND);
         minecraft.getConnection().sendCommand(COMMAND);
@@ -623,6 +705,50 @@ final class P11SourceWriterClientHarness {
     private static void commandCompleted(Minecraft minecraft) {
         if (commandCompletions != 1 || equippedReference == null) { return; }
         event("PRODUCTION_STARTER_SUBMISSION_EQUIPPED " + equippedReference);
+        if (cloneCase()) {
+            transition(Phase.CLONE_NATIVE);
+            scheduleServerWork(() -> {
+                var report = P11NativeCloneProbe.run(activeServer, currentActor(activeServer), output.resolve("native-clone"));
+                writeArtifact("03-native-clone.txt", report.toString());
+                require(report.passed(), "actual native clone probe failed: " + report.failure());
+                expectedSlotFailures = Math.addExact(expectedSlotFailures, report.expectedFailures());
+            });
+            return;
+        }
+        if (cohortCase == CohortCase.CANONICAL_RELOAD) {
+            transition(Phase.CANONICAL_RELOAD);
+            scheduleServerWork(() -> {
+                try { P11NativeCanonicalProbe.start(activeServer, currentActor(activeServer), output.resolve("canonical")); }
+                catch (IOException failure) { throw new IllegalStateException("canonical probe setup", failure); }
+            });
+            return;
+        }
+        if (cohortCase == CohortCase.CLEANUP_FAILURE) {
+            transition(Phase.CLEANUP_FAULT);
+            scheduleServerWork(() -> {
+                cleanupActor = currentActor(activeServer);
+                writeArtifact("03-native-cleanup.txt", P11NativeCleanupProbe.run(activeServer, cleanupActor));
+                cleanupPrimaryHash = hashFile(worldDirectory.resolve("playerdata").resolve(playerId + ".dat"));
+            });
+            return;
+        }
+        if (cohortCase == CohortCase.NATIVE_REWARD) {
+            transition(Phase.NATIVE_REWARD);
+            scheduleServerWork(() -> {
+                var report = P11NativeRewardProbe.run(activeServer, currentActor(activeServer),
+                        output.resolve("native-reward"));
+                writeArtifact("03-native-reward.txt", report.toString());
+                require(report.passed(), "actual native reward probe failed: " + report.failure());
+                expectedSlotFailures = Math.addExact(expectedSlotFailures, report.expectedFailures());
+            });
+            return;
+        }
+        if (cohortCase == CohortCase.NATIVE_END) {
+            transition(Phase.NATIVE_END);
+            scheduleServerWork(() -> P11NativeEndProbe.start(activeServer, currentActor(activeServer),
+                    output.resolve("native-end")));
+            return;
+        }
         if (cohortCase == CohortCase.NATIVE_RESPAWN) {
             transition(Phase.RESPAWN_ARM);
             scheduleServerWork(() -> {
@@ -643,8 +769,8 @@ final class P11SourceWriterClientHarness {
             });
             return;
         }
-        if (cohortCase == CohortCase.MEMORY_HANDOFF || cohortCase == CohortCase.SYNCHRONOUS_HANDOFF
-                || cohortCase == CohortCase.CONSTRUCTOR_FAILURE) {
+        if (memoryHandoffCase() || cohortCase == CohortCase.SYNCHRONOUS_HANDOFF
+                || cohortCase == CohortCase.CONSTRUCTOR_FAILURE || associationFaultCase()) {
             transition(Phase.HANDOFF_PLAY);
             scheduleServerWork(() -> {
                 var actor = currentActor(activeServer);
@@ -656,7 +782,20 @@ final class P11SourceWriterClientHarness {
                     P11NativeConstructorFaultProbe.arm(activeServer, actor);
                     shutdownOrdinal = 1; // Original CONFIG failure owns the ensuing native stop.
                 }
-                actor.connection.switchToConfig();
+                if (associationFaultCase()) {
+                    P11AssociationFaultProbe.arm(activeServer, actor, cohortCase == CohortCase.ASSOCIATION_UNKNOWN);
+                    shutdownOrdinal = 1;
+                }
+                if (cohortCase == CohortCase.PRESENCE_HANDOFF) {
+                    P11NativePresenceProbe.prepare(activeServer, actor);
+                    P11NativeDeliveryProbe.prepare(activeServer, actor);
+                    P11NativeOperationBoundary.engineering(actor, () -> {
+                        actor.connection.switchToConfig();
+                        writeArtifact("03-native-presence.txt", P11NativePresenceProbe.run(activeServer, actor));
+                        writeArtifact("03-native-detached-recipe.txt", P11NativeDeliveryProbe.detached(activeServer, actor));
+                        return null;
+                    });
+                } else { actor.connection.switchToConfig(); }
                 require(actor.isRemoved() && activeServer.getPlayerList().getPlayer(playerId) == null,
                         "original native reconfiguration did not complete normal logout cleanup");
                 // Engineering-only mutation of the actual detached source tests that later body
@@ -711,11 +850,13 @@ final class P11SourceWriterClientHarness {
     }
 
     private static void handoffPlay(Minecraft minecraft) {
+        if (associationFaultCase()) { associationFailureComplete(minecraft); return; }
         if (cohortCase == CohortCase.CONSTRUCTOR_FAILURE) {
             constructorFailureComplete(minecraft);
             return;
         }
         if (clientHandoffs != 1 || !playReady(minecraft)) { return; }
+        if (cohortCase == CohortCase.PRESENCE_HANDOFF && !P11NativeDeliveryProbe.clientReady()) { return; }
         verifyClientTransport(minecraft);
         require(minecraft.getSingleplayerServer() == firstServer && latestLoginTransport == firstTransport
                         && loginCount == 2 && logoutCount == 0 && configurationReturned,
@@ -729,7 +870,7 @@ final class P11SourceWriterClientHarness {
             writeArtifact("03-handoff-source.txt", diagnostic.toString() + "\n");
             requireSource(diagnostic, false);
             require(diagnostic.sourceEpoch() > priorSourceEpoch
-                            && diagnostic.sourceInput().equals(cohortCase == CohortCase.MEMORY_HANDOFF
+                            && diagnostic.sourceInput().equals(memoryHandoffCase()
                                     ? "MEMORY" : "PRIMARY"),
                     "handoff selected the wrong source or reused old actor authority");
             require(equippedReference.equals(requireReference(diagnostic))
@@ -738,7 +879,10 @@ final class P11SourceWriterClientHarness {
             require(actor.position().distanceToSqr(logoutPosition) < 0.01,
                     "later detached body replaced the protected normal-logout Pos envelope");
             consumeP4Login(activeServer, false);
-            if (cohortCase == CohortCase.MEMORY_HANDOFF) {
+            if (cohortCase == CohortCase.PRESENCE_HANDOFF) {
+                writeArtifact("03-native-delivery-same-transport.txt", P11NativeDeliveryProbe.finish(activeServer, actor));
+            }
+            if (memoryHandoffCase()) {
                 rejectStaleLifecycle(handoffOriginal, actor);
             }
             handoffOriginal = null;
@@ -877,6 +1021,111 @@ final class P11SourceWriterClientHarness {
         finish(minecraft, null);
     }
 
+    private static boolean memoryHandoffCase() {
+        return cohortCase == CohortCase.MEMORY_HANDOFF || cohortCase == CohortCase.PRESENCE_HANDOFF;
+    }
+
+    private static boolean metadataCase() {
+        return cohortCase == CohortCase.METADATA_RECOVERY || cohortCase == CohortCase.METADATA_RECONCILIATION
+                || cohortCase == CohortCase.METADATA_SESSION || cohortCase == CohortCase.METADATA_SOURCE_CHANGE;
+    }
+
+    private static boolean cloneCase() {
+        return cohortCase == CohortCase.CLONE_PARITY || cohortCase == CohortCase.FULL_B_FAULT;
+    }
+
+    private static boolean associationFaultCase() {
+        return cohortCase == CohortCase.ASSOCIATION_FAILURE || cohortCase == CohortCase.ASSOCIATION_UNKNOWN;
+    }
+
+    private static boolean constructorFaultFired() {
+        return cohortCase == CohortCase.CONSTRUCTOR_FAILURE && P11NativeConstructorFaultProbe.fired()
+                || associationFaultCase() && P11AssociationFaultProbe.fired();
+    }
+
+    private static void associationFailureComplete(Minecraft minecraft) {
+        if (!P11AssociationFaultProbe.fired() || !activeServer.isShutdown()) { return; }
+        require(configurationReturned && clientHandoffs == 0 && loginCount == 1
+                        && constructorFaultClientDisconnects == 1 && !firstTransport.isConnected()
+                        && minecraft.getSingleplayerServer() == null && minecraft.level == null
+                        && minecraft.player == null && minecraft.getConnection() == null
+                        && stopWriterSnapshots == 1 && p4LoginArms == 1 && p4LoginObservations == 1,
+                "association fault did not preserve the original failed constructor lifecycle");
+        writeArtifact("05-association-fault-native-stop.txt", P11AssociationFaultProbe.report()
+                + "terminal=" + P11NativeStorageBoundary.terminalDiagnostics() + "\n");
+        require(productionJarSha256.equals(hashFile(productionJar)), "loaded production JAR changed");
+        activeServer = null; handoffOriginal = null; handoffServerTransport = null;
+        finish(minecraft, null);
+    }
+
+    private static void nativeRewardComplete(Minecraft minecraft) {
+        if (!serverWorkComplete || clientRespawns != 1) { return; }
+        verifyClientTransport(minecraft);
+        transition(Phase.FIRST_SAVE);
+        scheduleSave("04-first-save-diagnostics.txt");
+    }
+
+    private static void nativeEndComplete(Minecraft minecraft) {
+        P11NativeEndProbe.clientObserve(minecraft);
+        if (!serverWorkComplete || !P11NativeEndProbe.ready() || clientRespawns != 2 || !playReady(minecraft)) { return; }
+        verifyClientTransport(minecraft);
+        writeArtifact("03-native-end.txt", P11NativeEndProbe.report());
+        transition(Phase.FIRST_SAVE);
+        scheduleSave("04-first-save-diagnostics.txt");
+    }
+
+    private static void cloneNativeComplete(Minecraft minecraft) {
+        if (!serverWorkComplete || clientRespawns != 1) { return; }
+        if (cohortCase == CohortCase.FULL_B_FAULT) {
+            transition(Phase.FIRST_STOP);
+            stopWorld(minecraft);
+        } else {
+            if (!playReady(minecraft)) { return; }
+            transition(Phase.FIRST_SAVE);
+            scheduleSave("04-first-save-diagnostics.txt");
+        }
+    }
+
+    private static void cleanupFaultComplete(Minecraft minecraft) {
+        if (!serverWorkComplete) { return; }
+        transition(Phase.FIRST_STOP);
+        stopWorld(minecraft);
+    }
+
+    private static void closeOwnedFaultTransport() {
+        require(activeServer != null && activeServer.isShutdown()
+                        && activeServer == firstServer && phase == Phase.FIRST_STOP
+                        && firstTransport != null && logoutCount == 1
+                        && latestLoginTransport == null && latestLoginPlayer == null
+                        && latestLoginListener == null,
+                "fault cohort lost ownership of its actual client transport");
+        // These real faults already removed the sole actor from PlayerList. Native removeAll
+        // therefore has no roster entry through which to close this test connection. This is
+        // explicit engineering-process teardown, not a repaired/complete native logout claim.
+        // Wait for actual server termination so this teardown cannot enqueue a second native
+        // PlayerList.remove against the already-attempted body.
+        firstTransport.disconnect(net.minecraft.network.chat.Component.literal("P11 owned fault cohort complete"));
+        event("OWNED_FAULT_CLIENT_TRANSPORT_EXPLICITLY_CLOSED");
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void canonicalServerStep(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+        if (!enabled() || terminal || phase != Phase.CANONICAL_RELOAD || !serverWorkComplete
+                || event.getServer() != activeServer || canonicalReport != null) { return; }
+        canonicalReport = P11NativeCanonicalProbe.serverStep(activeServer);
+    }
+
+    private static void canonicalReloadComplete(Minecraft minecraft) {
+        P11NativeCanonicalProbe.clientObserve(minecraft);
+        var report = canonicalReport;
+        if (report == null) { return; }
+        writeArtifact("03-canonical-reload.txt", report.toString());
+        require(report.passed(), "native canonical/client probe failed: " + report.failure());
+        expectedSlotFailures = Math.addExact(expectedSlotFailures, 1); // Actual owned PA writer fault.
+        transition(Phase.FIRST_SAVE);
+        scheduleSave("04-first-save-diagnostics.txt");
+    }
+
     private static void statsIoFaultComplete(Minecraft minecraft) {
         if (!serverWorkComplete) { return; }
         require(failedStatsAttempt > 0, "real stats failure had no captured physical attempt");
@@ -913,7 +1162,17 @@ final class P11SourceWriterClientHarness {
                 require(writer(diagnostic, "PLAYER_DATA").attempt() > failedPlayerAttempt,
                         "replace recovery did not use a fresh playerdata attempt");
             }
-            require(equippedReference.equals(requireReference(diagnostic)), "save changed equipped reference");
+            if (!metadataCase() && !(P11NativeOwnedCopyProbe.selected() && phase == Phase.SECOND_SAVE)) {
+                require(equippedReference.equals(requireReference(diagnostic)), "save changed equipped reference");
+            }
+            if (cohortCase == CohortCase.NATIVE_END) {
+                writeArtifact(phase == Phase.FIRST_SAVE ? "04-native-end-files.txt" : "07-native-end-files.txt",
+                        P11NativeEndProbe.saved(server, currentActor(server), phase == Phase.FIRST_SAVE ? "first" : "reopened"));
+            }
+            if (P11NativeOwnedCopyProbe.selected() && phase == Phase.SECOND_SAVE) {
+                writeArtifact("07-native-owned-copy-writers.txt", P11NativeOwnedCopyProbe.verifySaved(server,
+                        currentActor(server), output.resolve("native-owned-copy-saved")));
+            }
         });
     }
 
@@ -1070,12 +1329,56 @@ final class P11SourceWriterClientHarness {
     }
 
     private static void firstStopComplete(Minecraft minecraft) {
-        if (!activeServer.isStopped()) { return; }
+        if (cohortCase == CohortCase.FULL_B_FAULT) {
+            if (!activeServer.isShutdown()) { return; }
+            closeOwnedFaultTransport();
+            require(logoutCount == 1 && !firstTransport.isConnected(), "full-B fault client transport did not terminate");
+            requireNormalStop("05-first-stop-diagnostics.txt");
+            require(productionJarSha256.equals(hashFile(productionJar)), "loaded production JAR changed");
+            activeServer = null;
+            finish(minecraft, null);
+            return;
+        }
+        if (metadataCase()) {
+            if (!activeServer.isShutdown()) { return; }
+            require(logoutCount == 1 && !firstTransport.isConnected(), "metadata cohort transport has not terminated");
+            requireNormalStop("05-first-stop-diagnostics.txt");
+            require(commandCount == 0 && p4LoginArms == 0 && p4LoginObservations == 0,
+                    "metadata subsystem probe was mixed with starter/facade qualification");
+            require(productionJarSha256.equals(hashFile(productionJar)), "loaded production JAR changed");
+            activeServer = null;
+            if (P11NativeMetadataProbe.isNegative()) {
+                transition(Phase.REOPEN_PLAY);
+                minecraft.createWorldOpenFlows().openWorld(WORLD,
+                        () -> recordFailure(new IllegalStateException("owned metadata world reopen failed")));
+                return;
+            }
+            finish(minecraft, null);
+            return;
+        }
+        if (cohortCase == CohortCase.CLEANUP_FAILURE) {
+            if (!activeServer.isShutdown()) { return; }
+            closeOwnedFaultTransport();
+            require(stopWriterSnapshots == 1 && logoutCount == 1 && !firstTransport.isConnected(),
+                    "owned cleanup-fault cohort has not reached its actual process shutdown boundary");
+            writeArtifact("05-cleanup-fault-stop.txt", P11NativeStorageBoundary.terminalDiagnostics() + "\n");
+            require(cleanupPrimaryHash.equals(hashFile(worldDirectory.resolve("playerdata").resolve(playerId + ".dat"))),
+                    "stop overwrote the independently completed pre-cleanup player primary");
+            require(productionJarSha256.equals(hashFile(productionJar)), "loaded production JAR changed");
+            activeServer = null;
+            finish(minecraft, null);
+            return;
+        }
+        if (!activeServer.isStopped() || (P11NativeOwnedCopyProbe.selected() && !activeServer.isShutdown())) { return; }
         require(logoutCount == 1 && !firstTransport.isConnected(), "first normal transport did not terminate");
         requireNormalStop("05-first-stop-diagnostics.txt");
         firstSavedSkills = observeFiles("05-after-first-stop");
         event("FIRST_NORMAL_STOP_AND_REAL_FILES_OBSERVED");
         if (cohortCase == CohortCase.MALFORMED_STATS) { installMalformedStats(); }
+        if (P11NativeOwnedCopyProbe.selected()) {
+            writeArtifact("05-native-owned-copy-input.txt", P11NativeOwnedCopyProbe.prepareStopped(activeServer,
+                    worldDirectory, playerId, output.resolve("native-owned-copy-input")));
+        }
         activeServer = null;
         transition(Phase.REOPEN_PLAY);
         minecraft.createWorldOpenFlows().openWorld(WORLD,
@@ -1084,6 +1387,24 @@ final class P11SourceWriterClientHarness {
 
     private static void reopenPlay(Minecraft minecraft) {
         if (!playReady(minecraft)) { return; }
+        if (metadataCase() && P11NativeMetadataProbe.isNegative()) {
+            verifyClientTransport(minecraft);
+            var reopened = minecraft.getSingleplayerServer();
+            require(reopened != firstServer && latestLoginTransport != firstTransport
+                            && minecraft.player.getUUID().equals(playerId) && loginCount == 2 && logoutCount == 1
+                            && commandCount == 0 && p4LoginArms == 0 && p4LoginObservations == 0,
+                    "metadata replay negative did not use a fresh native login without provisioning");
+            activeServer = reopened;
+            expectedSlotFailures = 0;
+            transition(Phase.REOPEN_READY);
+            scheduleServerWork(() -> writeArtifact("06-native-metadata-stale-reconnect.txt",
+                    P11NativeMetadataProbe.rejectRetiredContinuation(currentActor(reopened))));
+            return;
+        }
+        if (cohortCase == CohortCase.PRESENCE_HANDOFF) {
+            if (!P11NativeDeliveryProbe.freshReconnectObserved(minecraft)) { return; }
+            writeArtifact("06-native-delivery-fresh-connection.txt", P11NativeDeliveryProbe.freshReconnectReport(minecraft));
+        }
         verifyClientTransport(minecraft);
         var server = minecraft.getSingleplayerServer();
         require(server != firstServer && latestLoginTransport != firstTransport,
@@ -1102,9 +1423,18 @@ final class P11SourceWriterClientHarness {
             requireCopiedConfiguration();
             var diagnostic = P11NativeStorageBoundary.diagnostics(server, playerId);
             requireSource(diagnostic, true);
-            require(equippedReference.equals(requireReference(diagnostic)),
-                    "native restart did not recover the same equipped revision");
-            consumeP4Login(server, true);
+            if (P11NativeOwnedCopyProbe.selected()) {
+                require(diagnostic.equippedSlot0().equals("UNAVAILABLE"),
+                        "owned quarantined native read became Ready");
+                var report = P11NativeOwnedCopyProbe.run(server, actor, output.resolve("native-owned-copy"));
+                writeArtifact("06-native-owned-copy.txt", report.toString());
+                require(report.passed(), "actual native owned-copy probe failed: " + report.failure());
+            } else {
+                require(equippedReference.equals(requireReference(diagnostic)),
+                        "native restart did not recover the same equipped revision");
+                consumeP4Login(server, true);
+            }
+            if (cohortCase == CohortCase.NATIVE_END) { P11NativeEndProbe.reopened(server, actor); }
             if (cohortCase == CohortCase.MALFORMED_STATS) {
                 require(actor.getStats() instanceof P11IndependentMaterialWitness witness
                                 && !witness.p11$materialComplete(),
@@ -1117,6 +1447,7 @@ final class P11SourceWriterClientHarness {
 
     private static void reopenReady(Minecraft minecraft) {
         if (!serverWorkComplete) { return; }
+        if (P11NativeOwnedCopyProbe.selected() && (clientRespawns != 1 || !playReady(minecraft))) { return; }
         event("SAME_WORLD_NATIVE_READBACK_WITHOUT_REPROVISION");
         transition(Phase.SECOND_SAVE);
         if (cohortCase == CohortCase.MALFORMED_STATS) {
@@ -1141,6 +1472,32 @@ final class P11SourceWriterClientHarness {
 
     private static void secondStopComplete(Minecraft minecraft) {
         if (!activeServer.isStopped()) { return; }
+        if (metadataCase() && P11NativeMetadataProbe.isNegative()) {
+            require(logoutCount == 2 && loginCount == 2 && commandCount == 0 && commandCompletions == 0
+                            && p4LoginArms == 0 && p4LoginObservations == 0,
+                    "metadata replay-negative lifecycle/provisioning changed");
+            requireNormalStop("08-second-stop-diagnostics.txt");
+            require(productionJarSha256.equals(hashFile(productionJar)), "loaded production JAR changed");
+            activeServer = null;
+            finish(minecraft, null);
+            return;
+        }
+        if (P11NativeOwnedCopyProbe.selected()) {
+            if (!activeServer.isShutdown()) { return; }
+            require(logoutCount == 2 && loginCount == 2 && commandCount == 1 && commandCompletions == 1
+                            && clientRespawns == 1 && p4LoginArms == 1 && p4LoginObservations == 1
+                            && p4Session == null && p4RecoveryEntriesCleared == 0 && p4RecoveryStepsReplayed == 0
+                            && p4E2SetDataAttempts == 0 && p4E2SetDataSuccesses == 0,
+                    "owned quarantine clone repeated provisioning or invented Ready recovery");
+            requireNormalStop("08-second-stop-diagnostics.txt");
+            writeArtifact("08-native-owned-copy-final.txt", P11NativeOwnedCopyProbe.verifyStopped(activeServer,
+                    worldDirectory, playerId, output.resolve("native-owned-copy-final")));
+            require(productionJarSha256.equals(hashFile(productionJar)), "loaded production JAR changed");
+            activeServer = null;
+            firstSavedSkills = null;
+            finish(minecraft, null);
+            return;
+        }
         require(logoutCount == 2 && commandCount == 1 && commandCompletions == 1,
                 "terminal lifecycle or provisioning count changed");
         require(p4LoginArms == 2 + clientHandoffs && p4LoginObservations == 2 + clientHandoffs && p4Session == null
@@ -1151,6 +1508,10 @@ final class P11SourceWriterClientHarness {
         if (cohortCase == CohortCase.NATIVE_RESPAWN) {
             require(clientRespawns == 1 && serverCloneEvents == 1 && serverRespawnEvents == 1,
                     "native respawn event counts did not remain exact through restart");
+        }
+        if (cohortCase == CohortCase.NATIVE_END) {
+            require(clientRespawns == 2 && serverCloneEvents == 1 && serverRespawnEvents == 1,
+                    "actual End travel/return event counts changed through restart");
         }
         var skills = observeFiles("08-after-second-stop");
         require(firstSavedSkills.equals(skills), "restart changed the persisted player skill carrier");
@@ -1203,6 +1564,8 @@ final class P11SourceWriterClientHarness {
 
     private static void requireSource(P11QualifiedSourceOwner.Diagnostics diagnostic, boolean reopened) {
         boolean expectedWriteIncident = (statisticsFaultInjected || playerReplaceFaultInjected
+                        || (cohortCase == CohortCase.CANONICAL_RELOAD
+                                && canonicalReport != null && canonicalReport.passed())
                         || (cohortCase == CohortCase.MATERIAL_MISMATCH && materialMismatchObserved))
                 && cohortCase != CohortCase.POSITIVE && "WRITE".equals(diagnostic.sourceFault());
         require(diagnostic.active() && diagnostic.bodyComplete() && !diagnostic.candidatePresent()
@@ -1637,6 +2000,21 @@ final class P11SourceWriterClientHarness {
                 case CONSTRUCTOR_FAILURE -> "constructor-failure";
                 case MATERIAL_MISMATCH -> "material-mismatch";
                 case NATIVE_RESPAWN -> "native-respawn";
+                case NATIVE_REWARD -> "native-reward";
+                case NATIVE_END -> "native-end";
+                case OWNED_COPY_RAW -> "owned-copy-raw";
+                case OWNED_COPY_MARKER -> "owned-copy-marker";
+                case PRESENCE_HANDOFF -> "presence-handoff";
+                case ASSOCIATION_FAILURE -> "association-failure";
+                case ASSOCIATION_UNKNOWN -> "association-unknown";
+                case CLEANUP_FAILURE -> "cleanup-failure";
+                case CANONICAL_RELOAD -> "canonical-reload";
+                case METADATA_RECOVERY -> "metadata-recovery";
+                case METADATA_RECONCILIATION -> "metadata-reconciliation";
+                case METADATA_SESSION -> "metadata-session";
+                case METADATA_SOURCE_CHANGE -> "metadata-source-change";
+                case CLONE_PARITY -> "clone-parity";
+                case FULL_B_FAULT -> "full-b-fault";
             }).append('\n');
             result.append("cohort=").append(cohortCase).append('\n');
             for (var value : EVENTS) { result.append(value).append('\n'); }
@@ -1659,6 +2037,8 @@ final class P11SourceWriterClientHarness {
                     .append("p4E2SetDataAttempts=").append(p4E2SetDataAttempts).append('\n')
                     .append("p4E2SetDataSuccesses=").append(p4E2SetDataSuccesses).append('\n');
             if (failure != null) {
+                if (metadataCase()) { result.append(P11NativeMetadataProbe.pendingDiagnostic()).append('\n'); }
+                if (cohortCase == CohortCase.NATIVE_END) { result.append(P11NativeEndProbe.pendingDiagnostic()).append('\n'); }
                 result.append("failure=").append(failure.getClass().getName()).append(':')
                         .append(String.valueOf(failure.getMessage()).replace('\n', ' ').replace('\r', ' ')).append('\n');
             }
@@ -1678,13 +2058,15 @@ final class P11SourceWriterClientHarness {
 
     private enum Phase {
         BOOTSTRAP, FIRST_PLAY, FIRST_READY, COMMAND, HANDOFF_PLAY, HANDOFF_READY,
-        RESPAWN_ARM, RESPAWN_PLAY, RESPAWN_READY,
+        RESPAWN_ARM, RESPAWN_PLAY, RESPAWN_READY, NATIVE_REWARD, NATIVE_END, CLEANUP_FAULT, CANONICAL_RELOAD, CLONE_NATIVE,
         STATS_IO_FAULT, MATERIAL_MISMATCH, PLAYER_REPLACE_FAULT, FIRST_SAVE, FIRST_STOP,
         REOPEN_PLAY, REOPEN_READY, SECOND_SAVE, SECOND_STOP, TERMINAL
     }
 
     private enum CohortCase {
         POSITIVE, MALFORMED_STATS, STATS_IO_FAULT, PLAYER_REPLACE_FALSE, MEMORY_HANDOFF, SYNCHRONOUS_HANDOFF,
-        CONSTRUCTOR_FAILURE, MATERIAL_MISMATCH, NATIVE_RESPAWN
+        CONSTRUCTOR_FAILURE, MATERIAL_MISMATCH, NATIVE_RESPAWN, NATIVE_REWARD, NATIVE_END, OWNED_COPY_RAW, OWNED_COPY_MARKER,
+        PRESENCE_HANDOFF, ASSOCIATION_FAILURE, ASSOCIATION_UNKNOWN, CLEANUP_FAILURE, CANONICAL_RELOAD,
+        METADATA_RECOVERY, METADATA_RECONCILIATION, METADATA_SESSION, METADATA_SOURCE_CHANGE, CLONE_PARITY, FULL_B_FAULT
     }
 }

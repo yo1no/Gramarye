@@ -105,6 +105,8 @@ final class P4E2OnlineReconciliationCoordinator
         if (observing) {
             qualificationStoreView.recordContinuation(server, playerMost, playerLeast);
         }
+        var metadata = continuation.metadata(this);
+        if (metadata != null) { metadata.reconciliationStarted(this); }
         var result = reconcile(
                 exactPlayer,
                 continuation,
@@ -112,6 +114,9 @@ final class P4E2OnlineReconciliationCoordinator
                 entriesCleared,
                 stepsReplayed,
                 existingExceptionClass);
+        if (metadata != null) {
+            metadata.reconciliationCompleted(this, isLoginReadyTerminal(result), loginReadyPort);
+        }
         if (observing) {
             P4E2QualificationFacade.ReconciliationVariant variant;
             P4E2QualificationFacade.ReconciliationDetail detail;
@@ -204,11 +209,36 @@ final class P4E2OnlineReconciliationCoordinator
                     summary.acceptedGeneration().isPresent());
         }
         if (isLoginReadyTerminal(result)) {
-            if (server.getPlayerList().getPlayer(playerId) != exactPlayer) {
-                throw new IllegalStateException("P7_LOGIN_READY_PLAYER_NOT_CURRENT");
-            }
-            loginReadyPort.onLoginReady(server, exactPlayer);
+            loginReady(exactPlayer, continuation);
         }
+    }
+
+    @Override
+    public void resumeMissingStages(ServerPlayer player,
+            SkillSubmissionRecoveryService.RecoveryContinuation continuation,
+            RecoveryKind kind, int entriesCleared, int stepsReplayed,
+            Optional<String> existingExceptionClass) {
+        var metadata = Objects.requireNonNull(continuation.metadata(this), "metadata receipt");
+        if (!metadata.resumeAuthorized(this, player)) {
+            throw new IllegalStateException("P11_METADATA_RESUME_NOT_AUTHORIZED");
+        }
+        if (metadata.reconciliationDone()) {
+            loginReady(player, continuation);
+        } else {
+            reconcileAfterRecovery(player, continuation, kind, entriesCleared, stepsReplayed,
+                    existingExceptionClass);
+        }
+    }
+
+    private void loginReady(ServerPlayer exactPlayer,
+            SkillSubmissionRecoveryService.RecoveryContinuation continuation) {
+        var server = Objects.requireNonNull(exactPlayer.getServer(), "player server");
+        if (server.getPlayerList().getPlayer(exactPlayer.getUUID()) != exactPlayer) {
+            throw new IllegalStateException("P7_LOGIN_READY_PLAYER_NOT_CURRENT");
+        }
+        var metadata = continuation.metadata(this);
+        if (metadata == null) { loginReadyPort.onLoginReady(server, exactPlayer); }
+        else { loginReadyPort.onLoginReady(server, exactPlayer, metadata); }
     }
 
     static boolean isLoginReadyTerminal(P4E2ReconciliationResult result) {

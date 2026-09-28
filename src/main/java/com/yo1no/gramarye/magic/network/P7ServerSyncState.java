@@ -4,7 +4,11 @@ import java.util.Objects;
 
 record P7ServerSyncState(
         P7SyncSequence mana, P7SyncSequence cooldown, long lastResyncTick,
-        boolean initialPending) {
+        boolean initialPending, boolean initialManaSubmitted) {
+    P7ServerSyncState(P7SyncSequence mana, P7SyncSequence cooldown, long lastResyncTick,
+            boolean initialPending) {
+        this(mana, cooldown, lastResyncTick, initialPending, false);
+    }
     P7ServerSyncState {
         Objects.requireNonNull(mana, "mana");
         Objects.requireNonNull(cooldown, "cooldown");
@@ -25,10 +29,11 @@ record P7ServerSyncState(
     }
 
     P7ServerSyncState manaSubmitted() {
-        return new P7ServerSyncState(mana.submitted(), cooldown, lastResyncTick, initialPending);
+        return new P7ServerSyncState(mana.submitted(), cooldown, lastResyncTick, initialPending,
+                initialPending || initialManaSubmitted);
     }
 
     P7ServerSyncState cooldownSubmitted(long tick) {
-        return new P7ServerSyncState(mana, cooldown.submitted(), tick, false);
+        return new P7ServerSyncState(mana, cooldown.submitted(), tick, false, initialManaSubmitted);
     }
 }

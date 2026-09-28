@@ -27,6 +27,7 @@ final class P11QualifiedSourceOwner {
     private final PlayerSkillAttachmentService attachments;
     private final Map<UUID, Account> accounts = new HashMap<>();
     private boolean stopping;
+    private boolean detachedStopFlushed;
     private boolean retired;
     private long serializations;
     private long serializerNanos;
@@ -67,31 +68,18 @@ final class P11QualifiedSourceOwner {
         return account == null ? null : account.current;
     }
 
-    /** A late original listener tick may dirty these after logout's save; use their sole writers. */
+    /** Validate retained canonical input. Disk durability is not a rebind prerequisite. */
     void flushIndependentBeforeLogin(Body body) {
         requireMain();
-        if (!canSerialize(body)) { throw new SourceUnavailable(); }
-        if (!physicalClean(body, P11ReceiptLedger.WriterKind.STATISTICS)) { body.stats.save(); }
-        if (!physicalClean(body, P11ReceiptLedger.WriterKind.ADVANCEMENTS)) { body.advancements.save(); }
-        if (!canSerialize(body) || !physicalClean(body, P11ReceiptLedger.WriterKind.STATISTICS)
-                || !physicalClean(body, P11ReceiptLedger.WriterKind.ADVANCEMENTS)) {
-            fault(body.account, Fault.WRITE);
-            throw new SourceUnavailable();
-        }
+        if (!canSerialize(body) || !canonicalInputComplete(body)) { throw new SourceUnavailable(); }
     }
 
     LoginIndependent beginLoginIndependent(UUID playerId) {
         requireMain();
         var body = current(playerId);
         if (body == null) { return null; }
-        if (!canSerialize(body) || !physicalClean(body, P11ReceiptLedger.WriterKind.STATISTICS)
-                || !physicalClean(body, P11ReceiptLedger.WriterKind.ADVANCEMENTS)) {
-            fault(body.account, Fault.WRITE);
-            throw new SourceUnavailable();
-        }
-        var stats = receipts.physicalFacts(body.source, P11ReceiptLedger.WriterKind.STATISTICS).orElseThrow();
-        var advancements = receipts.physicalFacts(body.source, P11ReceiptLedger.WriterKind.ADVANCEMENTS).orElseThrow();
-        var ticket = new LoginIndependent(body, stats.materialVersion(), advancements.materialVersion());
+        if (!canSerialize(body) || !canonicalInputComplete(body)) { throw new SourceUnavailable(); }
+        var ticket = new LoginIndependent(body);
         body.account.login = ticket;
         return ticket;
     }
@@ -115,12 +103,13 @@ final class P11QualifiedSourceOwner {
         ticket.previous.account.constructing = ticket;
     }
 
-    void abortLoginIndependent(LoginIndependent ticket) {
+    void abortLoginIndependent(LoginIndependent ticket, ServerPlayer observedPartial, boolean withdrawn) {
         if (ticket == null || !owns(server)) { return; }
         var account = ticket.previous.account;
         if (account.constructing == ticket) {
             account.constructing = null;
-            constructorEscaped(ticket.previous, ticket.actor);
+            if (!withdrawn) { constructorEscaped(ticket.previous,
+                    observedPartial == null ? ticket.actor : observedPartial); }
         }
         if (account.login == ticket) { account.login = null; }
     }
@@ -146,11 +135,8 @@ final class P11QualifiedSourceOwner {
         if (ticket == null || ticket.previous.account.login != ticket
                 || ticket.previous.account.current != ticket.previous
                 || ticket.previous.source != ticket.source || !currentMaterial(ticket.previous)
-                || !physicalClean(ticket.previous, P11ReceiptLedger.WriterKind.STATISTICS)
-                || !physicalClean(ticket.previous, P11ReceiptLedger.WriterKind.ADVANCEMENTS)) { return false; }
-        var stats = receipts.physicalFacts(ticket.source, P11ReceiptLedger.WriterKind.STATISTICS).orElseThrow();
-        var advancements = receipts.physicalFacts(ticket.source, P11ReceiptLedger.WriterKind.ADVANCEMENTS).orElseThrow();
-        return stats.materialVersion() == ticket.statsVersion && advancements.materialVersion() == ticket.advancementsVersion;
+                || !canonicalInputComplete(ticket.previous)) { return false; }
+        return ticket.stats == ticket.previous.stats && ticket.advancements == ticket.previous.advancements;
     }
 
     /** Only authenticated native placement or an already-owned native copy scope calls here. */
@@ -184,14 +170,12 @@ final class P11QualifiedSourceOwner {
             throw new SourceUnavailable();
         }
         if (account.current.actor == actor) { return account.current; }
+        P11NativeStorageBoundary.releaseMetadata(account.metadata);
         if (actor.getStats() != account.current.stats || actor.getAdvancements() != account.current.advancements) {
-            var login = account.login;
-            if (!loginIndependentCurrent(login) || login.actor != actor) {
-                fault(account, Fault.WRITE);
-                throw new SourceUnavailable();
-            }
-            account.login = null;
+            fault(account, Fault.MATERIAL);
+            throw new SourceUnavailable();
         }
+        account.login = null;
         var identity = identities.captureSource(actor).orElseThrow(SourceUnavailable::new);
         var material = receipts.beginHandoff(account.current.source, identity,
                 P11ReceiptLedger.Disposition.CANDIDATE).orElseThrow(SourceUnavailable::new);
@@ -246,6 +230,109 @@ final class P11QualifiedSourceOwner {
             }
         }
         return null;
+    }
+
+    private boolean canonicalInputComplete(Body body) {
+        return body != null && body.stats instanceof P11IndependentMaterialWitness stats
+                && stats.p11$materialComplete()
+                && body.advancements instanceof P11IndependentMaterialWitness advancements
+                && advancements.p11$materialComplete();
+    }
+
+    /** Exact native receiver only. UUID equality never upgrades a stale actor into a caller. */
+    Body nativeRecipient(ServerPlayer supplied) {
+        var body = body(supplied);
+        if (body == null || body.fault != Fault.NONE || !owns(supplied.getServer())) { return null; }
+        if (body.account.candidate == body) { return body; }
+        return currentMaterial(body) ? body : null;
+    }
+
+    /** Called only with field-local custody captured from the actual native producer. */
+    Body nativeRecipient(Body captured) {
+        if (captured == null || !owns(captured.actor.getServer())
+                || accounts.get(captured.actor.getUUID()) != captured.account) { return null; }
+        if (captured.account.candidate != null) { return null; }
+        var current = captured.account.current;
+        return currentMaterial(current) ? current : null;
+    }
+
+    boolean retainNativeRoot(Body body, P11ControlBudgets.Root kind) {
+        requireMain();
+        if (body == null || accounts.get(body.actor.getUUID()) != body.account
+                || (kind != P11ControlBudgets.Root.NATIVE_CREDIT
+                        && kind != P11ControlBudgets.Root.OPERATION
+                        && kind != P11ControlBudgets.Root.COMMAND_CONTEXT
+                        && kind != P11ControlBudgets.Root.TRANSITION)) { return false; }
+        var account = body.account;
+        int index = kind.ordinal();
+        if (account.nativeCounts[index] == Long.MAX_VALUE) { return false; }
+        if (account.nativeCounts[index] == 0) {
+            var reservation = resources.retainRoot(account.resource, kind);
+            if (reservation.isEmpty()) { return false; }
+            account.nativeRoots[index] = reservation.orElseThrow();
+            account.nativeSince[index] = now();
+        }
+        account.nativeCounts[index]++;
+        account.nativePeaks[index] = Math.max(account.nativePeaks[index], account.nativeCounts[index]);
+        return true;
+    }
+
+    void releaseNativeRoot(Body body, P11ControlBudgets.Root kind) {
+        if (body == null || !owns(body.actor.getServer())) { return; }
+        var account = body.account;
+        int index = kind.ordinal();
+        if (account.nativeCounts[index] == 0) { return; }
+        if (--account.nativeCounts[index] == 0) {
+            resources.releaseRoot(account.nativeRoots[index]);
+            account.nativeRoots[index] = null;
+            account.nativeSince[index] = 0;
+        }
+    }
+
+    /** May advance v inside the same fixed e/R operation; never claims physical success. */
+    void nativeMutation(Body body) {
+        if (body == null || !owns(body.actor.getServer()) || body(body.actor) != body) { return; }
+        publication(body.actor, body.source.epoch(), body.source.version());
+    }
+
+    void nativeEscape(ServerPlayer actor) { P11NativeStorageBoundary.nativeEscape(actor); }
+
+    void nativeOperationFailed(Body body) {
+        if (body == null || !owns(body.actor.getServer())) { return; }
+        body.account.dirty = resources.markDirty(body.account.resource, now()).orElseThrow();
+        failures = increment(failures);
+    }
+
+    /** A callback/readiness failure after the proved material prefix is not partial data. */
+    void nativeLifecycleFailed(Body body) {
+        if (body == null) { return; }
+        if (!body.complete) { fail(body, Fault.PARTIAL); return; }
+        body.account.cleanupUnknown = true;
+        fault(body.account, Fault.CLEANUP);
+    }
+
+    boolean associationSourceCurrent(Body body) {
+        return currentMaterial(body) && !body.account.cleanupUnknown;
+    }
+
+    void nativeCleanup(Body body, boolean complete) {
+        if (body == null || !owns(body.actor.getServer())) { return; }
+        body.account.cleanupUnknown = !complete;
+        if (!complete) { fault(body.account, Fault.CLEANUP); }
+    }
+
+    boolean canonicalAssociated(PlayerAdvancements advancements, ServerPlayer receiver) {
+        var body = canonicalAdvancements(advancements);
+        return body != null && (body.actor == receiver
+                || body.account.partialActor == receiver
+                || P11NativeStorageBoundary.provisionalAssociation(advancements, receiver));
+    }
+
+    boolean detachedPresence(ServerPlayer actor) {
+        var body = body(actor);
+        return body != null && body.complete && !body.logoutActive
+                && body.account.candidate != body && body.envelope != null
+                && server.getPlayerList().getPlayer(actor.getUUID()) != actor;
     }
 
     Body hostBody() {
@@ -334,12 +421,13 @@ final class P11QualifiedSourceOwner {
     }
 
     boolean canSerialize(Body body) {
-        return canCopy(body)
+        // Membership/cleanup uncertainty forbids a new handoff, not independently proved data.
+        return currentMaterial(body) && body.account.constructing == null
                 && (!body.actor.isRemoved() || body.envelope != null || body.logoutActive);
     }
 
     boolean canCopy(Body body) {
-        return currentMaterial(body) && body.account.constructing == null;
+        return currentMaterial(body) && body.account.constructing == null && !body.account.cleanupUnknown;
     }
 
     /** Only the closed comparison scope may inspect A after B construction, never save it. */
@@ -379,8 +467,10 @@ final class P11QualifiedSourceOwner {
             fail(body, Fault.MATERIAL);
             return;
         }
+        var previous = body.source;
         body.mana = publication.observedState();
         publication(body.actor, body.source.epoch(), body.source.version());
+        P11NativeStorageBoundary.metadataManaPublished(this, body, previous);
     }
 
     P11ReceiptLedger.PhysicalWriterReceipt beginWriter(Body body,
@@ -456,7 +546,6 @@ final class P11QualifiedSourceOwner {
 
     private boolean independentEligible(Body body, P11ReceiptLedger.WriterKind kind) {
         if (body == null || !owns(server)
-                || body.account.constructorFailed
                 || !identities.matchesSource(body.source.dataIdentity(), body.actor)) { return false; }
         return switch (kind) {
             case STATISTICS -> canonicalStats(body.stats) == body;
@@ -586,8 +675,21 @@ final class P11QualifiedSourceOwner {
         return new SelectionWitness(this, body, skills, mana);
     }
 
+    boolean metadataCurrent(Body body, P11ReceiptLedger.Source version, SelectionWitness witness) {
+        return canSerialize(body) && body.source == version && witness != null
+                && witness.owner == this && witness.body == body && witness.source == version
+                && witness.skills.isCurrent(body.actor) && witness.mana.isCurrent(body.actor)
+                && witness.mana.sameState(body.mana);
+    }
+
+    boolean metadataSkillsCurrent(Body body, SelectionWitness witness) {
+        return canSerialize(body) && witness != null && witness.owner == this && witness.body == body
+                && witness.skills.isCurrent(body.actor);
+    }
+
     Sealed seal(Body body, CompoundTag root) {
-        if (!canSerialize(body)) { return null; }
+        if (!canSerialize(body) || body.account.nativeCounts[P11ControlBudgets.Root.OPERATION.ordinal()] != 0
+                || body.account.nativeCounts[P11ControlBudgets.Root.COMMAND_CONTEXT.ordinal()] != 0) { return null; }
         var version = body.source;
         long remaining = limits.maxSealedBytes() - resources.counts().sealedBytes();
         var size = P11StrictNbtSize.measure(root, Math.max(0, remaining));
@@ -664,11 +766,43 @@ final class P11QualifiedSourceOwner {
 
     void stopping() { stopping = true; }
 
+    /** Last native stop anchor while the world lock is still held; never serializes a body. */
+    void flushDetachedIndependentAtStop() {
+        requireMain();
+        if (detachedStopFlushed) { return; }
+        detachedStopFlushed = true;
+        // Native codec/writer calls run outside a monitor and may reenter; retain no new graph.
+        for (var account : java.util.List.copyOf(accounts.values())) {
+            var body = account.candidate != null ? account.candidate : account.current;
+            if (body == null || accounts.get(body.actor.getUUID()) != account
+                    || server.getPlayerList().getPlayer(body.actor.getUUID()) != null) { continue; }
+            flushDetachedIndependent(body, P11ReceiptLedger.WriterKind.STATISTICS);
+            flushDetachedIndependent(body, P11ReceiptLedger.WriterKind.ADVANCEMENTS);
+        }
+    }
+
+    private void flushDetachedIndependent(Body body, P11ReceiptLedger.WriterKind kind) {
+        try {
+            if (!independentEligible(body, kind)
+                    || receipts.physicalFacts(body.source, kind).filter(P11ReceiptLedger.PhysicalFacts::dirty).isEmpty()) {
+                return;
+            }
+            // Original sole writers still prove their own material, encode/write/close and outcome.
+            if (kind == P11ReceiptLedger.WriterKind.STATISTICS) { body.stats.save(); }
+            else if (kind == P11ReceiptLedger.WriterKind.ADVANCEMENTS) { body.advancements.save(); }
+        } catch (RuntimeException | Error failure) {
+            // A secondary independent failure cannot mask native stop or skip the other owner.
+            body.account.fault = Fault.WRITE;
+            failures = increment(failures);
+        }
+    }
+
     Summary retire(boolean nativeStopNormal) {
         requireMain();
         var summary = new Summary(accounts.size(), resources.counts(), resources.dirtyAge(now()),
                 serializations, serializerNanos, writes, writeNanos, failures, nativeStopNormal,
-                receipts.saveProgress());
+                receipts.saveProgress(), nativeResponsibilities());
+        for (var account : accounts.values()) { P11NativeStorageBoundary.releaseMetadata(account.metadata); }
         retired = true;
         accounts.clear();
         return summary;
@@ -706,14 +840,16 @@ final class P11QualifiedSourceOwner {
                 account == null ? "UNMANAGED" : account.fault.name(),
                 body == null ? "UNKNOWN" : body.inputKind.name(), equipped,
                 java.util.List.copyOf(writers), resources.counts(), serializations,
-                serializerNanos, writes, writeNanos, resources.dirtyAge(now()), receipts.saveProgress());
+                serializerNanos, writes, writeNanos, resources.dirtyAge(now()), receipts.saveProgress(),
+                nativeResponsibilities());
     }
 
     record Diagnostics(boolean active, long sourceEpoch, long sourceVersion, boolean bodyComplete,
             boolean candidatePresent, String sourceFault, String sourceInput, String equippedSlot0,
             java.util.List<WriterDiagnostic> writers, P11ControlBudgets.ResourceCounts resources,
             long serializations, long serializerNanos, long writes, long writeNanos,
-            P11ControlBudgets.DirtyAge dirtyAge, P11ReceiptLedger.SaveProgress saveProgress) {}
+            P11ControlBudgets.DirtyAge dirtyAge, P11ReceiptLedger.SaveProgress saveProgress,
+            NativeResponsibilities nativeResponsibilities) {}
     record WriterDiagnostic(String kind, long attempt, boolean dirty, String terminal,
             String encode, String write, String close, String replace, String cacheAssignment) {}
 
@@ -726,10 +862,44 @@ final class P11QualifiedSourceOwner {
         return Long.MAX_VALUE - left < right ? Long.MAX_VALUE : left + right;
     }
 
+    private NativeResponsibilities nativeResponsibilities() {
+        var roots = new java.util.ArrayList<NativeRootDiagnostic>();
+        long now = now();
+        int live = 0, detached = 0, partial = 0;
+        for (var account : accounts.values()) {
+            var body = account.candidate != null ? account.candidate : account.current;
+            if (body != null) {
+                if (!body.complete) { partial++; }
+                else if (server.getPlayerList().getPlayer(body.actor.getUUID()) == body.actor) { live++; }
+                else { detached++; }
+            }
+        }
+        for (var kind : new P11ControlBudgets.Root[] { P11ControlBudgets.Root.NATIVE_CREDIT,
+                P11ControlBudgets.Root.OPERATION, P11ControlBudgets.Root.COMMAND_CONTEXT,
+                P11ControlBudgets.Root.TRANSITION }) {
+            long count = 0, peaks = 0, oldest = 0;
+            for (var account : accounts.values()) {
+                int index = kind.ordinal();
+                count = add(count, account.nativeCounts[index]);
+                peaks = add(peaks, account.nativePeaks[index]);
+                if (account.nativeCounts[index] != 0 && now >= account.nativeSince[index]) {
+                    oldest = Math.max(oldest, now - account.nativeSince[index]);
+                }
+            }
+            roots.add(new NativeRootDiagnostic(kind.name(), count, peaks, oldest));
+        }
+        return new NativeResponsibilities(live, detached, partial, java.util.List.copyOf(roots));
+    }
+
+    record NativeResponsibilities(int liveCanonicalHolders, int detachedCanonicalHolders,
+            int partialHolders, java.util.List<NativeRootDiagnostic> roots) {}
+    /** Sum of per-account observed peaks, deliberately not a simultaneous whole-server peak. */
+    record NativeRootDiagnostic(String kind, long count, long accountPeakSum, long oldestAgeMillis) {}
+
     record Summary(int accounts, P11ControlBudgets.ResourceCounts resources,
             P11ControlBudgets.DirtyAge dirtyAge, long serializations, long serializerNanos,
             long writes, long writeNanos, long failures, boolean nativeStopNormal,
-            P11ReceiptLedger.SaveProgress saveProgress) {}
+            P11ReceiptLedger.SaveProgress saveProgress, NativeResponsibilities nativeResponsibilities) {}
 
     static final class Body {
         final Account account;
@@ -742,6 +912,7 @@ final class P11QualifiedSourceOwner {
         boolean loadObserved;
         boolean complete;
         boolean logoutActive;
+        boolean logoutAttempted;
         Envelope envelope;
         Envelope pendingEnvelope;
         Fault fault = Fault.NONE;
@@ -768,6 +939,13 @@ final class P11QualifiedSourceOwner {
         LoginIndependent constructing;
         ServerPlayer partialActor;
         boolean constructorFailed;
+        boolean cleanupUnknown;
+        P11NativeStorageBoundary.MetadataLease metadata;
+        final long[] nativeCounts = new long[P11ControlBudgets.Root.values().length];
+        final long[] nativePeaks = new long[P11ControlBudgets.Root.values().length];
+        final long[] nativeSince = new long[P11ControlBudgets.Root.values().length];
+        final P11ControlBudgets.Resources.RootReservation[] nativeRoots =
+                new P11ControlBudgets.Resources.RootReservation[P11ControlBudgets.Root.values().length];
         Fault fault = Fault.NONE;
         Account(P11ControlBudgets.Resources.AccountOwner resource) { this.resource = resource; }
     }
@@ -776,11 +954,12 @@ final class P11QualifiedSourceOwner {
     static final class LoginIndependent {
         private final Body previous;
         private final P11ReceiptLedger.Source source;
-        private final long statsVersion, advancementsVersion;
+        private final ServerStatsCounter stats;
+        private final PlayerAdvancements advancements;
         private ServerPlayer actor;
-        private LoginIndependent(Body previous, long statsVersion, long advancementsVersion) {
+        private LoginIndependent(Body previous) {
             this.previous = previous; this.source = previous.source;
-            this.statsVersion = statsVersion; this.advancementsVersion = advancementsVersion;
+            this.stats = previous.stats; this.advancements = previous.advancements;
         }
     }
 

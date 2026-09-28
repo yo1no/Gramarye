@@ -1,0 +1,14 @@
+{
+  "criteria": {
+    "native_cow": {
+      "trigger": "minecraft:player_killed_entity",
+      "conditions": {"entity": {"type": "minecraft:cow"}}
+    }
+  },
+  "rewards": {
+    "experience": 37,
+    "loot": ["gramarye_p11_engineering:native_reward"],
+    "recipes": ["minecraft:bread"],
+    "function": "gramarye_p11_engineering:reward"
+  }
+}

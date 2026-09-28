@@ -34,6 +34,108 @@ is_p10_path() {
     esac
 }
 
+# Exact current P11 native lifecycle/reward slice, not historical P11 prefix admission.
+is_p11_native_slice_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P11FoundationService.java | \
+        src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java | \
+        src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java | \
+        src/main/java/com/yo1no/gramarye/P11CanonicalAdvancements.java | \
+        src/main/java/com/yo1no/gramarye/P11NativeCleanup.java | \
+        src/main/java/com/yo1no/gramarye/P11NativeContextFacts.java | \
+        src/main/java/com/yo1no/gramarye/P11NativeCreditLifetime.java | \
+        src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java | \
+        src/main/java/com/yo1no/gramarye/P11NativePresence.java | \
+        src/main/java/com/yo1no/gramarye/P11ProvisionalAssociation.java | \
+        src/main/java/com/yo1no/gramarye/P11RecipeDelivery.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11AdvancementsMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11PlayerListMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11ServerPlayerMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11MinecraftServerMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11AdvancementRewardsMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11BuildContextsMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11CallFunctionMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11CommandsMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11EnderDragonCreditMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11EntityCreditRemovalMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11EntityLookupMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11EntityManagerCleanupMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11EntityPresenceMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11EntityRemovalMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11ExecuteCommandMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11ExecutionContextMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11GameModeCommandMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11LevelEntityCleanupMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11LivingEntityCreditMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11PlayerSlotMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11RecipeBookMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11RideCommandMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11SculkCatalystCreditMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11ServerPlayerScoreMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11SimpleCriterionTriggerMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11SpectateCommandMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11TeleportCommandMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11SourceWriterClientHarness.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11AssociationFaultProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeCanonicalProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeCleanupProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeCloneProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeEndProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeOwnedCopyProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/magic/definition/player/P11OwnedCopySkillObservation.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/magic/runtime/mana/P11OwnedCopyManaObservation.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeDeliveryProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeMetadataProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativePresenceProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeRewardProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11CanonicalSendFaultMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11CanonicalCopyFaultMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11CanonicalPacketMeasurementMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11ClientDeliveryObservationMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11CloneLoadObserverMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11ConstructorFaultMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11MetadataOwnerFaultMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11MetadataRecoveryFaultMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11MetadataStageFaultMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11RewardLootFaultMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11RewardFunctionFaultMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11RewardFunctionCatchMixin.java | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/advancement/delivery_recipe.json | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/advancement/delivery_root.json | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/advancement/native_partial.json | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/advancement/native_end_return.json | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/advancement/native_prepared.json | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/advancement/native_reward.json | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/function/delivery_tail.mcfunction | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/function/reward.mcfunction | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/function/prepared_reward.mcfunction | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/function/partial_reward.mcfunction | \
+        src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/loot_table/native_reward.json | \
+        src/test/java/com/yo1no/gramarye/P11CanonicalAdvancementsTest.java | \
+        src/test/java/com/yo1no/gramarye/P11ExactCleanupTest.java | \
+        src/test/java/com/yo1no/gramarye/P11DetachedStopBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P11NativeContextFactsTest.java | \
+        src/test/java/com/yo1no/gramarye/P11NativeCreditLifetimeTest.java | \
+        src/test/java/com/yo1no/gramarye/P11PresenceSlotTest.java | \
+        src/test/java/com/yo1no/gramarye/P11ProvisionalAssociationTest.java | \
+        src/test/java/com/yo1no/gramarye/P11ReceiptLedgerTest.java | \
+        src/test/java/com/yo1no/gramarye/P11SynchronousSourceBoundaryTest.java | \
+        src/main/resources/gramarye.p11.mixins.json | \
+        src/p9S5ClientHarness/resources/gramarye-p11-native-harness.mixins.json | \
+        src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkComposition.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationBoundary.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/submission/P11MetadataStagesTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P3D3AApiGateTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4E2VisibilityCompileTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationBoundaryTest.java)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 is_s4_path() {
     case "$1" in
         scripts/verify-p7-s4-source-contracts.sh | \
@@ -790,7 +892,8 @@ case "${1:-}" in
         [[ "$#" -eq 2 ]] \
             && { is_s4_path "$2" || is_p9_s3_path "$2" \
                 || is_p9_s3_dc1_path "$2" || is_p9_s4_path "$2" \
-                || is_p9_s4_wc1_path "$2" || is_p9_s5_path "$2" || is_p10_path "$2"; } ;;
+                || is_p9_s4_wc1_path "$2" || is_p9_s5_path "$2" || is_p10_path "$2" \
+                || is_p11_native_slice_path "$2"; } ;;
     --is-p9-s5-path)
         [[ "$#" -eq 2 ]] && is_p9_s5_path "$2" ;;
     --check-game-test-worker-source)

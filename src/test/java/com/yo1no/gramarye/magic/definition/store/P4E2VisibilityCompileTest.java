@@ -47,6 +47,11 @@ final class P4E2VisibilityCompileTest {
                             int stepsReplayed,
                             Optional<String> existingExceptionClass) {
                     }
+                    @Override
+                    public void resumeMissingStages(ServerPlayer player,
+                            SkillSubmissionRecoveryService.RecoveryContinuation continuation,
+                            RecoveryKind kind, int entriesCleared, int stepsReplayed,
+                            Optional<String> existingExceptionClass) {}
                 }
                 """);
     }
@@ -80,6 +85,30 @@ final class P4E2VisibilityCompileTest {
                     Object construct() {
                         return new SkillSubmissionRecoveryService.RecoveryContinuation();
                     }
+                }
+                """);
+    }
+
+    @Test
+    void externalCodeCannotMintMetadataContinuationOrRootLease() throws IOException {
+        assertRejected("outside/EvilMetadata.java", """
+                package outside;
+                import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService;
+                import com.yo1no.gramarye.P11NativeStorageBoundary;
+                public final class EvilMetadata {
+                    Object continuation() { return new SkillSubmissionRecoveryService.MetadataContinuation(); }
+                    Object lease() { return new P11NativeStorageBoundary.MetadataLease(); }
+                }
+                """);
+    }
+
+    @Test
+    void externalCodeCannotMintTheManaObservationToken() throws IOException {
+        assertRejected("outside/EvilManaObservation.java", """
+                package outside;
+                import com.yo1no.gramarye.P11NativeStorageBoundary;
+                public final class EvilManaObservation {
+                    Object token() { return new P11NativeStorageBoundary.MetadataManaObservation(null, null); }
                 }
                 """);
     }

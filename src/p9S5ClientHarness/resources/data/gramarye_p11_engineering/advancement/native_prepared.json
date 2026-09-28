@@ -1,0 +1,13 @@
+{
+  "criteria": {
+    "native_effect": {
+      "trigger": "minecraft:effects_changed",
+      "conditions": {"effects": {"minecraft:luck": {}}}
+    }
+  },
+  "rewards": {
+    "experience": 23,
+    "recipes": ["minecraft:baked_potato"],
+    "function": "gramarye_p11_engineering:prepared_reward"
+  }
+}

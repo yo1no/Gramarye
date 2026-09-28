@@ -1,5 +1,6 @@
 package com.yo1no.gramarye.magic.network;
 
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -49,6 +50,41 @@ final class P7ServerLifecycleCoordinator {
                 access.disconnectCurrent(server, actor);
             }
             case INTERNAL_FAULT -> throw new P7SemanticInvariantException("P7 login unavailable");
+        }
+    }
+
+    void onLoginReady(MinecraftServer server, ServerPlayer actor, MetadataContinuation receipt,
+            P7ServerAuthorizationBoundary.LoginReadyPort port) {
+        requireServerThread(server);
+        Objects.requireNonNull(actor, "actor");
+        if (stopped || !access.currentConnectedPlayer(server, actor, actor.getUUID())
+                || !receipt.loginActor(port, actor)) {
+            throw new P7SemanticInvariantException("login actor is not current");
+        }
+        long opened = receipt.openedSession(port);
+        if (opened > 0) {
+            // A known opened session is resumed, never re-opened or inferred by UUID alone.
+            if (sessions.currentEpoch(actor.getUUID()).orElse(0) != opened) {
+                throw new P7SemanticInvariantException("metadata session is no longer current");
+            }
+            requestSync(server, actor.getUUID());
+            return;
+        }
+        if (sessions.currentEpoch(actor.getUUID()).isPresent()) {
+            throw new P7SemanticInvariantException("unproven existing metadata session");
+        }
+        receipt.sessionStarted(port);
+        switch (sessions.open(server, actor.getUUID())) {
+            case OPENED -> {
+                receipt.sessionOpened(port, sessions.currentEpoch(actor.getUUID()).orElseThrow());
+                requestSync(server, actor.getUUID());
+            }
+            case CAPACITY_REJECTED, EPOCH_EXHAUSTED -> {
+                observe(server, actor.getUUID(), P7IntentFailureReason.SERVER_BUSY);
+                access.disconnectCurrent(server, actor);
+            }
+            case ALREADY_ACTIVE, INTERNAL_FAULT ->
+                    throw new P7SemanticInvariantException("P7 metadata login unavailable");
         }
     }
 

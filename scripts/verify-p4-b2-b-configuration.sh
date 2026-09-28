@@ -384,7 +384,7 @@ verify_p11_observer_error_catches() {
             bad = 1; exit 1
         }
         BEGIN {
-            split("closeSelection respawn failWithoutReplacingPrimary retainWithoutReplacingPrimary statsMutated advancementsMutated endIndependent finish integratedSave", names, " ")
+            split("metadataInitialSync beginMetadataManaObservation endMetadataManaObservation closeSelection respawn failWithoutReplacingPrimary lifecycleFailureWithoutReplacingPrimary faultLogoutAfterAttempt retainWithoutReplacingPrimary statsMutated advancementsMutated endIndependent finish integratedSave flushDetachedIndependentAtStop", names, " ")
             for (i in names) expected[names[i]] = 1
         }
         {
@@ -396,11 +396,47 @@ verify_p11_observer_error_catches() {
             compact = line; gsub(/[[:space:]]/, "", compact)
             if (compact == "") next
             if (state == 1) {
+                if (method == "endMetadataManaObservation") {
+                    if (compact != "token.lease.continuation.manaObservationFailed(token.lease);") reject("missing unknown observation barrier")
+                    state = 9; next
+                }
                 if (compact != "if(observerFailures!=Long.MAX_VALUE){observerFailures++;}") reject("non-diagnostic body")
                 state = 2; next
             }
+            if (state == 9) {
+                if (compact != "if(observerFailures!=Long.MAX_VALUE){observerFailures++;}") reject("changed observation diagnostic")
+                state = 2; next
+            }
             if (state == 2) {
+                if (method == "closeSelection" && compact == "}finally{") { state = 3; next }
+                if (method == "endMetadataManaObservation" && compact == "}finally{") { state = 6; next }
+                if (method == "beginMetadataManaObservation" && compact == "returnnull;") { state = 5; next }
                 if (compact != "}") reject("added catch behavior")
+                if (method == "beginMetadataManaObservation") reject("missing unavailable observation return")
+                state = 0; next
+            }
+            if (state == 3) {
+                if (compact != "selection.owner.releaseNativeRoot(selection.previous,P11ControlBudgets.Root.TRANSITION);") reject("changed selection-root release")
+                state = 4; next
+            }
+            if (state == 4) {
+                if (compact != "}") reject("added selection-finalizer behavior")
+                state = 0; next
+            }
+            if (state == 5) {
+                if (compact != "}") reject("added observation failure behavior")
+                state = 0; next
+            }
+            if (state == 6) {
+                if (compact != "token.closed=true;") reject("changed observation close")
+                state = 7; next
+            }
+            if (state == 7) {
+                if (compact != "if(token.previous==null){METADATA_MANA.remove();}else{METADATA_MANA.set(token.previous);}") reject("changed exact observation stack restore")
+                state = 8; next
+            }
+            if (state == 8) {
+                if (compact != "}") reject("added observation-finalizer behavior")
                 state = 0; next
             }
             if (line ~ /catch[[:space:]]*\([^)]*(Error|Throwable)/) {
@@ -411,10 +447,86 @@ verify_p11_observer_error_catches() {
         }
         END {
             if (bad) exit 1
-            if (state != 0 || total != 9) reject("incomplete exact nine catches")
+            if (state != 0 || total != 15) reject("incomplete exact fifteen catches")
             for (method in expected) if (seen[method] != 1) reject("missing method " method)
         }
     ' "$1" || fail 'P11 native observer Error catches escaped the exact secondary-only contract'
+}
+
+# Exact new native helpers: every catch is tied to its method, binding and complete body.
+# This does not exempt either class from future Error-catch review.
+verify_p11_native_helper_error_catches() {
+    LC_ALL=C awk -v kind="$2" '
+        function reject(message) {
+            print "P11 native helper Error contract: " message > "/dev/stderr"
+            bad = 1; exit 1
+        }
+        function expect(method, ordinal, clause) { expected[method SUBSEP ordinal] = clause; totalExpected++ }
+        BEGIN {
+            if (kind == "operation") {
+                simple = "catch(RuntimeException|Errorsecondary){observerFailed();}"
+                expect("beginAdvancement", 1, simple)
+                expect("begin", 1, "catch(RuntimeException|Errorsecondary){if(retained){release(binding,P11ControlBudgets.Root.OPERATION);}observerFailed();returnnull;}")
+                expect("end", 1, simple)
+                expect("acquireCredit", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnnull;}")
+                expect("releaseCredit", 1, simple)
+                expect("beginCreditConsumers", 1, simple)
+                expect("creditRemoval", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnfalse;}")
+                expect("creditRevived", 1, simple)
+                expect("endCreditConsumers", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnfalse;}")
+                expect("attach", 1, "catch(RuntimeException|Errorsecondary){if(retained){release(binding,P11ControlBudgets.Root.COMMAND_CONTEXT);}observerFailed();}")
+                expect("finishContext", 1, simple)
+                expect("afterNative", 1, simple)
+                expect("release", 1, simple)
+            } else if (kind == "cleanup") {
+                expect("remove", 1, "catch(RuntimeException|Errorprimary){if(!(primaryinstanceofVirtualMachineError)&&scope.leaveThrew&&!reason.shouldDestroy()){try{completed=manager.p11$finishLeaveTail(scope);}catch(RuntimeException|Errorsecondary){secondaryFailure();}}throwprimary;}")
+                expect("remove", 2, "catch(RuntimeException|Errorsecondary){secondaryFailure();}")
+                expect("remove", 3, "catch(RuntimeException|Errorsecondary){secondaryFailure();}")
+                expect("leave", 1, "catch(RuntimeException|Errorprimary){scope.leaveThrew=true;throwprimary;}")
+                expect("finishLogout", 1, "catch(RuntimeException|Errorsecondary){secondaryFailure();returnLogoutOutcome.UNKNOWN;}")
+            } else if (kind == "sync") {
+                samePrimary = "catch(RuntimeException|Errorprimary){lifecycle.submissionFailed(server,actor,identity,primary);throwprimary;}"
+                expect("fullSync", 1, samePrimary)
+                expect("submitInitialFamily", 1, "catch(RuntimeException|Errorprimary){if(initial){P11NativeStorageBoundary.metadataInitialSync(actor,identity.connectionEpoch(),mana?MetadataInitialStage.MANA_FAILED:MetadataInitialStage.COOLDOWN_FAILED);}throwprimary;}")
+                expect("commitFamily", 1, samePrimary)
+                expect("submit", 1, samePrimary)
+            } else if (kind == "source_stop") {
+                expect("flushDetachedIndependent", 1, "catch(RuntimeException|Errorfailure){body.account.fault=Fault.WRITE;failures=increment(failures);}")
+            } else reject("unknown helper kind")
+        }
+        {
+            line = $0
+            sub(/\/\/.*$/, "", line)
+            if (line ~ /^    ((public|private) )?(static )?.*\(/ && line !~ /^        /) {
+                method = line; sub(/\(.*/, "", method); sub(/^.*[ \t]/, "", method)
+            }
+            gsub(/[[:space:]]/, "", line)
+            source[method] = source[method] line
+        }
+        END {
+            if (bad) exit 1
+            for (method in source) {
+                text = source[method]; offset = 1; ordinal = 0
+                while (match(substr(text, offset), /catch\([^)]*(Error|Throwable)[^)]*\)\{/)) {
+                    start = offset + RSTART - 1; open = start + RLENGTH - 1; depth = 1
+                    for (end = open + 1; end <= length(text) && depth; end++) {
+                        char = substr(text, end, 1)
+                        if (char == "{") depth++
+                        else if (char == "}") depth--
+                    }
+                    if (depth) reject("unclosed catch in " method)
+                    ordinal++; key = method SUBSEP ordinal
+                    if (!(key in expected) || substr(text, start, end - start) != expected[key]) {
+                        reject("unreviewed method, binding or body " method " #" ordinal)
+                    }
+                    seen[key]++; total++
+                    offset = open + 1
+                }
+            }
+            if (total != totalExpected) reject("missing or additional catch")
+            for (key in expected) if (seen[key] != 1) reject("missing exact catch")
+        }
+    ' "$1" || fail 'P11 native helper Error catches escaped their exact contracts'
 }
 
 require_regular_file() {
@@ -688,13 +800,54 @@ verify_search_helpers() {
     for mutation in \
         's/Error secondary/Error failure/g' \
         's/observerFailures++;/observerFailures++; unsafe();/g' \
+        's/selection.owner.releaseNativeRoot(selection.previous, P11ControlBudgets.Root.TRANSITION);/selection.owner.releaseNativeRoot(selection.previous, P11ControlBudgets.Root.TRANSITION); unsafe();/g' \
+        's/token.closed = true;/token.closed = false;/g' \
+        '/token.lease.continuation.manaObservationFailed(token.lease);/d' \
+        's/METADATA_MANA.set(token.previous);/METADATA_MANA.remove();/g' \
         's/void closeSelection(/void unreviewedSelection(/g'; do
         sed "${mutation}" "${p11_boundary}" > "${HELPER_FIXTURE}"
         if (verify_p11_observer_error_catches "${HELPER_FIXTURE}") >/dev/null 2>&1; then
             fail 'P11 observer self-check accepted a wrong binding, added behavior, or unreviewed method'
         fi
     done
-    printf '%s\n' 'Verified exact nine P11 observer catches; wrong binding, added behavior, and foreign method rejected.'
+    local native_source=''
+    local native_kind=''
+    for native_kind in operation cleanup sync source_stop; do
+        if [[ "${native_kind}" == operation ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
+        elif [[ "${native_kind}" == cleanup ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/P11NativeCleanup.java'
+        elif [[ "${native_kind}" == sync ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java'
+        else
+            native_source='src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java'
+        fi
+        verify_p11_native_helper_error_catches "${native_source}" "${native_kind}"
+        for mutation in \
+            's/Error secondary/Error unreviewed/g' \
+            's/Error primary/Error unreviewed/g' \
+            's/Error failure/Error unreviewed/g' \
+            's/observerFailed();/observerFailed(); unsafe();/g' \
+            's/secondaryFailure();/secondaryFailure(); unsafe();/g' \
+            's/throw primary;/throw new Error();/g' \
+            's/void releaseCredit(/void unreviewedCredit(/g' \
+            's/boolean creditRemoval(/boolean unreviewedRemoval(/g' \
+            's/void creditRevived(/void unreviewedRevival(/g' \
+            's/void afterNative(/void unreviewedNativeTail(/g' \
+            's/body.account.fault = Fault.WRITE;/body.account.fault = Fault.NONE;/g' \
+            's/void flushDetachedIndependent(/void unreviewedStopWriter(/g' \
+            's/MetadataInitialStage.MANA_FAILED/MetadataInitialStage.MANA_SUBMITTED/g' \
+            's/P7ServerSyncState commitFamily(/P7ServerSyncState unreviewedFamily(/g' \
+            's/LogoutOutcome finishLogout(/LogoutOutcome unreviewedLogout(/g'; do
+            sed "${mutation}" "${native_source}" > "${HELPER_FIXTURE}"
+            # A mutation targeting the other helper is not a negative fixture.
+            if cmp -s "${native_source}" "${HELPER_FIXTURE}"; then continue; fi
+            if (verify_p11_native_helper_error_catches "${HELPER_FIXTURE}" "${native_kind}") >/dev/null 2>&1; then
+                fail 'P11 native helper self-check accepted a changed binding/body/primary or foreign method'
+            fi
+        done
+    done
+    printf '%s\n' 'Verified exact fifteen P11 observer, nineteen native helper/stop-writer and four P7 sender catches; changed binding/body/primary and foreign method rejected.'
 }
 
 verify_p4_a3_contract_markers() {
@@ -1277,6 +1430,9 @@ verify_b2_sources_and_outputs() {
     local p9_projectile='src/main/java/com/yo1no/gramarye/P9StarterProjectile.java'
     local p9_world_handoff='src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java'
     local p11_storage_boundary='src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java'
+    local p11_operation_boundary='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
+    local p11_native_cleanup='src/main/java/com/yo1no/gramarye/P11NativeCleanup.java'
+    local p11_source_owner='src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java'
     local p4_recovery_game_tests='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java'
 
     PRODUCTION_SOURCE_LIST="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-b2-production.XXXXXX")" \
@@ -1491,6 +1647,9 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p9_projectile}" \
                 || "${source}" == "${p9_world_handoff}" \
                 || "${source}" == "${p11_storage_boundary}" \
+                || "${source}" == "${p11_operation_boundary}" \
+                || "${source}" == "${p11_native_cleanup}" \
+                || "${source}" == "${p11_source_owner}" \
                 || "${source}" == "${p4_recovery_game_tests}" \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java' \
@@ -1509,6 +1668,9 @@ verify_b2_sources_and_outputs() {
             "production Error catch escaped the reviewed P4-E3/P5 owners: ${source}"
     done < "${PRODUCTION_SOURCE_LIST}"
     verify_p11_observer_error_catches "${p11_storage_boundary}"
+    verify_p11_native_helper_error_catches "${p11_operation_boundary}" operation
+    verify_p11_native_helper_error_catches "${p11_native_cleanup}" cleanup
+    verify_p11_native_helper_error_catches "${p11_source_owner}" source_stop
     require_ere_count "${p4_recovery_game_tests}" \
         'catch[[:space:]]*\([^)]*(Error|Throwable)' 1 \
         'the exact recovery GameTest must retain one primary-preserving Error catch'
@@ -1628,11 +1790,12 @@ verify_b2_sources_and_outputs() {
     forbid_fixed "${p7_network_handler}" 'permit.release();' \
         'P7 enqueue failure must not use non-lifecycle-safe explicit release'
     require_ere_count "${p7_sync}" \
-        'catch[[:space:]]*\(RuntimeException \| Error primary\)' 1 \
-        'P7 transport must have exactly one observed-primary cleanup catch'
+        'catch[[:space:]]*\(RuntimeException \| Error primary\)' 4 \
+        'P7 sender must have exactly four observed-primary stage catches'
     require_ere_count "${p7_sync}" \
-        'catch[[:space:]]*\([^)]*Error' 1 \
-        'P7 transport Error catches escaped the exact submit operation'
+        'catch[[:space:]]*\([^)]*Error' 4 \
+        'P7 sender Error catches escaped the four exact stage operations'
+    verify_p11_native_helper_error_catches "${p7_sync}" sync
     require_fixed "${p7_sync}" \
         'lifecycle.submissionFailed(server, actor, identity, primary);' \
         'P7 transport lost exact session cleanup'

@@ -1,0 +1,12 @@
+{
+  "criteria": {
+    "native_end_return": {
+      "trigger": "minecraft:changed_dimension",
+      "conditions": {
+        "from": "minecraft:the_end", "to": "minecraft:overworld",
+        "player": {"nbt": "{Tags:[\"p11_native_true_end_return\"]}"}
+      }
+    }
+  },
+  "rewards": {"experience": 29}
+}

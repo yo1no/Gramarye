@@ -99,8 +99,13 @@ final class P7ServerAuthorizationBoundaryTest {
         assertTrue(Modifier.isAbstract(loginOperation.getModifiers()));
         assertFalse(Modifier.isStatic(loginOperation.getModifiers()));
         assertSame(void.class, loginOperation.getReturnType());
-        assertEquals(1, P7ServerAuthorizationBoundary.LoginReadyPort.class
+        assertEquals(2, P7ServerAuthorizationBoundary.LoginReadyPort.class
                 .getDeclaredMethods().length);
+        var continuationOperation = P7ServerAuthorizationBoundary.LoginReadyPort.class.getDeclaredMethod(
+                "onLoginReady", MinecraftServer.class, ServerPlayer.class,
+                com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation.class);
+        assertTrue(continuationOperation.isDefault());
+        assertFalse(Modifier.isStatic(continuationOperation.getModifiers()));
 
         var installed = boundary.getDeclaredField("installedRootIngress");
         assertSame(

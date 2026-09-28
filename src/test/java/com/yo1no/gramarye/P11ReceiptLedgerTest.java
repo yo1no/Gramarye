@@ -629,6 +629,39 @@ final class P11ReceiptLedgerTest {
     }
 
     @Test
+    void completedCallbackPrefixCannotDischargeSubsequentNativeTailVersion() {
+        var fixture = dataFixture(true);
+        var player = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        var level = fixture.ledger.beginSave(fixture.source,
+                P11ReceiptLedger.WriterKind.LEVEL_PLAYER).orElseThrow();
+        completePhysical(fixture.ledger, player);
+        completePhysical(fixture.ledger, level);
+        var readback = fixture.ledger.beginReadback(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        fixture.ledger.finishReadback(readback, P11ReceiptLedger.Observation.SUCCEEDED);
+        assertTrue(fixture.ledger.persistedReadbackCurrent(readback));
+        assertFalse(fixture.ledger.physicalFacts(fixture.source,
+                P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow().dirty());
+        assertFalse(fixture.ledger.physicalFacts(fixture.source,
+                P11ReceiptLedger.WriterKind.LEVEL_PLAYER).orElseThrow().dirty());
+        var tail = fixture.ledger.advanceMutationVersion(fixture.source).orElseThrow();
+        assertEquals(fixture.source.epoch(), tail.epoch());
+        assertEquals(fixture.source.version() + 1, tail.version());
+        assertTrue(fixture.ledger.facts(tail).orElseThrow().materialComplete());
+        assertFalse(fixture.ledger.persistedReadbackCurrent(readback));
+        for (var kind : java.util.List.of(P11ReceiptLedger.WriterKind.PLAYER_DATA,
+                P11ReceiptLedger.WriterKind.LEVEL_PLAYER)) {
+            fixture.ledger.markDirty(tail, kind);
+            assertTrue(fixture.ledger.physicalFacts(tail, kind).orElseThrow().dirty());
+            completePhysical(fixture.ledger, fixture.ledger.beginSave(tail, kind).orElseThrow());
+            assertFalse(fixture.ledger.physicalFacts(tail, kind).orElseThrow().dirty());
+        }
+        assertEquals(P11ReceiptLedger.Terminal.COMPLETED, fixture.ledger.attemptFacts(player).orElseThrow().terminal());
+        assertEquals(P11ReceiptLedger.Terminal.COMPLETED, fixture.ledger.attemptFacts(level).orElseThrow().terminal());
+    }
+
+    @Test
     void sameSourceKindMutationRevokesReplacementAndReadbackWithoutChangingOtherKinds() {
         var fixture = dataFixture(true);
         var player = fixture.ledger.beginSave(fixture.source,

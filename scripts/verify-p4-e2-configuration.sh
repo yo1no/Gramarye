@@ -13,7 +13,7 @@ fail() {
     exit 1
 }
 
-for required_tool in bash grep find git jar mktemp rm dirname pwd awk wc; do
+for required_tool in bash grep find git jar mktemp rm dirname pwd awk wc sed; do
     command -v "${required_tool}" >/dev/null 2>&1 \
         || fail "required baseline tool is unavailable: ${required_tool}"
 done
@@ -174,6 +174,44 @@ require_regular_file() {
     [[ -f "${file}" && ! -L "${file}" ]] || fail "${message}"
 }
 
+verify_p11_mixin_configuration() {
+    local source="$1"
+    local actual=''
+    local expected='{"required":true,"minVersion":"0.8.7","package":"com.yo1no.gramarye.mixin","compatibilityLevel":"JAVA_21","mixins":['
+    expected+='"P11PlayerListMixin","P11ConfigurationSourceMixin","P11PlayerDataStorageMixin","P11ServerPlayerMixin",'
+    expected+='"P11EntityMaterialMixin","P11AttachmentMaterialMixin","P11BrainMaterialMixin","P11MinecraftServerMixin",'
+    expected+='"P11LevelStorageMixin","P11LevelRawReadMixin","P11PrimaryLevelDataMixin","P11NbtIoMixin",'
+    expected+='"P11UtilMixin","P11StringFallbackMixin","P11StatsMixin","P11AdvancementsMixin",'
+    expected+='"P11RecipeBookMixin","P11EntityPresenceMixin","P11PlayerSlotMixin","P11TeleportCommandMixin",'
+    expected+='"P11GameModeCommandMixin","P11SpectateCommandMixin","P11RideCommandMixin","P11AdvancementRewardsMixin",'
+    expected+='"P11SimpleCriterionTriggerMixin","P11CommandsMixin","P11ExecutionContextMixin","P11ServerPlayerScoreMixin",'
+    expected+='"P11LivingEntityCreditMixin","P11EnderDragonCreditMixin","P11SculkCatalystCreditMixin","P11ExecuteCommandMixin",'
+    expected+='"P11BuildContextsMixin","P11CallFunctionMixin","P11EntityCreditRemovalMixin","P11EntityRemovalMixin",'
+    expected+='"P11EntityManagerCleanupMixin","P11LevelEntityCleanupMixin","P11EntityLookupMixin"],'
+    expected+='"client":["P11IntegratedPlayerListMixin"],"injectors":{"defaultRequire":1}}'
+    require_regular_file "${source}" 'P11 Mixin configuration is missing or not regular'
+    [[ ! -L "${source}" ]] || fail 'P11 Mixin configuration must not be a symlink'
+    # Ignore only JSON whitespace outside strings; the complete expected document
+    # fixes the schema, all 39 common entries, the sole client entry and required hooks.
+    actual="$(LC_ALL=C awk '
+        {
+            for (i = 1; i <= length($0); i++) {
+                c = substr($0, i, 1)
+                if (quoted) {
+                    output = output c
+                    if (escaped) escaped = 0
+                    else if (c == "\\") escaped = 1
+                    else if (c == "\"") quoted = 0
+                } else if (c == "\"") { quoted = 1; output = output c }
+                else if (c !~ /[[:space:]]/) output = output c
+            }
+            if (quoted) { bad = 1; exit 1 }
+        }
+        END { if (bad) exit 1; print output }
+    ' "${source}")" || fail 'P11 Mixin configuration contains an invalid multiline string'
+    [[ "${actual}" == "${expected}" ]] || fail 'P11 Mixin schema or exact common/client inventory changed'
+}
+
 count_fixed_in_file_list() {
     local file_list="$1"
     local needle="$2"
@@ -323,6 +361,33 @@ append_exclusive_slice() {
     ' "${file}" >> "${destination}" \
         || fail "could not extract exact ${label} source slice"
     printf '\n' >> "${destination}"
+}
+
+require_exact_java_method() {
+    local file="$1"
+    local marker="$2"
+    local expected="$3"
+    LC_ALL=C awk -v marker="${marker}" -v expected="${expected}" '
+        index($0, marker) { found++; active = 1 }
+        active {
+            line = $0; sub(/\/\/.*$/, "", line); gsub(/[[:space:]]/, "", line)
+            body = body line
+            for (i = 1; i <= length(line); i++) {
+                ch = substr(line, i, 1)
+                if (ch == "{") { depth++; opened = 1 }
+                else if (ch == "}") depth--
+            }
+            if (opened && depth == 0) active = 0
+        }
+        END { if (found != 1 || active || body != expected) exit 1 }
+    ' "${file}" || fail "exact P11 missing-stage method changed: ${marker}"
+}
+
+verify_p11_metadata_resume_contracts() {
+    require_exact_java_method "$1" '    public void resumeMissingStages(ServerPlayer player,' \
+        'publicvoidresumeMissingStages(ServerPlayerplayer,SkillSubmissionRecoveryService.RecoveryContinuationcontinuation,RecoveryKindkind,intentriesCleared,intstepsReplayed,Optional<String>existingExceptionClass){varmetadata=Objects.requireNonNull(continuation.metadata(this),"metadatareceipt");if(!metadata.resumeAuthorized(this,player)){thrownewIllegalStateException("P11_METADATA_RESUME_NOT_AUTHORIZED");}if(metadata.reconciliationDone()){loginReady(player,continuation);}else{reconcileAfterRecovery(player,continuation,kind,entriesCleared,stepsReplayed,existingExceptionClass);}}'
+    require_exact_java_method "$2" '        public boolean resume(P11NativeStorageBoundary.MetadataLease candidate) {' \
+        'publicbooleanresume(P11NativeStorageBoundary.MetadataLeasecandidate){if(candidate==null||candidate!=lease||resuming||!stages.resumable()||!P11NativeStorageBoundary.metadataCurrent(candidate)){returnfalse;}resuming=true;booleannormal=false;try{dependency.resumeMissingStages(player,continuation,projection.kind(),projection.entriesCleared(),projection.stepsReplayed(),projection.exceptionClass());normal=true;returntrue;}finally{resuming=false;stages.finishAttempt(normal);if(stages.complete()){release();}}}'
 }
 
 is_approved_p4e3_changed_path() {
@@ -853,7 +918,7 @@ is_approved_p8_s5_test_path() {
 verify_p8_s5_access_transformer() {
     local resource='src/main/resources/META-INF/accesstransformer.cfg'
     local expected='public net.minecraft.client.particle.ParticleEngine spriteSets'
-    local exact=$'public net.minecraft.client.particle.ParticleEngine spriteSets\nprotected net.minecraft.world.entity.projectile.Projectile hasBeenShot\nprotected net.minecraft.world.entity.projectile.Projectile leftOwner\nprotected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z'
+    local exact=$'public net.minecraft.client.particle.ParticleEngine spriteSets\nprotected net.minecraft.world.entity.projectile.Projectile hasBeenShot\nprotected net.minecraft.world.entity.projectile.Projectile leftOwner\nprotected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z\npublic net.minecraft.server.PlayerAdvancements$Data'
     local actual=''
     local bytes=''
     local lines=''
@@ -874,9 +939,9 @@ verify_p8_s5_access_transformer() {
         1) matches=0 ;;
         *) fail "grep failed while checking ${resource} (exit ${status})" ;;
     esac
-    [[ "${bytes}" -eq 280 && "${lines}" -eq 4 && "${matches}" -eq 1 \
+    [[ "${bytes}" -eq 332 && "${lines}" -eq 5 && "${matches}" -eq 1 \
             && "${actual}" == "${exact}" ]] \
-        || fail 'P8-S5/P9-S3 access transformer must be the exact ordered four-line 280-byte rule set'
+        || fail 'P8-S5/P9-S3/P11 access transformer must be the exact ordered five-line 332-byte rule set'
     is_approved_p8_s5_resource_path "${resource}" \
         || fail 'P8-S5 resource allowlist rejected its exact access transformer'
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
@@ -1062,6 +1127,72 @@ verify_changed_paths() {
 
 self_regression() {
     SELF_TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/gramarye-p4-e2-self.XXXXXX")"
+    is_allowed_changed_path 'src/main/resources/gramarye.p11.mixins.json' \
+        || fail 'self-test rejected the exact P11 Mixin resource'
+    local resource=''
+    for resource in \
+        'src/main/resources/gramarye.p11.mixins.json.extra' \
+        'src/main/resources/gramarye.p11.foreign.json' \
+        'docs/codex-spec/19_P11持久化與多人修正案.md' \
+        'gradle.properties'; do
+        if is_allowed_changed_path "${resource}"; then
+            fail 'self-test accepted a prefix-near, foreign, authority or version path'
+        fi
+    done
+    verify_p11_mixin_configuration src/main/resources/gramarye.p11.mixins.json
+    local mutation=''
+    for mutation in \
+        's/"required": true/"required": false/' \
+        's/"defaultRequire": 1/"defaultRequire": 0/' \
+        's/P11EntityLookupMixin/P11UnexpectedMixin/' \
+        's/P11IntegratedPlayerListMixin/P11PlayerListMixin/' \
+        's/P11PlayerListMixin/P11 PlayerListMixin/' \
+        's/"minVersion":/"foreign": true, "minVersion":/'; do
+        sed "${mutation}" src/main/resources/gramarye.p11.mixins.json > "${SELF_TEST_ROOT}/p11-mixins.json"
+        if (verify_p11_mixin_configuration "${SELF_TEST_ROOT}/p11-mixins.json") >/dev/null 2>&1; then
+            fail 'self-test accepted changed P11 schema, side or Mixin inventory'
+        fi
+    done
+    printf '%s\n' 'Verified exact P11 Mixin resource; schema, side, inventory and protected-path negatives rejected.'
+    for approved in \
+        'src/main/java/com/yo1no/gramarye/P11NativeCleanup.java' \
+        'src/main/java/com/yo1no/gramarye/mixin/P11EntityLookupMixin.java' \
+        'src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativePresenceProbe.java' \
+        'src/p9S5ClientHarness/resources/gramarye-p11-native-harness.mixins.json'; do
+        bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${approved}" \
+            || fail "self-test rejected exact P11 native-slice path: ${approved}"
+        if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${approved}.extra"; then
+            fail "self-test admitted prefix-near P11 native-slice path: ${approved}.extra"
+        fi
+    done
+    for rejected in \
+        'src/main/java/com/yo1no/gramarye/P11Unexpected.java' \
+        'src/main/java/com/yo1no/gramarye/mixin/P11UnexpectedMixin.java' \
+        'src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/function/unreviewed.mcfunction'; do
+        if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${rejected}"; then
+            fail "self-test admitted foreign P11 native-slice path: ${rejected}"
+        fi
+    done
+    verify_p11_metadata_resume_contracts "${COORDINATOR}" "${RECOVERY_SERVICE}"
+    for mutation in \
+        's/metadata.resumeAuthorized(this, player)/metadata.resumeAuthorized(this, null)/' \
+        's/metadata.reconciliationDone()/true/'; do
+        sed "${mutation}" "${COORDINATOR}" > "${SELF_TEST_ROOT}/metadata-coordinator-negative.java"
+        if (verify_p11_metadata_resume_contracts "${SELF_TEST_ROOT}/metadata-coordinator-negative.java" \
+                "${RECOVERY_SERVICE}") > "${SELF_TEST_ROOT}/metadata-negative.log" 2>&1; then
+            fail 'self-test accepted changed exact actor or completed-stage replay guard'
+        fi
+    done
+    for mutation in \
+        's/candidate != lease/candidate == lease/' \
+        's/resuming = true;/resuming = true; recoverPersistedPlayer(player);/' \
+        's/public boolean resume(/public boolean unreviewedResume(/'; do
+        sed "${mutation}" "${RECOVERY_SERVICE}" > "${SELF_TEST_ROOT}/metadata-recovery-negative.java"
+        if (verify_p11_metadata_resume_contracts "${COORDINATOR}" \
+                "${SELF_TEST_ROOT}/metadata-recovery-negative.java") > "${SELF_TEST_ROOT}/metadata-negative.log" 2>&1; then
+            fail 'self-test accepted forged lease, persisted-recovery replay or foreign entry'
+        fi
+    done
     printf '%s\n' 'present-marker' > "${SELF_TEST_ROOT}/present.txt"
     require_fixed "${SELF_TEST_ROOT}/present.txt" 'present-marker' \
         'self-test rejected a present marker'
@@ -1301,12 +1432,12 @@ require_fixed_count "${TEST_ROOT}/P4E2QualificationFacadeVisibilityCompileTest.j
 append_exclusive_slice \
     "${STORE_ROOT}/P4E2OnlineReconciliationDependency.java" \
     '    void reconcileAfterRecovery(' \
-    '    /** Exhaustive projection of the existing sealed P4-D outcome hierarchy. */' \
+    '    /** Sole-owner missing-stage entry, requiring the original root-bound opaque continuation. */' \
     "${E2_CROSSING_SLICE}" 'public primitive recovery crossing'
 append_exclusive_slice \
     "${COORDINATOR}" \
     '    public void reconcileAfterRecovery(' \
-    '    P4E2ReconciliationResult reconcile(' \
+    '    public void resumeMissingStages(ServerPlayer player,' \
     "${E2_CROSSING_SLICE}" 'coordinator dependency implementation'
 append_exclusive_slice \
     "${COORDINATOR}" \
@@ -1445,6 +1576,12 @@ require_fixed_count "${P4C2_ADAPTER}" 'getModContainerById(Gramarye.MOD_ID)' 1 \
         'login listener escaped the exact recovery and P8 presentation owners'
 require_only_owner '.reconcileAfterRecovery(' "${RECOVERY_SERVICE}" 1 \
     'typed P4-E2 continuation must have one exact production callsite'
+require_only_owner '.resumeMissingStages(' "${RECOVERY_SERVICE}" 1 \
+    'missing-stage continuation must have one exact opaque-receipt consumer'
+verify_p11_metadata_resume_contracts "${COORDINATOR}" "${RECOVERY_SERVICE}"
+require_fixed_count "${STORE_ROOT}/P4E2OnlineReconciliationDependency.java" \
+    '    void resumeMissingStages(ServerPlayer player,' 1 \
+    'missing-stage crossing must retain one exact sealed-dependency declaration'
 require_fixed \
     "${STORE_ROOT}/P4E2OnlineReconciliationDependency.java" \
     'SkillSubmissionRecoveryService.RecoveryContinuation continuation,' \
@@ -1735,10 +1872,12 @@ baseline_game_test_count=$((total_game_test_count - mana_game_test_count - $(bas
 [[ "${total_game_test_count}" -eq "$(bash scripts/verify-p7-s4-source-contracts.sh --game-test-count)" ]] \
     || fail 'combined production GameTest inventory must match the exact current method/path set'
 
+verify_p11_mixin_configuration src/main/resources/gramarye.p11.mixins.json
 git diff --quiet HEAD -- \
     gradle.properties settings.gradle gradle \
     docs/codex-spec src/main/resources src/test/resources \
     ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
+    ':(exclude)src/main/resources/gramarye.p11.mixins.json' \
     ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
     ':(exclude)src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json' \
     ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \

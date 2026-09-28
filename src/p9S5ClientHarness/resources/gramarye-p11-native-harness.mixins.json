@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "package": "com.yo1no.gramarye.harnessmixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["P11ConstructorFaultMixin", "P11CanonicalSendFaultMixin",
+    "P11MetadataOwnerFaultMixin", "P11MetadataRecoveryFaultMixin", "P11MetadataStageFaultMixin",
+    "P11CloneLoadObserverMixin", "P11CanonicalCopyFaultMixin", "P11CanonicalPacketMeasurementMixin",
+    "P11RewardLootFaultMixin", "P11RewardFunctionFaultMixin", "P11RewardFunctionCatchMixin"],
+  "client": ["P11ClientDeliveryObservationMixin"],
+  "injectors": {"defaultRequire": 1}
+}

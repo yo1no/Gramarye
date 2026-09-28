@@ -1,0 +1,12 @@
+{
+  "display": {
+    "icon": {"id": "minecraft:stone"},
+    "title": "P11 delivery",
+    "description": "Excluded native delivery probe",
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {"manual": {"trigger": "minecraft:impossible"}}
+}

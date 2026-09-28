@@ -684,7 +684,10 @@ if ((!p11SourceOutputText.isBlank() && !java.nio.file.Path.of(p11SourceOutputTex
 }
 if (!(p11SourceCase in ['positive', 'malformed-stats', 'stats-io-fault', 'player-replace-false',
                        'memory-handoff', 'synchronous-handoff', 'constructor-failure', 'material-mismatch',
-                       'native-respawn'])) {
+                       'native-respawn', 'native-reward', 'presence-handoff',
+                       'association-failure', 'association-unknown', 'cleanup-failure', 'canonical-reload',
+                       'metadata-recovery', 'metadata-reconciliation', 'metadata-session', 'metadata-source-change',
+                       'clone-parity', 'full-b-fault', 'native-end', 'owned-copy-raw', 'owned-copy-marker'])) {
     throw new GradleException('Unknown gramaryeP11SourceCase')
 }
 
@@ -1346,6 +1349,7 @@ neoForge {
         p11SourceWriterClientHarness {
             client()
             sourceSet = p9S5ClientHarnessSourceSet
+            programArguments.addAll '--mixin.config', 'gramarye-p11-native-harness.mixins.json'
             additionalRuntimeClasspathConfiguration.exclude(
                     group: 'org.apache.commons', module: 'commons-compress')
             gameDirectory = p11SourceGameDirectory

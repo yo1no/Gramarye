@@ -16,6 +16,12 @@ public sealed interface P4E2OnlineReconciliationDependency
             int stepsReplayed,
             Optional<String> existingExceptionClass);
 
+    /** Sole-owner missing-stage entry, requiring the original root-bound opaque continuation. */
+    void resumeMissingStages(ServerPlayer player,
+            SkillSubmissionRecoveryService.RecoveryContinuation continuation,
+            RecoveryKind kind, int entriesCleared, int stepsReplayed,
+            Optional<String> existingExceptionClass);
+
     /** Exhaustive projection of the existing sealed P4-D outcome hierarchy. */
     enum RecoveryKind {
         NO_PENDING,

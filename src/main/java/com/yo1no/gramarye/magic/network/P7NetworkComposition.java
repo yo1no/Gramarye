@@ -3,6 +3,7 @@ package com.yo1no.gramarye.magic.network;
 import java.util.Objects;
 import com.yo1no.gramarye.P6RuntimeExecutionCapability;
 import com.yo1no.gramarye.magic.runtime.mana.P7ManaSnapshotBridge;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -43,6 +44,11 @@ final class P7NetworkComposition {
 
     static void onLoginReady(MinecraftServer server, ServerPlayer actor) {
         ProductionHolder.LIFECYCLE.onLoginReady(server, actor);
+    }
+
+    static void onLoginReady(MinecraftServer server, ServerPlayer actor,
+            MetadataContinuation receipt, P7ServerAuthorizationBoundary.LoginReadyPort port) {
+        ProductionHolder.LIFECYCLE.onLoginReady(server, actor, receipt, port);
     }
 
     static P7ServerLifecycleCoordinator lifecycle() {

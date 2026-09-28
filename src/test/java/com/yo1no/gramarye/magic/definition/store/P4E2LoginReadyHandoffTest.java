@@ -37,7 +37,11 @@ final class P4E2LoginReadyHandoffTest {
         assertEquals(1, source.split(java.util.regex.Pattern.quote(call), -1).length - 1);
         assertTrue(wrapper.indexOf("if (isLoginReadyTerminal(result))")
                 > wrapper.indexOf("var result = reconcile("));
-        assertTrue(wrapper.indexOf(call) > wrapper.indexOf("if (isLoginReadyTerminal(result))"));
+        assertTrue(wrapper.indexOf("loginReady(exactPlayer, continuation);")
+                > wrapper.indexOf("if (isLoginReadyTerminal(result))"));
+        assertTrue(wrapper.contains("metadata.resumeAuthorized(this, player)"));
+        assertTrue(wrapper.contains("if (metadata.reconciliationDone())"));
+        assertTrue(wrapper.contains("loginReadyPort.onLoginReady(server, exactPlayer, metadata)"));
         assertFalse(wrapper.contains("catch ("));
     }
 

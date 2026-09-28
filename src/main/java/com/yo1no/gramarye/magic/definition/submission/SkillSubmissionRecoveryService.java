@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.definition.submission;
 
 import com.yo1no.gramarye.P4E2QualificationFacade;
+import com.yo1no.gramarye.P11NativeStorageBoundary;
 import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
@@ -8,6 +9,7 @@ import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import com.yo1no.gramarye.magic.definition.store.P4E2OnlineReconciliationDependency;
 import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreSubmissionPort;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -361,14 +363,17 @@ public final class SkillSubmissionRecoveryService {
             var exactView = qualificationView;
             var observationEnabled = exactView != null
                     && exactView.enabledFor(server, playerMost, playerLeast);
-            try {
-                var continuation = new RecoveryContinuation(
+            var continuation = new RecoveryContinuation(
                         this,
                         Objects.requireNonNull(
                                 onlineReconciliationDependency,
                                 "online reconciliation dependency"),
                         player);
+            boolean normal = false;
+            try {
+                continuation.recoveryStarted();
                 var outcome = recoverPersistedPlayer(player);
+                continuation.recoveryCompleted(outcome);
                 if (observationEnabled) {
                     switch (outcome) {
                         case CurrentPublication ignored -> exactView.recordRecovery(
@@ -487,7 +492,9 @@ public final class SkillSubmissionRecoveryService {
                     }
                 }
                 continuation.consume(this, outcome);
+                normal = true;
             } finally {
+                continuation.finished(normal);
                 if (observationEnabled) {
                     // A normal continuation return guarantees that its wrapper recorded every
                     // mandatory result; an incomplete cell at this finally is therefore abnormal.
@@ -651,6 +658,7 @@ public final class SkillSubmissionRecoveryService {
         private P4E2OnlineReconciliationDependency dependency;
         private ServerPlayer player;
         private final ContinuationLifecycle lifecycle = new ContinuationLifecycle();
+        private final MetadataContinuation metadata;
 
         private RecoveryContinuation(
                 SkillSubmissionRecoveryService owner,
@@ -659,6 +667,38 @@ public final class SkillSubmissionRecoveryService {
             this.owner = Objects.requireNonNull(owner, "owner");
             this.dependency = Objects.requireNonNull(dependency, "dependency");
             this.player = Objects.requireNonNull(player, "player");
+            var candidate = new MetadataContinuation(owner, dependency, player, this);
+            candidate.lease = P11NativeStorageBoundary.retainMetadata(player, candidate);
+            metadata = candidate.lease == null ? null : candidate;
+        }
+
+        private void recoveryStarted() {
+            if (metadata != null) { metadata.stages.recoveryStarted(); }
+        }
+
+        private void recoveryCompleted(RecoveryOutcome outcome) {
+            if (metadata != null) {
+                metadata.projection = new RecoveryProjection(outcome.e2Kind(), outcome.e2EntriesCleared(),
+                        outcome.e2StepsReplayed(), outcome.e2ExceptionClass());
+                metadata.stages.recoveryCompleted();
+                metadata.refresh();
+            }
+        }
+
+        private void finished(boolean normal) {
+            if (metadata != null) {
+                metadata.stages.finishAttempt(normal);
+                if (metadata.stages.complete()) { metadata.release(); }
+            }
+        }
+
+        /** Only the already-bound sole coordinator can observe this private receipt. */
+        public MetadataContinuation metadata(P4E2OnlineReconciliationDependency candidate) {
+            if (metadata == null) { return null; }
+            if (metadata.dependency != candidate) {
+                throw new IllegalStateException("P11_METADATA_COORDINATOR_MISMATCH");
+            }
+            return metadata;
         }
 
         private void consume(SkillSubmissionRecoveryService candidate, RecoveryOutcome outcome) {
@@ -684,6 +724,259 @@ public final class SkillSubmissionRecoveryService {
                     entriesCleared,
                     stepsReplayed,
                     existingExceptionClass);
+        }
+    }
+
+    private record RecoveryProjection(P4E2OnlineReconciliationDependency.RecoveryKind kind,
+            int entriesCleared, int stepsReplayed, Optional<String> exceptionClass) {}
+
+    enum MetadataStage { NOT_STARTED, RUNNING, DONE, UNKNOWN }
+
+    /** Actual local submission stages only; none is remote delivery or durable readback. */
+    public enum MetadataInitialStage {
+        MANA_STARTED, MANA_SUBMITTED, MANA_FAILED,
+        COOLDOWN_STARTED, COOLDOWN_SUBMITTED, COOLDOWN_FAILED
+    }
+
+    /** Finite facts used by the live receipt, not a retry queue or a second readiness owner. */
+    static final class MetadataStages {
+        private MetadataStage recovery = MetadataStage.NOT_STARTED;
+        private MetadataStage reconciliation = MetadataStage.NOT_STARTED;
+        private MetadataStage session = MetadataStage.NOT_STARTED;
+        private MetadataStage mana = MetadataStage.NOT_STARTED;
+        private MetadataStage cooldown = MetadataStage.NOT_STARTED;
+        private boolean failed, blocked;
+
+        void recoveryStarted() {
+            require(recovery, MetadataStage.NOT_STARTED);
+            recovery = MetadataStage.RUNNING;
+        }
+
+        void recoveryCompleted() {
+            require(recovery, MetadataStage.RUNNING);
+            recovery = MetadataStage.DONE;
+        }
+
+        void reconciliationStarted() {
+            require(recovery, MetadataStage.DONE);
+            require(reconciliation, MetadataStage.NOT_STARTED);
+            reconciliation = MetadataStage.RUNNING;
+        }
+
+        void reconciliationCompleted(boolean ready) {
+            require(reconciliation, MetadataStage.RUNNING);
+            reconciliation = MetadataStage.DONE;
+            blocked |= !ready;
+        }
+
+        void sessionStarted() {
+            require(reconciliation, MetadataStage.DONE);
+            require(session, MetadataStage.NOT_STARTED);
+            session = MetadataStage.RUNNING;
+        }
+
+        void sessionOpened() {
+            require(session, MetadataStage.RUNNING);
+            session = MetadataStage.DONE;
+        }
+
+        void initialSync(MetadataInitialStage stage) {
+            if (session != MetadataStage.DONE) { blocked = true; return; }
+            switch (stage) {
+                case MANA_STARTED -> {
+                    if (mana == MetadataStage.NOT_STARTED) { mana = MetadataStage.RUNNING; }
+                    else { blocked = true; }
+                }
+                case MANA_SUBMITTED -> {
+                    if (mana == MetadataStage.RUNNING) { mana = MetadataStage.DONE; }
+                    else { blocked = true; }
+                }
+                case MANA_FAILED -> { mana = MetadataStage.UNKNOWN; failed = true; }
+                case COOLDOWN_STARTED -> {
+                    if (mana == MetadataStage.DONE && cooldown == MetadataStage.NOT_STARTED) {
+                        cooldown = MetadataStage.RUNNING;
+                    } else { blocked = true; }
+                }
+                case COOLDOWN_SUBMITTED -> {
+                    if (cooldown == MetadataStage.RUNNING) { cooldown = MetadataStage.DONE; }
+                    else { blocked = true; }
+                }
+                case COOLDOWN_FAILED -> { cooldown = MetadataStage.UNKNOWN; failed = true; }
+            }
+        }
+
+        private static void require(MetadataStage actual, MetadataStage expected) {
+            if (actual != expected) { throw new IllegalStateException("P11_METADATA_STAGE_NOT_PROVEN"); }
+        }
+
+        void finishAttempt(boolean normal) {
+            if (!normal) {
+                failed = true;
+                if (recovery == MetadataStage.RUNNING) { recovery = MetadataStage.UNKNOWN; }
+                if (reconciliation == MetadataStage.RUNNING) { reconciliation = MetadataStage.UNKNOWN; }
+                if (session == MetadataStage.RUNNING) { session = MetadataStage.UNKNOWN; }
+                if (mana == MetadataStage.RUNNING) { mana = MetadataStage.UNKNOWN; }
+                if (cooldown == MetadataStage.RUNNING) { cooldown = MetadataStage.UNKNOWN; }
+            }
+        }
+
+        boolean resumable() {
+            return failed && !blocked && recovery == MetadataStage.DONE
+                    && (reconciliation == MetadataStage.NOT_STARTED
+                    || reconciliation == MetadataStage.DONE)
+                    && session != MetadataStage.RUNNING && session != MetadataStage.UNKNOWN
+                    && mana != MetadataStage.RUNNING && mana != MetadataStage.UNKNOWN
+                    && cooldown != MetadataStage.RUNNING && cooldown != MetadataStage.UNKNOWN
+                    && !complete();
+        }
+
+        boolean complete() {
+            return !blocked && recovery == MetadataStage.DONE && reconciliation == MetadataStage.DONE
+                    && session == MetadataStage.DONE && mana == MetadataStage.DONE
+                    && cooldown == MetadataStage.DONE;
+        }
+    }
+
+    /**
+     * One exact account-root retained continuation. Construction and stage authority remain
+     * in the existing owners; possession of an actor/UUID cannot create or resume one.
+     */
+    public static final class MetadataContinuation {
+        private final SkillSubmissionRecoveryService owner;
+        private final P4E2OnlineReconciliationDependency dependency;
+        private final ServerPlayer player;
+        private final RecoveryContinuation continuation;
+        private final MetadataStages stages = new MetadataStages();
+        private P11NativeStorageBoundary.MetadataLease lease;
+        private RecoveryProjection projection;
+        private P7ServerAuthorizationBoundary.LoginReadyPort loginPort;
+        private long sessionEpoch;
+        private boolean resuming;
+
+        private MetadataContinuation(SkillSubmissionRecoveryService owner,
+                P4E2OnlineReconciliationDependency dependency, ServerPlayer player,
+                RecoveryContinuation continuation) {
+            this.owner = owner; this.dependency = dependency;
+            this.player = player; this.continuation = continuation;
+        }
+
+        public boolean authorizesRetention(ServerPlayer actor) {
+            return actor == player && owner != null && lease == null
+                    && stages.recovery == MetadataStage.NOT_STARTED;
+        }
+
+        private void refresh() {
+            if (!P11NativeStorageBoundary.refreshMetadata(lease)) { stages.blocked = true; }
+        }
+
+        private void release() {
+            P11NativeStorageBoundary.releaseMetadata(lease);
+        }
+
+        public void reconciliationStarted(P4E2OnlineReconciliationDependency candidate) {
+            requireCoordinator(candidate);
+            stages.reconciliationStarted();
+        }
+
+        public void reconciliationCompleted(P4E2OnlineReconciliationDependency candidate,
+                boolean ready, P7ServerAuthorizationBoundary.LoginReadyPort port) {
+            requireCoordinator(candidate);
+            stages.reconciliationCompleted(ready);
+            loginPort = Objects.requireNonNull(port, "login port");
+            refresh();
+        }
+
+        private void requireCoordinator(P4E2OnlineReconciliationDependency candidate) {
+            if (dependency != candidate) { throw new IllegalStateException("P11_METADATA_COORDINATOR_MISMATCH"); }
+        }
+
+        public boolean resumeAuthorized(P4E2OnlineReconciliationDependency candidate, ServerPlayer actor) {
+            return resuming && dependency == candidate && player == actor
+                    && P11NativeStorageBoundary.metadataCurrent(lease);
+        }
+
+        public boolean reconciliationDone() { return stages.reconciliation == MetadataStage.DONE; }
+
+        private void requireLoginPort(P7ServerAuthorizationBoundary.LoginReadyPort port) {
+            if (port != loginPort || stages.reconciliation != MetadataStage.DONE || stages.blocked) {
+                throw new IllegalStateException("P11_METADATA_LOGIN_PORT_MISMATCH");
+            }
+        }
+
+        public long openedSession(P7ServerAuthorizationBoundary.LoginReadyPort port) {
+            requireLoginPort(port);
+            return stages.session == MetadataStage.DONE ? sessionEpoch : 0;
+        }
+
+        public boolean loginActor(P7ServerAuthorizationBoundary.LoginReadyPort port, ServerPlayer actor) {
+            return port == loginPort && actor == player && !stages.blocked
+                    && P11NativeStorageBoundary.metadataCurrent(lease);
+        }
+
+        public void sessionStarted(P7ServerAuthorizationBoundary.LoginReadyPort port) {
+            requireLoginPort(port);
+            stages.sessionStarted();
+        }
+
+        public void sessionOpened(P7ServerAuthorizationBoundary.LoginReadyPort port, long epoch) {
+            requireLoginPort(port);
+            if (epoch < 1) {
+                throw new IllegalStateException("P11_METADATA_SESSION_NOT_RUNNING");
+            }
+            sessionEpoch = epoch;
+            stages.sessionOpened();
+        }
+
+        public void legacyLoginStarted(P7ServerAuthorizationBoundary.LoginReadyPort port) {
+            requireLoginPort(port);
+            // An alternate injected port has no production session/submission receipts.
+            // Preserve its behavior, but never infer resumable zero mutation from a throw.
+            stages.session = MetadataStage.UNKNOWN;
+            stages.blocked = true;
+        }
+
+        /** Root-owned observation token failed; no later refresh can make it resumable. */
+        public void manaObservationFailed(P11NativeStorageBoundary.MetadataLease candidate) {
+            if (candidate != null && candidate == lease) { stages.blocked = true; }
+        }
+
+        public boolean matchesSession(P11NativeStorageBoundary.MetadataLease candidate, long epoch) {
+            return candidate != null && candidate == lease && epoch == sessionEpoch
+                    && stages.session == MetadataStage.DONE && !stages.blocked;
+        }
+
+        /** Non-throwing observation from the root's exact-lease P7 submission dispatcher. */
+        public void observeInitialSync(P11NativeStorageBoundary.MetadataLease candidate,
+                long epoch, MetadataInitialStage stage) {
+            if (candidate == null || candidate != lease || epoch != sessionEpoch
+                    || stages.session != MetadataStage.DONE || stage == null) { return; }
+            // Native play operations may advance v after this exact P7 session opened.
+            // Observing its real submissions only retires this existing obligation; it
+            // never refreshes the old proof used by resume/loginActor.
+            if (!P11NativeStorageBoundary.metadataSessionCurrent(candidate)) {
+                stages.blocked = true;
+                return;
+            }
+            stages.initialSync(stage);
+            if (stages.complete() && !stages.blocked) { release(); }
+        }
+
+        /** Called only by the account root's named, cause-removed maintenance consumer. */
+        public boolean resume(P11NativeStorageBoundary.MetadataLease candidate) {
+            if (candidate == null || candidate != lease || resuming || !stages.resumable()
+                    || !P11NativeStorageBoundary.metadataCurrent(candidate)) { return false; }
+            resuming = true;
+            boolean normal = false;
+            try {
+                dependency.resumeMissingStages(player, continuation, projection.kind(),
+                        projection.entriesCleared(), projection.stepsReplayed(), projection.exceptionClass());
+                normal = true;
+                return true;
+            } finally {
+                resuming = false;
+                stages.finishAttempt(normal);
+                if (stages.complete()) { release(); }
+            }
         }
     }
 

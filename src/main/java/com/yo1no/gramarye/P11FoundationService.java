@@ -40,6 +40,7 @@ final class P11FoundationService {
             if (source != null) { source.publication(actor, epoch, version); }
         });
         P11NativeStorageBoundary.install(this);
+        P11NativeOperationBoundary.install(this);
     }
 
     void started(ServerStartedEvent event, P11StartupLoadState snapshot) {
@@ -222,7 +223,8 @@ final class P11FoundationService {
         var body = binding.source.canonicalAdvancements(advancements);
         if (body != null) {
             requireIndependentWriterBinding(true, actor.getServer() == binding.server,
-                    body.actor == actor && pathId.filter(body.actor.getUUID()::equals).isPresent());
+                    binding.source.canonicalAssociated(advancements, actor)
+                            && pathId.filter(body.actor.getUUID()::equals).isPresent());
             return binding.source;
         }
         if (binding.source.hasAccount(actor.getUUID())

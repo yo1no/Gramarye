@@ -89,7 +89,8 @@ final class P7S4ServerBehaviorTest {
                 package com.yo1no.gramarye.magic.network;
                 import net.minecraft.server.MinecraftServer;
                 import net.minecraft.server.level.ServerPlayer;
-                final class P7ServerAuthorizationBoundary {
+                public final class P7ServerAuthorizationBoundary {
+                    public interface LoginReadyPort {}
                     enum AdmissionDisposition {
                         ACCEPTED, UNKNOWN_SKILL, UNAUTHORIZED_INTENT, INVALID_TARGET,
                         TARGET_UNAVAILABLE, P5_ADMISSION_REJECTED, P5_UNAVAILABLE, INTERNAL_SERVER_FAULT
@@ -102,6 +103,46 @@ final class P7S4ServerBehaviorTest {
                             int slot, AdvisoryTargetCheck target) {
                         return AdmissionDisposition.UNKNOWN_SKILL;
                     }
+                }
+                """));
+        units.add(write(sourceRoot, "com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java", """
+                package com.yo1no.gramarye.magic.definition.submission;
+                import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary.LoginReadyPort;
+                public final class SkillSubmissionRecoveryService {
+                    public enum MetadataInitialStage {
+                        MANA_STARTED, MANA_SUBMITTED, MANA_FAILED,
+                        COOLDOWN_STARTED, COOLDOWN_SUBMITTED, COOLDOWN_FAILED
+                    }
+                    public static final class MetadataContinuation {
+                        public long epoch;
+                        public int starts;
+                        public long openedSession(LoginReadyPort port) { return epoch; }
+                        public boolean loginActor(LoginReadyPort port, net.minecraft.server.level.ServerPlayer actor) { return true; }
+                        public void sessionStarted(LoginReadyPort port) { starts++; }
+                        public void sessionOpened(LoginReadyPort port, long value) { epoch = value; }
+                    }
+                }
+                """));
+        units.add(write(sourceRoot, "com/yo1no/gramarye/P11NativeStorageBoundary.java", """
+                package com.yo1no.gramarye;
+                import net.minecraft.server.level.ServerPlayer;
+                import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataInitialStage;
+                public final class P11NativeStorageBoundary {
+                    public static int observationBegins, observationEnds, observationFailures;
+                    public static boolean observing;
+                    public static final class MetadataManaObservation {}
+                    public static MetadataManaObservation beginMetadataManaObservation(ServerPlayer actor, long epoch) {
+                        if (observing) { throw new AssertionError("nested observation scope"); }
+                        observing = true; observationBegins++;
+                        return new MetadataManaObservation();
+                    }
+                    public static void endMetadataManaObservation(MetadataManaObservation observation, boolean normal) {
+                        if (observation == null) { return; }
+                        if (!observing) { throw new AssertionError("missing observation scope"); }
+                        observing = false; observationEnds++;
+                        if (!normal) { observationFailures++; }
+                    }
+                    public static void metadataInitialSync(ServerPlayer actor, long epoch, MetadataInitialStage stage) {}
                 }
                 """));
         units.add(write(sourceRoot, "com/yo1no/gramarye/magic/network/P7AdvisoryTargetValidator.java", """
@@ -213,6 +254,16 @@ final class P7S4ServerBehaviorTest {
     }
 
     @Test
+    void knownInitialManaCompletionSkipsOnlyThatFamilyAndOpenedSessionIsNotReopened() throws Exception {
+        run("missing-stage");
+    }
+
+    @Test
+    void initialManaObservationIsScopedAndUnknownPublicationCannotBeRetriedByTheQueue() throws Exception {
+        run("mana-observation");
+    }
+
+    @Test
     void exactMaximumAndPreexhaustedSequencesNeverWrapOrRetry() throws Exception {
         run("exhaustion");
     }
@@ -270,6 +321,7 @@ final class P7S4ServerBehaviorTest {
                 import java.util.Optional;
                 import java.util.UUID;
                 import com.mojang.logging.LogUtils;
+                import com.yo1no.gramarye.P11NativeStorageBoundary;
                 import net.minecraft.server.MinecraftServer;
                 import net.minecraft.server.level.ServerPlayer;
                 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -282,6 +334,8 @@ final class P7S4ServerBehaviorTest {
                             case "ack-failure" -> ackFailure();
                             case "sync" -> sync();
                             case "partial" -> partial();
+                            case "missing-stage" -> missingStage();
+                            case "mana-observation" -> manaObservation();
                             case "exhaustion" -> exhaustion();
                             case "budget" -> budget();
                             case "reload" -> reload();
@@ -432,6 +486,99 @@ final class P7S4ServerBehaviorTest {
                                                 && f.sessions.currentSession(id).isEmpty(),
                                         "partial failure retried/compensated or preserved the session");
                             }
+                        }
+                    }
+
+                    private static void missingStage() {
+                        var f = new Fixture();
+                        var actor = f.player(1);
+                        var id = f.open(actor);
+                        var receipt = new com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation();
+                        receipt.epoch = id.connectionEpoch();
+                        P7ServerAuthorizationBoundary.LoginReadyPort port = new P7ServerAuthorizationBoundary.LoginReadyPort() {};
+                        f.life.onLoginReady(f.server, actor, receipt, port);
+                        check(receipt.starts == 0 && f.sessions.activeSessionCount() == 1
+                                        && f.identity(actor).equals(id) && f.life.queuedCount() == 1,
+                                "completed session was reopened or lost its original epoch");
+                        f.sessions.updateSync(f.server, id, f.state(id).manaSubmitted());
+                        var sent = new ArrayList<CustomPacketPayload>();
+                        var sync = new P7AuthoritativeSyncService(f.sessions, f.access, f.life,
+                                a -> { throw new AssertionError("completed mana was observed again"); },
+                                (a, payload) -> sent.add(payload));
+                        check(sync.fullSync(f.server, id, 0) && sent.size() == 1
+                                        && sent.get(0) instanceof SkillCooldownSyncPayload,
+                                "known completed initial mana was resubmitted");
+                        check(f.state(id).mana().value() == 2 && f.state(id).cooldown().value() == 2
+                                        && !f.state(id).initialPending(),
+                                "missing cooldown did not complete original initial state");
+                        receipt.epoch = id.connectionEpoch() + 1;
+                        try {
+                            f.life.onLoginReady(f.server, actor, receipt, port);
+                            throw new AssertionError("wrong receipt epoch was accepted");
+                        } catch (P7SemanticInvariantException expected) {}
+                        receipt.epoch = 0;
+                        try {
+                            f.life.onLoginReady(f.server, actor, receipt, port);
+                            throw new AssertionError("UUID-only existing session was adopted");
+                        } catch (P7SemanticInvariantException expected) {}
+                        check(receipt.starts == 0 && f.identity(actor).equals(id),
+                                "rejected continuation mutated session identity");
+                    }
+
+                    private static void manaObservation() {
+                        var positive = new Fixture();
+                        var actor = positive.player(1);
+                        var id = positive.open(actor);
+                        int begins = P11NativeStorageBoundary.observationBegins;
+                        int ends = P11NativeStorageBoundary.observationEnds;
+                        var observations = new int[1];
+                        var sends = new int[1];
+                        var sync = new P7AuthoritativeSyncService(positive.sessions, positive.access, positive.life,
+                                a -> {
+                                    observations[0]++;
+                                    check(P11NativeStorageBoundary.observing == (observations[0] == 1),
+                                            "only initial observation needs the exact metadata scope");
+                                    return 731;
+                                }, (a, payload) -> {
+                                    check(!P11NativeStorageBoundary.observing,
+                                            "packet submitted before exact mana publication scope ended");
+                                    sends[0]++;
+                                });
+                        sync.fullSync(positive.server, id, 0);
+                        positive.server.tick = 20;
+                        sync.fullSync(positive.server, id, 20);
+                        check(observations[0] == 2 && sends[0] == 4
+                                        && P11NativeStorageBoundary.observationBegins == begins + 1
+                                        && P11NativeStorageBoundary.observationEnds == ends + 1,
+                                "scope was omitted, retained, or minted for later periodic sync");
+
+                        for (var error : new boolean[] {false, true}) {
+                            var failed = new Fixture();
+                            var failedActor = failed.player(1);
+                            var failedId = failed.open(failedActor);
+                            var attempts = new int[1];
+                            var submissions = new int[1];
+                            int failures = P11NativeStorageBoundary.observationFailures;
+                            Throwable primary = error ? new AssertionError("mana-observation")
+                                    : new IllegalStateException("mana-observation");
+                            var failedSync = new P7AuthoritativeSyncService(failed.sessions, failed.access, failed.life,
+                                    a -> { attempts[0]++; throwExact(primary); return 0; },
+                                    (a, payload) -> submissions[0]++);
+                            try {
+                                failedSync.fullSync(failed.server, failedId, 0);
+                                throw new AssertionError("unknown observation fault disappeared");
+                            } catch (RuntimeException | Error observed) {
+                                check(observed == primary, "unknown observation primary identity replaced");
+                            }
+                            check(submissions[0] == 0 && attempts[0] == 1 && failedActor.disconnects == 1
+                                            && failed.sessions.currentSession(failedId).isEmpty()
+                                            && failed.life.queuedCount() == 0
+                                            && !P11NativeStorageBoundary.observing
+                                            && P11NativeStorageBoundary.observationFailures == failures + 1,
+                                    "unknown observation was submitted, retained, or left resumable");
+                            check(failedSync.fullSync(failed.server, failedId, 1) && attempts[0] == 1
+                                            && submissions[0] == 0 && failedActor.disconnects == 1,
+                                    "ordinary queued sender repeated an unknown mana publication");
                         }
                     }
 

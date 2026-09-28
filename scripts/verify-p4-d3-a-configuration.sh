@@ -10,7 +10,7 @@ fail() {
     exit 1
 }
 
-for required_tool in awk bash grep find git jar javap mktemp rm dirname pwd wc; do
+for required_tool in awk bash grep find git jar javap mktemp rm dirname pwd wc sed; do
     command -v "${required_tool}" >/dev/null 2>&1 \
         || fail "P4-D3-A configuration verifier cannot find required tool: ${required_tool}"
 done
@@ -257,6 +257,44 @@ verify_recovery_factory_surface() {
         1 'D3-A/E2 four-parameter recovery factory bytecode signature drifted'
 }
 
+verify_p11_mixin_configuration() {
+    local source="$1"
+    local actual=''
+    local expected='{"required":true,"minVersion":"0.8.7","package":"com.yo1no.gramarye.mixin","compatibilityLevel":"JAVA_21","mixins":['
+    expected+='"P11PlayerListMixin","P11ConfigurationSourceMixin","P11PlayerDataStorageMixin","P11ServerPlayerMixin",'
+    expected+='"P11EntityMaterialMixin","P11AttachmentMaterialMixin","P11BrainMaterialMixin","P11MinecraftServerMixin",'
+    expected+='"P11LevelStorageMixin","P11LevelRawReadMixin","P11PrimaryLevelDataMixin","P11NbtIoMixin",'
+    expected+='"P11UtilMixin","P11StringFallbackMixin","P11StatsMixin","P11AdvancementsMixin",'
+    expected+='"P11RecipeBookMixin","P11EntityPresenceMixin","P11PlayerSlotMixin","P11TeleportCommandMixin",'
+    expected+='"P11GameModeCommandMixin","P11SpectateCommandMixin","P11RideCommandMixin","P11AdvancementRewardsMixin",'
+    expected+='"P11SimpleCriterionTriggerMixin","P11CommandsMixin","P11ExecutionContextMixin","P11ServerPlayerScoreMixin",'
+    expected+='"P11LivingEntityCreditMixin","P11EnderDragonCreditMixin","P11SculkCatalystCreditMixin","P11ExecuteCommandMixin",'
+    expected+='"P11BuildContextsMixin","P11CallFunctionMixin","P11EntityCreditRemovalMixin","P11EntityRemovalMixin",'
+    expected+='"P11EntityManagerCleanupMixin","P11LevelEntityCleanupMixin","P11EntityLookupMixin"],'
+    expected+='"client":["P11IntegratedPlayerListMixin"],"injectors":{"defaultRequire":1}}'
+    require_regular_file "${source}" 'P11 Mixin configuration is missing or not regular'
+    [[ ! -L "${source}" ]] || fail 'P11 Mixin configuration must not be a symlink'
+    # Ignore only JSON whitespace outside strings; the complete expected document
+    # fixes the schema, all 39 common entries, the sole client entry and required hooks.
+    actual="$(LC_ALL=C awk '
+        {
+            for (i = 1; i <= length($0); i++) {
+                c = substr($0, i, 1)
+                if (quoted) {
+                    output = output c
+                    if (escaped) escaped = 0
+                    else if (c == "\\") escaped = 1
+                    else if (c == "\"") quoted = 0
+                } else if (c == "\"") { quoted = 1; output = output c }
+                else if (c !~ /[[:space:]]/) output = output c
+            }
+            if (quoted) { bad = 1; exit 1 }
+        }
+        END { if (bad) exit 1; print output }
+    ' "${source}")" || fail 'P11 Mixin configuration contains an invalid multiline string'
+    [[ "${actual}" == "${expected}" ]] || fail 'P11 Mixin schema or exact common/client inventory changed'
+}
+
 collect_java_files() {
     local root="$1"
     local destination="$2"
@@ -419,6 +457,33 @@ verify_search_helpers() {
     local status=0
     HELPER_FIXTURE="$(mktemp "${TMPDIR:-/tmp}/gramarye-p4-d3-a-helper.XXXXXX")" \
         || fail 'P4-D3-A verifier could not create helper fixture'
+    bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path 'src/main/resources/gramarye.p11.mixins.json' \
+        || fail 'self-test rejected the exact P11 Mixin resource'
+    local resource=''
+    for resource in \
+        'src/main/resources/gramarye.p11.mixins.json.extra' \
+        'src/main/resources/gramarye.p11.foreign.json' \
+        'docs/codex-spec/19_P11持久化與多人修正案.md' \
+        'gradle.properties'; do
+        if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${resource}"; then
+            fail 'self-test accepted a prefix-near, foreign, authority or version path'
+        fi
+    done
+    verify_p11_mixin_configuration src/main/resources/gramarye.p11.mixins.json
+    local mutation=''
+    for mutation in \
+        's/"required": true/"required": false/' \
+        's/"defaultRequire": 1/"defaultRequire": 0/' \
+        's/P11EntityLookupMixin/P11UnexpectedMixin/' \
+        's/P11IntegratedPlayerListMixin/P11PlayerListMixin/' \
+        's/P11PlayerListMixin/P11 PlayerListMixin/' \
+        's/"minVersion":/"foreign": true, "minVersion":/'; do
+        sed "${mutation}" src/main/resources/gramarye.p11.mixins.json > "${HELPER_FIXTURE}"
+        if (verify_p11_mixin_configuration "${HELPER_FIXTURE}") >/dev/null 2>&1; then
+            fail 'self-test accepted changed P11 schema, side or Mixin inventory'
+        fi
+    done
+    printf '%s\n' 'Verified exact P11 Mixin resource; schema, side, inventory and protected-path negatives rejected.'
     printf '%s\n' 'present contract' > "${HELPER_FIXTURE}"
     require_fixed "${HELPER_FIXTURE}" 'present contract' \
         'P4-D3-A verifier self-check lost fixed required matching'
@@ -819,7 +884,7 @@ is_approved_p8_s5_test_path() {
 verify_p8_s5_access_transformer() {
     local resource='src/main/resources/META-INF/accesstransformer.cfg'
     local expected='public net.minecraft.client.particle.ParticleEngine spriteSets'
-    local exact=$'public net.minecraft.client.particle.ParticleEngine spriteSets\nprotected net.minecraft.world.entity.projectile.Projectile hasBeenShot\nprotected net.minecraft.world.entity.projectile.Projectile leftOwner\nprotected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z'
+    local exact=$'public net.minecraft.client.particle.ParticleEngine spriteSets\nprotected net.minecraft.world.entity.projectile.Projectile hasBeenShot\nprotected net.minecraft.world.entity.projectile.Projectile leftOwner\nprotected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z\npublic net.minecraft.server.PlayerAdvancements$Data'
     local actual=''
     local bytes=''
     local lines=''
@@ -840,9 +905,9 @@ verify_p8_s5_access_transformer() {
         1) matches=0 ;;
         *) fail "grep failed while checking ${resource} (exit ${status})" ;;
     esac
-    [[ "${bytes}" -eq 280 && "${lines}" -eq 4 && "${matches}" -eq 1 \
+    [[ "${bytes}" -eq 332 && "${lines}" -eq 5 && "${matches}" -eq 1 \
             && "${actual}" == "${exact}" ]] \
-        || fail 'P8-S5/P9-S3 access transformer must be the exact ordered four-line 280-byte rule set'
+        || fail 'P8-S5/P9-S3/P11 access transformer must be the exact ordered five-line 332-byte rule set'
     is_approved_p8_s5_resource_path "${resource}" \
         || fail 'P8-S5 resource allowlist rejected its exact access transformer'
     if is_approved_p8_s5_resource_path "${resource}.extra"; then
@@ -863,6 +928,7 @@ verify_p8_s5_access_transformer() {
 }
 
 verify_change_boundary() {
+    verify_p11_mixin_configuration src/main/resources/gramarye.p11.mixins.json
     local changed=''
     local untracked=''
     local path=''
@@ -870,6 +936,7 @@ verify_change_boundary() {
     git diff --quiet HEAD -- \
         src/main/resources \
         ':(exclude)src/main/resources/META-INF/accesstransformer.cfg' \
+        ':(exclude)src/main/resources/gramarye.p11.mixins.json' \
         ':(exclude)src/main/resources/assets/gramarye/lang/en_us.json' \
         ':(exclude)src/main/resources/data/gramarye/gramarye/skill_templates/starter_bolt_v0.json' \
         ':(exclude)src/main/resources/assets/gramarye/lang/zh_tw.json' \

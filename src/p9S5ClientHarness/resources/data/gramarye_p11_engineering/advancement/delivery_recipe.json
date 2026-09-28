@@ -1,0 +1,9 @@
+{
+  "parent": "gramarye_p11_engineering:delivery_root",
+  "criteria": {
+    "bread": {
+      "trigger": "minecraft:recipe_unlocked",
+      "conditions": {"recipe": "minecraft:bread"}
+    }
+  }
+}

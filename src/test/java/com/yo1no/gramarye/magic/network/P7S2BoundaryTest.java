@@ -485,7 +485,12 @@ final class P7S2BoundaryTest {
         assertEquals(loginReadyPort, acquireLogin.getReturnType());
         assertEquals(1, Arrays.stream(boundary.getDeclaredMethods())
                 .filter(method -> method.getName().equals("loginReadyPort")).count());
-        assertEquals(1, loginReadyPort.getDeclaredMethods().length);
+        assertEquals(2, loginReadyPort.getDeclaredMethods().length);
+        var continuedLogin = loginReadyPort.getDeclaredMethod("onLoginReady",
+                MinecraftServer.class, ServerPlayer.class,
+                com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation.class);
+        assertTrue(continuedLogin.isDefault());
+        assertEquals(void.class, continuedLogin.getReturnType());
         assertTrue(java.lang.reflect.Modifier.isAbstract(onLoginReady.getModifiers()));
         assertEquals(void.class, onLoginReady.getReturnType());
         assertTrue(java.lang.reflect.Modifier.isStatic(install.getModifiers()));

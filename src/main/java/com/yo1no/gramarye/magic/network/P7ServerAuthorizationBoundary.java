@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.network;
 
 import com.yo1no.gramarye.P6RuntimeExecutionCapability;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation;
 import java.util.Objects;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -77,5 +78,16 @@ public final class P7ServerAuthorizationBoundary {
     @FunctionalInterface
     public interface LoginReadyPort {
         void onLoginReady(MinecraftServer server, ServerPlayer actor);
+
+        /** Same sole port, with the root-bound receipt from the original recovery owner. */
+        default void onLoginReady(MinecraftServer server, ServerPlayer actor, MetadataContinuation receipt) {
+            Objects.requireNonNull(receipt, "metadata receipt");
+            if (this == LOGIN_READY_PORT) {
+                P7NetworkComposition.onLoginReady(server, actor, receipt, this);
+            } else {
+                receipt.legacyLoginStarted(this);
+                onLoginReady(server, actor);
+            }
+        }
     }
 }

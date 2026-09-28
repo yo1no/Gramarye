@@ -73,6 +73,9 @@ final class P4D3AApiGateTest {
                 P4E2OnlineReconciliationDependency.class);
         var register = SkillSubmissionRecoveryService.class.getDeclaredMethod(
                 "registerOn", IEventBus.class);
+        var continuation = SkillSubmissionRecoveryService.RecoveryContinuation.class;
+        var metadata = SkillSubmissionRecoveryService.MetadataContinuation.class;
+        var accessor = continuation.getDeclaredMethod("metadata", P4E2OnlineReconciliationDependency.class);
         var source = withoutCommentsAndLiterals(read(RECOVERY_SERVICE));
 
         assertAll(
@@ -110,11 +113,37 @@ final class P4D3AApiGateTest {
                 () -> assertTrue(Modifier.isFinal(
                         SkillSubmissionRecoveryService.RecoveryContinuation.class
                                 .getModifiers())),
-                () -> assertTrue(Arrays.stream(
-                                SkillSubmissionRecoveryService.RecoveryContinuation.class
-                                        .getDeclaredMethods())
-                        .noneMatch(method -> Modifier.isPublic(method.getModifiers())
-                                || Modifier.isProtected(method.getModifiers()))),
+                () -> assertEquals(Set.of("metadata"), publicDeclaredMethodNames(continuation)),
+                () -> assertEquals(1, Arrays.stream(continuation.getDeclaredMethods())
+                        .filter(method -> Modifier.isPublic(method.getModifiers())).count()),
+                () -> assertTrue(Arrays.stream(continuation.getDeclaredMethods())
+                        .noneMatch(method -> Modifier.isProtected(method.getModifiers()))),
+                () -> assertEquals(metadata, accessor.getReturnType()),
+                () -> assertTrue(Modifier.isPublic(accessor.getModifiers())
+                        && !Modifier.isStatic(accessor.getModifiers())),
+                () -> assertTrue(Modifier.isPublic(metadata.getModifiers())
+                        && Modifier.isStatic(metadata.getModifiers())
+                        && Modifier.isFinal(metadata.getModifiers())),
+                () -> assertTrue(Arrays.stream(metadata.getDeclaredConstructors())
+                        .allMatch(constructor -> Modifier.isPrivate(constructor.getModifiers()))),
+                () -> assertTrue(Arrays.stream(metadata.getDeclaredFields())
+                        .allMatch(field -> Modifier.isPrivate(field.getModifiers()))),
+                () -> assertEquals(Set.of("authorizesRetention", "reconciliationStarted",
+                                "reconciliationCompleted", "resumeAuthorized", "reconciliationDone",
+                                "openedSession", "loginActor", "sessionStarted", "sessionOpened",
+                                "legacyLoginStarted", "manaObservationFailed", "matchesSession",
+                                "observeInitialSync", "resume"),
+                        publicDeclaredMethodNames(metadata)),
+                () -> assertEquals(14, Arrays.stream(metadata.getDeclaredMethods())
+                        .filter(method -> Modifier.isPublic(method.getModifiers())).count()),
+                () -> assertTrue(Arrays.stream(metadata.getDeclaredMethods())
+                        .noneMatch(method -> Modifier.isProtected(method.getModifiers()))),
+                () -> assertEquals(void.class, metadata.getDeclaredMethod("manaObservationFailed",
+                        com.yo1no.gramarye.P11NativeStorageBoundary.MetadataLease.class).getReturnType()),
+                () -> assertEquals(List.of("MANA_STARTED", "MANA_SUBMITTED", "MANA_FAILED",
+                                "COOLDOWN_STARTED", "COOLDOWN_SUBMITTED", "COOLDOWN_FAILED"),
+                        Arrays.stream(SkillSubmissionRecoveryService.MetadataInitialStage.values())
+                                .map(Enum::name).toList()),
                 () -> assertEquals(1, occurrences(source, "PlayerEvent.PlayerLoggedInEvent")),
                 () -> assertEquals(1, occurrences(source, "addListener(this::onPlayerLoggedIn)")),
                 () -> assertEquals(1, occurrences(source, "recoverPersistedPlayer(player)")),

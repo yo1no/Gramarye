@@ -228,7 +228,15 @@ class P3D3AApiGateTest {
                 "P11BrainMaterialMixin", "P11MinecraftServerMixin", "P11LevelStorageMixin",
                 "P11LevelRawReadMixin", "P11PrimaryLevelDataMixin", "P11NbtIoMixin",
                 "P11UtilMixin", "P11StringFallbackMixin", "P11StatsMixin",
-                "P11AdvancementsMixin", "P11IntegratedPlayerListMixin").stream()
+                "P11AdvancementsMixin", "P11IntegratedPlayerListMixin",
+                "P11RecipeBookMixin", "P11EntityPresenceMixin", "P11PlayerSlotMixin",
+                "P11TeleportCommandMixin", "P11GameModeCommandMixin", "P11SpectateCommandMixin",
+                "P11RideCommandMixin", "P11AdvancementRewardsMixin", "P11SimpleCriterionTriggerMixin",
+                "P11CommandsMixin", "P11ExecutionContextMixin", "P11ServerPlayerScoreMixin",
+                "P11LivingEntityCreditMixin", "P11EnderDragonCreditMixin", "P11SculkCatalystCreditMixin",
+                "P11ExecuteCommandMixin", "P11BuildContextsMixin", "P11CallFunctionMixin",
+                "P11EntityCreditRemovalMixin", "P11EntityRemovalMixin", "P11EntityManagerCleanupMixin",
+                "P11LevelEntityCleanupMixin", "P11EntityLookupMixin").stream()
                 .map(name -> "com.yo1no.gramarye.mixin." + name)
                 .collect(Collectors.toSet());
         assertEquals(p11Mixins, classes.stream()
@@ -256,6 +264,30 @@ class P3D3AApiGateTest {
                 () -> assertEquals(List.of(storeSource), sites),
                 () -> assertEquals(1, pinConstructionCount(readSource(storeSource))),
                 () -> assertEquals(Set.of(sanctionedFactory), publicFactories));
+    }
+
+    @Test
+    void nativeSlicePathInventoryRejectsNearPrefixesAndForeignNativeHelpers() throws Exception {
+        for (var exact : List.of(
+                "src/main/java/com/yo1no/gramarye/P11NativeCleanup.java",
+                "src/main/java/com/yo1no/gramarye/mixin/P11EntityLookupMixin.java",
+                "src/p9S5ClientHarness/resources/gramarye-p11-native-harness.mixins.json")) {
+            assertNativeSlicePath(exact, 0);
+            assertNativeSlicePath(exact + ".extra", 1);
+        }
+        assertNativeSlicePath("src/main/java/com/yo1no/gramarye/P11Unexpected.java", 1);
+        assertNativeSlicePath("src/main/java/com/yo1no/gramarye/mixin/P11UnexpectedMixin.java", 1);
+        assertNativeSlicePath("src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/"
+                + "function/unreviewed.mcfunction", 1);
+    }
+
+    private static void assertNativeSlicePath(String path, int expected) throws Exception {
+        var process = new ProcessBuilder("bash", "scripts/verify-p7-s4-source-contracts.sh",
+                "--is-s4-path", path).directory(projectRoot().toFile()).start();
+        boolean completed = process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+        if (!completed) { process.destroyForcibly(); }
+        assertTrue(completed, "direct path checker did not complete");
+        assertEquals(expected, process.exitValue(), path);
     }
 
     @Test

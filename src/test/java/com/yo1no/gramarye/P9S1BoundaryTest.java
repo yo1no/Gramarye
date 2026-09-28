@@ -278,7 +278,8 @@ final class P9S1BoundaryTest {
                         "public net.minecraft.client.particle.ParticleEngine spriteSets\n"
                                 + "protected net.minecraft.world.entity.projectile.Projectile hasBeenShot\n"
                                 + "protected net.minecraft.world.entity.projectile.Projectile leftOwner\n"
-                                + "protected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z\n",
+                                + "protected net.minecraft.world.entity.projectile.Projectile checkLeftOwner()Z\n"
+                                + "public net.minecraft.server.PlayerAdvancements$Data\n",
                         accessTransformer),
                 () -> assertTrue(
                         hasBeenShotGuard >= 0

@@ -1,5 +1,7 @@
 package com.yo1no.gramarye.magic.network;
 
+import com.yo1no.gramarye.P11NativeStorageBoundary;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataInitialStage;
 import java.util.List;
 import java.util.Objects;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -75,24 +77,75 @@ final class P7AuthoritativeSyncService {
             return false;
         }
         // Both immutable full values are validated before either submission.
-        var balance = manaObservation.observe(actor);
-        if (balance < -1 || balance > 1_000_000_000L) {
-            throw new P7SemanticInvariantException("invalid mana observation");
+        boolean needsMana = !state.initialPending() || !state.initialManaSubmitted();
+        PlayerManaSyncPayload mana = null;
+        if (needsMana) {
+            var observation = state.initialPending()
+                    ? P11NativeStorageBoundary.beginMetadataManaObservation(actor, identity.connectionEpoch()) : null;
+            boolean normal = false;
+            try {
+                var balance = manaObservation.observe(actor);
+                if (balance < -1 || balance > 1_000_000_000L) {
+                    throw new P7SemanticInvariantException("invalid mana observation");
+                }
+                mana = new PlayerManaSyncPayload(new PlayerManaSnapshot(state.mana().value(),
+                        balance == -1 ? PlayerManaSnapshot.Availability.UNAVAILABLE : PlayerManaSnapshot.Availability.AVAILABLE,
+                        balance == -1 ? 0 : balance));
+                normal = true;
+            } catch (RuntimeException | Error primary) {
+                // Observation can install the mana default. Unknown publication cannot be
+                // retried by the ordinary queued sender on the next tick.
+                lifecycle.submissionFailed(server, actor, identity, primary);
+                throw primary;
+            } finally {
+                P11NativeStorageBoundary.endMetadataManaObservation(observation, normal);
+            }
         }
-        var mana = new PlayerManaSyncPayload(new PlayerManaSnapshot(state.mana().value(),
-                balance == -1 ? PlayerManaSnapshot.Availability.UNAVAILABLE : PlayerManaSnapshot.Availability.AVAILABLE,
-                balance == -1 ? 0 : balance));
         var cooldown = new SkillCooldownSyncPayload(new SkillCooldownSnapshot(state.cooldown().value(), List.of()));
-        submit(server, actor, identity, mana);
-        state = state.manaSubmitted();
-        sessions.updateSync(server, identity, state);
-        submit(server, actor, identity, cooldown);
-        state = state.cooldownSubmitted(tick);
-        sessions.updateSync(server, identity, state);
+        if (needsMana) {
+            submitInitialFamily(server, actor, identity, mana, state.initialPending(), true);
+            state = commitFamily(server, actor, identity, state, true, tick);
+        }
+        submitInitialFamily(server, actor, identity, cooldown, state.initialPending(), false);
+        state = commitFamily(server, actor, identity, state, false, tick);
         if (state.mana().exhausted() || state.cooldown().exhausted()) {
             lifecycle.terminate(server, actor, identity);
         }
         return true;
+    }
+
+    private void submitInitialFamily(MinecraftServer server, ServerPlayer actor,
+            P7SessionIdentity identity, CustomPacketPayload payload, boolean initial, boolean mana) {
+        if (initial) {
+            P11NativeStorageBoundary.metadataInitialSync(actor, identity.connectionEpoch(),
+                    mana ? MetadataInitialStage.MANA_STARTED : MetadataInitialStage.COOLDOWN_STARTED);
+        }
+        try {
+            submit(server, actor, identity, payload);
+        } catch (RuntimeException | Error primary) {
+            if (initial) {
+                P11NativeStorageBoundary.metadataInitialSync(actor, identity.connectionEpoch(),
+                        mana ? MetadataInitialStage.MANA_FAILED : MetadataInitialStage.COOLDOWN_FAILED);
+            }
+            throw primary;
+        }
+        if (initial) {
+            P11NativeStorageBoundary.metadataInitialSync(actor, identity.connectionEpoch(),
+                    mana ? MetadataInitialStage.MANA_SUBMITTED : MetadataInitialStage.COOLDOWN_SUBMITTED);
+        }
+    }
+
+    private P7ServerSyncState commitFamily(MinecraftServer server, ServerPlayer actor,
+            P7SessionIdentity identity, P7ServerSyncState state, boolean mana, long tick) {
+        try {
+            var next = mana ? state.manaSubmitted() : state.cooldownSubmitted(tick);
+            sessions.updateSync(server, identity, next);
+            return next;
+        } catch (RuntimeException | Error primary) {
+            // A submitted packet cannot be replayed because bookkeeping threw afterwards.
+            lifecycle.submissionFailed(server, actor, identity, primary);
+            throw primary;
+        }
     }
 
     private Submission submit(MinecraftServer server, ServerPlayer actor,
