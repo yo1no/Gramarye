@@ -905,11 +905,16 @@ verify_changed_paths() {
                     [ -x "$candidate" ] \
                         || fail "allowed E1-A verifier is not executable: $path"
                     ;;
-                build.gradle | .github/workflows/build.yml)
+                build.gradle | .github/workflows/build.yml | \
+                scripts/p11-online-runtime.rb | \
+                scripts/test-p11-online-runtime.rb | \
+                scripts/test-p11-online-launch-diagnostic.rb)
                     [ ! -x "$candidate" ] \
                         || fail "allowed P4-E3 build/workflow path is executable: $path"
                     ;;
                 src/main/resources/gramarye.p11.mixins.json | \
+                src/p11OnlineHarness/resources/gramarye-p11-online-harness.mixins.json | \
+                src/p11OnlineHarness/resources/gramarye-p11-online-private-console.xml | \
                 src/p9S5ClientHarness/resources/gramarye-p11-native-harness.mixins.json | \
                 src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/advancement/delivery_root.json | \
                 src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/advancement/native_partial.json | \

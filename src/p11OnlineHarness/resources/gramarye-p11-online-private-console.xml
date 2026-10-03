@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Excluded online-client engineering runs only. No disk or network appenders.
+    Keep this console private: DevLogin's local authorization prompt uses
+    System.out directly and is intentionally unaffected by Log4j configuration.
+    This is not a sanitizer for redirected stdout, JUL, or explicit HTTP/SSL
+    debug flags; those must remain disabled in the isolated launch.
+-->
+<Configuration status="WARN" shutdownHook="disable">
+    <Appenders>
+        <Console name="PrivateConsole" target="SYSTEM_OUT">
+            <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level] [%c{1}]: %msg{nolookup}%n%throwable"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Logger name="net.covers1624.devlogin" level="OFF" additivity="false"/>
+        <Logger name="com.mojang.authlib" level="OFF" additivity="false"/>
+        <Logger name="org.apache.http" level="OFF" additivity="false"/>
+        <Logger name="org.apache.hc" level="OFF" additivity="false"/>
+        <Logger name="jdk.internal.net.http" level="OFF" additivity="false"/>
+        <Logger name="jdk.httpclient.HttpClient" level="OFF" additivity="false"/>
+        <Logger name="sun.net.www.protocol.http.HttpURLConnection" level="OFF" additivity="false"/>
+        <Root level="INFO">
+            <AppenderRef ref="PrivateConsole"/>
+        </Root>
+    </Loggers>
+</Configuration>

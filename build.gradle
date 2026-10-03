@@ -215,6 +215,22 @@ def p8S5ClientHarnessSourceSet = sourceSets.create('p8S5ClientHarness')
 def p9S3ClientHarnessSourceSet = sourceSets.create('p9S3ClientHarness')
 // P9-S5's normal-player composition harness is process-isolated and never packaged.
 def p9S5ClientHarnessSourceSet = sourceSets.create('p9S5ClientHarness')
+// Opt-in online-authentication evidence companion; never part of the production JAR.
+def p11OnlineHarnessSourceSet = sourceSets.create('p11OnlineHarness')
+def p11OnlineJarText = providers.gradleProperty('gramaryeP11OnlineJar').orElse('').get()
+def p11OnlineRuntimeText = providers.gradleProperty('gramaryeP11OnlineRuntime').orElse('').get()
+def p11OnlineOutputText = providers.gradleProperty('gramaryeP11OnlineOutput').orElse('').get()
+def p11OnlinePrivateText = providers.gradleProperty('gramaryeP11OnlinePrivate').orElse('').get()
+def p11OnlineCase = providers.gradleProperty('gramaryeP11OnlineCase').orElse('single').get()
+def p11OnlinePort = providers.gradleProperty('gramaryeP11OnlinePort').orElse('25576').get()
+def p11OnlineRunId = providers.gradleProperty('gramaryeP11OnlineRunId').orElse('unconfigured').get()
+def p11OnlineReadyOnly = providers.gradleProperty('gramaryeP11OnlineReadyOnly').orElse('false').get()
+def p11OnlineJar = file(p11OnlineJarText.isBlank()
+        ? 'build/p11-online-explicit-frozen-jar-required.jar' : p11OnlineJarText)
+p11OnlineHarnessSourceSet.output.dir(p11OnlineJar)
+configurations.named(p11OnlineHarnessSourceSet.runtimeClasspathConfigurationName) {
+    exclude(group: 'org.apache.commons', module: 'commons-compress')
+}
 // The existing actual-client cohort loads the production artifact, not exploded main output.
 // Only its excluded controller classes are joined with that unchanged JAR in the test mod.
 p9S5ClientHarnessSourceSet.output.dir(
@@ -712,6 +728,7 @@ neoForge {
     addModdingDependenciesTo(p8S5ClientHarnessSourceSet)
     addModdingDependenciesTo(p9S3ClientHarnessSourceSet)
     addModdingDependenciesTo(p9S5ClientHarnessSourceSet)
+    addModdingDependenciesTo(p11OnlineHarnessSourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -799,6 +816,9 @@ neoForge {
         p9S5ClientRuntimeHarness {
             sourceSet(p9S5ClientHarnessSourceSet)
         }
+        p11OnlineHarness {
+            sourceSet(p11OnlineHarnessSourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
@@ -813,6 +833,7 @@ neoForge {
     def p8S5ClientHarnessMod = mods.named('p8S5ClientRuntimeHarness').get()
     def p9S3ClientHarnessMod = mods.named('p9S3ClientRuntimeHarness').get()
     def p9S5ClientHarnessMod = mods.named('p9S5ClientRuntimeHarness').get()
+    def p11OnlineHarnessMod = mods.named('p11OnlineHarness').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -1363,6 +1384,39 @@ neoForge {
             taskBefore(tasks.named(p9S5ClientHarnessSourceSet.classesTaskName))
         }
 
+        ['p11OnlineServer', 'p11OnlineClientA', 'p11OnlineClientB'].each { onlineName ->
+            create(onlineName) {
+                def dedicated = onlineName == 'p11OnlineServer'
+                if (dedicated) { server(); programArgument '--nogui' }
+                else { client(); devLogin = !p11OnlinePrivateText.isBlank() }
+                sourceSet = p11OnlineHarnessSourceSet
+                additionalRuntimeClasspathConfiguration.exclude(
+                        group: 'org.apache.commons', module: 'commons-compress')
+                def role = dedicated ? 'server' : onlineName.endsWith('A')
+                        ? (p11OnlineCase == 'single' ? 'single' : 'a') : 'b'
+                gameDirectory = file(p11OnlineRuntimeText.isBlank()
+                        ? 'build/p11-online-explicit-runtime-required/' + role
+                        : p11OnlineRuntimeText + '/' + role)
+                programArguments.addAll '--mixin.config', 'gramarye-p11-online-harness.mixins.json'
+                systemProperty 'gramarye.p11.online.output', p11OnlineOutputText
+                systemProperty 'gramarye.p11.online.host', '127.0.0.1'
+                systemProperty 'gramarye.p11.online.port', p11OnlinePort
+                systemProperty 'gramarye.p11.online.role', role
+                systemProperty 'gramarye.p11.online.case', p11OnlineCase
+                systemProperty 'gramarye.p11.online.runId', p11OnlineRunId
+                systemProperty 'gramarye.p11.online.readyOnly', p11OnlineReadyOnly
+                systemProperty 'gramarye.p11.online.jar', p11OnlineJar.absolutePath
+                if (!dedicated) {
+                    // DevLogin alone reads/writes this private store; no evidence collector does.
+                    systemProperty 'devlogin.storage', p11OnlinePrivateText + '/' + (onlineName.endsWith('A') ? 'a' : 'b')
+                    systemProperty 'devlogin.launch_profile', 'p11-local'
+                }
+                jvmArguments.addAll(p9S5ClientHarnessJvmArgs)
+                disableIdeRun()
+                taskBefore(tasks.named(p11OnlineHarnessSourceSet.classesTaskName))
+            }
+        }
+
         p4E0R2QFormalCaseIndices.each { formalCaseIndex ->
                 def formalCaseToken = String.format(
                         java.util.Locale.ROOT, '%02d', formalCaseIndex)
@@ -1493,7 +1547,8 @@ neoForge {
                                                     : (name == 'p9S5ClientRuntimeHarness'
                                                             || name == 'p11SourceWriterClientHarness')
                                                             ? p9S5ClientHarnessMod
-                                                            : productionMod])
+                                                            : name in ['p11OnlineServer', 'p11OnlineClientA', 'p11OnlineClientB']
+                                                                    ? p11OnlineHarnessMod : productionMod])
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -1533,6 +1588,31 @@ if (p4E0R2QConfiguredFormalRunNames
 // The dedicated-server smoke harness sends the normal `stop` command through stdin.
 tasks.named('runServer', JavaExec).configure {
     standardInput = System.in
+}
+
+['runP11OnlineServer', 'runP11OnlineClientA', 'runP11OnlineClientB'].each { name ->
+    tasks.named(name, JavaExec).configure {
+        standardInput = System.in
+        doFirst {
+            if (name == 'runP11OnlineClientA' || name == 'runP11OnlineClientB') {
+                throw new GradleException('P11 authenticated clients require frozen helper private-terminal launch')
+            }
+            def paths = [p11OnlineRuntimeText, p11OnlineOutputText, p11OnlinePrivateText]
+            if (paths.any { it.isBlank() || !java.nio.file.Path.of(it).isAbsolute() }
+                    || !p11OnlineJar.isFile() || !(p11OnlineCase in ['single', 'qctx', 'capacity'])
+                    || !(p11OnlineRunId ==~ /[a-zA-Z0-9_-]{8,64}/)
+                    || !(p11OnlinePort ==~ /[0-9]{4,5}/)
+                    || Integer.parseInt(p11OnlinePort) > 65535) {
+                throw new GradleException('P11 online harness requires explicit isolated inputs')
+            }
+            def normalized = paths.collect { java.nio.file.Path.of(it).toAbsolutePath().normalize() }
+            if (normalized.any { it.startsWith(project.projectDir.toPath()) || java.nio.file.Files.isSymbolicLink(it) }
+                    || normalized.any { a -> normalized.any { b -> a != b && (a.startsWith(b) || b.startsWith(a)) } }
+                    || normalized.toSet().size() != 3) {
+                throw new GradleException('P11 online runtime, evidence and private auth paths must be disjoint outside the repository')
+            }
+        }
+    }
 }
 
 def validateP8S5ClientRuntimeResultLines = { List<String> resultLines ->
@@ -2030,6 +2110,7 @@ dependencies {
     add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p9S5ClientHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)
+    add(p11OnlineHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
     testImplementation p4C2ProbeSourceSet.output
@@ -4101,6 +4182,9 @@ tasks.named(p9S3ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configu
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p9S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p11OnlineHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4E0ResearchGameTestSourceSet.compileJavaTaskName, JavaCompile).configure {

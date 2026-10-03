@@ -37,6 +37,21 @@ is_p10_path() {
 # Exact current P11 native lifecycle/reward slice, not historical P11 prefix admission.
 is_p11_native_slice_path() {
     case "$1" in
+        scripts/p11-online-runtime.rb | \
+        scripts/test-p11-online-runtime.rb | \
+        scripts/test-p11-online-launch-diagnostic.rb | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineClientHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineInputs.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineLaunchDiagnostic.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineLoginAccess.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineNativeContextProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineServerHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11OnlineAuthenticatorMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11OnlineClientObservationMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11OnlineLoginMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11OnlineRewardObservationMixin.java | \
+        src/p11OnlineHarness/resources/gramarye-p11-online-harness.mixins.json | \
+        src/p11OnlineHarness/resources/gramarye-p11-online-private-console.xml | \
         src/main/java/com/yo1no/gramarye/P11FoundationService.java | \
         src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java | \
         src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java | \
