@@ -15,11 +15,22 @@ public final class P11C4aServerTerminalProbe {
     private P11C4aServerTerminalProbe() { }
 
     public static synchronized void caught(MinecraftServer server, boolean stopping, Throwable original) {
-        if (!P11C4aEvidence.enabled() || original == null || (stopping ? stopCaught : runCaught)) { return; }
+        if ((!P11C4aEvidence.enabled() && !contextDiagnosticCase()) || original == null || (stopping ? stopCaught : runCaught)) { return; }
         if (stopping) { stopCaught = true; } else { runCaught = true; }
         try {
             var output = P11C4aEvidence.root().resolve("server");
             if (!Files.isDirectory(output)) { return; }
+            if (contextDiagnosticCase()) {
+                var facts = new java.util.LinkedHashMap<String, Object>();
+                facts.put("status", "OBSERVED_ORIGINAL_SERVER_TERMINAL_CATCH_NOT_ACCEPTANCE");
+                facts.put("serverThread", server.isSameThread()); facts.put("serverTick", server.getTickCount());
+                facts.put("boundedThrowableMetadata", contextThrowableFacts(original));
+                facts.put("exceptionTextExported", false); facts.put("stackExported", false);
+                try { facts.put("contextObservation", P11L1ContextRefusalProbe.pending()); }
+                catch (RuntimeException | Error ignoredObservation) { facts.put("contextObservation", Map.of("status", "UNAVAILABLE")); }
+                P11C4aEvidence.write(output, stopping ? "native-stop-catch.json" : "native-run-catch.json", facts);
+                return;
+            }
             var kinds = new ArrayList<Map<String, Object>>();
             var seen = new IdentityHashMap<Throwable, Boolean>();
             var value = original;
@@ -37,11 +48,19 @@ public final class P11C4aServerTerminalProbe {
     }
 
     public static synchronized void halt(MinecraftServer server, boolean wait) {
-        if (!P11C4aEvidence.enabled() || haltObserved) { return; }
+        P11L1HostStopProbe.originalBaseHalt(server, wait);
+        if ((!P11C4aEvidence.enabled() && !contextDiagnosticCase()) || haltObserved) { return; }
         haltObserved = true;
         try {
             var output = P11C4aEvidence.root().resolve("server");
             if (!Files.isDirectory(output)) { return; }
+            if (contextDiagnosticCase()) {
+                P11C4aEvidence.write(output, "native-halt.json", Map.of(
+                        "status", "ORIGINAL_HALT_ENTRY_NOT_TERMINAL_PROOF", "wait", wait,
+                        "serverThread", server.isSameThread(), "serverTick", server.getTickCount(),
+                        "stackExported", false));
+                return;
+            }
             P11C4aEvidence.write(output, "native-halt.json", Map.of(
                     "status", "ORIGINAL_HALT_ENTRY_NOT_TERMINAL_PROOF", "wait", wait,
                     "serverThread", server.isSameThread(), "serverTick", server.getTickCount(),
@@ -49,6 +68,52 @@ public final class P11C4aServerTerminalProbe {
         } catch (IOException | RuntimeException | Error evidenceFailure) {
             // Diagnostic failure never replaces or suppresses the original halt.
         }
+    }
+
+    private static boolean contextDiagnosticCase() {
+        return "l1-work-context-refusal".equals(System.getProperty("gramarye.p11.online.case", ""));
+    }
+
+    /** Only fixed categories/codes, following at most three exact known wrapper causes. */
+    private static List<Map<String, Object>> contextThrowableFacts(Throwable original) {
+        var result = new ArrayList<Map<String, Object>>();
+        var value = original;
+        for (int depth = 0; value != null && depth < 4; depth++) {
+            result.add(Map.of("depth", depth, "category", category(value), "fixedCode", fixedFailureCode(value)));
+            if (depth == 3 || !(value.getClass() == net.minecraft.ReportedException.class
+                    || value.getClass() == java.util.concurrent.CompletionException.class
+                    || value.getClass() == java.util.concurrent.ExecutionException.class)) { break; }
+            var next = value.getCause();
+            if (next == value) { break; }
+            value = next;
+        }
+        return List.copyOf(result);
+    }
+
+    private static String fixedFailureCode(Throwable value) {
+        return switch (P11C4aEvidence.failureCode(value)) {
+            case "L1_CONTEXT_TASK_MUST_ARRIVE_BEFORE_NATURAL_HIT",
+                    "L1_CONTEXT_EXACT_NATIVE_REQUIRED_TASK_CAPTURE",
+                    "L1_CONTEXT_NATIVE_TASK_HOLD_DEADLINE",
+                    "L1_CONTEXT_RECONNECT_AFTER_TRUE_LOGOUT",
+                    "L1_CONTEXT_NATURAL_HURT_OWNER",
+                    "L1_CONTEXT_TASK_HOLD_OWNER",
+                    "L1_CONTEXT_CAPTURE_REMAINS_OWNED_AT_COMMAND",
+                    "L1_CONTEXT_ORIGINAL_TASK_RELEASE_IN_REAL_WORK_CONTEXT",
+                    "L1_CONTEXT_REAL_OFFLINE_WORK_FUNCTION",
+                    "L1_CONTEXT_ACTUAL_COMBINED_FOP_AND_TWO_QCTX_BINDINGS",
+                    "L1_CONTEXT_ORIGINAL_RELOAD_APPLICATION",
+                    "L1_CONTEXT_ONE_RELOAD_LISTENER",
+                    "L1_CONTEXT_RELOAD_REFUSAL_WITHOUT_NATIVE_BODY",
+                    "L1_CONTEXT_ORIGINAL_CONTEXT_REMAINS_OWNED_AFTER_RELOAD",
+                    "L1_WORK_TO_ORIGINAL_NATIVE_OPERATION",
+                    "L1_FIRST_HIT_DID_NOT_BEGIN_NATIVE_CREDIT_FREE",
+                    "L1_WORK_REWARD_FIRST_NATURAL_HURT_AFTER_NORMAL_LOGOUT",
+                    "L1_WORK_REWARD_W_FOP_BEFORE_FIRST_N",
+                    "EVIDENCE_IO_FAILURE", "EVIDENCE_JSON_SERIALIZATION_FAILURE",
+                    "HARNESS_LINKAGE_FAILURE", "UNCLASSIFIED_HARNESS_FAILURE" -> P11C4aEvidence.failureCode(value);
+            default -> "UNAVAILABLE";
+        };
     }
 
     private static String category(Throwable value) {

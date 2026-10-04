@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "package": "com.yo1no.gramarye.harnessmixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["P11OnlineLoginMixin", "P11OnlineAuthenticatorMixin", "P11L1RuntimeMixin", "P11L1InstanceMixin", "P11L1DispatchMixin", "P11L1ProjectileMixin", "P11L1DamageMixin", "P11L1RewardMixin", "P11L1FoundationMixin", "P11L1ScoreMixin", "P11L1WorkReleaseMixin", "P11L1RevisionCompositionMixin", "P11L1P8SendMixin", "P11L1P8PolicyMixin", "P11L1AckPolicyMixin", "P11L1LifecycleReleaseMixin", "P11L1WorkRewardMixin", "P11L1WorkFunctionMixin", "P11L1WorkCommandMixin", "P11L1WorkFailureCountMixin", "P11L1StatsFailureCountMixin", "P11L1TerminalAddMixin", "P11L1TerminalRuntimeMixin", "P11L1TerminalLogoutMixin", "P11L1TerminalConnectionMixin", "P11L1TerminalServerMixin", "P11L1TrackingLevelMixin", "P11L1CapacityRuntimeMixin", "P11L1CapacityStarterMixin", "P11L1CapacityResourcesMixin", "P11L1CapacityGameMixin", "P11L1UnloadLogoutMixin", "P11L1UnloadRuntimeMixin", "P11L1OnlinePeerPlayerMixin", "P11L1OnlinePeerP8Mixin", "P11L1ContextBoundaryMixin", "P11L1ContextManagedBlockMixin", "P11L1RestartRuntimeMixin", "P11L1RestartCompositionMixin", "P11L1ContextTaskMixin", "P11L1ImpactCustodyMixin", "P11L1ImpactClaimMixin", "P11C4aServerTerminalMixin"],
+  "client": ["P11L1ClientInputMixin", "P11L1ClientDeliveryMixin", "P11L1ClientMirrorMixin", "P11L1LifecycleClientMixin", "P11C4aMouseInputMixin", "P11L1ContextClientMixin"],
+  "injectors": {"defaultRequire": 1}
+}

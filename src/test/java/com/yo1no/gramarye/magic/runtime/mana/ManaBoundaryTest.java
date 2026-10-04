@@ -504,6 +504,8 @@ final class ManaBoundaryTest {
                 () -> assertEquals(
                         Set.of(
                                 "src/main/java/com/yo1no/gramarye/Gramarye.java",
+                                // P11 L1 adds only capability-validated, call-scoped exact-A resolution.
+                                "src/main/java/com/yo1no/gramarye/P5LoadedReferenceResolver.java",
                                 "src/main/java/com/yo1no/gramarye/P5RuntimeProjector.java",
                                 "src/main/java/com/yo1no/gramarye/P5RuntimeVocabulary.java",
                                 // P11 §12.1 extends the existing SERVER config owner, not P5 limits.

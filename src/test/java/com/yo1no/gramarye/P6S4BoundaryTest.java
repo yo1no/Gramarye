@@ -231,6 +231,8 @@ final class P6S4BoundaryTest {
                 .collect(Collectors.toMap(
                         component -> component.getName(), component -> component.getType()));
         var guardMethods = RuntimeExecutionGuard.class.getDeclaredMethods();
+        var guardCheck = service.substring(service.indexOf("public RuntimeExecutionGuardDecision check()"),
+                service.indexOf("boolean suspendBeforeWorldCommit()"));
 
         assertAll(
                 () -> assertEquals(
@@ -278,8 +280,19 @@ final class P6S4BoundaryTest {
                                 .toList()),
                 () -> assertEquals(1, occurrences(
                         vocabulary, "RuntimeExecutionGuard executionGuard")),
-                () -> assertEquals(1, occurrences(
+                // The same call-local guard consults the unchanged pure cancellation/deadline
+                // decision on two non-executing cleanup branches and its original final return.
+                () -> assertEquals(1, occurrences(service, "new RuntimeExecutionGuardState(")),
+                () -> assertEquals(3, occurrences(
                         service, "runtimeExecutionGuardDecision(slot, instance, event)")),
+                () -> assertEquals(3, occurrences(
+                        guardCheck, "runtimeExecutionGuardDecision(slot, instance, event)")),
+                () -> assertEquals(2, Pattern.compile(
+                        "owner\\.runtimeExecutionGuardDecision\\(slot, instance, event\\)\\s*"
+                                + "== RuntimeExecutionGuardDecision\\.ALLOWED")
+                        .matcher(guardCheck).results().count()),
+                () -> assertEquals(1, occurrences(guardCheck,
+                        "return owner.runtimeExecutionGuardDecision(slot, instance, event);")),
                 () -> assertTrue(service.indexOf("instance.cancellationRequested")
                         < service.lastIndexOf("return deadlineExpired(slot, event)")),
                 () -> assertEquals(0, occurrences(adapterAndBridge(), "slot.queue")),

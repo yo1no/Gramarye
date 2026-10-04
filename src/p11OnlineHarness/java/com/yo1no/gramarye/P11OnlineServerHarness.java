@@ -142,7 +142,7 @@ public final class P11OnlineServerHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void respawn(PlayerEvent.PlayerRespawnEvent event) {
-        if (server == null || terminal || !"c4a-capacity".equals(cohort)
+        if (server == null || terminal || !("c4a-capacity".equals(cohort) || "l1-capacity".equals(cohort))
                 || !(event.getEntity() instanceof ServerPlayer player) || player.getServer() != server) { return; }
         try {
             var state = ACTORS.get(player.getUUID());
@@ -216,7 +216,7 @@ public final class P11OnlineServerHarness {
             }
             if (!fixtureDone && ACTORS.size() == expected && allPresent(1)) {
                 if (!ACTORS.values().stream().allMatch(P11OnlineServerHarness::materialReady)) { return; }
-                if (cohort.equals("c4a-capacity") && !capacityRespawnDone
+                if ((cohort.equals("c4a-capacity") || cohort.equals("l1-capacity")) && !capacityRespawnDone
                         && !capacityRespawnBeforeFixture()) { return; }
                 if (expected == 2) {
                     var report = P11OnlineNativeContextProbe.run(server, output.resolve("native-context"), semanticCohort.equals("capacity"));

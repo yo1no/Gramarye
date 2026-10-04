@@ -425,6 +425,11 @@ verify_lexical_helpers() {
         's/"defaultRequire": 1/"defaultRequire": 0/' \
         's/P11EntityLookupMixin/P11UnexpectedMixin/' \
         's/P11ServerBossEventMixin/P11UnexpectedBossMixin/' \
+        's/P11P9EntitySectionMixin/P11UnexpectedSectionMixin/' \
+        's/P11P9EntityMoveMixin/P11UnexpectedMoveMixin/' \
+        '/"P11P9EntitySectionMixin",/d' \
+        '/"P11P9EntityMoveMixin",/d' \
+        's/P11P9EntitySectionMixin/P11P9EntitySwapMixin/;s/P11P9EntityMoveMixin/P11P9EntitySectionMixin/;s/P11P9EntitySwapMixin/P11P9EntityMoveMixin/' \
         's/P11IntegratedPlayerListMixin/P11PlayerListMixin/' \
         's/P11PlayerListMixin/P11 PlayerListMixin/' \
         's/"minVersion":/"foreign": true, "minVersion":/'; do
@@ -1078,13 +1083,14 @@ verify_p11_mixin_configuration() {
     expected+='"P11SimpleCriterionTriggerMixin","P11CommandsMixin","P11ExecutionContextMixin","P11ServerPlayerScoreMixin",'
     expected+='"P11LivingEntityCreditMixin","P11EnderDragonCreditMixin","P11SculkCatalystCreditMixin","P11ExecuteCommandMixin",'
     expected+='"P11BuildContextsMixin","P11CallFunctionMixin","P11EntityCreditRemovalMixin","P11EntityRemovalMixin",'
-    expected+='"P11EntityManagerCleanupMixin","P11LevelEntityCleanupMixin","P11EntityLookupMixin","P11ServerBossEventMixin"],'
+    expected+='"P11EntityManagerCleanupMixin","P11P9EntitySectionMixin","P11P9EntityMoveMixin",'
+    expected+='"P11LevelEntityCleanupMixin","P11EntityLookupMixin","P11ServerBossEventMixin"],'
     expected+='"client":["P11IntegratedPlayerListMixin","P11ClientPlayerMixin","P11ClientMinecraftMixin",'
     expected+='"P11ClientKeyboardMixin","P11ClientSceneScreenMixin","P11ClientPacketListenerMixin","P11ClientConfigurationMixin"],"injectors":{"defaultRequire":1}}'
     require_regular_file "${source}" 'P11 Mixin configuration is missing or not regular'
     [[ ! -L "${source}" ]] || fail 'P11 Mixin configuration must not be a symlink'
     # Ignore only JSON whitespace outside strings; the complete expected document
-    # fixes the schema, all 46 common entries, the seven client entries and required hooks.
+    # fixes the schema, all 48 common entries, the seven client entries and required hooks.
     actual="$(LC_ALL=C awk '
         {
             for (i = 1; i <= length($0); i++) {

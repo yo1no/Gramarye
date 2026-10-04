@@ -17,19 +17,75 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 final class P4D3FixtureTest {
+    @TempDir
+    private java.nio.file.Path roundTripDirectory;
+
     @Test
-    void exactStoreAndMaximumJournalUseProductionFramingAndDomainAdmission() {
+    void exactStoreAndMaximumJournalUseProductionFramingAndDomainAdmission()
+            throws java.io.IOException {
+        var expected = roundTripDirectory.resolve("exact-store.blob");
+        var proof = rebuildExactFixtureProof(expected);
+        assertTrue(matchesExpectedStore(expected, proof.carrier()));
+        assertEquals(proof.checksum(), P4D3Hashing.sha256(proof.carrier()));
+    }
+
+    private static RebuiltFixtureProof rebuildExactFixtureProof(java.nio.file.Path expected)
+            throws java.io.IOException {
+        var loaded = loadExactFixtureProof(expected);
+        var rebuilt = SkillStoreCarrierBuilder.rebuild(loaded.store());
+        assertTrue(rebuilt instanceof CarrierBuildResult.Success);
+        return new RebuiltFixtureProof(
+                ((CarrierBuildResult.Success) rebuilt).carrier(), loaded.checksum());
+    }
+
+    private static LoadedFixtureProof loadExactFixtureProof(java.nio.file.Path expected)
+            throws java.io.IOException {
         var proof = buildExactFixtureProof();
+        var buffer = new byte[8_192];
+        try (var output = Files.newOutputStream(
+                expected, java.nio.file.StandardOpenOption.CREATE_NEW,
+                java.nio.file.StandardOpenOption.WRITE)) {
+            for (var offset = 0; offset < proof.source().byteCount(); ) {
+                var count = Math.min(buffer.length, proof.source().byteCount() - offset);
+                proof.source().copyRangeInto(offset, count, buffer, 0);
+                output.write(buffer, 0, count);
+                offset += count;
+            }
+        }
+        assertEquals(proof.checksum(), P4D3Hashing.sha256(expected));
         var loaded = SkillDefinitionStorePersistenceBridge.loadStoreBlob(
                 proof.source(),
                 java.util.Optional.of(net.minecraft.core.RegistryAccess.EMPTY));
         assertTrue(loaded instanceof StorePersistenceLoadResult.Loaded);
-        var rebuilt = SkillStoreCarrierBuilder.rebuild(
-                ((StorePersistenceLoadResult.Loaded) loaded).store());
-        assertTrue(rebuilt instanceof CarrierBuildResult.Success);
-        var rebuiltCarrier = ((CarrierBuildResult.Success) rebuilt).carrier();
-        assertTrue(rebuiltCarrier.matchesStoreBlob(proof.source()));
-        assertEquals(proof.checksum(), P4D3Hashing.sha256(rebuiltCarrier));
+        return new LoadedFixtureProof(
+                ((StorePersistenceLoadResult.Loaded) loaded).store(), proof.checksum());
+    }
+
+    private static boolean matchesExpectedStore(
+            java.nio.file.Path expected, EncodedSkillStoreCarrier carrier)
+            throws java.io.IOException {
+        var actual = new byte[carrier.storeByteCount()];
+        carrier.copyStoreBlobInto(actual, 0);
+        return matchesExpectedBytes(expected, actual);
+    }
+
+    private static boolean matchesExpectedBytes(java.nio.file.Path expected, byte[] actual)
+            throws java.io.IOException {
+        if (Files.size(expected) != actual.length) {
+            return false;
+        }
+        var buffer = new byte[8_192];
+        try (var input = Files.newInputStream(expected)) {
+            for (var offset = 0; offset < actual.length; ) {
+                var count = input.read(buffer, 0, Math.min(buffer.length, actual.length - offset));
+                if (count <= 0 || java.util.Arrays.mismatch(
+                        buffer, 0, count, actual, offset, offset + count) != -1) {
+                    return false;
+                }
+                offset += count;
+            }
+            return input.read() == -1;
+        }
     }
 
     private static ExactFixtureProof buildExactFixtureProof() {
@@ -222,6 +278,12 @@ final class P4D3FixtureTest {
     }
 
     private record ExactFixtureProof(ImmutableStoreBlob source, String checksum) {
+    }
+
+    private record LoadedFixtureProof(SkillDefinitionStore store, String checksum) {
+    }
+
+    private record RebuiltFixtureProof(EncodedSkillStoreCarrier carrier, String checksum) {
     }
 
 }

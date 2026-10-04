@@ -61,10 +61,16 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(input, "input");
         var diagnostics = diagnosticGuard(context);
+        diagnostics.check();
+        if (diagnostics.suspendBeforeWorldCommit()) {
+            return completedEmpty();
+        }
         var damageInvocation = input.invocation() instanceof DamageInvocation;
         Optional<RuntimeProjectileContinuationOpenResult.Opened> opened =
                 openSpawnContinuation(input.invocation(), context);
         if (input.invocation() instanceof SpawnProjectileInvocation && opened.isEmpty()) {
+            diagnostics.check();
+            diagnostics.suspendBeforeWorldCommit();
             return completedEmpty();
         }
 
@@ -76,8 +82,23 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
             if (damageInvocation) {
                 diagnostics.reportP9S4Stage(P9RuntimeDiagnosticStage.NODE1_MATCHED);
             }
-            var commitPort = new P9WorldEffectHandoff(
+            var handoff = new P9WorldEffectHandoff(
                     context.server(), input.actor(), event.executionData(), opened, diagnostics);
+            var commitPort = new P6RuntimeExecutionBridge.WorldCommitPort() {
+                @Override
+                public P6RuntimeExecutionBridge.CommitDisposition commitSpawn(
+                        P6RuntimeExecutionBridge.SpawnCommit command) {
+                    diagnostics.enterP9WorldCommit();
+                    return handoff.commitSpawn(command);
+                }
+
+                @Override
+                public P6RuntimeExecutionBridge.CommitDisposition commitDamage(
+                        P6RuntimeExecutionBridge.DamageCommit command) {
+                    diagnostics.enterP9WorldCommit();
+                    return handoff.commitDamage(command);
+                }
+            };
             GuardPort guard = (point, stepIndex) -> {
                 if (damageInvocation && point == P6RuntimeExecutionBridge.GuardPoint.PRE_COMMIT) {
                     diagnostics.reportP9S4Stage(P9RuntimeDiagnosticStage.DAMAGE_RESOLVED);
@@ -94,7 +115,8 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
                     decision = mapGuardDecision(diagnostics.afterP9NativeMutation(
                             input.actor(), nativeOperation[0]));
                 }
-                if (decision != null && decision != GuardDecision.ALLOWED) {
+                if (decision != null && decision != GuardDecision.ALLOWED
+                        && !diagnostics.suspendBeforeWorldCommit()) {
                     closeOpened(
                             opened,
                             context.server(),

@@ -95,7 +95,8 @@ final class P6RuntimeExecutionAdapterTest {
                 "nativeOperation[0] = diagnostics.beginP9NativeMutation(input.actor());",
                 "decision = mapGuardDecision(diagnostics.afterP9NativeMutation(",
                 "input.actor(), nativeOperation[0]));",
-                "if (decision != null && decision != GuardDecision.ALLOWED)",
+                "if (decision != null && decision != GuardDecision.ALLOWED",
+                "&& !diagnostics.suspendBeforeWorldCommit())",
                 "closeOpened(",
                 "diagnostics.enterP9DamageCommit();",
                 "return decision;",
@@ -240,7 +241,7 @@ final class P6RuntimeExecutionAdapterTest {
                 "RuntimePermitClaimDisposition claimLoadedEntityHit(");
         var claim = sourceBlock(
                 service,
-                "private RuntimePermitClaimDisposition claimProjectileHitInSlot(");
+                "private Optional<RuntimePermitClaimDisposition> claimProjectileHitInSlot(");
         var cancel = sourceBlock(
                 service, "private static RuntimeCancellationResult cancelInstance(");
         var addCommitted = sourceBlock(
@@ -272,7 +273,7 @@ final class P6RuntimeExecutionAdapterTest {
                         "instance.lifetimeEvents++;",
                         "permit.state = RuntimeProjectileContinuationPermit.State."
                                 + "CLAIMED_PENDING_DAMAGE;",
-                        "return RuntimePermitClaimDisposition.QUEUED;"),
+                        "return Optional.of(RuntimePermitClaimDisposition.QUEUED);"),
                 () -> assertOrdered(
                         claim,
                         "slot.runtimeTick >= permit.deadlineRuntimeTick",
@@ -412,7 +413,7 @@ final class P6RuntimeExecutionAdapterTest {
         var execute = sourceBlock(adapter, "RuntimeExecutionBatch executeMapped(");
         var commitSpawn = sourceBlock(handoff, "public CommitDisposition commitSpawn(");
         var drain = sourceBlock(service, "private void drain(");
-        var claim = sourceBlock(service, "RuntimePermitClaimDisposition claimProjectileHit(");
+        var claim = sourceBlock(service, "private Optional<RuntimePermitClaimDisposition> submitProjectileHit(");
         var preserveRuntime = sourceBlock(
                 service, "RuntimeException preserveRuntimeFault(");
         var preserveError = sourceBlock(service, "Error preserveErrorFault(");
@@ -424,6 +425,10 @@ final class P6RuntimeExecutionAdapterTest {
                 "static final class P9ErrorCleanup");
 
         assertAll(
+                () -> assertTrue(sourceBlock(service, "RuntimePermitClaimDisposition claimProjectileHit(")
+                        .contains("submitProjectileHit(server, permit, candidate, null)")),
+                () -> assertTrue(sourceBlock(service, "Optional<RuntimePermitClaimDisposition> claimObservedProjectileHit(")
+                        .contains("submitProjectileHit(server, permit, candidate, projectile)")),
                 () -> assertOrdered(
                         execute,
                         "catch (RuntimeException failure)",

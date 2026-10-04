@@ -548,11 +548,23 @@ verify_p11_native_helper_error_catches() {
                 expect("flushDetachedPlayersAtStop", 2, "catch(RuntimeException|Errorsecondary){failures=increment(failures);}")
                 expect("flushDetachedIndependent", 1, "catch(RuntimeException|Errorfailure){body.account.fault=Fault.WRITE;failures=increment(failures);}")
             } else if (kind == "p5_l1") {
+                preserved = "catch(Errorprimary){slot.p9ErrorCleanup.prepare(server);throwpreserveErrorFault(slot,primary);}"
+                expect("handleRuntimePost", 1, preserved)
+                expect("handleRuntimePost", 2, preserved)
+                expect("submitProjectileHit", 1, preserved)
                 expect("beginNormalLogout", 1, "catch(RuntimeException|Errorprimary){scope.active=false;revokeLogoutScope(scope);throwprimary;}")
                 expect("endNormalLogout", 1, "catch(RuntimeException|Errorprimary){revokeLogoutScope(scope);throwprimary;}")
                 expect("acquireAndPublishRoot", 1, "catch(RuntimeException|Errorprimary){if(prospectiveInstance!=null){try{prospectiveInstance.releaseWork();}catch(RuntimeException|ErrorignoredCleanupFailure){}}closeProvisionalAfterRootFault(leaseAcquisition);throwprimary;}")
                 expect("acquireAndPublishRoot", 2, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
                 expect("P9InstanceErrorCleanup.accept", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
+            } else if (kind == "p9_l1") {
+                preserved = "catch(Errorfailure){clearObservedHit();locallyClaimedOrTerminal=true;throwfailure;}"
+                expect("tick", 1, preserved)
+                expect("submitObservedHit", 1, preserved)
+                expect("onRemovedFromLevel", 1, "catch(Errorfailure){if(serverLevel!=null){locallyClaimedOrTerminal=true;}throwfailure;}")
+                expect("closeAndDiscard", 1, "catch(Errorfailure){throwfailure;}")
+                expect("bestEffortClose", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
+                expect("bestEffortDiscard", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
             } else if (kind == "p9_tracking") {
                 expect("chunkStatus", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
                 expect("chunkStatus", 2, "catch(RuntimeException|Errorfailure){cleanup=failure;}")
@@ -581,7 +593,7 @@ verify_p11_native_helper_error_catches() {
                     gsub(/[[:space:]]/, "", method)
                 }
             }
-            if (kind == "p5_l1" && method != "beginNormalLogout" && method != "endNormalLogout" && method != "acquireAndPublishRoot" && method != "P9InstanceErrorCleanup.accept") next
+            if (kind == "p5_l1" && method != "handleRuntimePost" && method != "submitProjectileHit" && method != "beginNormalLogout" && method != "endNormalLogout" && method != "acquireAndPublishRoot" && method != "P9InstanceErrorCleanup.accept") next
             gsub(/[[:space:]]/, "", line)
             source[method] = source[method] line
         }
@@ -899,7 +911,7 @@ verify_search_helpers() {
     done
     local native_source=''
     local native_kind=''
-    for native_kind in operation cleanup sync source_stop live_transition keep_alive p5_l1 p9_tracking; do
+    for native_kind in operation cleanup sync source_stop live_transition keep_alive p5_l1 p9_l1 p9_tracking; do
         if [[ "${native_kind}" == operation ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
         elif [[ "${native_kind}" == cleanup ]]; then
@@ -912,6 +924,8 @@ verify_search_helpers() {
             native_source='src/main/java/com/yo1no/gramarye/P11KeepAliveBoundary.java'
         elif [[ "${native_kind}" == p5_l1 ]]; then
             native_source='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
+        elif [[ "${native_kind}" == p9_l1 ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/P9StarterProjectile.java'
         elif [[ "${native_kind}" == p9_tracking ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11P9TrackingCleanup.java'
         else
@@ -981,11 +995,37 @@ verify_search_helpers() {
         's/scope.active = false;/scope.active = true;/g' \
         's/revokeLogoutScope(scope);/unsafe();/g' \
         's/prospectiveInstance.releaseWork();/unsafe();/g' \
+        's/void handleRuntimePost(/void unreviewedRuntimePost(/g' \
+        's/submitProjectileHit(/unreviewedSubmitProjectileHit(/g' \
+        's/slot.p9ErrorCleanup.prepare(server);/unsafe();/g' \
+        's/throw preserveErrorFault(slot, primary);/throw new Error();/g' \
         's/Error ignoredCleanupFailure/Error unreviewed/g' \
         's/static final class P9InstanceErrorCleanup/static final class UnreviewedInstanceCleanup/g'; do
         sed "${mutation}" "${native_source}" > "${HELPER_FIXTURE}"
+        if cmp -s "${native_source}" "${HELPER_FIXTURE}"; then
+            fail 'P5 L1 mutation did not change its exact target'
+        fi
         if (verify_p11_native_helper_error_catches "${HELPER_FIXTURE}" p5_l1) >/dev/null 2>&1; then
             fail 'P5 L1 self-check accepted changed exact cleanup, primary, or native logout owner'
+        fi
+    done
+    native_source='src/main/java/com/yo1no/gramarye/P9StarterProjectile.java'
+    for mutation in \
+        's/void tick(/void unreviewedTick(/g' \
+        's/void submitObservedHit(/void unreviewedSubmitObservedHit(/g' \
+        's/void onRemovedFromLevel(/void unreviewedRemoved(/g' \
+        's/void closeAndDiscard(/void unreviewedCloseAndDiscard(/g' \
+        's/void bestEffortClose(/void unreviewedBestEffortClose(/g' \
+        's/void bestEffortDiscard(/void unreviewedBestEffortDiscard(/g' \
+        's/clearObservedHit();/unsafe();/g' \
+        's/locallyClaimedOrTerminal = true;/locallyClaimedOrTerminal = false;/g' \
+        's/Error ignoredCleanupFailure/Error unreviewed/g'; do
+        sed "${mutation}" "${native_source}" > "${HELPER_FIXTURE}"
+        if cmp -s "${native_source}" "${HELPER_FIXTURE}"; then
+            fail 'P9 L1 mutation did not change its exact target'
+        fi
+        if (verify_p11_native_helper_error_catches "${HELPER_FIXTURE}" p9_l1) >/dev/null 2>&1; then
+            fail 'P9 L1 self-check accepted changed exact primary/custody cleanup or foreign owner'
         fi
     done
     local stop_path=''
@@ -999,7 +1039,7 @@ verify_search_helpers() {
             fail 'P11 stop direct path classification accepted an unreviewed suffix'
         fi
     done
-    printf '%s\n' 'Verified exact eighteen P11 observer, twenty-two native helper/stop-writer, twenty C4a transition, one keep-alive, four P7 sender, five scoped P5 L1 and five P9 tracking-cleanup catches; changed binding/body/primary and foreign method rejected; two stop paths and their suffix negatives checked.'
+    printf '%s\n' 'Verified exact eighteen P11 observer, twenty-two native helper/stop-writer, twenty C4a transition, one keep-alive, four P7 sender, eight scoped P5 L1, six P9 L1 and five P9 tracking-cleanup catches; changed binding/body/primary and foreign method rejected; two stop paths and their suffix negatives checked.'
 }
 
 verify_p4_a3_contract_markers() {
@@ -1835,6 +1875,7 @@ verify_b2_sources_and_outputs() {
     verify_p11_native_helper_error_catches "${p11_live_transition}" live_transition
     verify_p11_native_helper_error_catches "${p11_keep_alive}" keep_alive
     verify_p11_native_helper_error_catches "${runtime_service}" p5_l1
+    verify_p11_native_helper_error_catches "${p9_projectile}" p9_l1
     verify_p11_native_helper_error_catches "${p11_p9_tracking}" p9_tracking
     require_ere_count "${p4_recovery_game_tests}" \
         'catch[[:space:]]*\([^)]*(Error|Throwable)' 1 \
@@ -1865,13 +1906,13 @@ verify_b2_sources_and_outputs() {
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
-        23 \
-        'SkillRuntimeService must contain exactly its twenty-three reviewed Error cleanup catches'
+        24 \
+        'SkillRuntimeService must contain exactly its twenty-four reviewed Error cleanup catches'
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error[[:space:]]+primary[[:space:]]*\)' \
-        10 \
-        'SkillRuntimeService must contain exactly ten same-identity primary Error catches'
+        11 \
+        'SkillRuntimeService must contain exactly eleven same-identity primary Error catches'
     require_ere_count \
         "${runtime_service}" \
         '^[[:space:]]*clearSlotAfterError\(slot\);$' \
@@ -1909,11 +1950,11 @@ verify_b2_sources_and_outputs() {
         'catch[[:space:]]*\(RuntimeException \| Error ignoredCleanupFailure\)' 1 \
         'P9-S3 P6 adapter must isolate exactly one continuation cleanup failure'
     require_ere_count "${p9_projectile}" \
-        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error' 7 \
-        'P9-S3 projectile must retain five primary and two isolated cleanup Error catches'
+        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error' 6 \
+        'P9-S3 projectile must retain four primary and two isolated cleanup Error catches'
     require_ere_count "${p9_projectile}" \
-        'catch[[:space:]]*\(Error failure\)' 5 \
-        'P9-S3 projectile must preserve exactly five Error-only primary identities'
+        'catch[[:space:]]*\(Error failure\)' 4 \
+        'P9-S3 projectile must preserve exactly four Error-only primary identities'
     require_ere_count "${p9_projectile}" \
         'catch[[:space:]]*\(RuntimeException \| Error failure\)' 0 \
         'P9-S3 projectile must keep primary RuntimeException and Error identities separate'

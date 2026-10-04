@@ -1,0 +1,1 @@
+{"criteria":{"native_kill":{"trigger":"minecraft:player_killed_entity","conditions":{"entity":{"type":"minecraft:cow","nbt":"{Tags:[\"p11_l1_target\"]}"}}}},"rewards":{"experience":7,"loot":["gramarye_p11_engineering:l1_loot"],"recipes":["minecraft:bread"],"function":"gramarye_p11_engineering:l1_reward"}}

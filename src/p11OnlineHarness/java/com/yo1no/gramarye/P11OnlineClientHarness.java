@@ -317,7 +317,7 @@ public final class P11OnlineClientHarness {
     }
 
     private static boolean capacityRespawnSelected() {
-        return "c4a-capacity".equals(caseName) && "b".equals(role);
+        return ("c4a-capacity".equals(caseName) || "l1-capacity".equals(caseName)) && "b".equals(role);
     }
 
     private static void capacityRespawn(Minecraft minecraft) {

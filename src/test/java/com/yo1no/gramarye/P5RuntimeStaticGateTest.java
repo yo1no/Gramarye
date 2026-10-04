@@ -869,16 +869,20 @@ record ProjectileHitExecutionDataV0(
                                 "long deadlineRuntimeTick",
                                 "java.util.UUID permitId",
                                 "java.util.UUID plannedProjectileId",
+                                "boolean suspendedBeforeSpawn",
                                 "com.yo1no.gramarye.RuntimeProjectileContinuationPermit$State "
                                         + "state"),
                         declaredFieldSignatures(permit)),
                 () -> assertTrue(Modifier.isPrivate(
                         permit.getDeclaredField("owner").getModifiers())),
                 () -> assertTrue(Arrays.stream(permit.getDeclaredFields())
-                        .filter(field -> !field.getName().equals("state"))
+                        .filter(field -> !field.getName().equals("state")
+                                && !field.getName().equals("suspendedBeforeSpawn"))
                         .allMatch(field -> Modifier.isFinal(field.getModifiers()))),
                 () -> assertFalse(Modifier.isFinal(
                         permit.getDeclaredField("state").getModifiers())),
+                () -> assertFalse(Modifier.isFinal(
+                        permit.getDeclaredField("suspendedBeforeSpawn").getModifiers())),
                 () -> assertEquals(1, Arrays.stream(permit.getDeclaredFields())
                         .filter(field -> field.getType() == SkillRuntimeService.class)
                         .count()),
@@ -890,6 +894,8 @@ record ProjectileHitExecutionDataV0(
                                         + "claimLoadedEntityHit("
                                         + "net.minecraft.server.MinecraftServer,"
                                         + "com.yo1no.gramarye.ProjectileHitCandidateV0)",
+                                "java.util.Optional submitObservedHit(net.minecraft.server.MinecraftServer,"
+                                        + "com.yo1no.gramarye.P9StarterProjectile,com.yo1no.gramarye.ProjectileHitCandidateV0)",
                                 "com.yo1no.gramarye.RuntimePermitCloseDisposition "
                                         + "closeWithoutHit(net.minecraft.server.MinecraftServer,"
                                         + "com.yo1no.gramarye.ProjectileClosureReason)",
@@ -1142,7 +1148,8 @@ record ProjectileHitExecutionDataV0(
                         "!server.isSameThread()",
                         "invalidateP9WorkPreservingPrimary("
                                 + "\n                server, slot, "
-                                + "ProjectileClosureReason.RELOAD_INVALIDATED)",
+                                + "ProjectileClosureReason.RELOAD_INVALIDATED, true)",
+                        "slots.get(server) == slot && slot.state == ServerSlot.State.RUNNING",
                         "p9ReloadCloseRequested.set(false)"),
                 () -> assertInOrder(
                         terminalDiagnosticReadSource,
@@ -1186,7 +1193,7 @@ record ProjectileHitExecutionDataV0(
                         "trace.hitDirectionXQ15,",
                         "trace.hitClaimResultCode,",
                         "trace.stageCount,"),
-                () -> assertEquals(1, occurrences(
+                () -> assertEquals(2, occurrences(
                         source, "P9RuntimeDiagnosticStage.CONTINUATION_OPENED")),
                 () -> assertEquals(2, occurrences(
                         source, "P9RuntimeDiagnosticStage.SPAWN_RESOLVED")),
@@ -1200,9 +1207,9 @@ record ProjectileHitExecutionDataV0(
                         source, "P9RuntimeDiagnosticStage.HIT_CLAIM_RESULT")),
                 () -> assertEquals(2, occurrences(
                         source, "P9RuntimeDiagnosticStage.NODE1_QUEUED")),
-                () -> assertEquals(1, occurrences(
+                () -> assertEquals(3, occurrences(
                         source, "P9RuntimeDiagnosticStage.NODE1_MATCHED")),
-                () -> assertEquals(2, occurrences(
+                () -> assertEquals(5, occurrences(
                         source, "P9RuntimeDiagnosticStage.DAMAGE_RESOLVED")),
                 () -> assertEquals(3, occurrences(
                         source, "P9RuntimeDiagnosticStage.DAMAGE_COMMIT_RESULT")),
@@ -1274,7 +1281,7 @@ record ProjectileHitExecutionDataV0(
                 () -> assertInOrder(
                         claimSource,
                         "if (!server.isSameThread())",
-                        "return RuntimePermitClaimDisposition.REJECTED",
+                        "return Optional.of(RuntimePermitClaimDisposition.REJECTED)",
                         "return claimProjectileHitInSlot(",
                         "catch (RuntimeException primary)",
                         "throw preserveRuntimeFault(slot, primary)",
@@ -1291,7 +1298,7 @@ record ProjectileHitExecutionDataV0(
                         claimSource,
                         "validateChildShape(",
                         ".isPresent()",
-                        "return rejectClaimAndClose(server, slot, instance, permit, candidate)",
+                        "return Optional.of(rejectClaimAndClose(server, slot, instance, permit, candidate))",
                         "addCommittedEvent(slot, instance, attribution, child)"),
                 () -> assertInOrder(
                         rejectClaimSource,
@@ -1543,7 +1550,10 @@ record ProjectileHitExecutionDataV0(
                                 "net.minecraft.resources.ResourceLocation p9Dimension",
                                 "boolean p9DamageCommitEntered",
                                 "boolean p9DamageCommitFinished",
-                                "boolean p9AppliedObservationArmed"),
+                                "boolean p9AppliedObservationArmed",
+                                "boolean p9CleanupPendingObserved",
+                                "boolean p9NoCommitSuspended",
+                                "boolean p9WorldCommitEntered"),
                         declaredFieldSignatures(executionGuardType)),
                 () -> assertTrue(Arrays.stream(executionGuardType.getDeclaredFields())
                         .allMatch(field -> Modifier.isPrivate(field.getModifiers()))),
@@ -1562,6 +1572,9 @@ record ProjectileHitExecutionDataV0(
                                 "void armP9AppliedObservation()",
                                 "void reportP9AppliedFactIfArmed()",
                                 "void finishP9DamageCommit()",
+                                "boolean p9ReloadTerminatedAfterWorldCommit()",
+                                "boolean suspendBeforeWorldCommit()",
+                                "void enterP9WorldCommit()",
                                 "boolean allowsP9NativeActor(net.minecraft.server.level.ServerPlayer)",
                                 "com.yo1no.gramarye.P11NativeOperationBoundary$OperationScope "
                                         + "beginP9NativeMutation(net.minecraft.server.level.ServerPlayer)",
@@ -1569,13 +1582,15 @@ record ProjectileHitExecutionDataV0(
                                         + "afterP9NativeMutation(net.minecraft.server.level.ServerPlayer,"
                                         + "com.yo1no.gramarye.P11NativeOperationBoundary$OperationScope)"),
                         declaredMethodSignatures(executionGuardType)),
+                () -> assertTrue(Modifier.isPrivate(executionGuardType.getDeclaredMethod(
+                        "p9ReloadTerminatedAfterWorldCommit").getModifiers())),
                 () -> assertEquals(1, Arrays.stream(executionGuardType.getDeclaredMethods())
                         .filter(method -> Modifier.isPublic(method.getModifiers())
                                 || Modifier.isProtected(method.getModifiers()))
                         .count()),
                 () -> assertTrue(actorAdmission.contains("p9AuthenticatedActorWitness")),
                 () -> assertTrue(actorAdmission.contains("resolvedP9Actor")),
-                () -> assertEquals(6, occurrences(
+                () -> assertEquals(7, occurrences(
                         serviceSource, "isCurrentP9AuthenticatedActor(")),
                 () -> assertInOrder(predicateSource,
                         "candidate != null", "instanceActor(server, instance) == candidate",
@@ -2567,7 +2582,8 @@ record ProjectileHitExecutionDataV0(
         var normal = methodSource(source, "private static void terminalizeRemainingP9(");
         var error = section(source, "static final class P9InstanceErrorCleanup", "/** Existing call-scoped P5 guard");
         assertAll(
-                () -> assertInOrder(drain, "deadlineExpired(slot, event)", "WorkQualification.LOGOUT_IN_PROGRESS",
+                () -> assertInOrder(drain, "deadlineExpired(slot, event)",
+                        "awaitingNativeCleanup(eventQualification(server, slot, instance, event))",
                         "slot.deferred[slot.deferredCount++] = event", "claim(slot, event, instance, attribution)"),
                 () -> assertInOrder(release, "LogoutState.INVALID", "retained.release()", "work = null"),
                 () -> assertTrue(normal.contains("instance.releaseWork()")),

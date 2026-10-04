@@ -2140,6 +2140,16 @@ public final class P9S3ProjectileGameTests {
         public RuntimeExecutionBatch execute(
                 RuntimeEvent event, RuntimeExecutionContext context) {
             var opened = requireOpened(context);
+
+
+            var projectile = new P9StarterProjectile(
+                    P9StarterProjectileRegistration.type(),
+                    original.serverLevel(),
+                    original,
+                    opened,
+                    geometry);
+            helper.assertTrue(original.serverLevel().addFreshEntity(projectile),
+                    "replacement-witness control requires the original A entity loaded");
             replacement = server.getPlayerList().respawn(
                     original, false, Entity.RemovalReason.KILLED);
             replacement.connection.player = replacement;
@@ -2148,14 +2158,21 @@ public final class P9S3ProjectileGameTests {
                             && replacement.getUUID().equals(original.getUUID())
                             && server.getPlayerList().getPlayer(original.getUUID()) == replacement,
                     "transfer replacement control requires actual same-UUID actor B");
-            var projectile = new P9StarterProjectile(
-                    P9StarterProjectileRegistration.type(),
-                    replacement.serverLevel(),
-                    replacement,
-                    opened,
-                    geometry);
-            helper.assertTrue(replacement.serverLevel().addFreshEntity(projectile),
-                    "replacement-witness control requires the exact planned entity loaded");
+            boolean replacementConstructorRejected = false;
+            try {
+                new P9StarterProjectile(
+                        P9StarterProjectileRegistration.type(),
+                        replacement.serverLevel(),
+                        replacement,
+                        opened,
+                        geometry);
+            } catch (IllegalArgumentException expected) {
+                replacementConstructorRejected = true;
+            }
+            helper.assertTrue(replacementConstructorRejected
+                            && opened.permit().state == RuntimeProjectileContinuationPermit.State.RESERVED
+                            && replacement.serverLevel().getEntity(opened.plannedProjectileId()) == projectile,
+                    "same-UUID B construction must reject without changing the original A entity or permit");
             helper.assertTrue(
                     opened.transferAfterAppliedSpawn(server, projectile)
                                     == RuntimePermitTransferDisposition.REJECTED

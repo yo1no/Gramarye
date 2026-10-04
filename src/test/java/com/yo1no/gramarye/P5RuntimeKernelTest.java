@@ -1128,17 +1128,35 @@ final class P5RuntimeKernelTest {
         var serviceSource = Files.readString(RUNTIME_SERVICE_SOURCE);
         var invalidationSource = sourceBlock(
                 serviceSource, "private void invalidateP9Work(");
+        var queuedAndIndexedSource = sourceBlock(
+                serviceSource, "private void invalidateP9QueuedAndIndexedWork(");
         var guardSource = sourceBlock(
                 serviceSource, "private void invalidateP9WorkPreservingPrimary(");
         var completionSource = sourceBlock(serviceSource, "void completeP9Reload(");
+        var postSource = sourceBlock(serviceSource, "void handleRuntimePost(");
 
         assertAll(
-                () -> assertTrue(invalidationSource.contains(
+                () -> assertOrdered(
+                        invalidationSource,
+                        "if (slot.dispatching)",
+                        "throw kernel(RuntimeKernelException.Code.NESTED_DRAIN);",
+                        "invalidateP9QueuedAndIndexedWork(server, slot, reason);"),
+                () -> assertTrue(queuedAndIndexedSource.contains(
                         "closeAllIndexedContinuations(")),
-                () -> assertFalse(invalidationSource.contains(
+                () -> assertFalse(queuedAndIndexedSource.contains(
                         "values().iterator().next()")),
-                () -> assertFalse(invalidationSource.contains(
+                () -> assertFalse(queuedAndIndexedSource.contains(
                         "while (!slot.activeProjectileContinuations.isEmpty())")),
+                () -> assertOrdered(
+                        guardSource,
+                        "if (completingReload && slot.dispatching)",
+                        "reason != ProjectileClosureReason.RELOAD_INVALIDATED",
+                        "!p9ReloadCloseRequested.get()",
+                        "throw kernel(RuntimeKernelException.Code.NESTED_DRAIN);",
+                        "prepareP9ReloadInFlight(slot);",
+                        "invalidateP9QueuedAndIndexedWork(server, slot, reason);",
+                        "} else {",
+                        "invalidateP9Work(server, slot, reason);"),
                 () -> assertOrdered(
                         guardSource,
                         "invalidateP9Work(server, slot, reason);",
@@ -1149,7 +1167,14 @@ final class P5RuntimeKernelTest {
                 () -> assertOrdered(
                         completionSource,
                         "invalidateP9WorkPreservingPrimary(",
+                        "ProjectileClosureReason.RELOAD_INVALIDATED, true);",
+                        "slots.get(server) == slot && slot.state == ServerSlot.State.RUNNING",
                         "p9ReloadCloseRequested.set(false);"),
+                () -> assertOrdered(
+                        postSource,
+                        "if (p9ReloadCloseRequested.get())",
+                        "invalidateP9WorkPreservingPrimary(",
+                        "ProjectileClosureReason.RELOAD_INVALIDATED, false);"),
                 () -> assertFalse(guardSource.contains("addSuppressed(")),
                 () -> assertFalse(guardSource.contains("catch (Throwable")));
     }

@@ -10,6 +10,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class P11C4aHostLeaveGameMixin {
     @Inject(method = "handleAnimate(Lnet/minecraft/network/protocol/game/ServerboundSwingPacket;)V", at = @At("TAIL"), require = 1, expect = 1, allow = 1)
     private void host$nativePeerSwing(ServerboundSwingPacket packet, CallbackInfo callback) {
-        P11C4aHostLeaveProbe.animate((ServerGamePacketListenerImpl) (Object) this);
+com.yo1no.gramarye.P11L1HostStopProbe.animate((ServerGamePacketListenerImpl) (Object) this);
+P11C4aHostLeaveProbe.animate((ServerGamePacketListenerImpl) (Object) this);
     }
 }

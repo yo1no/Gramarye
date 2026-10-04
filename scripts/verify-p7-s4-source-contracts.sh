@@ -34,7 +34,7 @@ is_p10_path() {
     esac
 }
 
-# Exact P11 native lifecycle/reward and C4a direct companions, never prefix admission.
+# Exact P11 native lifecycle/reward, accepted-work L1 and direct companions, never prefix admission.
 is_p11_native_slice_path() {
     case "$1" in
         src/p11OnlineHarness/java/com/yo1no/gramarye/P11C4aAckRejectionClientProbe.java | \
@@ -258,6 +258,10 @@ is_p11_native_slice_path() {
         src/main/java/com/yo1no/gramarye/P11LivePlayAccess.java | \
         src/main/java/com/yo1no/gramarye/P11LiveTransitionBoundary.java | \
         src/main/java/com/yo1no/gramarye/P11LiveTransitionService.java | \
+        src/main/java/com/yo1no/gramarye/P11P9TrackingCleanup.java | \
+        src/main/java/com/yo1no/gramarye/P5LoadedReferenceResolver.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11P9EntitySectionMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P11P9EntityMoveMixin.java | \
         src/main/java/com/yo1no/gramarye/P11ParkingPacketListener.java | \
         src/main/java/com/yo1no/gramarye/P11TransitionControl.java | \
         src/main/java/com/yo1no/gramarye/P11TransitionPayloadRegistrar.java | \
@@ -278,6 +282,69 @@ is_p11_native_slice_path() {
         src/main/java/com/yo1no/gramarye/mixin/P11ServerBossEventMixin.java | \
         src/main/java/com/yo1no/gramarye/mixin/P11ParkingPlacementMixin.java | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/P11C4aBossProducerProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ServerHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ClientHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/magic/network/P11L1InputObservation.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1RuntimeMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1InstanceMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1DispatchMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ProjectileMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1DamageMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1RewardMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ClientInputMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ClientDeliveryMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ClientMirrorMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1FoundationMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ScoreMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1WorkBoundaryProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1HostStopProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1RestartProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1RestartRuntimeMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1RestartCompositionMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1HostStopClientProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1HostStopBoundaryMixin.java | \
+        src/p11OnlineHarness/resources/data/gramarye_p11_engineering/advancement/l1_first_kill.json | \
+        src/p11OnlineHarness/resources/data/gramarye_p11_engineering/loot_table/l1_loot.json | \
+        src/p11OnlineHarness/resources/data/gramarye_p11_engineering/function/l1_reward.mcfunction | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1WorkRewardProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1WorkRewardMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1WorkFunctionMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1WorkCommandMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1WorkFailureCountMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1StatsMemoryProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1StatsFailureCountMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ContextRefusalProbe.java | src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ContextRefusalClientProbe.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ContextBoundaryMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ContextManagedBlockMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ContextTaskMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ContextClientMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1NaturalUnloadProbe.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1UnloadLogoutMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1UnloadRuntimeMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1OnlinePeerProbe.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1OnlinePeerPlayerMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1OnlinePeerP8Mixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ImpactCustodyProbe.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ImpactCustodyMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1ImpactClaimMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1CapacityWorkProbe.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1CapacityRuntimeMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1CapacityStarterMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1CapacityResourcesMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1CapacityGameMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1TrackingBoundaryProbe.java | src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1TrackingLevelMixin.java | src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1TerminalBoundaryProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1TerminalAddMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1TerminalRuntimeMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1TerminalLogoutMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1TerminalConnectionMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1TerminalServerMixin.java | \
+        src/p11OnlineHarness/fixtures/l1/advancement/l1_partial_kill.json | \
+        src/p11OnlineHarness/fixtures/l1/advancement/l1_qctx_kill.json | \
+        src/p11OnlineHarness/fixtures/l1/advancement/l1_qctx_peer.json | \
+        src/p11OnlineHarness/fixtures/l1/function/l1_partial_reward.mcfunction | \
+        src/p11OnlineHarness/fixtures/l1/function/l1_qctx_outer.mcfunction | \
+        src/p11OnlineHarness/fixtures/l1/function/l1_qctx_peer_reward.mcfunction | \
+        src/p11OnlineHarness/fixtures/l1/stats-memory-startup.toml | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1LifecycleBoundaryProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1LifecycleClientProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1LifecycleReleaseMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1LifecycleClientMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1WorkReleaseMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1SupplementalHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1RevisionProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1PacketProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ClientResourceProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/magic/network/P11L1AckObservation.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1RevisionCompositionMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1P8SendMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1P8PolicyMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1AckPolicyMixin.java | \
+        src/p11OnlineHarness/resources/gramarye-p11-l1-harness.mixins.json | \
+        src/p11OnlineHarness/fixtures/l1/advancement/l1_first_kill.json | \
+        src/p11OnlineHarness/fixtures/l1/advancement/l1_late_kill.json | \
+        src/p11OnlineHarness/fixtures/l1/loot_table/l1_loot.json | \
+        src/p11OnlineHarness/fixtures/l1/function/l1_reward.mcfunction | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/P11C4aBossProducerClientProbe.java | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11C4aBossProducerSwitchMixin.java | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11C4aBossProducerSendMixin.java | \
@@ -409,6 +476,14 @@ is_p11_native_slice_path() {
         src/test/java/com/yo1no/gramarye/P11ExactCleanupTest.java | \
         src/test/java/com/yo1no/gramarye/P11DetachedStopBoundaryTest.java | \
         src/test/java/com/yo1no/gramarye/P11DetachedPlayerStopTest.java | \
+        src/test/java/com/yo1no/gramarye/P11P9TrackingCleanupTest.java | \
+        src/test/java/com/yo1no/gramarye/P11AcceptedWorkBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P11AcceptedWorkCleanupPendingTest.java | \
+        src/test/java/com/yo1no/gramarye/P11AcceptedWorkReloadCompletionTest.java | \
+        src/test/java/com/yo1no/gramarye/P11AcceptedWorkObservedHitTest.java | \
+        src/test/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngressTest.java | \
+        src/test/java/com/yo1no/gramarye/SkillRuntimeAuthenticatedCastIngressTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4D3FixtureTest.java | \
         src/test/java/com/yo1no/gramarye/P11NativeContextFactsTest.java | \
         src/test/java/com/yo1no/gramarye/P11NativeCreditLifetimeTest.java | \
         src/test/java/com/yo1no/gramarye/P11PresenceSlotTest.java | \

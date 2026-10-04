@@ -206,7 +206,19 @@ public final class P11C4aClientHarness {
                 } finally { nativeCall = false; }
                 return;
             }
-            if (P11C4aScenario.MODE == P11C4aScenario.Mode.HOST_EXPIRY && phase == Phase.PLAY) {
+if (P11L1HostStopProbe.selected() && phase == Phase.PLAY) {
+    if (!publishHostIfNeeded(minecraft)) { return; }
+    nativeCall = true;
+    try {
+        if (P11L1HostStopClientProbe.tick(minecraft, connection, role, output)) {
+            P11C4aEvidence.write(output, "result.json", summary(minecraft,
+                    "L1_HOST_STOP_SUBSET_CLIENT_TERMINAL_NOT_DEDICATED_AUTH"));
+            connection = null; id = null; phase = Phase.TERMINAL; minecraft.stop();
+        }
+    } finally { nativeCall = false; }
+    return;
+}
+if (P11C4aScenario.MODE == P11C4aScenario.Mode.HOST_EXPIRY && phase == Phase.PLAY) {
                 hostExpiry(minecraft); return;
             }
             if (phase == Phase.PLAY && P11C4aPreplayChatProbe.selected()) { preplayChat(minecraft); return; }

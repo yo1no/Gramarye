@@ -132,7 +132,7 @@ final class P11C4aEvidence {
         values.put("saveProgress", Map.of("elapsedMillis", observationLong(progress.elapsedMillis()), "kinds", List.copyOf(kinds)));
         var nativeRoots = source.nativeResponsibilities();
         var roots = new ArrayList<Map<String, Object>>();
-        for (var root : observationList(nativeRoots.roots(), 4)) {
+        for (var root : observationList(nativeRoots.roots(), 5)) {
             roots.add(Map.of("kind", observationText(root.kind(), 64), "count", root.count(),
                     "accountPeakSum", root.accountPeakSum(), "oldestAgeMillis", root.oldestAgeMillis()));
         }

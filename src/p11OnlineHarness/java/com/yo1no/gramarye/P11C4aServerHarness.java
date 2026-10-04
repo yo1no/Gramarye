@@ -163,7 +163,10 @@ public final class P11C4aServerHarness {
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
-    static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
+static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
+    if (P11L1HostStopProbe.selected() && event.getEntity() instanceof ServerPlayer actor) {
+        P11L1HostStopProbe.logout(actor); return;
+    }
         if (P11C4aTerminalStatusProbe.selected() && P11C4aTerminalStatusProbe.started()
                 && event.getEntity() instanceof ServerPlayer actor && actor.getServer() == server) {
             try { P11C4aTerminalStatusProbe.logout(actor); }
@@ -294,7 +297,18 @@ public final class P11C4aServerHarness {
                 if (departureStarted) { progressConfigDeparture(); }
                 return;
             }
-            if (ACTORS.size() != 2) { return; }
+if (ACTORS.size() != 2) { return; }
+if (P11L1HostStopProbe.selected()) {
+    require(integrated, "L1_HOST_STOP_TOPOLOGY");
+    var hostActor = ACTORS.get("host"); var peerActor = ACTORS.get("b");
+    if (!P11L1HostStopProbe.started()) {
+        if (!materialReady(hostActor.current) || !materialReady(peerActor.current)) { return; }
+        require(hostActor.logins == 1 && peerActor.logins == 1 && hostActor.respawns == 0
+                && peerActor.respawns == 0, "L1_HOST_INITIAL_ACTORS");
+        P11L1HostStopProbe.start(server, hostActor.current, peerActor.current, output);
+    }
+    P11L1HostStopProbe.tick(); return;
+}
             if (P11C4aTerminalStatusProbe.selected()) {
                 require(!integrated, "TERMINAL_STATUS_DEDICATED_ONLY");
                 if (!P11C4aTerminalStatusProbe.started()) {
@@ -996,7 +1010,8 @@ public final class P11C4aServerHarness {
             if (P11C4aRequiredProbe.selected()) { P11C4aRequiredProbe.stopped(event.getServer()); }
             if (P11C4aMalformedWireProbe.selected()) { P11C4aMalformedServerProbe.stopped(event.getServer()); }
             if (departureStarted) { P11C4aConfigDepartureProbe.stopped(event.getServer()); }
-            if (hostLeaveStarted) { P11C4aHostLeaveProbe.stopped(event.getServer()); }
+if (P11L1HostStopProbe.selected()) { P11L1HostStopProbe.stopped(event.getServer()); }
+if (hostLeaveStarted) { P11C4aHostLeaveProbe.stopped(event.getServer()); }
             if (hostExpiryStarted) { P11C4aHostExpiryProbe.stopped(event.getServer()); }
             if (output != null) { P11C4aEvidence.write(output, "stopped.json", Map.of("status", "ORIGINAL_SERVER_STOPPED", "normalReports", normalReports)); }
         }

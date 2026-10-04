@@ -222,8 +222,10 @@ final class SkillRuntimeService {
             return;
         }
         invalidateP9WorkPreservingPrimary(
-                server, slot, ProjectileClosureReason.RELOAD_INVALIDATED);
-        p9ReloadCloseRequested.set(false);
+                server, slot, ProjectileClosureReason.RELOAD_INVALIDATED, true);
+        if (slots.get(server) == slot && slot.state == ServerSlot.State.RUNNING) {
+            p9ReloadCloseRequested.set(false);
+        }
     }
 
     void armP9TerminalDiagnosticFailureForTesting(
@@ -341,6 +343,30 @@ final class SkillRuntimeService {
         if (slot.runtimeTick >= sourceEvent.deadlineRuntimeTick()) {
             return continuationRejected(
                     RuntimeProjectileContinuationOpenRejectionReason.LIFECYCLE_UNAVAILABLE);
+        }
+        var suspended = instance.activeProjectileContinuation;
+        if (suspended != null && suspended.suspendedBeforeSpawn) {
+            if (suspended.state != RuntimeProjectileContinuationPermit.State.RESERVED
+                    || slot.activeProjectileContinuations.get(suspended.permitId) != suspended
+                    || !suspended.serverSlotToken.equals(slot.token)
+                    || !suspended.skillInstanceId.equals(instance.id)
+                    || !suspended.budgetAttribution.equals(instance.attribution)
+                    || !suspended.exactReference.equals(sourceEvent.skillReference())
+                    || !suspended.sourceFamily.sourceEventId().equals(sourceEvent.eventId())
+                    || suspended.deadlineRuntimeTick != sourceEvent.deadlineRuntimeTick()
+                    || !suspended.dimension.equals(geometry.dimension())
+                    || reservation.detachedPermit() != null
+                    || loadedEntityUuidExists(server, suspended.plannedProjectileId)
+                    || !isCurrentP9AuthenticatedActor(
+                            server, instance, instance.p9ActorWitness(), geometry.dimension())) {
+                return continuationRejected(
+                        RuntimeProjectileContinuationOpenRejectionReason.LIFECYCLE_UNAVAILABLE);
+            }
+            // The original held child and planned entity identity are still reserved.
+            reservation.attach(suspended);
+            suspended.suspendedBeforeSpawn = false;
+            return new RuntimeProjectileContinuationOpenResult.Opened(
+                    suspended, suspended.plannedProjectileId, this);
         }
         if (reservation.capacity() < 1
                 || reservation.budget().zeroDelayChildCapacity() < 1
@@ -508,18 +534,35 @@ final class SkillRuntimeService {
             MinecraftServer server,
             RuntimeProjectileContinuationPermit permit,
             ProjectileHitCandidateV0 candidate) {
+        return submitProjectileHit(server, permit, candidate, null).orElseThrow(
+                () -> kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT));
+    }
+
+    Optional<RuntimePermitClaimDisposition> claimObservedProjectileHit(
+            MinecraftServer server, RuntimeProjectileContinuationPermit permit,
+            P9StarterProjectile projectile, ProjectileHitCandidateV0 candidate) {
+        Objects.requireNonNull(projectile, "projectile");
+        if (!projectile.hasObservedHit(permit, candidate)) {
+            return Optional.of(RuntimePermitClaimDisposition.REJECTED);
+        }
+        return submitProjectileHit(server, permit, candidate, projectile);
+    }
+
+    private Optional<RuntimePermitClaimDisposition> submitProjectileHit(
+            MinecraftServer server, RuntimeProjectileContinuationPermit permit,
+            ProjectileHitCandidateV0 candidate, P9StarterProjectile observedProjectile) {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(permit, "permit");
         Objects.requireNonNull(candidate, "candidate");
         if (!server.isSameThread()) {
-            return RuntimePermitClaimDisposition.REJECTED;
+            return Optional.of(RuntimePermitClaimDisposition.REJECTED);
         }
         var slot = slots.get(server);
         if (slot == null) {
-            return RuntimePermitClaimDisposition.REJECTED;
+            return Optional.of(RuntimePermitClaimDisposition.REJECTED);
         }
         try {
-            return claimProjectileHitInSlot(server, slot, permit, candidate);
+            return claimProjectileHitInSlot(server, slot, permit, candidate, observedProjectile);
         } catch (RuntimeException primary) {
             throw preserveRuntimeFault(slot, primary);
         } catch (Error primary) {
@@ -528,11 +571,11 @@ final class SkillRuntimeService {
         }
     }
 
-    private RuntimePermitClaimDisposition claimProjectileHitInSlot(
+    private Optional<RuntimePermitClaimDisposition> claimProjectileHitInSlot(
             MinecraftServer server,
             ServerSlot slot,
             RuntimeProjectileContinuationPermit permit,
-            ProjectileHitCandidateV0 candidate) {
+            ProjectileHitCandidateV0 candidate, P9StarterProjectile observedProjectile) {
         var instance = slot.instances.get(permit.skillInstanceId);
         if (slot.state != ServerSlot.State.RUNNING
                 || !server.isRunning()
@@ -544,7 +587,7 @@ final class SkillRuntimeService {
                 || permit.state != RuntimeProjectileContinuationPermit.State.OPEN
                 || !permit.serverSlotToken.equals(slot.token)
                 || slot.activeProjectileContinuations.get(permit.permitId) != permit) {
-            return rejectClaimAndClose(server, slot, instance, permit, candidate);
+            return Optional.of(rejectClaimAndClose(server, slot, instance, permit, candidate));
         }
         var attribution = slot.attributions.get(permit.budgetAttribution);
         if (instance == null
@@ -566,7 +609,7 @@ final class SkillRuntimeService {
                 || permit.sourceFamily.producerNodeIndex() != 0
                 || permit.sourceFamily.outputOrdinal() != 0
                 || permit.sourceDerivationDepth != 0) {
-            return rejectClaimAndClose(server, slot, instance, permit, candidate);
+            return Optional.of(rejectClaimAndClose(server, slot, instance, permit, candidate));
         }
         var level = levelForDimension(server, permit.dimension);
         var loadedProjectile = level == null
@@ -575,10 +618,15 @@ final class SkillRuntimeService {
         var target = level == null ? null : level.getEntity(candidate.targetId());
         var hitPosition = BlockPos.containing(
                 candidate.hitX(), candidate.hitY(), candidate.hitZ());
-        var actor = currentP9EntityActor(server, instance, loadedProjectile, permit);
+        var actor = loadedProjectile instanceof P9StarterProjectile exactProjectile
+                ? exactProjectile.actorWitness(permit) : null;
         if (!(loadedProjectile instanceof P9StarterProjectile projectile)
                 || !(target instanceof LivingEntity livingTarget)
                 || actor == null
+                || actor.serverLevel() != level
+                || !projectile.hasAuthenticatedCasterIdentity(actor)
+                || observedProjectile != null && (observedProjectile != projectile
+                        || !projectile.hasObservedTarget(permit, candidate, livingTarget))
                 || candidate.projectileId().equals(candidate.targetId())
                 || !candidate.projectileId().equals(permit.plannedProjectileId)
                 || !candidate.dimension().equals(permit.dimension)
@@ -594,7 +642,7 @@ final class SkillRuntimeService {
                 || !level.isLoaded(hitPosition)
                 || !level.getWorldBorder().isWithinBounds(
                         candidate.hitX(), candidate.hitZ())) {
-            return rejectClaimAndClose(server, slot, instance, permit, candidate);
+            return Optional.of(rejectClaimAndClose(server, slot, instance, permit, candidate));
         }
 
         var hitData = new ProjectileHitExecutionDataV0(
@@ -627,8 +675,21 @@ final class SkillRuntimeService {
                 hitData);
         if (validateChildShape(instance.lease.definition, instance.attribution, childSpec)
                 .isPresent()) {
-            return rejectClaimAndClose(server, slot, instance, permit, candidate);
+            return Optional.of(rejectClaimAndClose(server, slot, instance, permit, candidate));
         }
+        // One exact, callback-free authority decision. Pending retains the already
+        // observed collision; it never publishes a child or claims execution rights.
+        var qualification = actorQualification(server, instance, actor, permit.dimension);
+        if (observedProjectile != null) {
+            projectile.observeHitTick(permit, candidate, slot.runtimeTick);
+        }
+        if (observedProjectile != null && awaitingNativeCleanup(qualification)) {
+            return Optional.empty();
+        }
+        if (qualification != WorkQualification.EXECUTABLE) {
+            return Optional.of(rejectClaimAndClose(server, slot, instance, permit, candidate));
+        }
+        if (observedProjectile != null) { projectile.clearObservedHit(permit); }
         var child = new RuntimeEvent(
                 permit.heldChildEventId,
                 instance.id,
@@ -657,7 +718,7 @@ final class SkillRuntimeService {
         permit.state = RuntimeProjectileContinuationPermit.State.CLAIMED_PENDING_DAMAGE;
         recordP9HitClaimResult(
                 slot, instance, permit, candidate, RuntimePermitClaimDisposition.QUEUED);
-        return RuntimePermitClaimDisposition.QUEUED;
+        return Optional.of(RuntimePermitClaimDisposition.QUEUED);
     }
 
     private RuntimePermitClaimDisposition rejectClaimAndClose(
@@ -816,6 +877,10 @@ final class SkillRuntimeService {
             throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
         }
         instance.activeProjectileContinuation = null;
+        if (server != null) {
+            var observedProjectile = loadedProjectile(server, permit);
+            if (observedProjectile != null) { observedProjectile.clearObservedHit(permit); }
+        }
         if (claimed) {
             permit.state = RuntimeProjectileContinuationPermit.State.CLOSED_AFTER_HIT;
         } else {
@@ -982,10 +1047,20 @@ final class SkillRuntimeService {
         if (instance.logoutState == LogoutState.COMPLETE) {
             return instance.work != null ? WorkQualification.EXECUTABLE : WorkQualification.INVALID;
         }
-        return server.getPlayerList().getPlayer(candidate.getUUID()) == candidate
-                && !candidate.isRemoved() && candidate.isAlive()
-                && candidate.connection != null && candidate.connection.isAcceptingMessages()
-                ? WorkQualification.EXECUTABLE : WorkQualification.INVALID;
+        if (server.getPlayerList().getPlayer(candidate.getUUID()) != candidate
+                || candidate.isRemoved() || !candidate.isAlive()
+                || candidate.connection == null) {
+            return WorkQualification.INVALID;
+        }
+        if (candidate.connection.isAcceptingMessages()) {
+            return WorkQualification.EXECUTABLE;
+        }
+        var listener = candidate.connection;
+        var connection = listener.getConnection();
+        return instance.work != null && !candidate.hasDisconnected()
+                && listener.player == candidate && connection.getPacketListener() == listener
+                && !connection.isConnecting() && !connection.isConnected()
+                ? WorkQualification.NATIVE_CLEANUP_PENDING : WorkQualification.INVALID;
     }
 
     private static ServerPlayer currentP9Actor(
@@ -1027,7 +1102,12 @@ final class SkillRuntimeService {
         return null;
     }
 
-    enum WorkQualification { EXECUTABLE, LOGOUT_IN_PROGRESS, INVALID }
+    enum WorkQualification { EXECUTABLE, NATIVE_CLEANUP_PENDING, LOGOUT_IN_PROGRESS, INVALID }
+
+    static boolean awaitingNativeCleanup(WorkQualification qualification) {
+        return qualification == WorkQualification.NATIVE_CLEANUP_PENDING
+                || qualification == WorkQualification.LOGOUT_IN_PROGRESS;
+    }
 
     enum LogoutState { ONLINE, IN_PROGRESS, COMPLETE, INVALID }
 
@@ -1758,7 +1838,15 @@ final class SkillRuntimeService {
         }
         if (p9ReloadCloseRequested.get()) {
             invalidateP9WorkPreservingPrimary(
-                    server, slot, ProjectileClosureReason.RELOAD_INVALIDATED);
+                    server, slot, ProjectileClosureReason.RELOAD_INVALIDATED, false);
+        }
+        try {
+            resumeObservedP9Hits(server, slot);
+        } catch (RuntimeException primary) {
+            throw preserveRuntimeFault(slot, primary);
+        } catch (Error primary) {
+            slot.p9ErrorCleanup.prepare(server);
+            throw preserveErrorFault(slot, primary);
         }
         if (advanceRuntimeTick(slot) == RuntimeTickAdvanceResult.EXHAUSTED) {
             slot.state = ServerSlot.State.EXHAUSTED;
@@ -1776,6 +1864,21 @@ final class SkillRuntimeService {
                 slot.p9ErrorCleanup.prepare(server);
                 throw preserveErrorFault(slot, primary);
             }
+        }
+    }
+
+    private void resumeObservedP9Hits(MinecraftServer server, ServerSlot slot) {
+        if (slot.activeProjectileContinuations.size() > 128 || slot.dispatching
+                || slot.currentEvent != null) {
+            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        // Existing bounded permit inventory only; resumption can remove an entry.
+        var permits = List.copyOf(slot.activeProjectileContinuations.values());
+        for (var permit : permits) {
+            if (slot.state != ServerSlot.State.RUNNING || slots.get(server) != slot) { return; }
+            if (slot.activeProjectileContinuations.get(permit.permitId) != permit) { continue; }
+            var projectile = loadedProjectile(server, permit);
+            if (projectile != null) { projectile.resumeObservedHit(permit); }
         }
     }
 
@@ -1896,6 +1999,36 @@ final class SkillRuntimeService {
         if (slot.dispatching) {
             throw kernel(RuntimeKernelException.Code.NESTED_DRAIN);
         }
+        invalidateP9QueuedAndIndexedWork(server, slot, reason);
+    }
+
+    private static void prepareP9ReloadInFlight(ServerSlot slot) {
+        var current = slot.currentEvent;
+        var instance = current == null ? null : slot.instances.get(current.skillInstanceId());
+        if (!slot.dispatching || slot.state != ServerSlot.State.RUNNING
+                || slot.p9BatchContinuationCloseInProgress || current == null
+                || !isP9ExecutionData(current.executionData())
+                || slot.eventIndex.get(current.eventId()) != current
+                || instance == null || !instance.inFlight || instance.terminal
+                || instance.lease.pin.isClosed()
+                || !instance.lease.reference.equals(current.skillReference())
+                || !instance.attribution.equals(current.budgetAttribution())
+                || instance.cancellationRequested
+                        != (instance.p9InFlightClosureReason == ProjectileClosureReason.RELOAD_INVALIDATED)
+                || instance.p9InFlightClosureReason != null
+                        && instance.p9InFlightClosureReason != ProjectileClosureReason.RELOAD_INVALIDATED) {
+            throw kernel(RuntimeKernelException.Code.NESTED_DRAIN);
+        }
+        // Existing in-flight cancellation custody remains until terminalizeCurrent.
+        // Publish cancellation before any native discard/observer callback.
+        instance.cancellationRequested = true;
+        instance.p9InFlightClosureReason = ProjectileClosureReason.RELOAD_INVALIDATED;
+        instance.clearP9AuthenticatedActorWitness();
+        releaseCurrentReservationStatic(slot, instance, requireAttribution(slot, instance.attribution));
+    }
+
+    private void invalidateP9QueuedAndIndexedWork(
+            MinecraftServer server, ServerSlot slot, ProjectileClosureReason reason) {
         var scratchCount = 0;
         while (!slot.queue.isEmpty()) {
             var queued = slot.queue.poll();
@@ -1950,9 +2083,19 @@ final class SkillRuntimeService {
     private void invalidateP9WorkPreservingPrimary(
             MinecraftServer server,
             ServerSlot slot,
-            ProjectileClosureReason reason) {
+            ProjectileClosureReason reason,
+            boolean completingReload) {
         try {
-            invalidateP9Work(server, slot, reason);
+            if (completingReload && slot.dispatching) {
+                if (reason != ProjectileClosureReason.RELOAD_INVALIDATED
+                        || !p9ReloadCloseRequested.get()) {
+                    throw kernel(RuntimeKernelException.Code.NESTED_DRAIN);
+                }
+                prepareP9ReloadInFlight(slot);
+                invalidateP9QueuedAndIndexedWork(server, slot, reason);
+            } else {
+                invalidateP9Work(server, slot, reason);
+            }
         } catch (RuntimeException primary) {
             throw preserveRuntimeFault(slot, primary);
         } catch (Error primary) {
@@ -2072,12 +2215,11 @@ final class SkillRuntimeService {
                     continue;
                 }
                 if (isP9ExecutionData(event.executionData())
-                        && eventQualification(server, slot, instance, event)
-                                == WorkQualification.LOGOUT_IN_PROGRESS) {
+                        && awaitingNativeCleanup(eventQualification(server, slot, instance, event))) {
                     if (slot.deferredCount == slot.deferred.length) {
                         throw kernel(RuntimeKernelException.Code.DEFERRED_BUFFER_OVERFLOW);
                     }
-                    // Exclude only execution during this exact native cleanup call.
+                    // Retain custody while awaiting or inside the exact native cleanup.
                     // The original scheduled tick and deadline remain unchanged.
                     slot.deferred[slot.deferredCount++] = event;
                     continue;
@@ -2124,7 +2266,9 @@ final class SkillRuntimeService {
             if (event.executionData() instanceof CastGeometryExecutionDataV0
                     && event.nodeIndex() == 0
                     && P9StarterSkillContent.hasSupportedStarterGameplay(
-                            lease.definition)) {
+                            lease.definition)
+                    && !resumingRecordedP9Stage(slot, instance, event,
+                            P9RuntimeDiagnosticStage.NODE0_MATCHED)) {
                 recordP9Stage(slot, instance, P9RuntimeDiagnosticStage.NODE0_MATCHED);
             }
             var invocation = invokeRuntimeBoundary(
@@ -2132,21 +2276,41 @@ final class SkillRuntimeService {
             if (invocation instanceof AbortedInvocation) {
                 return;
             }
-            outcome = switch (invocation) {
-                case TerminalInvocation terminal -> terminal.outcome();
-                case PortInvocation returned -> finishPort(
-                        server, slot, instance, attribution, event, returned);
-                case NullBatchInvocation returned -> finishPort(
-                        server, slot, instance, attribution, event, returned);
-                case AbortedInvocation ignored ->
-                        throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
-            };
+            if (invocation instanceof SuspendedInvocation
+                    || invocation instanceof TerminalInvocation terminal
+                            && terminal.outcome() instanceof RuntimeExecutionOutcome.OwnerInstanceUnavailable
+                            && awaitingNativeCleanup(eventQualification(server, slot, instance, event))) {
+                if (suspendUnexecutedCurrent(server, slot, instance, attribution, event)) {
+                    return;
+                }
+                outcome = new RuntimeExecutionOutcome.Cancelled();
+            } else {
+                outcome = switch (invocation) {
+                    case TerminalInvocation terminal -> terminal.outcome();
+                    case PortInvocation returned -> finishPort(
+                            server, slot, instance, attribution, event, returned);
+                    case NullBatchInvocation returned -> finishPort(
+                            server, slot, instance, attribution, event, returned);
+                    case AbortedInvocation ignored ->
+                            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+                    case SuspendedInvocation ignored ->
+                            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+                };
+            }
         }
         if (slot.state != ServerSlot.State.RUNNING) {
             return;
         }
         if (slot.currentEvent != event) {
             throw kernel(RuntimeKernelException.Code.EVENT_INDEX_INVARIANT);
+        }
+        var unopened = instance.activeProjectileContinuation;
+        if (unopened != null && unopened.suspendedBeforeSpawn
+                && unopened.state == RuntimeProjectileContinuationPermit.State.RESERVED) {
+            closeActiveP9ContinuationAndDiscard(server, slot, instance,
+                    slot.runtimeTick >= unopened.deadlineRuntimeTick
+                            ? ProjectileClosureReason.DEADLINE_REACHED
+                            : ProjectileClosureReason.OWNER_INVALIDATED);
         }
         if (event.executionData() instanceof ProjectileHitExecutionDataV0) {
             closeActiveP9ContinuationAndDiscard(
@@ -2197,6 +2361,9 @@ final class SkillRuntimeService {
         ResolvedRuntimeReferenceContext resolvedReferences = null;
         RuntimeExecutionContext context = null;
         try {
+            if (awaitingNativeCleanup(eventQualification(server, slot, instance, event))) {
+                return SuspendedInvocation.INSTANCE;
+            }
             var acceptedWork = isP9ExecutionData(event.executionData())
                     ? new AcceptedWorkActor(this, server, slot, instance, event) : null;
             resolution = referenceResolver.resolve(server, event, acceptedWork);
@@ -2216,9 +2383,16 @@ final class SkillRuntimeService {
                         new RuntimeExecutionOutcome.Cancelled());
             }
             if (!(resolution instanceof RuntimeReferenceResolutionOutcome.Resolved)) {
+                if (resolution instanceof RuntimeReferenceResolutionOutcome.SourceMissing
+                        && awaitingNativeCleanup(eventQualification(server, slot, instance, event))) {
+                    return SuspendedInvocation.INSTANCE;
+                }
                 return new TerminalInvocation(referenceFailureOutcome(resolution));
             }
             resolvedReferences = ((RuntimeReferenceResolutionOutcome.Resolved) resolution).context();
+            if (awaitingNativeCleanup(eventQualification(server, slot, instance, event))) {
+                return SuspendedInvocation.INSTANCE;
+            }
             ServerPlayer guardedP9Actor = null;
             ResourceLocation guardedP9Dimension = null;
             if (event.executionData() instanceof CastGeometryExecutionDataV0 geometry) {
@@ -2269,6 +2443,13 @@ final class SkillRuntimeService {
                             this, server, slot, event, reservation));
             slot.diagnostics.portInvocationsThisTick++;
             var batch = executionPort.execute(event, context);
+            if (executionGuard.p9NoCommitSuspended) {
+                if (batch == null || !(batch.outcome() instanceof RuntimePortOutcome.Completed)
+                        || !batch.children().children().isEmpty() || executionGuard.p9WorldCommitEntered) {
+                    throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+                }
+                return SuspendedInvocation.INSTANCE;
+            }
             return batch == null
                     ? new NullBatchInvocation(reservation)
                     : new PortInvocation(reservation, batch);
@@ -2277,6 +2458,42 @@ final class SkillRuntimeService {
             resolvedReferences = null;
             resolution = null;
         }
+    }
+
+    private boolean suspendUnexecutedCurrent(MinecraftServer server, ServerSlot slot,
+            ServerSlot.InstanceState instance, ServerSlot.AttributionState attribution,
+            RuntimeEvent event) {
+        if (slot.state != ServerSlot.State.RUNNING) { return false; }
+        if (slot.currentEvent != event || !instance.inFlight
+                || slot.eventIndex.get(event.eventId()) != event) {
+            throw kernel(RuntimeKernelException.Code.EVENT_INDEX_INVARIANT);
+        }
+        var qualification = eventQualification(server, slot, instance, event);
+        if (qualification == WorkQualification.INVALID) {
+            closeActiveP9ContinuationAndDiscard(server, slot, instance,
+                    deadlineExpired(slot, event) ? ProjectileClosureReason.DEADLINE_REACHED
+                            : ProjectileClosureReason.OWNER_INVALIDATED);
+            releaseCurrentReservation(slot, instance, attribution);
+            return false;
+        }
+        if (slot.deferredCount == slot.deferred.length) {
+            throw kernel(RuntimeKernelException.Code.DEFERRED_BUFFER_OVERFLOW);
+        }
+        var permit = instance.activeProjectileContinuation;
+        if (permit != null && permit.state == RuntimeProjectileContinuationPermit.State.RESERVED) {
+            if (!(event.executionData() instanceof CastGeometryExecutionDataV0)
+                    || !permit.sourceFamily.sourceEventId().equals(event.eventId())
+                    || loadedEntityUuidExists(server, permit.plannedProjectileId)) {
+                throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+            }
+            permit.suspendedBeforeSpawn = true;
+        }
+        releaseCurrentReservation(slot, instance, attribution);
+        instance.p9SuspendedEventId = event.eventId();
+        instance.inFlight = false;
+        slot.currentEvent = null;
+        slot.deferred[slot.deferredCount++] = event;
+        return true;
     }
 
     private RuntimeExecutionOutcome finishPort(
@@ -2292,6 +2509,8 @@ final class SkillRuntimeService {
             case AbortedInvocation ignored ->
                     throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
             case TerminalInvocation ignored ->
+                    throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+            case SuspendedInvocation ignored ->
                     throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
         };
         if (slot.state != ServerSlot.State.RUNNING) {
@@ -3084,6 +3303,8 @@ final class SkillRuntimeService {
         var attribution = requireAttribution(slot, instance.attribution);
         releaseCurrentReservationStatic(slot, instance, attribution);
         removeCommittedEvent(slot, event);
+        instance.p9SuspendedEventId = null;
+        instance.p9InFlightClosureReason = null;
         instance.inFlight = false;
         slot.currentEvent = null;
         maybeRemoveInstance(slot, instance.id);
@@ -3322,6 +3543,27 @@ final class SkillRuntimeService {
         trace.record(stage, slot.runtimeTick);
     }
 
+    private static boolean resumingRecordedP9Stage(ServerSlot slot,
+            ServerSlot.InstanceState instance, RuntimeEvent event, P9RuntimeDiagnosticStage stage) {
+        if (instance.p9SuspendedEventId == null) { return false; }
+        var trace = instance.p9Diagnostic;
+        if (!instance.p9SuspendedEventId.equals(event.eventId()) || !instance.inFlight
+                || slot.currentEvent != event || trace == null || trace.terminalPublished) {
+            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        boolean root = stage == P9RuntimeDiagnosticStage.NODE0_MATCHED
+                && event.executionData() instanceof CastGeometryExecutionDataV0;
+        boolean child = (stage == P9RuntimeDiagnosticStage.NODE1_MATCHED
+                        || stage == P9RuntimeDiagnosticStage.DAMAGE_RESOLVED)
+                && hasP9S4DiagnosticCustody(slot, instance, event);
+        int lastUnexecuted = root ? P9RuntimeDiagnosticStage.CONTINUATION_OPENED.ordinal()
+                : P9RuntimeDiagnosticStage.DAMAGE_RESOLVED.ordinal();
+        if ((!root && !child) || trace.lastStageOrdinal > lastUnexecuted) {
+            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        return trace.lastStageOrdinal >= stage.ordinal();
+    }
+
     void reportP9S4Stage(
             MinecraftServer server,
             ServerSlot slot,
@@ -3353,6 +3595,11 @@ final class SkillRuntimeService {
         var trace = instance.p9Diagnostic;
         if (trace == null || trace.terminalPublished) {
             throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        if ((stage == P9RuntimeDiagnosticStage.NODE1_MATCHED
+                        || stage == P9RuntimeDiagnosticStage.DAMAGE_RESOLVED)
+                && resumingRecordedP9Stage(slot, instance, event, stage)) {
+            return;
         }
         var expectedPredecessor = switch (stage) {
             case CAST_PRESENTATION_OFFERED -> {
@@ -3944,7 +4191,14 @@ final class SkillRuntimeService {
         }
     }
 
+    private static void clearP9InFlightClosureReason(ServerSlot slot) {
+        var current = slot.currentEvent;
+        var instance = current == null ? null : slot.instances.get(current.skillInstanceId());
+        if (instance != null) { instance.p9InFlightClosureReason = null; }
+    }
+
     private static int clearSlotNormal(MinecraftServer server, ServerSlot slot) {
+        clearP9InFlightClosureReason(slot);
         var closedWorkUnits = closeAllIndexedContinuations(
                 server,
                 slot,
@@ -3984,6 +4238,7 @@ final class SkillRuntimeService {
 
     private static void clearSlotAfterRuntimeException(
             MinecraftServer server, ServerSlot slot) {
+        clearP9InFlightClosureReason(slot);
         closeAllIndexedContinuations(
                 server,
                 slot,
@@ -4020,6 +4275,7 @@ final class SkillRuntimeService {
     }
 
     static void clearSlotAfterError(ServerSlot slot) {
+        clearP9InFlightClosureReason(slot);
         var currentInstance = slot.currentEvent == null
                 ? null
                 : slot.instances.get(slot.currentEvent.skillInstanceId());
@@ -4101,11 +4357,16 @@ final class SkillRuntimeService {
 
     private sealed interface DetachedInvocation
             permits AbortedInvocation,
+                    SuspendedInvocation,
                     TerminalInvocation,
                     PortInvocation,
                     NullBatchInvocation {}
 
     private enum AbortedInvocation implements DetachedInvocation {
+        INSTANCE
+    }
+
+    private enum SuspendedInvocation implements DetachedInvocation {
         INSTANCE
     }
 
@@ -4218,6 +4479,9 @@ final class SkillRuntimeService {
         private boolean p9DamageCommitEntered;
         private boolean p9DamageCommitFinished;
         private boolean p9AppliedObservationArmed;
+        private boolean p9CleanupPendingObserved;
+        private boolean p9NoCommitSuspended;
+        private boolean p9WorldCommitEntered;
 
         RuntimeExecutionGuardState(
                 SkillRuntimeService owner,
@@ -4242,6 +4506,7 @@ final class SkillRuntimeService {
 
         @Override
         public RuntimeExecutionGuardDecision check() {
+            p9CleanupPendingObserved = false;
             if (!server.isSameThread() || owner.slots.get(server) != slot
                     || slot.instances.get(instance.id) != instance || !slot.dispatching
                     || slot.currentEvent != event || !instance.inFlight
@@ -4252,18 +4517,44 @@ final class SkillRuntimeService {
                     && isP9ExecutionData(event.executionData())) {
                 return RuntimeExecutionGuardDecision.CANCELLED;
             }
-            if (p9Actor != null && (owner.eventQualification(server, slot, instance, event)
-                            != WorkQualification.EXECUTABLE
-                    || instanceActor(server, instance) != p9Actor
-                    || actorQualification(server, instance, p9Actor, p9Dimension)
-                            != WorkQualification.EXECUTABLE)) {
-                return RuntimeExecutionGuardDecision.CANCELLED;
+            if (p9Actor != null) {
+                var qualification = owner.eventQualification(server, slot, instance, event);
+                var actor = actorQualification(server, instance, p9Actor, p9Dimension);
+                if (qualification != WorkQualification.EXECUTABLE
+                        || instanceActor(server, instance) != p9Actor
+                        || actor != WorkQualification.EXECUTABLE) {
+                    p9CleanupPendingObserved = !p9WorldCommitEntered
+                            && qualification != WorkQualification.INVALID && actor != WorkQualification.INVALID
+                            && (awaitingNativeCleanup(qualification) || awaitingNativeCleanup(actor))
+                            && instanceActor(server, instance) == p9Actor
+                            && owner.runtimeExecutionGuardDecision(slot, instance, event)
+                                    == RuntimeExecutionGuardDecision.ALLOWED;
+                    return RuntimeExecutionGuardDecision.CANCELLED;
+                }
             }
             if (event.executionData() instanceof ProjectileHitExecutionDataV0
                     && !validClaimedP9Child(server, slot, instance, event)) {
+                p9CleanupPendingObserved = !p9WorldCommitEntered && p9Actor != null
+                        && instanceActor(server, instance) == p9Actor
+                        && awaitingNativeCleanup(owner.eventQualification(server, slot, instance, event))
+                        && owner.runtimeExecutionGuardDecision(slot, instance, event)
+                                == RuntimeExecutionGuardDecision.ALLOWED;
                 return RuntimeExecutionGuardDecision.CANCELLED;
             }
             return owner.runtimeExecutionGuardDecision(slot, instance, event);
+        }
+
+        boolean suspendBeforeWorldCommit() {
+            if (!p9CleanupPendingObserved || p9WorldCommitEntered) { return false; }
+            p9NoCommitSuspended = true;
+            return true;
+        }
+
+        void enterP9WorldCommit() {
+            if (p9WorldCommitEntered || p9NoCommitSuspended) {
+                throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+            }
+            p9WorldCommitEntered = true;
         }
 
         boolean allowsP9NativeActor(ServerPlayer exactActor) {
@@ -4325,6 +4616,10 @@ final class SkillRuntimeService {
                 if (!p9DamageCommitEntered || p9DamageCommitFinished) {
                     throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
                 }
+                if (p9ReloadTerminatedAfterWorldCommit()) {
+                    p9DamageCommitFinished = true;
+                    return;
+                }
                 reportP9S4Stage(P9RuntimeDiagnosticStage.DAMAGE_COMMIT_RESULT);
                 reportP9S4Stage(P9RuntimeDiagnosticStage.HIT_PRESENTATION_OFFERED);
                 p9DamageCommitFinished = true;
@@ -4338,8 +4633,32 @@ final class SkillRuntimeService {
             if (p9DamageCommitFinished) {
                 return;
             }
-            reportP9S4Stage(P9RuntimeDiagnosticStage.DAMAGE_COMMIT_RESULT);
+            if (!p9ReloadTerminatedAfterWorldCommit()) {
+                reportP9S4Stage(P9RuntimeDiagnosticStage.DAMAGE_COMMIT_RESULT);
+            }
             p9DamageCommitFinished = true;
+        }
+
+        /** Late diagnostics are not authority to reopen a synchronously invalidated call. */
+        private boolean p9ReloadTerminatedAfterWorldCommit() {
+            if (!p9WorldCommitEntered || !p9DamageCommitEntered || p9Actor == null
+                    || !(event.executionData() instanceof ProjectileHitExecutionDataV0 hit)
+                    || !server.isSameThread() || !server.isRunning() || server.isStopped()
+                    || owner.slots.get(server) != slot || slot.state != ServerSlot.State.RUNNING
+                    || !slot.dispatching || slot.currentEvent != event
+                    || slot.eventIndex.get(event.eventId()) != event
+                    || slot.instances.get(event.skillInstanceId()) != instance
+                    || !instance.inFlight || instance.terminal || !instance.cancellationRequested
+                    || instance.p9InFlightClosureReason != ProjectileClosureReason.RELOAD_INVALIDATED
+                    || instance.lease.pin.isClosed()
+                    || !instance.lease.reference.equals(event.skillReference())
+                    || !instance.attribution.equals(event.budgetAttribution())
+                    || event.nodeIndex() != 1 || !p9Dimension.equals(hit.dimension())
+                    || instance.activeProjectileContinuation != null
+                    || slot.activeProjectileContinuations.containsKey(hit.permitId())) {
+                return false;
+            }
+            return true;
         }
     }
 
@@ -4513,6 +4832,7 @@ final class RuntimeProjectileContinuationPermit {
     final UUID permitId;
     final UUID plannedProjectileId;
     State state;
+    boolean suspendedBeforeSpawn;
 
     RuntimeProjectileContinuationPermit() {
         owner = null;
@@ -4601,6 +4921,17 @@ final class RuntimeProjectileContinuationPermit {
             MinecraftServer server, P9StarterProjectile projectile) {
         return mode == Mode.REAL ? owner.projectileQualification(server, this, projectile)
                 : SkillRuntimeService.WorkQualification.INVALID;
+    }
+
+    Optional<RuntimePermitClaimDisposition> submitObservedHit(
+            MinecraftServer server, P9StarterProjectile projectile, ProjectileHitCandidateV0 candidate) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(projectile, "projectile");
+        Objects.requireNonNull(candidate, "candidate");
+        if (mode != Mode.REAL || !owner.isOwningPermitServerThread(server, this)) {
+            return Optional.of(RuntimePermitClaimDisposition.REJECTED);
+        }
+        return owner.claimObservedProjectileHit(server, this, projectile, candidate);
     }
 
     ServerPlayer qualifiedActor(MinecraftServer server, P9StarterProjectile projectile) {
@@ -4761,6 +5092,8 @@ final class ServerSlot {
         P11QualifiedSourceOwner.WorkReservation work;
         SkillRuntimeService.LogoutState logoutState = SkillRuntimeService.LogoutState.ONLINE;
         SkillRuntimeService.NormalLogoutScope logoutScope;
+        EventId p9SuspendedEventId;
+        ProjectileClosureReason p9InFlightClosureReason;
         int committedPending;
         int reservedPending;
         int lifetimeEvents;
@@ -4794,6 +5127,7 @@ final class ServerSlot {
         }
 
         void releaseWork() {
+            p9SuspendedEventId = null;
             logoutScope = null;
             logoutState = SkillRuntimeService.LogoutState.INVALID;
             var retained = work;

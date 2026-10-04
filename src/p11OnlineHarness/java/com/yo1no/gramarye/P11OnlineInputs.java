@@ -14,6 +14,8 @@ final class P11OnlineInputs {
     private static final String HISTORICAL_PRODUCT_PIN = "4d79086f628daa137281f71312596d4dda861bafbaa9b62a65cd70e5257d248b";
     // Frozen only after the coordinated C4a product build. No property can substitute a pin.
     private static final String C4A_PRODUCT_PIN = "9f499356841f302b04d3846d85640ed273ec3104dbc0e743f8cea452243b4c97";
+    // Local development candidate e22a5cde; this pin is not a runtime acceptance claim.
+    private static final String L1_PRODUCT_PIN = "fc15bf045905285c4b8dfe661b41d34e890f628c3399c5824070194ae395aeb8";
 
     private P11OnlineInputs() {}
 
@@ -32,19 +34,28 @@ final class P11OnlineInputs {
                 .contains(System.getProperty("gramarye.p11.online.case", ""));
     }
 
-    static boolean onlineContextCase() { return historicalCase() || currentContextCase(); }
+    static boolean l1ContextCase() {
+        return java.util.List.of("l1-qctx", "l1-capacity")
+                .contains(System.getProperty("gramarye.p11.online.case", ""));
+    }
+
+    static boolean onlineContextCase() { return historicalCase() || currentContextCase() || l1ContextCase(); }
 
     static String semanticOnlineCase() {
         var selected = System.getProperty("gramarye.p11.online.case", "");
         return switch (selected) {
             case "single", "qctx", "capacity" -> selected;
-            case "c4a-qctx" -> "qctx";
-            case "c4a-capacity" -> "capacity";
+            case "c4a-qctx", "l1-qctx" -> "qctx";
+            case "c4a-capacity", "l1-capacity" -> "capacity";
             default -> throw new IllegalStateException("UNKNOWN_ONLINE_CONTEXT_CASE");
         };
     }
 
     private static String productPin() {
+        if (P11L1ServerHarness.enabled() || l1ContextCase() || P11L1HostStopProbe.selected()) {
+            require(L1_PRODUCT_PIN != null && L1_PRODUCT_PIN.matches("[0-9a-f]{64}"), "L1_PRODUCT_PIN_PENDING");
+            return L1_PRODUCT_PIN;
+        }
         if (historicalCase()) { return HISTORICAL_PRODUCT_PIN; }
         require(c4aCase() || currentContextCase(), "UNKNOWN_ONLINE_CASE");
         require(C4A_PRODUCT_PIN != null && C4A_PRODUCT_PIN.matches("[0-9a-f]{64}"), "C4A_PRODUCT_PIN_PENDING");
@@ -52,6 +63,8 @@ final class P11OnlineInputs {
     }
 
     static String verifyFrozenJar() throws IOException {
+        require(P11C4aScenario.MODE != P11C4aScenario.Mode.L1_HOST_STOP || P11L1HostStopProbe.selected(),
+                "L1_HOST_CASE_MODE_MISMATCH");
         if (c4aCase()) {
             require("c4a-reward".equals(System.getProperty("gramarye.p11.online.case", ""))
                     == (P11C4aScenario.MODE == P11C4aScenario.Mode.NATIVE_REWARD_CONTINUITY), "REWARD_CASE_MODE_MISMATCH");
@@ -79,6 +92,7 @@ final class P11OnlineInputs {
         try (var jar = new JarFile(jarPath.toFile()); var loaded = Gramarye.class.getResourceAsStream("/" + entry)) {
             require(jar.getJarEntry(entry) != null && loaded != null, "PRODUCT_CLASS_MISSING");
             require(jar.stream().noneMatch(value -> value.getName().contains("P11Online")
+                    || value.getName().contains("P11L1")
                     || value.getName().contains("P11C4a")
                     || value.getName().equals("gramarye-p11-online-harness.mixins.json")
                     || value.getName().equals("gramarye-p11-c4a-harness.mixins.json")), "COMPANION_IN_PRODUCT");

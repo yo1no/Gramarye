@@ -365,6 +365,7 @@ final class SkillRuntimeAuthenticatedCastIngressTest {
                 "com/yo1no/gramarye/SkillRuntimeService.java", """
                 package com.yo1no.gramarye;
 
+                import com.yo1no.gramarye.magic.api.id.EventId;
                 import com.yo1no.gramarye.magic.api.id.SkillInstanceId;
                 import com.yo1no.gramarye.magic.capability.TriggerEventKind;
                 import com.yo1no.gramarye.magic.definition.document.SkillReference;
@@ -378,6 +379,11 @@ final class SkillRuntimeAuthenticatedCastIngressTest {
                 import net.minecraft.server.level.ServerPlayer;
 
                 final class SkillRuntimeService {
+                    // Type-only dependencies of the exact InstanceState source below.
+                    // This ingress model does not qualify P11 logout or work release.
+                    enum LogoutState { ONLINE, IN_PROGRESS, COMPLETE, INVALID }
+                    static final class NormalLogoutScope {
+                    }
                     private final IdentityHashMap<MinecraftServer, ServerSlot> slots =
                             new IdentityHashMap<>();
                     private final AtomicBoolean p9ReloadCloseRequested = new AtomicBoolean();
@@ -436,6 +442,16 @@ final class SkillRuntimeAuthenticatedCastIngressTest {
                 }
 
                 final class RuntimeProjectileContinuationPermit {
+                }
+
+                enum ProjectileClosureReason { RELOAD_INVALIDATED }
+
+                final class P11QualifiedSourceOwner {
+                    static final class WorkReservation {
+                        void release() {
+                            throw new AssertionError("P11 release is outside this ingress model");
+                        }
+                    }
                 }
 
                 final class RuntimeRevisionLease {
@@ -759,6 +775,10 @@ final class SkillRuntimeAuthenticatedCastIngressTest {
                 }
                 """);
 
+        var eventId = write(sourceRoot, "com/yo1no/gramarye/magic/api/id/EventId.java", """
+                package com.yo1no.gramarye.magic.api.id;
+                public record EventId(long value) {}
+                """);
         var compiler = ToolProvider.getSystemJavaCompiler();
         var diagnostics = new DiagnosticCollector<JavaFileObject>();
         boolean success;
@@ -769,6 +789,7 @@ final class SkillRuntimeAuthenticatedCastIngressTest {
                     server,
                     serverLevel,
                     serverPlayer,
+                    eventId,
                     skillInstanceId,
                     skillReference,
                     triggerEventKind,

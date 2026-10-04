@@ -330,7 +330,7 @@ final class P9S1BoundaryTest {
                 () -> assertEquals(6, occurrences(projectile, "@Override")),
                 () -> assertEquals(2, occurrences(projectile, "P9StarterProjectile(")),
                 () -> assertEquals(
-                        2,
+                        5,
                         Arrays.stream(P9StarterProjectile.class.getDeclaredFields())
                                 .filter(field -> !field.isSynthetic())
                                 .filter(field -> !Modifier.isFinal(field.getModifiers()))
@@ -341,7 +341,9 @@ final class P9S1BoundaryTest {
                                 "hasAuthenticatedCasterIdentity",
                                 "hasContinuationPermitIdentity",
                                 "closedForTrackingRemoval",
-                                "actorWitness"),
+                                "actorWitness",
+                                "hasObservedHit", "hasObservedTarget", "observeHitTick",
+                                "clearObservedHit", "resumeObservedHit"),
                         Arrays.stream(P9StarterProjectile.class.getDeclaredMethods())
                                 .filter(method -> !method.isSynthetic())
                                 .filter(method -> !Modifier.isPrivate(method.getModifiers()))
@@ -428,18 +430,18 @@ final class P9S1BoundaryTest {
         var handoff = read(HANDOFF_SOURCE);
         var adapter = read(ADAPTER_SOURCE);
         var tick = sourceBlock(projectile, "public void tick()");
-        var pending = tick.indexOf("if (continuationPermit.qualification(");
+        var pending = tick.indexOf("if (SkillRuntimeService.awaitingNativeCleanup(");
         var validation = tick.indexOf("if (!validServerState(serverLevel))");
         assertTrue(tick.indexOf("if (tickCount > 100)") < pending && pending < validation);
         assertEquals("""
-                if (continuationPermit.qualification(serverLevel.getServer(), this)
-                                == SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS) {
+                if (SkillRuntimeService.awaitingNativeCleanup(
+                                continuationPermit.qualification(serverLevel.getServer(), this))) {
                             return;
                         }
                 """.strip(), tick.substring(pending, validation).strip());
         assertAll(
-                () -> assertEquals(3, occurrences(projectile,
-                        "== SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS")),
+                () -> assertEquals(2, occurrences(projectile,
+                        "SkillRuntimeService.awaitingNativeCleanup(")),
                 () -> assertFalse(projectile.contains("tickCount =")
                         || projectile.contains("tickCount++")),
                 () -> assertTrue(projectile.contains(

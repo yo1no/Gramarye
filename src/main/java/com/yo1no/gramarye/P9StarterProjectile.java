@@ -27,6 +27,9 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
     private final ResourceLocation dimension;
     private boolean locallyClaimedOrTerminal;
     private double accumulatedTravelDistance;
+    private ProjectileHitCandidateV0 observedHit;
+    private long observedHitRuntimeTick = -1;
+    private int observedTargetEntityId = -1;
 
     P9StarterProjectile(
             EntityType<? extends ThrowableItemProjectile> type,
@@ -111,11 +114,22 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
             terminate(ProjectileClosureReason.AGE_EXHAUSTED);
             return;
         }
-        if (continuationPermit.qualification(serverLevel.getServer(), this)
-                == SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS) {
+        if (observedHit != null) {
+            if (continuationPermit.qualification(serverLevel.getServer(), this)
+                    == SkillRuntimeService.WorkQualification.INVALID) {
+                terminate(ProjectileClosureReason.OWNER_INVALIDATED);
+            }
+            return;
+        }
+        if (SkillRuntimeService.awaitingNativeCleanup(
+                continuationPermit.qualification(serverLevel.getServer(), this))) {
             return;
         }
         if (!validServerState(serverLevel)) {
+            if (SkillRuntimeService.awaitingNativeCleanup(
+                    continuationPermit.qualification(serverLevel.getServer(), this))) {
+                return;
+            }
             terminate(ProjectileClosureReason.OWNER_INVALIDATED);
             return;
         }
@@ -194,6 +208,8 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
                 return;
             }
 
+            if (observedHit != null) { return; }
+
             checkInsideBlocks();
             updateRotation();
             var drag = isInWater() ? 0.8 : 0.99;
@@ -201,11 +217,13 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
             applyGravity();
             setPos(endpoint);
         } catch (RuntimeException failure) {
+            clearObservedHit();
             locallyClaimedOrTerminal = true;
             bestEffortClose(serverLevel, ProjectileClosureReason.RUNTIME_FAULT);
             bestEffortDiscard();
             throw failure;
         } catch (Error failure) {
+            clearObservedHit();
             locallyClaimedOrTerminal = true;
             throw failure;
         }
@@ -237,18 +255,13 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
 
     @Override
     protected void onHitEntity(EntityHitResult hit) {
-        if (level().isClientSide() || locallyClaimedOrTerminal) {
+        if (level().isClientSide() || locallyClaimedOrTerminal || observedHit != null) {
             return;
         }
         if (!(level() instanceof ServerLevel serverLevel)) {
             terminate(ProjectileClosureReason.ENTITY_OR_LEVEL_REMOVED);
             return;
         }
-        if (continuationPermit.qualification(serverLevel.getServer(), this)
-                == SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS) {
-            return;
-        }
-
         Entity target = Objects.requireNonNull(hit, "hit").getEntity();
         if (!(target instanceof LivingEntity living)
                 || authenticatedCasterIdentity == null
@@ -258,7 +271,8 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
                 || !living.isAlive()
                 || target.level() != serverLevel
                 || !serverLevel.dimension().location().equals(dimension)
-                || !validServerState(serverLevel)) {
+                || continuationPermit.qualification(serverLevel.getServer(), this)
+                        == SkillRuntimeService.WorkQualification.INVALID) {
             terminate(ProjectileClosureReason.BLOCK_OR_INVALID_HIT);
             return;
         }
@@ -271,60 +285,92 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
             return;
         }
 
-        locallyClaimedOrTerminal = true;
-        RuntimePermitClaimDisposition disposition;
+        observedHit = new ProjectileHitCandidateV0(
+                getUUID(), target.getUUID(), dimension, hitPosition.x, hitPosition.y, hitPosition.z,
+                direction[0], direction[1], direction[2]);
+        observedTargetEntityId = target.getId();
+        submitObservedHit(serverLevel);
+    }
+
+    boolean hasObservedHit(RuntimeProjectileContinuationPermit permit, ProjectileHitCandidateV0 candidate) {
+        return continuationPermit == permit && observedHit != null && observedHit == candidate
+                && !locallyClaimedOrTerminal && !isRemoved();
+    }
+
+    boolean hasObservedTarget(RuntimeProjectileContinuationPermit permit,
+            ProjectileHitCandidateV0 candidate, Entity target) {
+        return hasObservedHit(permit, candidate) && target != null
+                && target.getId() == observedTargetEntityId && target.getUUID().equals(candidate.targetId());
+    }
+
+    void clearObservedHit(RuntimeProjectileContinuationPermit permit) {
+        if (continuationPermit == permit) { clearObservedHit(); }
+    }
+
+    void observeHitTick(RuntimeProjectileContinuationPermit permit, ProjectileHitCandidateV0 candidate, long tick) {
+        if (!hasObservedHit(permit, candidate) || tick < 0
+                || observedHitRuntimeTick > tick) {
+            throw new IllegalStateException("invalid original P9 observed hit custody");
+        }
+        if (observedHitRuntimeTick == -1) { observedHitRuntimeTick = tick; }
+    }
+
+    void resumeObservedHit(RuntimeProjectileContinuationPermit permit) {
+        if (observedHit == null || continuationPermit != permit) { return; }
+        if (!(level() instanceof ServerLevel serverLevel) || !serverLevel.getServer().isSameThread()) {
+            throw new IllegalStateException("invalid original P9 observed hit thread");
+        }
+        if (tickCount > 100) {
+            terminate(ProjectileClosureReason.AGE_EXHAUSTED);
+            return;
+        }
+        submitObservedHit(serverLevel);
+    }
+
+    private void submitObservedHit(ServerLevel serverLevel) {
+        var candidate = observedHit;
         try {
-            disposition = continuationPermit.claimLoadedEntityHit(
-                    serverLevel.getServer(),
-                    new ProjectileHitCandidateV0(
-                            getUUID(),
-                            target.getUUID(),
-                            dimension,
-                            hitPosition.x,
-                            hitPosition.y,
-                            hitPosition.z,
-                            direction[0],
-                            direction[1],
-                            direction[2]));
+            var result = continuationPermit.submitObservedHit(serverLevel.getServer(), this, candidate);
+            if (result.isEmpty()) { return; }
+            clearObservedHit();
+            locallyClaimedOrTerminal = true;
+            if (result.orElseThrow() == RuntimePermitClaimDisposition.QUEUED) {
+                setPos(candidate.hitX(), candidate.hitY(), candidate.hitZ());
+                setDeltaMovement(Vec3.ZERO);
+                setNoGravity(true);
+            } else {
+                closeAndDiscard(serverLevel, ProjectileClosureReason.CLAIM_REJECTED);
+            }
         } catch (RuntimeException failure) {
+            clearObservedHit();
+            locallyClaimedOrTerminal = true;
             bestEffortClose(serverLevel, ProjectileClosureReason.RUNTIME_FAULT);
             bestEffortDiscard();
             throw failure;
         } catch (Error failure) {
+            clearObservedHit();
+            locallyClaimedOrTerminal = true;
             throw failure;
         }
-        if (disposition == RuntimePermitClaimDisposition.QUEUED) {
-            try {
-                setPos(hitPosition);
-                setDeltaMovement(Vec3.ZERO);
-                setNoGravity(true);
-            } catch (RuntimeException failure) {
-                bestEffortClose(serverLevel, ProjectileClosureReason.RUNTIME_FAULT);
-                bestEffortDiscard();
-                throw failure;
-            } catch (Error failure) {
-                throw failure;
-            }
-        } else {
-            closeAndDiscard(serverLevel, ProjectileClosureReason.CLAIM_REJECTED);
-        }
+    }
+
+    private void clearObservedHit() {
+        observedHit = null;
+        observedHitRuntimeTick = -1;
+        observedTargetEntityId = -1;
     }
 
     @Override
     protected void onHitBlock(BlockHitResult hit) {
         Objects.requireNonNull(hit, "hit");
         if (!level().isClientSide() && !locallyClaimedOrTerminal) {
-            if (level() instanceof ServerLevel serverLevel
-                    && continuationPermit.qualification(serverLevel.getServer(), this)
-                            == SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS) {
-                return;
-            }
             terminate(ProjectileClosureReason.BLOCK_OR_INVALID_HIT);
         }
     }
 
     @Override
     public void onRemovedFromLevel() {
+        clearObservedHit();
         var serverLevel = level() instanceof ServerLevel exactLevel ? exactLevel : null;
         try {
             super.onRemovedFromLevel();
@@ -397,6 +443,7 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
         if (locallyClaimedOrTerminal || level().isClientSide()) {
             return;
         }
+        clearObservedHit();
         locallyClaimedOrTerminal = true;
         if (level() instanceof ServerLevel serverLevel) {
             closeAndDiscard(serverLevel, reason);
@@ -406,6 +453,7 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
     }
 
     private void closeAndDiscard(ServerLevel serverLevel, ProjectileClosureReason reason) {
+        clearObservedHit();
         try {
             continuationPermit.closeWithoutHit(serverLevel.getServer(), reason);
         } catch (RuntimeException failure) {

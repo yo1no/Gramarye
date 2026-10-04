@@ -21,5 +21,6 @@ abstract class P11OnlineLoginMixin implements P11OnlineLoginAccess {
     public void p11$onlineAuthenticated(UUID authenticatedUuid) {
         P11OnlineServerHarness.authenticated(server, connection, authenticatedUuid);
         P11C4aServerHarness.authenticated(server, connection, authenticatedUuid);
+        com.yo1no.gramarye.P11L1ServerHarness.authenticated(server, connection, authenticatedUuid);
     }
 }

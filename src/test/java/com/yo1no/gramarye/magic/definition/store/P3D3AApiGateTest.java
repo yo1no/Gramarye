@@ -240,6 +240,7 @@ class P3D3AApiGateTest {
                 "P11ConfigurationAdmissionMixin", "P11ParkingPlacementMixin",
                 "P11KeepAliveCommonMixin", "P11KeepAliveConnectionMixin",
                 "P11LivePlayMixin", "P11LiveCommonSendMixin", "P11ServerBossEventMixin",
+                "P11P9EntitySectionMixin", "P11P9EntityMoveMixin",
                 "P11ClientPlayerMixin", "P11ClientMinecraftMixin", "P11ClientKeyboardMixin",
                 "P11ClientSceneScreenMixin", "P11ClientPacketListenerMixin", "P11ClientConfigurationMixin").stream()
                 .map(name -> "com.yo1no.gramarye.mixin." + name)
@@ -277,6 +278,8 @@ class P3D3AApiGateTest {
                 "src/main/java/com/yo1no/gramarye/P11NativeCleanup.java",
                 "src/main/java/com/yo1no/gramarye/mixin/P11EntityLookupMixin.java",
                 "src/main/java/com/yo1no/gramarye/mixin/P11ServerBossEventMixin.java",
+                "src/main/java/com/yo1no/gramarye/mixin/P11P9EntitySectionMixin.java",
+                "src/main/java/com/yo1no/gramarye/mixin/P11P9EntityMoveMixin.java",
                 "src/p9S5ClientHarness/resources/gramarye-p11-native-harness.mixins.json")) {
             assertNativeSlicePath(exact, 0);
             assertNativeSlicePath(exact + ".extra", 1);
