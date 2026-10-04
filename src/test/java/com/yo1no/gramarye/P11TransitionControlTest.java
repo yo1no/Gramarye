@@ -47,6 +47,11 @@ class P11TransitionControlTest {
                 state.actorGeneration(), sequence, command, state.kind());
     }
 
+    private static Request successorRequest(State binding, long sequence, Command command) {
+        return new Request(binding.scope(), binding.connectionEpoch(), binding.sceneSerial(),
+                binding.actorGeneration(), sequence, command, binding.kind());
+    }
+
     private static P11TransitionControl.Drain enqueue(P11TransitionControl control,
             long sequence, Command command, long time) {
         var offered = control.offer(control.listener(), request(control, sequence, command), time);
@@ -78,6 +83,95 @@ class P11TransitionControlTest {
         assertNotSame(f.actor.connection(), reconnected.connection());
         var replacement = new P11TransitionControl(reconnected, limits(), 0);
         assertTrue(replacement.openServerScene(Scope.CONFIG, Kind.JOIN));
+    }
+
+    @Test
+    void sourceInspectionFailureBeforeBeginReleasesExactDrainAsUnknownNotHealthyRefusal() {
+        var c = play(0).control;
+        var drain = enqueue(c, 1, Command.TRY, 0);
+        assertTrue(c.abortAdmission(drain));
+        var failed = c.state().orElseThrow();
+        assertEquals(Outcome.UNKNOWN, failed.outcome());
+        assertEquals(Availability.DISABLED, failed.availability());
+        assertEquals(1, failed.requestSeq());
+        assertEquals(1, c.fence());
+        assertTrue(c.hasService(), "the exact unknown record must be deliverable after drain release");
+        assertTrue(c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).isEmpty());
+        assertFalse(c.abortAdmission(drain));
+        assertTrue(c.reserveDrain(c.listener()).isEmpty());
+    }
+
+    @Test
+    void alreadyUnknownSourceGateCanStillReleaseItsUnbegunExactDrain() {
+        var c = play(0).control;
+        var drain = enqueue(c, 1, Command.TRY, 0);
+        c.observationLost();
+        assertTrue(c.begin(drain, P11TransitionControl.Gate.NOT_APPLICABLE, 0).isEmpty());
+        assertFalse(c.finishDrain(drain));
+        assertFalse(c.submissionFailed(drain));
+        assertTrue(c.abortAdmission(drain));
+        assertEquals(Outcome.UNKNOWN, c.state().orElseThrow().outcome());
+        assertEquals(1, c.state().orElseThrow().requestSeq());
+        assertTrue(c.hasService());
+    }
+
+    @Test
+    void custodyOrTicketFailureAfterBeginFaultsTheExactAttemptAndReleasesDrain() {
+        var c = play(0).control;
+        var drain = enqueue(c, 1, Command.TRY, 0);
+        var attempt = c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        assertTrue(c.abortAdmission(drain));
+        assertEquals(Outcome.FAULT, c.state().orElseThrow().outcome());
+        assertEquals(Reason.SOURCE_UNAVAILABLE, c.state().orElseThrow().reason());
+        assertEquals(Availability.DISABLED, c.state().orElseThrow().availability());
+        assertFalse(c.callerCompleted(attempt, 2));
+        assertFalse(c.fault(attempt, Reason.NATIVE_FAILURE));
+        assertTrue(c.hasService());
+        assertTrue(c.releaseCompletedDrain());
+    }
+
+    @Test
+    void admissionAbortCannotTargetNullForeignOrPreviouslyReleasedDrains() {
+        var first = play(0).control;
+        var second = play(0).control;
+        var own = enqueue(first, 1, Command.TRY, 0);
+        var foreign = enqueue(second, 1, Command.TRY, 0);
+        var before = first.state().orElseThrow();
+        assertFalse(first.abortAdmission(null));
+        assertFalse(first.abortAdmission(foreign));
+        assertEquals(before, first.state().orElseThrow());
+        assertTrue(first.begin(own, P11TransitionControl.Gate.ACTIVE_OPERATION, 0).isEmpty());
+        assertTrue(first.finishDrain(own));
+        var refused = first.state().orElseThrow();
+        assertFalse(first.abortAdmission(own));
+        assertEquals(refused, first.state().orElseThrow());
+        assertTrue(second.abortAdmission(foreign));
+    }
+
+    @Test
+    void admissionAbortCannotReplaceANativeFrameOrRetiredOwnerTerminal() {
+        var f = play(0);
+        var drain = enqueue(f.control, 1, Command.TRY, 0);
+        var attempt = f.control.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        var replacement = f.identities.bindModel(f.identities.modelActor(f.actor.uuid(), 7), f.channel).orElseThrow();
+        assertTrue(f.control.nativeFrame(attempt, replacement));
+        var framed = f.control.state().orElseThrow();
+        assertFalse(f.control.abortAdmission(drain));
+        assertEquals(framed, f.control.state().orElseThrow());
+        f.control.retire();
+        assertFalse(f.control.abortAdmission(drain));
+    }
+
+    @Test
+    void exactAdmissionCleanupDoesNotRequireAStillLivePhysicalConnection() {
+        var f = play(0);
+        var drain = enqueue(f.control, 1, Command.TRY, 0);
+        f.control.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        assertTrue(f.identities.retireConnection(f.actor));
+        assertTrue(f.control.abortAdmission(drain));
+        assertEquals(Outcome.FAULT, f.control.state().orElseThrow().outcome());
+        assertFalse(f.control.abortAdmission(drain));
+        assertTrue(f.control.begin(drain, P11TransitionControl.Gate.ALLOW, 0).isEmpty());
     }
 
     @Test
@@ -288,6 +382,159 @@ class P11TransitionControlTest {
     }
 
     @Test
+    void earlyConfigurationTaskPassRemainsPendingUntilFinalAdmission() {
+        var f = actorless(Kind.JOIN);
+        var c = f.control;
+        var first = c.reserveServerDrain(c.listener()).orElseThrow();
+        assertTrue(c.passConfigurationTask(first, P11TransitionControl.Gate.ALLOW, 100));
+        assertEquals(Outcome.PENDING, c.state().orElseThrow().outcome());
+        assertTrue(c.configurationTaskPassed());
+        assertTrue(c.finishDrain(first));
+        assertEquals(P11TransitionControl.Offer.BUSY,
+                c.offer(c.listener(), request(c, 1, Command.TRY), 100));
+        var handoff = c.beginHandoff(c.listener(), Scope.PREPLAY).orElseThrow();
+        c.completeHandoff(handoff).orElseThrow();
+        var finalCheck = c.reserveServerDrain(c.listener()).orElseThrow();
+        assertTrue(c.begin(finalCheck, P11TransitionControl.Gate.ACTIVE_CONTEXT, 200).isEmpty());
+        assertTrue(c.finishDrain(finalCheck));
+        assertEquals(Outcome.NOT_STARTED, c.state().orElseThrow().outcome());
+        assertEquals(Scope.PREPLAY, c.state().orElseThrow().scope());
+        var parked = f.identities.modelActorless(f.actor.uuid(), f.channel).orElseThrow();
+        assertTrue(c.rebindParked(parked));
+        assertEquals(0, c.state().orElseThrow().requestSeq());
+        assertTrue(c.blockersEnded(c.listener(), true));
+        var manual = enqueue(c, 1, Command.TRY, 1000);
+        assertTrue(c.begin(manual, P11TransitionControl.Gate.ALLOW, 1000).isPresent());
+    }
+
+    @Test
+    void earlyTaskRetryKeepsItsExactSequenceAndOriginalAdmissionWait() {
+        var c = actorless(Kind.RETURN_TO_WORLD).control;
+        var initial = c.reserveServerDrain(c.listener()).orElseThrow();
+        assertFalse(c.passConfigurationTask(initial, P11TransitionControl.Gate.ACTIVE_OPERATION, 100));
+        assertFalse(c.configurationTaskPassed());
+        assertTrue(c.finishDrain(initial));
+        assertTrue(c.blockersEnded(c.listener(), true));
+        var retry = enqueue(c, 41, Command.TRY, 500);
+        assertTrue(c.passConfigurationTask(retry, P11TransitionControl.Gate.ALLOW, 500));
+        assertTrue(c.finishDrain(retry));
+        assertEquals(41, c.state().orElseThrow().requestSeq());
+        c.completeHandoff(c.beginHandoff(c.listener(), Scope.PREPLAY).orElseThrow()).orElseThrow();
+        var finalCheck = c.reserveServerDrain(c.listener()).orElseThrow();
+        assertEquals(41, finalCheck.request().requestSeq());
+        assertTrue(c.begin(finalCheck, P11TransitionControl.Gate.ACTIVE_CONTEXT, 1000).isEmpty());
+        assertTrue(c.finishDrain(finalCheck));
+        assertEquals(P11ControlBudgets.WaitResult.WAITING, c.observeWait(30_099));
+        assertEquals(P11ControlBudgets.WaitResult.EXPIRED, c.observeWait(30_100));
+    }
+
+    @Test
+    void freshStatusAfterActorlessRefusalPreservesTheOriginalWaitInBothPhases() {
+        for (var scope : new Scope[] { Scope.CONFIG, Scope.PREPLAY }) {
+            var c = actorless(Kind.RETURN_TO_WORLD).control;
+            var initial = c.reserveServerDrain(c.listener()).orElseThrow();
+            assertFalse(c.passConfigurationTask(initial, P11TransitionControl.Gate.ACTIVE_OPERATION, 100));
+            assertTrue(c.finishDrain(initial));
+            assertEquals(P11ControlBudgets.WaitResult.WAITING, c.observeWait(100));
+            if (scope == Scope.PREPLAY) {
+                c.completeHandoff(c.beginHandoff(c.listener(), Scope.PREPLAY).orElseThrow()).orElseThrow();
+            }
+            var query = enqueue(c, 41, Command.STATUS, 500);
+            var repaired = c.processStatus(query).orElseThrow();
+            assertEquals(scope, repaired.scope());
+            assertEquals(41, repaired.requestSeq());
+            assertEquals(Outcome.NOT_STARTED, repaired.outcome());
+            assertEquals(Reason.CONTROL_DISPATCH_BUSY, repaired.reason());
+            assertTrue(c.finishDrain(query));
+            assertEquals(P11ControlBudgets.WaitResult.WAITING, c.observeWait(501),
+                    "STATUS's absent clock must not poison an already-started interval");
+            assertTrue(c.blockersEnded(c.listener(), true));
+            assertEquals(Availability.MAY_TRY, c.state().orElseThrow().availability());
+            assertEquals(P11ControlBudgets.WaitResult.WAITING, c.observeWait(30_099));
+            assertEquals(P11ControlBudgets.WaitResult.EXPIRED, c.observeWait(30_100),
+                    "STATUS, MAY_TRY and CONFIG-to-PREPLAY must not extend the first refusal at 100");
+        }
+    }
+
+    @Test
+    void enterConfigCallerReturnAndStartFrameDoNotPublishCompletedBeforeActualHandoff() {
+        var f = unstarted(0, 0, 0);
+        var c = f.control;
+        assertTrue(c.openServerScene(Scope.PLAY, Kind.ENTER_CONFIG));
+        var drain = c.reserveServerDrain(c.listener()).orElseThrow();
+        var attempt = c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        assertTrue(c.startConfigurationObserved(attempt));
+        assertTrue(c.callerCompleted(attempt, 0));
+        assertEquals(Outcome.RUNNING, c.state().orElseThrow().outcome());
+        assertTrue(c.releaseCompletedDrain());
+        var handoff = c.beginHandoff(c.listener(), Scope.CONFIG).orElseThrow();
+        var actorless = f.identities.modelActorless(f.actor.uuid(), f.channel).orElseThrow();
+        assertTrue(c.bindActorlessHandoff(handoff, actorless));
+        assertTrue(c.completeHandoff(handoff).isPresent());
+        assertEquals(Outcome.COMPLETED, c.state().orElseThrow().outcome());
+        assertEquals(Scope.CONFIG, c.state().orElseThrow().scope());
+        var terminal = c.takeNotification(c.listener()).orElseThrow();
+        assertEquals(Kind.ENTER_CONFIG, terminal.kind());
+        assertEquals(0, terminal.actorGeneration());
+        assertEquals(f.actor.connectionEpoch(), terminal.connectionEpoch());
+        assertTrue(c.reserveServerDrain(c.listener()).isEmpty(), "ACK completion must not create a RETURN task");
+        assertFalse(c.configurationTaskPassed());
+        assertFalse(c.hasService());
+        for (int i = 0; i < 20; i++) {
+            assertEquals(P11ControlBudgets.WaitResult.NOT_STARTED, c.observeWait(100_000 + i));
+            assertEquals(terminal, c.state().orElseThrow(), "independent CONFIG terminal persists before a later return request");
+        }
+        assertTrue(c.bindActorlessAfterConfiguration(actorless));
+        assertTrue(c.openServerScene(Scope.CONFIG, Kind.RETURN_TO_WORLD));
+        var returning = c.state().orElseThrow();
+        assertEquals(terminal.connectionEpoch(), returning.connectionEpoch());
+        assertEquals(terminal.sceneSerial() + 1, returning.sceneSerial());
+        assertTrue(returning.statusVersion() > terminal.statusVersion());
+        assertEquals(Kind.RETURN_TO_WORLD, returning.kind());
+        assertEquals(Outcome.PENDING, returning.outcome());
+    }
+
+    @Test
+    void actualConfigHandoffBeforeJavaCallerUnwindStillRequiresThatOriginalCallerTerminal() {
+        var f = unstarted(0, 0, 0);
+        var c = f.control;
+        assertTrue(c.openServerScene(Scope.PLAY, Kind.ENTER_CONFIG));
+        var drain = c.reserveServerDrain(c.listener()).orElseThrow();
+        var attempt = c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        assertTrue(c.startConfigurationObserved(attempt));
+        var handoff = c.beginHandoff(c.listener(), Scope.CONFIG).orElseThrow();
+        var actorless = f.identities.modelActorless(f.actor.uuid(), f.channel).orElseThrow();
+        assertTrue(c.bindActorlessHandoff(handoff, actorless));
+        assertTrue(c.completeHandoff(handoff).isPresent());
+        assertEquals(Scope.CONFIG, c.state().orElseThrow().scope());
+        assertNotEquals(Outcome.COMPLETED, c.state().orElseThrow().outcome());
+        assertTrue(c.executableHeld(), "the original caller still owns the attempt when a later task races");
+        assertFalse(c.bindActorlessAfterConfiguration(actorless));
+        assertFalse(c.openServerScene(Scope.CONFIG, Kind.RETURN_TO_WORLD));
+        assertTrue(c.callerCompleted(attempt, 0));
+        assertTrue(c.releaseCompletedDrain());
+        assertFalse(c.executableHeld());
+        assertEquals(Outcome.COMPLETED, c.state().orElseThrow().outcome());
+        assertEquals(Kind.ENTER_CONFIG, c.state().orElseThrow().kind());
+        assertTrue(c.reserveServerDrain(c.listener()).isEmpty());
+    }
+
+    @Test
+    void serviceEligibilityObservationDoesNotConsumeAlternationOrNotification() {
+        var c = play(0).control;
+        c.offer(c.listener(), request(c, 1, Command.STATUS), 0);
+        for (int i = 0; i < 100; i++) { assertTrue(c.hasService()); }
+        assertEquals(P11TransitionControl.Service.INBOX, c.nextService());
+        var drain = c.reserveDrain(c.listener()).orElseThrow();
+        c.processStatus(drain);
+        c.finishDrain(drain);
+        for (int i = 0; i < 100; i++) { assertTrue(c.hasService()); }
+        assertEquals(P11TransitionControl.Service.NOTIFICATION, c.nextService());
+        assertTrue(c.takeNotification(c.listener()).isPresent());
+        assertFalse(c.hasService());
+    }
+
+    @Test
     void completedPlayerlessAdmissionDoesNotExpireItsSuccessfulControlRecord() {
         var f = actorless(Kind.JOIN);
         var c = f.control;
@@ -344,6 +591,173 @@ class P11TransitionControlTest {
         assertEquals(41, c.fence());
         assertEquals(P11TransitionControl.Offer.STALE,
                 c.offer(c.listener(), drain.request(), 1000));
+    }
+
+    @Test
+    void successorReservesLargerBindingWithoutReplacingTheOldAttemptReceipt() {
+        var f = play(40);
+        var c = f.control;
+        var drain = enqueue(c, 41, Command.TRY, 0);
+        var attempt = c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        var b = f.identities.bindModel(f.identities.modelActor(f.actor.uuid(), 7), f.channel).orElseThrow();
+        assertTrue(c.nativeFrame(attempt, b));
+        var old = c.state().orElseThrow();
+        assertTrue(c.retainSuccessor(b, Kind.DEATH));
+        var binding = c.successorBinding().orElseThrow();
+        assertSame(old, c.state().orElseThrow());
+        assertEquals(old.sceneSerial() + 1, binding.sceneSerial());
+        assertEquals(old.statusVersion() + 1, binding.statusVersion());
+        assertEquals(b.actorGeneration(), binding.actorGeneration());
+        assertEquals(Outcome.BINDING, binding.outcome());
+        assertEquals(0, binding.requestSeq());
+        assertFalse(c.retainSuccessor(b, Kind.END));
+        assertSame(binding, c.successorBinding().orElseThrow());
+        assertTrue(c.callerCompleted(attempt, b.actorGeneration()));
+        assertEquals(41, c.state().orElseThrow().requestSeq());
+        assertEquals(old.sceneSerial(), c.state().orElseThrow().sceneSerial());
+        assertTrue(c.state().orElseThrow().statusVersion() > binding.statusVersion());
+        assertTrue(c.finishDrain(drain));
+        assertTrue(c.activateSuccessor());
+        assertEquals(binding.sceneSerial(), c.state().orElseThrow().sceneSerial());
+        assertTrue(c.state().orElseThrow().statusVersion() > binding.statusVersion());
+        assertTrue(c.successorBinding().isEmpty());
+    }
+
+    @Test
+    void earlySuccessorTryIsNotRetainedAndStatusOnlyRepairsRealUnacceptedRequest() {
+        var f = play(40);
+        var c = f.control;
+        var drain = enqueue(c, 41, Command.TRY, 0);
+        var attempt = c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        var b = f.identities.bindModel(f.identities.modelActor(f.actor.uuid(), 7), f.channel).orElseThrow();
+        assertTrue(c.nativeFrame(attempt, b));
+        assertTrue(c.retainSuccessor(b, Kind.END));
+        var binding = c.successorBinding().orElseThrow();
+        var firstTry = successorRequest(binding, 42, Command.TRY);
+        assertEquals(P11TransitionControl.Offer.BUSY, c.offer(c.listener(), firstTry, 0));
+        assertEquals(P11TransitionControl.Offer.BUSY, c.offer(c.listener(), firstTry, 0));
+        assertEquals(P11TransitionControl.Offer.COALESCED,
+                c.offer(c.listener(), successorRequest(binding, 42, Command.STATUS), 0));
+        assertEquals(41, c.fence());
+        assertEquals(Outcome.NATIVE_FRAME, c.state().orElseThrow().outcome());
+        assertTrue(c.finishDrain(drain));
+        assertTrue(c.reserveDrain(c.listener()).isEmpty(), "no future inbox exists even after old drain release");
+        assertFalse(c.activateSuccessor(), "the old caller still owns its result");
+        assertTrue(c.callerCompleted(attempt, b.actorGeneration()));
+        assertTrue(c.activateSuccessor());
+        assertEquals(Outcome.BINDING, c.state().orElseThrow().outcome());
+        assertEquals(0, c.state().orElseThrow().requestSeq());
+        assertTrue(c.reserveDrain(c.listener()).isEmpty(), "promotion does not replay first TRY");
+        var query = enqueue(c, 42, Command.STATUS, 0);
+        var negative = c.processStatus(query).orElseThrow();
+        assertEquals(Outcome.NOT_STARTED, negative.outcome());
+        assertEquals(Reason.CONTROL_DISPATCH_BUSY, negative.reason());
+        assertTrue(c.begin(query, P11TransitionControl.Gate.ALLOW, 0).isEmpty());
+        assertTrue(c.finishDrain(query));
+        assertEquals(P11TransitionControl.Offer.COALESCED, c.offer(c.listener(), firstTry, 0));
+        var retry = enqueue(c, 43, Command.TRY, 0);
+        assertTrue(c.begin(retry, P11TransitionControl.Gate.ALLOW, 0).isPresent(),
+                "busy early TRY did not reset or consume the existing TRY bucket");
+    }
+
+    @Test
+    void faultDropsPublishedSuccessorAndNeverReplaysItsEarlyTrigger() {
+        var f = play(0);
+        var c = f.control;
+        var drain = enqueue(c, 1, Command.TRY, 0);
+        var attempt = c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        var b = f.identities.bindModel(f.identities.modelActor(f.actor.uuid(), 7), f.channel).orElseThrow();
+        assertTrue(c.nativeFrame(attempt, b));
+        assertTrue(c.retainSuccessor(b, Kind.END));
+        var early = successorRequest(c.successorBinding().orElseThrow(), 2, Command.TRY);
+        assertEquals(P11TransitionControl.Offer.BUSY, c.offer(c.listener(), early, 0));
+        assertTrue(c.fault(attempt, Reason.NATIVE_FAILURE));
+        assertTrue(c.successorBinding().isEmpty());
+        assertFalse(c.activateSuccessor());
+        assertEquals(P11TransitionControl.Offer.CLOSED, c.offer(c.listener(), early, 1));
+        assertTrue(c.reserveDrain(c.listener()).isEmpty());
+    }
+
+    @Test
+    void actorlessJoinSuccessorKeepsItsReservedSceneThroughNativePlayHandoff() {
+        var f = actorless(Kind.JOIN);
+        var c = f.control;
+        c.completeHandoff(c.beginHandoff(c.listener(), Scope.PREPLAY).orElseThrow()).orElseThrow();
+        var drain = c.reserveServerDrain(c.listener()).orElseThrow();
+        var attempt = c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        var b = f.identities.bindModel(f.identities.modelActor(f.actor.uuid(), 7), f.channel).orElseThrow();
+        assertTrue(c.nativeFrame(attempt, b));
+        assertTrue(c.retainSuccessor(b, Kind.DEATH));
+        var reserved = c.successorBinding().orElseThrow();
+        assertEquals(Scope.PLAY, reserved.scope());
+        assertEquals(P11TransitionControl.Offer.BUSY,
+                c.offer(c.listener(), successorRequest(reserved, 1, Command.TRY), 0));
+        assertTrue(c.callerCompleted(attempt, b.actorGeneration()));
+        assertTrue(c.finishDrain(drain));
+        assertFalse(c.activateSuccessor(), "actual PLAY handoff is still absent");
+        c.completeHandoff(c.beginHandoff(c.listener(), Scope.PLAY).orElseThrow()).orElseThrow();
+        assertTrue(c.activateSuccessor());
+        assertEquals(reserved.sceneSerial(), c.state().orElseThrow().sceneSerial());
+        assertEquals(0, c.state().orElseThrow().requestSeq());
+        assertTrue(c.reserveDrain(c.listener()).isEmpty());
+    }
+
+    @Test
+    void successorCounterReservationCannotWrapOrReuseTheReservedScene() {
+        var f = unstarted(0, Long.MAX_VALUE - 2, 0);
+        var c = f.control;
+        assertTrue(c.openPlayScene(f.actor, Kind.DEATH));
+        var drain = enqueue(c, 1, Command.TRY, 0);
+        var attempt = c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        var b = f.identities.bindModel(f.identities.modelActor(f.actor.uuid(), 7), f.channel).orElseThrow();
+        assertTrue(c.nativeFrame(attempt, b));
+        assertTrue(c.retainSuccessor(b, Kind.END));
+        assertEquals(Long.MAX_VALUE, c.successorBinding().orElseThrow().sceneSerial());
+        assertTrue(c.callerCompleted(attempt, b.actorGeneration()));
+        assertTrue(c.finishDrain(drain));
+        assertTrue(c.activateSuccessor());
+        assertEquals(Long.MAX_VALUE, c.state().orElseThrow().sceneSerial());
+        var nextDrain = enqueue(c, 2, Command.TRY, 0);
+        var nextAttempt = c.begin(nextDrain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        var target = f.identities.bindModel(f.identities.modelActor(f.actor.uuid(), 7), f.channel).orElseThrow();
+        assertTrue(c.nativeFrame(nextAttempt, target));
+        assertFalse(c.retainSuccessor(target, Kind.DEATH));
+        assertEquals(P11TransitionControl.Disposition.EXHAUSTED, c.disposition());
+        assertTrue(c.successorBinding().isEmpty());
+    }
+
+    @Test
+    void retryAvailabilityUsesSameBucketWithoutConsumingTokensOrVersionChurn() {
+        var c = play(0).control;
+        refuse(c, 1, 0);
+        refuse(c, 2, 0);
+        assertEquals(P11TransitionControl.Offer.RATE_LIMITED,
+                c.offer(c.listener(), request(c, 3, Command.TRY), 0));
+        var status = enqueue(c, 3, Command.STATUS, 0);
+        assertEquals(Reason.CONTROL_RATE_LIMIT, c.processStatus(status).orElseThrow().reason());
+        assertTrue(c.finishDrain(status));
+        assertFalse(c.refreshRetryAvailability(c.listener(), true, 499));
+        assertFalse(c.refreshRetryAvailability(c.listener(), false, 500));
+        assertTrue(c.refreshRetryAvailability(c.listener(), true, 500));
+        long version = c.state().orElseThrow().statusVersion();
+        assertEquals(Availability.MAY_TRY, c.state().orElseThrow().availability());
+        assertFalse(c.refreshRetryAvailability(c.listener(), true, 501));
+        assertEquals(version, c.state().orElseThrow().statusVersion());
+        var retry = enqueue(c, 4, Command.TRY, 501);
+        assertTrue(c.begin(retry, P11TransitionControl.Gate.ALLOW, 501).isPresent());
+    }
+
+    @Test
+    void retryAvailabilityCannotClearHeldWorkOrUnknownClock() {
+        var c = play(0).control;
+        refuse(c, 1, 0);
+        assertFalse(c.refreshRetryAvailability(c.listener(), true, -1));
+        assertEquals(Availability.WAIT_NOTIFY, c.state().orElseThrow().availability());
+        assertTrue(c.refreshRetryAvailability(c.listener(), true, 0));
+        var pending = enqueue(c, 2, Command.TRY, 0);
+        assertFalse(c.refreshRetryAvailability(c.listener(), true, 10_000));
+        assertTrue(c.begin(pending, P11TransitionControl.Gate.ALLOW, 0).isPresent());
+        assertFalse(c.refreshRetryAvailability(c.listener(), true, 10_000));
     }
 
     @Test
@@ -516,5 +930,133 @@ class P11TransitionControlTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new State(Scope.PLAY, 1, 1, 1, 1, 1, Kind.DEATH,
                         Outcome.UNKNOWN, Availability.DISABLED, Reason.NATIVE_FAILURE, 0));
+    }
+
+    @Test
+    void terminalDeliveryMaskRetainsRepeatedRequestZeroWithoutAdvancingTaskOrFence() {
+        var c = actorless(Kind.JOIN).control;
+        c.takeNotification(c.listener()).orElseThrow();
+        var task = c.reserveServerDrain(c.listener()).orElseThrow();
+        assertTrue(c.passConfigurationTask(task, P11TransitionControl.Gate.ALLOW, 0));
+        assertTrue(c.finishDrain(task));
+        var pending = c.state().orElseThrow();
+        long fence = c.fence();
+        for (int i = 0; i < 100; i++) {
+            assertEquals(P11TransitionControl.Offer.COALESCED,
+                    c.offer(c.listener(), request(c, 0, Command.STATUS), i));
+            assertFalse(c.hasService(false));
+            assertEquals(P11TransitionControl.Service.NONE, c.nextService(false));
+            assertSame(pending, c.state().orElseThrow());
+            assertEquals(fence, c.fence());
+            assertTrue(c.configurationTaskPassed());
+        }
+        assertTrue(c.hasService());
+        assertEquals(P11TransitionControl.Service.NOTIFICATION, c.nextService());
+        assertSame(pending, c.takeNotification(c.listener()).orElseThrow());
+        assertFalse(c.hasService());
+    }
+
+    @Test
+    void terminalDeliveryMaskStillServicesInboxAndDoesNotSpendNotificationPreference() {
+        var c = play(0).control;
+        assertEquals(P11TransitionControl.Offer.RETAINED,
+                c.offer(c.listener(), request(c, 1, Command.STATUS), 0));
+        assertTrue(c.hasService(false));
+        assertEquals(P11TransitionControl.Service.INBOX, c.nextService(false));
+        var drain = c.reserveDrain(c.listener()).orElseThrow();
+        c.processStatus(drain).orElseThrow();
+        assertTrue(c.finishDrain(drain));
+        for (int i = 0; i < 100; i++) {
+            assertFalse(c.hasService(false));
+            assertEquals(P11TransitionControl.Service.NONE, c.nextService(false));
+        }
+        assertEquals(P11TransitionControl.Offer.RETAINED,
+                c.offer(c.listener(), request(c, 2, Command.STATUS), 1));
+        assertTrue(c.hasService(false));
+        // The masked observations did not consume the notification's earned next turn.
+        assertEquals(P11TransitionControl.Service.NOTIFICATION, c.nextService(true));
+        assertEquals(1, c.takeNotification(c.listener()).orElseThrow().requestSeq());
+        assertEquals(P11TransitionControl.Service.INBOX, c.nextService(false));
+        var next = c.reserveDrain(c.listener()).orElseThrow();
+        c.processStatus(next).orElseThrow();
+        assertTrue(c.finishDrain(next));
+        assertEquals(2, c.fence());
+    }
+
+    @Test
+    void terminalDeliveryMaskDoesNotExtendPlayerlessExpiryOrMakeFreshAuthority() {
+        var c = actorless(Kind.JOIN).control;
+        var task = c.reserveServerDrain(c.listener()).orElseThrow();
+        assertTrue(c.begin(task, P11TransitionControl.Gate.ACTIVE_CONTEXT, 100).isEmpty());
+        assertTrue(c.finishDrain(task));
+        for (int time : new int[] {101, 1000, 30_099}) {
+            assertEquals(P11TransitionControl.Offer.COALESCED,
+                    c.offer(c.listener(), request(c, 0, Command.STATUS), time));
+            assertEquals(P11ControlBudgets.WaitResult.WAITING, c.observeWait(time));
+            assertFalse(c.hasService(false));
+        }
+        assertEquals(P11ControlBudgets.WaitResult.EXPIRED, c.observeWait(30_100));
+        assertEquals(Outcome.EXPIRED, c.state().orElseThrow().outcome());
+        assertFalse(c.hasService(false));
+        assertTrue(c.hasService(true));
+        assertEquals(Outcome.EXPIRED, c.takeNotification(c.listener()).orElseThrow().outcome());
+        assertTrue(c.reserveServerDrain(c.listener()).isEmpty());
+        c.retire();
+        assertFalse(c.hasService(false));
+        assertFalse(c.hasService(true));
+        assertEquals(P11TransitionControl.Service.NONE, c.nextService(false));
+        assertEquals(P11TransitionControl.Service.NONE, c.nextService(true));
+    }
+
+    @Test
+    void enterConfigurationNotificationStaysRetainedUntilTrueActorlessHandoff() {
+        var f = unstarted(0, 0, 0);
+        var c = f.control;
+        assertTrue(c.openServerScene(Scope.PLAY, Kind.ENTER_CONFIG));
+        c.takeNotification(c.listener()).orElseThrow();
+        var drain = c.reserveServerDrain(c.listener()).orElseThrow();
+        var attempt = c.begin(drain, P11TransitionControl.Gate.ALLOW, 0).orElseThrow();
+        assertEquals(Outcome.RUNNING, c.takeNotification(c.listener()).orElseThrow().outcome());
+        assertTrue(c.startConfigurationObserved(attempt));
+        assertTrue(c.callerCompleted(attempt, 0));
+        assertTrue(c.releaseCompletedDrain());
+        assertEquals(Outcome.RUNNING, c.state().orElseThrow().outcome());
+        assertEquals(P11TransitionControl.Offer.COALESCED,
+                c.offer(c.listener(), request(c, 0, Command.STATUS), 1));
+        assertFalse(c.hasService(false));
+        assertEquals(P11TransitionControl.Service.NONE, c.nextService(false));
+        var handoff = c.beginHandoff(c.listener(), Scope.CONFIG).orElseThrow();
+        var actorless = f.identities.modelActorless(f.actor.uuid(), f.channel).orElseThrow();
+        assertTrue(c.bindActorlessHandoff(handoff, actorless));
+        c.completeHandoff(handoff).orElseThrow();
+        assertEquals(Scope.CONFIG, c.state().orElseThrow().scope());
+        assertEquals(Outcome.COMPLETED, c.state().orElseThrow().outcome());
+        assertTrue(c.hasService(true));
+        assertEquals(0, c.takeNotification(c.listener()).orElseThrow().actorGeneration());
+    }
+
+    @Test
+    void finishConfigurationMaskEndsBeforeFinalRefusalNotificationInPreplay() {
+        var c = actorless(Kind.RETURN_TO_WORLD).control;
+        var early = c.reserveServerDrain(c.listener()).orElseThrow();
+        assertTrue(c.passConfigurationTask(early, P11TransitionControl.Gate.ALLOW, 0));
+        assertTrue(c.finishDrain(early));
+        c.takeNotification(c.listener()).orElseThrow();
+        assertEquals(P11TransitionControl.Offer.COALESCED,
+                c.offer(c.listener(), request(c, 0, Command.STATUS), 1));
+        assertFalse(c.hasService(false));
+        var handoff = c.beginHandoff(c.listener(), Scope.PREPLAY).orElseThrow();
+        c.completeHandoff(handoff).orElseThrow();
+        var finalCheck = c.reserveServerDrain(c.listener()).orElseThrow();
+        assertTrue(c.begin(finalCheck, P11TransitionControl.Gate.ACTIVE_OPERATION, 2).isEmpty());
+        assertTrue(c.finishDrain(finalCheck));
+        assertTrue(c.hasService(true));
+        var refused = c.takeNotification(c.listener()).orElseThrow();
+        assertEquals(Scope.PREPLAY, refused.scope());
+        assertEquals(Outcome.NOT_STARTED, refused.outcome());
+        assertEquals(Availability.WAIT_NOTIFY, refused.availability());
+        assertEquals(Reason.ACTIVE_OPERATION, refused.reason());
+        assertEquals(0, refused.actorGeneration());
+        assertEquals(0, refused.requestSeq());
     }
 }

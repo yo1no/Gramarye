@@ -6,6 +6,12 @@
   "mixins": [
     "P11PlayerListMixin",
     "P11ConfigurationSourceMixin",
+    "P11ConfigurationAdmissionMixin",
+    "P11ParkingPlacementMixin",
+    "P11KeepAliveCommonMixin",
+    "P11KeepAliveConnectionMixin",
+    "P11LivePlayMixin",
+    "P11LiveCommonSendMixin",
     "P11PlayerDataStorageMixin",
     "P11ServerPlayerMixin",
     "P11EntityMaterialMixin",
@@ -42,8 +48,17 @@
     "P11EntityRemovalMixin",
     "P11EntityManagerCleanupMixin",
     "P11LevelEntityCleanupMixin",
-    "P11EntityLookupMixin"
+    "P11EntityLookupMixin",
+    "P11ServerBossEventMixin"
   ],
-  "client": ["P11IntegratedPlayerListMixin"],
+  "client": [
+    "P11IntegratedPlayerListMixin",
+    "P11ClientPlayerMixin",
+    "P11ClientMinecraftMixin",
+    "P11ClientKeyboardMixin",
+    "P11ClientSceneScreenMixin",
+    "P11ClientPacketListenerMixin",
+    "P11ClientConfigurationMixin"
+  ],
   "injectors": {"defaultRequire": 1}
 }

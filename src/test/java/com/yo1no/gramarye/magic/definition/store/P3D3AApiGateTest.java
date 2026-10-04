@@ -236,7 +236,12 @@ class P3D3AApiGateTest {
                 "P11LivingEntityCreditMixin", "P11EnderDragonCreditMixin", "P11SculkCatalystCreditMixin",
                 "P11ExecuteCommandMixin", "P11BuildContextsMixin", "P11CallFunctionMixin",
                 "P11EntityCreditRemovalMixin", "P11EntityRemovalMixin", "P11EntityManagerCleanupMixin",
-                "P11LevelEntityCleanupMixin", "P11EntityLookupMixin").stream()
+                "P11LevelEntityCleanupMixin", "P11EntityLookupMixin",
+                "P11ConfigurationAdmissionMixin", "P11ParkingPlacementMixin",
+                "P11KeepAliveCommonMixin", "P11KeepAliveConnectionMixin",
+                "P11LivePlayMixin", "P11LiveCommonSendMixin", "P11ServerBossEventMixin",
+                "P11ClientPlayerMixin", "P11ClientMinecraftMixin", "P11ClientKeyboardMixin",
+                "P11ClientSceneScreenMixin", "P11ClientPacketListenerMixin", "P11ClientConfigurationMixin").stream()
                 .map(name -> "com.yo1no.gramarye.mixin." + name)
                 .collect(Collectors.toSet());
         assertEquals(p11Mixins, classes.stream()
@@ -271,6 +276,7 @@ class P3D3AApiGateTest {
         for (var exact : List.of(
                 "src/main/java/com/yo1no/gramarye/P11NativeCleanup.java",
                 "src/main/java/com/yo1no/gramarye/mixin/P11EntityLookupMixin.java",
+                "src/main/java/com/yo1no/gramarye/mixin/P11ServerBossEventMixin.java",
                 "src/p9S5ClientHarness/resources/gramarye-p11-native-harness.mixins.json")) {
             assertNativeSlicePath(exact, 0);
             assertNativeSlicePath(exact + ".extra", 1);

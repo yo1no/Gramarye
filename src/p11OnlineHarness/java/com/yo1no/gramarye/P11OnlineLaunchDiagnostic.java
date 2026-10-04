@@ -48,7 +48,7 @@ public final class P11OnlineLaunchDiagnostic {
                     boolean explicitExit = explicitExit(frames);
                     write(output, "shutdown.json", explicitExit ? "MAIN_EXPLICIT_EXIT_NOT_AUTH_PROOF"
                                     : "SHUTDOWN_UNKNOWN_NOT_AUTH_PROOF",
-                            explicitExit ? stage(frames) : "UNKNOWN", "NOT_OBSERVED");
+                            explicitExit ? stage(frames) : "UNKNOWN", "NOT_OBSERVED", exitSite(frames));
                 } catch (Throwable diagnosticFailure) {
                     unavailable();
                 }
@@ -73,6 +73,39 @@ public final class P11OnlineLaunchDiagnostic {
             }
         }
         return shutdown >= 0 && runtime > shutdown && system > runtime;
+    }
+
+    private enum ExitSite {
+        NOT_OBSERVED, DEVLOGIN_MISSING_TARGET, DEVLOGIN_DUMP_REQUESTED,
+        DEVLOGIN_ARGUMENT_BOUND, NATIVE_CLIENT_DESTROY, OTHER_EXPLICIT_EXIT
+    }
+
+    /** Fixed public bytecode sites only. A deeper DevLogin.main frame is NOT the exit caller. */
+    private static ExitSite exitSite(StackTraceElement[] frames) {
+        if (!explicitExit(frames)) { return ExitSite.NOT_OBSERVED; }
+        int system = -1;
+        for (int i = 0; i < frames.length; i++) {
+            if (frames[i].getClassName().equals("java.lang.System") && frames[i].getMethodName().equals("exit")) {
+                if (system >= 0) { return ExitSite.OTHER_EXPLICIT_EXIT; }
+                system = i;
+            }
+        }
+        if (system < 0 || system + 1 >= frames.length) { return ExitSite.OTHER_EXPLICIT_EXIT; }
+        StackTraceElement caller = frames[system + 1];
+        if (caller.getClassName().equals("net.covers1624.devlogin.DevLogin")) {
+            // DevLogin0.1.0.5 SHA256 dfb3379a190c57c9601f34adc5bcb01c7d3298ffa02c97f1b26428c9301bbf86.
+            if (caller.getMethodName().equals("main")) {
+                if (caller.getLineNumber() == 45) { return ExitSite.DEVLOGIN_MISSING_TARGET; }
+                if (caller.getLineNumber() == 99) { return ExitSite.DEVLOGIN_DUMP_REQUESTED; }
+            } else if (caller.getMethodName().equals("consumeArgs") && caller.getLineNumber() == 120) {
+                return ExitSite.DEVLOGIN_ARGUMENT_BOUND;
+            }
+        } else if (caller.getClassName().equals("net.minecraft.client.Minecraft")
+                && caller.getMethodName().equals("destroy") && caller.getLineNumber() == 1098) {
+            // Public pinned NeoForge21.1.241, original finally exit0; not an authentication result.
+            return ExitSite.NATIVE_CLIENT_DESTROY;
+        }
+        return ExitSite.OTHER_EXPLICIT_EXIT;
     }
 
     private static String stage(StackTraceElement[] frames) {
@@ -152,9 +185,14 @@ public final class P11OnlineLaunchDiagnostic {
     }
 
     private static void write(Path output, String name, String event, String stage, String category) throws Exception {
+        write(output, name, event, stage, category, ExitSite.NOT_OBSERVED);
+    }
+
+    private static void write(Path output, String name, String event, String stage, String category, ExitSite exitSite) throws Exception {
         // Every serialized value is an internal fixed literal. No input, frame, message, or exception is serialized.
-        String json = "{\"schema\":1,\"event\":\"" + event + "\",\"stage\":\"" + stage
-                + "\",\"category\":\"" + category + "\",\"authentication\":\"NOT_PROVEN\"}\n";
+        String json = "{\"schema\":2,\"event\":\"" + event + "\",\"stage\":\"" + stage
+                + "\",\"category\":\"" + category + "\",\"exitSite\":\"" + exitSite.name()
+                + "\",\"authentication\":\"NOT_PROVEN\"}\n";
         try (SeekableByteChannel channel = Files.newByteChannel(output.resolve(name),
                 Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS),
                 PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))) {

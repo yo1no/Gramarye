@@ -384,7 +384,7 @@ verify_p11_observer_error_catches() {
             bad = 1; exit 1
         }
         BEGIN {
-            split("metadataInitialSync beginMetadataManaObservation endMetadataManaObservation closeSelection respawn failWithoutReplacingPrimary lifecycleFailureWithoutReplacingPrimary faultLogoutAfterAttempt retainWithoutReplacingPrimary statsMutated advancementsMutated endIndependent finish integratedSave flushDetachedIndependentAtStop", names, " ")
+            split("metadataInitialSync beginMetadataManaObservation endMetadataManaObservation closeSelection respawn failWithoutReplacingPrimary lifecycleFailureWithoutReplacingPrimary faultLogoutAfterAttempt retainWithoutReplacingPrimary statsMutated advancementsMutated endIndependent finish integratedSave flushDetachedPlayersAtStop flushDetachedIndependentAtStop", names, " ")
             for (i in names) expected[names[i]] = 1
         }
         {
@@ -447,7 +447,7 @@ verify_p11_observer_error_catches() {
         }
         END {
             if (bad) exit 1
-            if (state != 0 || total != 15) reject("incomplete exact fifteen catches")
+            if (state != 0 || total != 16) reject("incomplete exact sixteen catches")
             for (method in expected) if (seen[method] != 1) reject("missing method " method)
         }
     ' "$1" || fail 'P11 native observer Error catches escaped the exact secondary-only contract'
@@ -465,19 +465,19 @@ verify_p11_native_helper_error_catches() {
         BEGIN {
             if (kind == "operation") {
                 simple = "catch(RuntimeException|Errorsecondary){observerFailed();}"
-                expect("beginAdvancement", 1, simple)
-                expect("begin", 1, "catch(RuntimeException|Errorsecondary){if(retained){release(binding,P11ControlBudgets.Root.OPERATION);}observerFailed();returnnull;}")
-                expect("end", 1, simple)
-                expect("acquireCredit", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnnull;}")
-                expect("releaseCredit", 1, simple)
-                expect("beginCreditConsumers", 1, simple)
-                expect("creditRemoval", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnfalse;}")
-                expect("creditRevived", 1, simple)
-                expect("endCreditConsumers", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnfalse;}")
-                expect("attach", 1, "catch(RuntimeException|Errorsecondary){if(retained){release(binding,P11ControlBudgets.Root.COMMAND_CONTEXT);}observerFailed();}")
-                expect("finishContext", 1, simple)
-                expect("afterNative", 1, simple)
-                expect("release", 1, simple)
+                expect("publicstaticOperationScopebeginAdvancement(PlayerAdvancementscanonical,ServerPlayeractor)", 1, simple)
+                expect("privatestaticOperationScopebegin(ServerPlayeractor,Contextcontext)", 1, "catch(RuntimeException|Errorsecondary){if(retained){release(binding,P11ControlBudgets.Root.OPERATION);}observerFailed();returnnull;}")
+                expect("publicstaticvoidend(OperationScopescope,booleannormal)", 1, simple)
+                expect("publicstaticCreditacquireCredit(Entityholder,ServerPlayeractor)", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnnull;}")
+                expect("publicstaticvoidreleaseCredit(Creditcredit)", 1, simple)
+                expect("publicstaticvoidbeginCreditConsumers(CreditLifetimelifetime)", 1, simple)
+                expect("publicstaticbooleancreditRemoval(CreditLifetimelifetime)", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnfalse;}")
+                expect("publicstaticvoidcreditRevived(CreditLifetimelifetime)", 1, simple)
+                expect("publicstaticbooleanendCreditConsumers(CreditLifetimelifetime)", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnfalse;}")
+                expect("privatestaticvoidattach(Contextcontext,OperationScopescope)", 1, "catch(RuntimeException|Errorsecondary){if(retained){release(binding,P11ControlBudgets.Root.COMMAND_CONTEXT);}observerFailed();}")
+                expect("privatestaticvoidfinishContext(Contextcontext,booleannormal)", 1, simple)
+                expect("privatestaticvoidafterNative(Bindingbinding)", 1, simple)
+                expect("privatestaticvoidrelease(Bindingbinding,P11ControlBudgets.RootrootKind)", 1, simple)
             } else if (kind == "cleanup") {
                 expect("remove", 1, "catch(RuntimeException|Errorprimary){if(!(primaryinstanceofVirtualMachineError)&&scope.leaveThrew&&!reason.shouldDestroy()){try{completed=manager.p11$finishLeaveTail(scope);}catch(RuntimeException|Errorsecondary){secondaryFailure();}}throwprimary;}")
                 expect("remove", 2, "catch(RuntimeException|Errorsecondary){secondaryFailure();}")
@@ -490,7 +490,32 @@ verify_p11_native_helper_error_catches() {
                 expect("submitInitialFamily", 1, "catch(RuntimeException|Errorprimary){if(initial){P11NativeStorageBoundary.metadataInitialSync(actor,identity.connectionEpoch(),mana?MetadataInitialStage.MANA_FAILED:MetadataInitialStage.COOLDOWN_FAILED);}throwprimary;}")
                 expect("commitFamily", 1, samePrimary)
                 expect("submit", 1, samePrimary)
+            } else if (kind == "live_transition") {
+                expect("prepareAndDispatch", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
+                expect("prepareAndDispatch", 2, "catch(RuntimeException|Errorsecondary){stopping=true;wakeup.retire();dispatcher.retireSlot();if(primary==null){throwsecondary;}recordTerminalFailure(null,secondary);}")
+                expect("pump", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
+                expect("pump", 2, "catch(RuntimeException|Errorsecondary){if(primary==null){throwsecondary;}recordTerminalFailure(null,secondary);}")
+                expect("submitPump", 1, "catch(RuntimeException|Errorfailure){stopping=true;try{wakeup.retire();dispatcher.retireSlot();synchronized(entries){for(varentry:entries.values()){entry.control.observationLost();}}}catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}throwfailure;}")
+                expect("submitPump", 2, "catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}")
+                expect("earlyTask", 1, "catch(RuntimeException|Errorprimary){try{if(!entry.control.abortAdmission(drain)){entry.control.observationLost();}}catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}throwprimary;}")
+                expect("earlyTask", 2, "catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}")
+                expect("admit", 1, "catch(RuntimeException|Errorprimary){try{if(!entry.control.abortAdmission(drain)){entry.control.observationLost();}}catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}try{sources.closeControlCustody(custody);}catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}throwprimary;}")
+                expect("admit", 2, "catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}")
+                expect("admit", 3, "catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}")
+                expect("execute", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
+                expect("configurationFinished", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
+                expect("switchToConfig", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
+                expect("finish", 1, "catch(RuntimeException|Errorfailure){terminalFailure=recordTerminalFailure(terminalFailure,failure);try{ticket.entry.control.observationLost();}catch(RuntimeException|Errorsecondary){terminalFailure=recordTerminalFailure(terminalFailure,secondary);}}")
+                expect("finish", 2, "catch(RuntimeException|Errorsecondary){terminalFailure=recordTerminalFailure(terminalFailure,secondary);}")
+                expect("finish", 3, "catch(RuntimeException|Errorfailure){terminalFailure=recordTerminalFailure(terminalFailure,failure);}")
+                expect("finish", 4, "catch(RuntimeException|Errorfailure){terminalFailure=recordTerminalFailure(terminalFailure,failure);}")
+                expect("finish", 5, "catch(RuntimeException|Errorfailure){terminalFailure=recordTerminalFailure(terminalFailure,failure);}")
+                expect("finish", 6, "catch(RuntimeException|Errorfailure){terminalFailure=recordTerminalFailure(terminalFailure,failure);}")
+            } else if (kind == "keep_alive") {
+                expect("beginAck", 1, "catch(RuntimeException|Errorfailure){end(region);throwfailure;}")
             } else if (kind == "source_stop") {
+                expect("flushDetachedPlayersAtStop", 1, "catch(RuntimeException|Errorfailure){failures=increment(failures);try{if(body!=null&&accounts.get(body.actor.getUUID())==account&&account.current==body&&account.candidate==null){account.fault=Fault.WRITE;receipts.markDirty(body.source,P11ReceiptLedger.WriterKind.PLAYER_DATA);account.dirty=resources.markDirty(account.resource,now()).orElseThrow();}}catch(RuntimeException|Errorsecondary){failures=increment(failures);}}")
+                expect("flushDetachedPlayersAtStop", 2, "catch(RuntimeException|Errorsecondary){failures=increment(failures);}")
                 expect("flushDetachedIndependent", 1, "catch(RuntimeException|Errorfailure){body.account.fault=Fault.WRITE;failures=increment(failures);}")
             } else reject("unknown helper kind")
         }
@@ -499,6 +524,10 @@ verify_p11_native_helper_error_catches() {
             sub(/\/\/.*$/, "", line)
             if (line ~ /^    ((public|private) )?(static )?.*\(/ && line !~ /^        /) {
                 method = line; sub(/\(.*/, "", method); sub(/^.*[ \t]/, "", method)
+                if (kind == "operation") {
+                    method = line; sub(/[[:space:]]*\{.*$/, "", method)
+                    gsub(/[[:space:]]/, "", method)
+                }
             }
             gsub(/[[:space:]]/, "", line)
             source[method] = source[method] line
@@ -804,7 +833,8 @@ verify_search_helpers() {
         's/token.closed = true;/token.closed = false;/g' \
         '/token.lease.continuation.manaObservationFailed(token.lease);/d' \
         's/METADATA_MANA.set(token.previous);/METADATA_MANA.remove();/g' \
-        's/void closeSelection(/void unreviewedSelection(/g'; do
+        's/void closeSelection(/void unreviewedSelection(/g' \
+        's/void flushDetachedPlayersAtStop(/void unreviewedDetachedPlayers(/g'; do
         sed "${mutation}" "${p11_boundary}" > "${HELPER_FIXTURE}"
         if (verify_p11_observer_error_catches "${HELPER_FIXTURE}") >/dev/null 2>&1; then
             fail 'P11 observer self-check accepted a wrong binding, added behavior, or unreviewed method'
@@ -812,13 +842,17 @@ verify_search_helpers() {
     done
     local native_source=''
     local native_kind=''
-    for native_kind in operation cleanup sync source_stop; do
+    for native_kind in operation cleanup sync source_stop live_transition keep_alive; do
         if [[ "${native_kind}" == operation ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
         elif [[ "${native_kind}" == cleanup ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11NativeCleanup.java'
         elif [[ "${native_kind}" == sync ]]; then
             native_source='src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java'
+        elif [[ "${native_kind}" == live_transition ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/P11LiveTransitionService.java'
+        elif [[ "${native_kind}" == keep_alive ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/P11KeepAliveBoundary.java'
         else
             native_source='src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java'
         fi
@@ -831,12 +865,32 @@ verify_search_helpers() {
             's/secondaryFailure();/secondaryFailure(); unsafe();/g' \
             's/throw primary;/throw new Error();/g' \
             's/void releaseCredit(/void unreviewedCredit(/g' \
+            's/begin(ServerPlayer actor, Context context)/begin(ServerPlayer actor, Object context)/g' \
+            's/attach(Context context, OperationScope scope)/attach(Context context, Object scope)/g' \
             's/boolean creditRemoval(/boolean unreviewedRemoval(/g' \
             's/void creditRevived(/void unreviewedRevival(/g' \
             's/void afterNative(/void unreviewedNativeTail(/g' \
             's/body.account.fault = Fault.WRITE;/body.account.fault = Fault.NONE;/g' \
             's/void flushDetachedIndependent(/void unreviewedStopWriter(/g' \
+            's/void flushDetachedPlayersAtStop(/void unreviewedDetachedPlayers(/g' \
+            's/account.current == body \&\& account.candidate == null/true/g' \
+            '/receipts.markDirty(body.source, P11ReceiptLedger.WriterKind.PLAYER_DATA);/d' \
             's/MetadataInitialStage.MANA_FAILED/MetadataInitialStage.MANA_SUBMITTED/g' \
+            's/void submitPump(/void unreviewedPump(/g' \
+            's/void pump(/void unreviewedDispatchPump(/g' \
+            's/void prepareAndDispatch(/void unreviewedPrepareAndDispatch(/g' \
+            's/Region beginAck(/Region unreviewedAck(/g' \
+            's/end(region); throw failure;/throw failure;/g' \
+            's/throw secondary;/throw new Error();/g' \
+            's/void earlyTask(/void unreviewedEarlyTask(/g' \
+            's/Ticket admit(/Ticket unreviewedAdmit(/g' \
+            's/void execute(/void unreviewedExecute(/g' \
+            's/void configurationFinished(/void unreviewedConfiguration(/g' \
+            's/void switchToConfig(/void unreviewedSwitch(/g' \
+            's/void finish(/void unreviewedFinish(/g' \
+            's/throw failure;/throw new Error();/g' \
+            's/recordTerminalFailure(null, secondary);/recordTerminalFailure(null, secondary); unsafe();/g' \
+            's/wakeup.retire();/wakeup.retire(); unsafe();/g' \
             's/P7ServerSyncState commitFamily(/P7ServerSyncState unreviewedFamily(/g' \
             's/LogoutOutcome finishLogout(/LogoutOutcome unreviewedLogout(/g'; do
             sed "${mutation}" "${native_source}" > "${HELPER_FIXTURE}"
@@ -847,7 +901,18 @@ verify_search_helpers() {
             fi
         done
     done
-    printf '%s\n' 'Verified exact fifteen P11 observer, nineteen native helper/stop-writer and four P7 sender catches; changed binding/body/primary and foreign method rejected.'
+    local stop_path=''
+    for stop_path in \
+        src/main/java/com/yo1no/gramarye/P11NativeWorldAccess.java \
+        src/test/java/com/yo1no/gramarye/P11DetachedPlayerStopTest.java; do
+        require_regular_file "${stop_path}" 'P11 stop direct consumer is not a regular file'
+        bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${stop_path}" \
+            || fail 'P11 stop exact direct path was not recognized'
+        if bash scripts/verify-p7-s4-source-contracts.sh --is-s4-path "${stop_path}.extra"; then
+            fail 'P11 stop direct path classification accepted an unreviewed suffix'
+        fi
+    done
+    printf '%s\n' 'Verified exact sixteen P11 observer, twenty-one native helper/stop-writer, twenty C4a transition, one keep-alive and four P7 sender catches; changed binding/body/primary and foreign method rejected; two stop paths and their suffix negatives checked.'
 }
 
 verify_p4_a3_contract_markers() {
@@ -1431,6 +1496,8 @@ verify_b2_sources_and_outputs() {
     local p9_world_handoff='src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java'
     local p11_storage_boundary='src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java'
     local p11_operation_boundary='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
+    local p11_live_transition='src/main/java/com/yo1no/gramarye/P11LiveTransitionService.java'
+    local p11_keep_alive='src/main/java/com/yo1no/gramarye/P11KeepAliveBoundary.java'
     local p11_native_cleanup='src/main/java/com/yo1no/gramarye/P11NativeCleanup.java'
     local p11_source_owner='src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java'
     local p4_recovery_game_tests='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java'
@@ -1588,7 +1655,8 @@ verify_b2_sources_and_outputs() {
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'CustomPacketPayload' \
-        'CustomPacketPayload escaped the exact P7-S2/P8-S4 payload owner allowlist' \
+        'CustomPacketPayload escaped the exact P7-S2/P8-S4/P11-C4a payload owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/P11TransitionPayloads.java' \
         'src/main/java/com/yo1no/gramarye/P8PacketSubmission.java' \
         'src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java' \
         'src/main/java/com/yo1no/gramarye/PresentationEventPayload.java' \
@@ -1602,7 +1670,9 @@ verify_b2_sources_and_outputs() {
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'PayloadRegistrar' \
-        'PayloadRegistrar escaped the exact P7-S2/P8-S4 registrar owner allowlist' \
+        'PayloadRegistrar escaped the exact P7-S2/P8-S4/P11-C4a registrar owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/Gramarye.java' \
+        'src/main/java/com/yo1no/gramarye/P11TransitionPayloadRegistrar.java' \
         'src/main/java/com/yo1no/gramarye/P8PayloadRegistrationBridge.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java'
     require_fixed \
@@ -1648,6 +1718,8 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p9_world_handoff}" \
                 || "${source}" == "${p11_storage_boundary}" \
                 || "${source}" == "${p11_operation_boundary}" \
+                || "${source}" == "${p11_live_transition}" \
+                || "${source}" == "${p11_keep_alive}" \
                 || "${source}" == "${p11_native_cleanup}" \
                 || "${source}" == "${p11_source_owner}" \
                 || "${source}" == "${p4_recovery_game_tests}" \
@@ -1671,6 +1743,8 @@ verify_b2_sources_and_outputs() {
     verify_p11_native_helper_error_catches "${p11_operation_boundary}" operation
     verify_p11_native_helper_error_catches "${p11_native_cleanup}" cleanup
     verify_p11_native_helper_error_catches "${p11_source_owner}" source_stop
+    verify_p11_native_helper_error_catches "${p11_live_transition}" live_transition
+    verify_p11_native_helper_error_catches "${p11_keep_alive}" keep_alive
     require_ere_count "${p4_recovery_game_tests}" \
         'catch[[:space:]]*\([^)]*(Error|Throwable)' 1 \
         'the exact recovery GameTest must retain one primary-preserving Error catch'

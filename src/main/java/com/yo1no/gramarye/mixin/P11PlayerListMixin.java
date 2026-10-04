@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
@@ -10,6 +11,7 @@ import com.yo1no.gramarye.P11NativeWorldAccess;
 import com.yo1no.gramarye.P11CanonicalAdvancements;
 import com.yo1no.gramarye.P11RecipeDelivery;
 import com.yo1no.gramarye.P11NativeCleanup;
+import com.yo1no.gramarye.P11LiveTransitionBoundary;
 import java.util.Optional;
 import java.util.Map;
 import java.util.UUID;
@@ -68,6 +70,12 @@ abstract class P11PlayerListMixin implements P11NativeWorldAccess.PlayerStorage,
     }
 
     @Override
+    public void p11$saveDetachedAtStop(P11NativeStorageBoundary.DetachedStopSaveRequest request) {
+        P11NativeStorageBoundary.saveDetachedAtStop((PlayerList) (Object) this, playerIo, request,
+                args -> { save((ServerPlayer) args[0]); return null; });
+    }
+
+    @Override
     public boolean p11$structuralLogoutTail(P11NativeCleanup.LogoutScope scope) {
         return P11NativeCleanup.logoutTail(scope, (PlayerList) (Object) this,
                 players, playersByUUID, stats, advancements);
@@ -84,6 +92,24 @@ abstract class P11PlayerListMixin implements P11NativeWorldAccess.PlayerStorage,
     private void p11$placement(Connection connection, ServerPlayer player,
             CommonListenerCookie cookie, Operation<Void> original) {
         P11NativeStorageBoundary.place(server, connection, player, cookie, original);
+    }
+
+    @ModifyExpressionValue(method = "placeNewPlayer(Lnet/minecraft/network/Connection;Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/server/network/CommonListenerCookie;)V",
+            at = @At(value = "NEW", target = "(IZLjava/util/Set;IIIZZZLnet/minecraft/network/protocol/game/CommonPlayerSpawnInfo;Z)Lnet/minecraft/network/protocol/game/ClientboundLoginPacket;"),
+            require = 1, expect = 1, allow = 1)
+    private net.minecraft.network.protocol.game.ClientboundLoginPacket p11$originalLoginFrame(
+            net.minecraft.network.protocol.game.ClientboundLoginPacket packet) {
+        P11LiveTransitionBoundary.expectedNativeFrame((PlayerList) (Object) this, packet);
+        return packet;
+    }
+
+    @ModifyExpressionValue(method = "respawn(Lnet/minecraft/server/level/ServerPlayer;ZLnet/minecraft/world/entity/Entity$RemovalReason;)Lnet/minecraft/server/level/ServerPlayer;",
+            at = @At(value = "NEW", target = "(Lnet/minecraft/network/protocol/game/CommonPlayerSpawnInfo;B)Lnet/minecraft/network/protocol/game/ClientboundRespawnPacket;"),
+            require = 1, expect = 1, allow = 1)
+    private net.minecraft.network.protocol.game.ClientboundRespawnPacket p11$originalRespawnFrame(
+            net.minecraft.network.protocol.game.ClientboundRespawnPacket packet) {
+        P11LiveTransitionBoundary.expectedNativeFrame((PlayerList) (Object) this, packet);
+        return packet;
     }
 
     @WrapMethod(method = "load(Lnet/minecraft/server/level/ServerPlayer;)Ljava/util/Optional;")
@@ -125,6 +151,17 @@ abstract class P11PlayerListMixin implements P11NativeWorldAccess.PlayerStorage,
             Entity.RemovalReason reason,
             org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<ServerPlayer> callback) {
         P11NativeStorageBoundary.preConstructorCleanupReturned(previous);
+    }
+
+    @WrapOperation(method = "respawn(Lnet/minecraft/server/level/ServerPlayer;ZLnet/minecraft/world/entity/Entity$RemovalReason;)Lnet/minecraft/server/level/ServerPlayer;",
+            at = @At(value = "NEW", target = "(Lnet/minecraft/server/MinecraftServer;Lnet/minecraft/server/level/ServerLevel;Lcom/mojang/authlib/GameProfile;Lnet/minecraft/server/level/ClientInformation;)Lnet/minecraft/server/level/ServerPlayer;"),
+            require = 1, expect = 1, allow = 1)
+    private ServerPlayer p11$actualRespawnBody(MinecraftServer exactServer,
+            net.minecraft.server.level.ServerLevel level, GameProfile profile, ClientInformation information,
+            Operation<ServerPlayer> original) {
+        var next = original.call(exactServer, level, profile, information);
+        P11NativeStorageBoundary.respawnConstructed(next);
+        return next;
     }
 
     @Inject(method = "respawn(Lnet/minecraft/server/level/ServerPlayer;ZLnet/minecraft/world/entity/Entity$RemovalReason;)Lnet/minecraft/server/level/ServerPlayer;",
@@ -193,6 +230,6 @@ abstract class P11PlayerListMixin implements P11NativeWorldAccess.PlayerStorage,
     @WrapMethod(method = "respawn(Lnet/minecraft/server/level/ServerPlayer;ZLnet/minecraft/world/entity/Entity$RemovalReason;)Lnet/minecraft/server/level/ServerPlayer;")
     private ServerPlayer p11$copyScope(ServerPlayer player, boolean keepEverything,
             Entity.RemovalReason reason, Operation<ServerPlayer> original) {
-        return P11NativeStorageBoundary.respawn(player, keepEverything, reason, original);
+        return P11NativeStorageBoundary.respawn((PlayerList) (Object) this, player, keepEverything, reason, original);
     }
 }

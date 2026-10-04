@@ -2,7 +2,7 @@ package com.yo1no.gramarye;
 
 import java.util.Objects;
 
-/** Closed semantic values only: this slice registers no transport or native caller. */
+/** Shared closed semantic values for the fixed C4a wire and the sole control owner. */
 final class P11TransitionProtocol {
     enum Scope { CONFIG, PREPLAY, PLAY }
     enum Command { TRY, STATUS }

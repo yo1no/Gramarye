@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 final class P9ClientCastInputTest {
     @Test
-    void exactNineGateRowsShortCircuitInAuthorityOrder() {
+    void exactTenGateRowsShortCircuitWithTransitionBeforeRecoveryFlush() {
         var decisions = List.of(
                 P9ClientCastInput.GateDecision.NO_WORLD,
                 P9ClientCastInput.GateDecision.NO_PLAYER,
@@ -23,11 +23,12 @@ final class P9ClientCastInputTest {
                 P9ClientCastInput.GateDecision.SCREEN_OPEN,
                 P9ClientCastInput.GateDecision.WINDOW_INACTIVE,
                 P9ClientCastInput.GateDecision.CLIENT_PAUSED,
+                P9ClientCastInput.GateDecision.TRANSITION_PENDING,
                 P9ClientCastInput.GateDecision.PENDING_FLUSH_REQUIRED,
                 P9ClientCastInput.GateDecision.ALLOW);
 
         for (var firstFalse = 0; firstFalse < decisions.size(); firstFalse++) {
-            var values = new boolean[8];
+            var values = new boolean[9];
             java.util.Arrays.fill(values, true);
             if (firstFalse < values.length) {
                 values[firstFalse] = false;
@@ -207,6 +208,11 @@ final class P9ClientCastInputTest {
 
         @Override
         public boolean noPendingFlush() {
+            return read(8);
+        }
+
+        @Override
+        public boolean noTransitionPending() {
             return read(7);
         }
     }

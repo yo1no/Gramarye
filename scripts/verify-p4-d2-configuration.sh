@@ -511,7 +511,8 @@ verify_static_ownership_and_phase_bounds() {
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'CustomPacketPayload' \
-        'CustomPacketPayload escaped the exact P7-S2/P8-S4 payload owner allowlist' \
+        'CustomPacketPayload escaped the exact P7-S2/P8-S4/P11-C4a payload owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/P11TransitionPayloads.java' \
         'src/main/java/com/yo1no/gramarye/P8PacketSubmission.java' \
         'src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java' \
         'src/main/java/com/yo1no/gramarye/PresentationEventPayload.java' \
@@ -525,7 +526,9 @@ verify_static_ownership_and_phase_bounds() {
     forbid_fixed_in_file_list_except \
         "${PRODUCTION_SOURCE_LIST}" \
         'PayloadRegistrar' \
-        'PayloadRegistrar escaped the exact P7-S2/P8-S4 registrar owner allowlist' \
+        'PayloadRegistrar escaped the exact P7-S2/P8-S4/P11-C4a registrar owner allowlist' \
+        'src/main/java/com/yo1no/gramarye/Gramarye.java' \
+        'src/main/java/com/yo1no/gramarye/P11TransitionPayloadRegistrar.java' \
         'src/main/java/com/yo1no/gramarye/P8PayloadRegistrationBridge.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java'
     forbid_fixed_in_file_list_except \

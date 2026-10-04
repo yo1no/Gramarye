@@ -521,7 +521,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(137, dependencyErrorCatchCount(production)),
+                () -> assertEquals(161, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -796,13 +796,16 @@ class P4B2BApiGateTest {
                 "void closeSelection(", "ServerPlayer respawn(", "void failWithoutReplacingPrimary(",
                 "void lifecycleFailureWithoutReplacingPrimary(", "void faultLogoutAfterAttempt(",
                 "void retainWithoutReplacingPrimary(", "void statsMutated(", "void advancementsMutated(",
-                "void endIndependent(", "void finish(", "void integratedSave(", "void flushDetachedIndependentAtStop(");
+                "void endIndependent(", "void finish(", "void integratedSave(",
+                "void flushDetachedPlayersAtStop(", "void flushDetachedIndependentAtStop(");
         for (var method : p11ObservationMethods) {
             assertEquals(1, errorCatchBlocks(bodyFollowing(p11Boundary, method)).size(), method);
         }
         var p11NativeHelpers = exactNativeHelperCatches("P11NativeOperationBoundary.java", operationErrorContracts())
                 + exactNativeHelperCatches("P11NativeCleanup.java", cleanupErrorContracts())
-                + exactNativeHelperCatches("P11QualifiedSourceOwner.java", stopWriterErrorContracts());
+                + exactNativeHelperCatches("P11QualifiedSourceOwner.java", stopWriterErrorContracts())
+                + exactNativeHelperCatches("P11KeepAliveBoundary.java", keepAliveErrorContracts())
+                + exactNativeHelperCatches("P11LiveTransitionService.java", liveTransitionErrorContracts());
         var p9OwnedCatches = List.of(
                         p6AdapterCatches, p9ProjectileCatches, p9WorldHandoffCatches)
                 .stream()
@@ -847,9 +850,9 @@ class P4B2BApiGateTest {
                 () -> assertEquals(3, p9WorldHandoffCatches.size()),
                 () -> assertEquals(7, p9Primary.size()),
                 () -> assertEquals(5, p9CleanupIsolation.size()),
-                () -> assertEquals(15, p11ObservationIsolation.size()),
-                () -> assertEquals(19, p11NativeHelpers),
-                () -> assertEquals(13, p11ObservationIsolation.stream().filter(block ->
+                () -> assertEquals(16, p11ObservationIsolation.size()),
+                () -> assertEquals(42, p11NativeHelpers),
+                () -> assertEquals(14, p11ObservationIsolation.stream().filter(block ->
                         block.binding().equals("secondary")
                                 && block.body().replaceAll("\\s+", "").equals(
                                         "if(observerFailures!=Long.MAX_VALUE){observerFailures++;}")).count()),
@@ -1006,7 +1009,7 @@ class P4B2BApiGateTest {
                                 + p11ObservationIsolation.size()
                                 + p11NativeHelpers,
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(137, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(161, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
                 "permit.releaseAfterEnqueueFailure();", "throw failure;");
         assertOrdered(
@@ -1086,10 +1089,51 @@ class P4B2BApiGateTest {
                 "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java")));
         var stopOwner = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/P11QualifiedSourceOwner.java")));
+        var liveTransition = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/P11LiveTransitionService.java")));
+        var keepAlive = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/P11KeepAliveBoundary.java")));
         assertNativeHelperCatches(operation, operationErrorContracts());
+        assertTrue(errorCatchBlocks(bodyFollowing(operation, "OperationScope begin(ServerPlayer actor)")).isEmpty());
+        assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
+                operation.replace("begin(ServerPlayer actor, Context context)",
+                        "begin(ServerPlayer actor, Object context)"), operationErrorContracts()));
+        assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
+                operation.replace("attach(Context context, OperationScope scope)",
+                        "attach(Context context, Object scope)"), operationErrorContracts()));
         assertNativeHelperCatches(cleanup, cleanupErrorContracts());
         assertNativeHelperCatches(sync, syncErrorContracts());
         assertNativeHelperCatches(stopOwner, stopWriterErrorContracts());
+        assertEquals(20, assertNativeHelperCatches(liveTransition, liveTransitionErrorContracts()));
+        assertEquals(1, assertNativeHelperCatches(keepAlive, keepAliveErrorContracts()));
+        for (var replacement : List.of(
+                List.of("Region beginAck(", "Region unreviewedAck("),
+                List.of("Error failure", "Error unreviewed"),
+                List.of("end(region); throw failure;", "end(region); throw new Error();"),
+                List.of("end(region); throw failure;", "throw failure;"))) {
+            assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
+                    keepAlive.replace(replacement.getFirst(), replacement.getLast()),
+                    keepAliveErrorContracts()));
+        }
+        for (var method : liveTransitionErrorContracts().keySet()) {
+            assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
+                    liveTransition.replace(method, method.replace("(", "Unreviewed(")),
+                    liveTransitionErrorContracts()));
+        }
+        for (var replacement : List.of(
+                List.of("Error failure", "Error unreviewed"),
+                List.of("Error primary", "Error unreviewed"),
+                List.of("Error secondary", "Error unreviewed"),
+                List.of("throw primary;", "throw new Error();"),
+                List.of("throw failure;", "throw new Error();"),
+                List.of("throw secondary;", "throw new Error();"),
+                List.of("wakeup.retire();", "wakeup.retire(); unsafe();"),
+                List.of("recordTerminalFailure(null, secondary);",
+                        "recordTerminalFailure(null, secondary); unsafe();"))) {
+            assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
+                    liveTransition.replace(replacement.getFirst(), replacement.getLast()),
+                    liveTransitionErrorContracts()));
+        }
         assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
                 operation.replace("Error secondary", "Error unreviewed"), operationErrorContracts()));
         assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
@@ -1122,11 +1166,83 @@ class P4B2BApiGateTest {
                 stopOwner.replace("body.account.fault = Fault.WRITE;", "body.account.fault = Fault.NONE;"), stopWriterErrorContracts()));
         assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
                 stopOwner.replace("void flushDetachedIndependent(", "void unreviewedStopWriter("), stopWriterErrorContracts()));
+        for (var replacement : List.of(
+                List.of("void flushDetachedPlayersAtStop(", "void unreviewedDetachedPlayers("),
+                List.of("account.current == body && account.candidate == null", "true"),
+                List.of("receipts.markDirty(body.source, P11ReceiptLedger.WriterKind.PLAYER_DATA);", ""))) {
+            assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
+                    stopOwner.replace(replacement.getFirst(), replacement.getLast()), stopWriterErrorContracts()));
+        }
+    }
+
+    private static Map<String, List<ErrorCatchBlock>> keepAliveErrorContracts() {
+        return Map.of("Region beginAck(", List.of(new ErrorCatchBlock("failure",
+                "end(region);throwfailure;")));
+    }
+
+    private static Map<String, List<ErrorCatchBlock>> liveTransitionErrorContracts() {
+        return Map.ofEntries(
+                Map.entry("void prepareAndDispatch(", List.of(
+                        new ErrorCatchBlock("failure", "primary=failure;throwfailure;"),
+                        new ErrorCatchBlock("secondary",
+                                "stopping=true;wakeup.retire();dispatcher.retireSlot();if(primary==null){throwsecondary;}recordTerminalFailure(null,secondary);"))),
+                Map.entry("void pump(", List.of(
+                        new ErrorCatchBlock("failure", "primary=failure;throwfailure;"),
+                        new ErrorCatchBlock("secondary",
+                                "if(primary==null){throwsecondary;}recordTerminalFailure(null,secondary);"))),
+                Map.entry("void submitPump(", List.of(
+                        new ErrorCatchBlock("failure",
+                                "stopping=true;try{wakeup.retire();dispatcher.retireSlot();synchronized(entries){for(varentry:entries.values()){entry.control.observationLost();}}}catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}throwfailure;"),
+                        new ErrorCatchBlock("secondary",
+                                "recordTerminalFailure(null,secondary);"))),
+                Map.entry("void earlyTask(", List.of(
+                        new ErrorCatchBlock("primary",
+                                "try{if(!entry.control.abortAdmission(drain)){entry.control.observationLost();}}catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}throwprimary;"),
+                        new ErrorCatchBlock("secondary",
+                                "recordTerminalFailure(null,secondary);"))),
+                Map.entry("Ticket admit(", List.of(
+                        new ErrorCatchBlock("primary",
+                                "try{if(!entry.control.abortAdmission(drain)){entry.control.observationLost();}}catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}try{sources.closeControlCustody(custody);}catch(RuntimeException|Errorsecondary){recordTerminalFailure(null,secondary);}throwprimary;"),
+                        new ErrorCatchBlock("secondary",
+                                "recordTerminalFailure(null,secondary);"),
+                        new ErrorCatchBlock("secondary",
+                                "recordTerminalFailure(null,secondary);"))),
+                Map.entry("void execute(", List.of(
+                        new ErrorCatchBlock("failure",
+                                "primary=failure;throwfailure;"))),
+                Map.entry("void configurationFinished(", List.of(
+                        new ErrorCatchBlock("failure",
+                                "primary=failure;throwfailure;"))),
+                Map.entry("void switchToConfig(", List.of(
+                        new ErrorCatchBlock("failure",
+                                "primary=failure;throwfailure;"))),
+                Map.entry("void finish(", List.of(
+                        new ErrorCatchBlock("failure",
+                                "terminalFailure=recordTerminalFailure(terminalFailure,failure);try{ticket.entry.control.observationLost();}catch(RuntimeException|Errorsecondary){terminalFailure=recordTerminalFailure(terminalFailure,secondary);}"),
+                        new ErrorCatchBlock("secondary",
+                                "terminalFailure=recordTerminalFailure(terminalFailure,secondary);"),
+                        new ErrorCatchBlock("failure",
+                                "terminalFailure=recordTerminalFailure(terminalFailure,failure);"),
+                        new ErrorCatchBlock("failure",
+                                "terminalFailure=recordTerminalFailure(terminalFailure,failure);"),
+                        new ErrorCatchBlock("failure",
+                                "terminalFailure=recordTerminalFailure(terminalFailure,failure);"),
+                        new ErrorCatchBlock("failure",
+                                "terminalFailure=recordTerminalFailure(terminalFailure,failure);"))));
     }
 
     private static Map<String, List<ErrorCatchBlock>> stopWriterErrorContracts() {
-        return Map.of("void flushDetachedIndependent(", List.of(new ErrorCatchBlock("failure",
-                "body.account.fault=Fault.WRITE;failures=increment(failures);")));
+        return Map.of(
+                "void flushDetachedPlayersAtStop(", List.of(
+                        new ErrorCatchBlock("failure", "failures=increment(failures);try{"
+                                + "if(body!=null&&accounts.get(body.actor.getUUID())==account"
+                                + "&&account.current==body&&account.candidate==null){account.fault=Fault.WRITE;"
+                                + "receipts.markDirty(body.source,P11ReceiptLedger.WriterKind.PLAYER_DATA);"
+                                + "account.dirty=resources.markDirty(account.resource,now()).orElseThrow();}}"
+                                + "catch(RuntimeException|Errorsecondary){failures=increment(failures);}"),
+                        new ErrorCatchBlock("secondary", "failures=increment(failures);")),
+                "void flushDetachedIndependent(", List.of(new ErrorCatchBlock("failure",
+                        "body.account.fault=Fault.WRITE;failures=increment(failures);")));
     }
 
     private static Map<String, List<ErrorCatchBlock>> syncErrorContracts() {
@@ -1165,21 +1281,21 @@ class P4B2BApiGateTest {
     private static Map<String, List<ErrorCatchBlock>> operationErrorContracts() {
         var diagnostic = List.of(new ErrorCatchBlock("secondary", "observerFailed();"));
         return Map.ofEntries(
-                Map.entry("OperationScope beginAdvancement(", diagnostic),
-                Map.entry("OperationScope begin(", List.of(new ErrorCatchBlock("secondary",
+                Map.entry("OperationScope beginAdvancement(PlayerAdvancements canonical, ServerPlayer actor)", diagnostic),
+                Map.entry("OperationScope begin(ServerPlayer actor, Context context)", List.of(new ErrorCatchBlock("secondary",
                         "if(retained){release(binding,P11ControlBudgets.Root.OPERATION);}observerFailed();returnnull;"))),
-                Map.entry("void end(", diagnostic),
-                Map.entry("Credit acquireCredit(", List.of(new ErrorCatchBlock("secondary", "observerFailed();returnnull;"))),
-                Map.entry("void releaseCredit(", diagnostic),
-                Map.entry("void beginCreditConsumers(", diagnostic),
-                Map.entry("boolean creditRemoval(", List.of(new ErrorCatchBlock("secondary", "observerFailed();returnfalse;"))),
-                Map.entry("void creditRevived(", diagnostic),
-                Map.entry("boolean endCreditConsumers(", List.of(new ErrorCatchBlock("secondary", "observerFailed();returnfalse;"))),
-                Map.entry("void attach(", List.of(new ErrorCatchBlock("secondary",
+                Map.entry("void end(OperationScope scope, boolean normal)", diagnostic),
+                Map.entry("Credit acquireCredit(Entity holder, ServerPlayer actor)", List.of(new ErrorCatchBlock("secondary", "observerFailed();returnnull;"))),
+                Map.entry("void releaseCredit(Credit credit)", diagnostic),
+                Map.entry("void beginCreditConsumers(CreditLifetime lifetime)", diagnostic),
+                Map.entry("boolean creditRemoval(CreditLifetime lifetime)", List.of(new ErrorCatchBlock("secondary", "observerFailed();returnfalse;"))),
+                Map.entry("void creditRevived(CreditLifetime lifetime)", diagnostic),
+                Map.entry("boolean endCreditConsumers(CreditLifetime lifetime)", List.of(new ErrorCatchBlock("secondary", "observerFailed();returnfalse;"))),
+                Map.entry("void attach(Context context, OperationScope scope)", List.of(new ErrorCatchBlock("secondary",
                         "if(retained){release(binding,P11ControlBudgets.Root.COMMAND_CONTEXT);}observerFailed();"))),
-                Map.entry("void finishContext(", diagnostic),
-                Map.entry("void afterNative(", diagnostic),
-                Map.entry("void release(", diagnostic));
+                Map.entry("void finishContext(Context context, boolean normal)", diagnostic),
+                Map.entry("void afterNative(Binding binding)", diagnostic),
+                Map.entry("void release(Binding binding, P11ControlBudgets.Root rootKind)", diagnostic));
     }
 
     private static Map<String, List<ErrorCatchBlock>> cleanupErrorContracts() {

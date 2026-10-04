@@ -56,6 +56,12 @@ class P11OnlineRuntimeTest < Minitest::Test
                  evidence_root: File.join(@root, 'evidence'), private_root: @private,
                  fixture: @fixture, jar: @jar, case: 'single', run_id: 'direct-test-001',
                  port: 0, java_home: @java_home, ready_only: false, accept_eula: false }
+    P11OnlineRuntime::REWARD_FIXTURE_HASHES.each_key do |leaf|
+      relative = File.join('src/p9S5ClientHarness/resources/data/gramarye_p11_engineering', leaf)
+      destination = File.join(@options[:repo], relative)
+      FileUtils.mkdir_p(File.dirname(destination))
+      FileUtils.cp(File.expand_path('../' + relative, __dir__), destination)
+    end
   end
 
   def teardown
@@ -78,6 +84,407 @@ class P11OnlineRuntimeTest < Minitest::Test
   def test_fixed_original_distribution_pin_rejects_test_bytes
     assert_equal '4d79086f628daa137281f71312596d4dda861bafbaa9b62a65cd70e5257d248b', P11OnlineRuntime::JAR_SHA
     failure('FROZEN_JAR_MISMATCH') { P11OnlineRuntime.verify_jar!(@jar) }
+  end
+
+  def test_c6_fixture_is_pinned_c4a_only_and_manifest_binds_actual_source
+    source = File.binread(File.expand_path('fixtures/p11-c4a-c6-startup.toml', __dir__))
+    assert_equal P11OnlineRuntime::C4A_C6_FIXTURE_SHA, Digest::SHA256.hexdigest(source)
+    File.binwrite(@fixture, source)
+    %w[single qctx capacity].each do |name|
+      failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, name) }
+    end
+    %w[c4a-dedicated c4a-host-lan].each do |name|
+      actual, hash = P11OnlineRuntime.startup_fixture!(@fixture, @private, name, with_source_hash: true)
+      assert_equal P11OnlineRuntime::C4A_C6_FIXTURE_SHA, hash
+      assert_equal source.sub('p11.retention.maxUuids = 4', 'p11.retention.maxUuids = 2')
+                         .sub('p11.save.dirtyUuidAdmissionWatermark = 4', 'p11.save.dirtyUuidAdmissionWatermark = 2'), actual
+      %w[maxWaitingConnections admissionWaitMillis tryBurst tryRefillPerSecond statusBurst statusRefillPerSecond mainQuantaPerTick].each do |key|
+        assert_equal source[/^p11\.control\.#{key} = \d+$/], actual[/^p11\.control\.#{key} = \d+$/]
+      end
+    end
+    manifest = prepare(case: 'c4a-dedicated')
+    assert_equal P11OnlineRuntime::C4A_C6_FIXTURE_SHA, manifest.fetch('sourceFixtureSha256')
+    actual = File.binread(File.join(manifest.fetch('runtime'), 'server/defaultconfigs/gramarye-server.toml'))
+    assert_equal Digest::SHA256.hexdigest(actual), manifest.fetch('fixtureSha256')
+    File.binwrite(@fixture, source.sub('maxWaitingConnections = 1', 'maxWaitingConnections = 2'))
+    failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, 'c4a-dedicated') }
+  end
+
+  def test_c6_rate_fixture_is_a_distinct_exact_startup_input
+    source = File.binread(File.expand_path('fixtures/p11-c4a-c6-rate-startup.toml', __dir__))
+    assert_equal P11OnlineRuntime::C4A_C6_RATE_FIXTURE_SHA, Digest::SHA256.hexdigest(source)
+    refute_equal P11OnlineRuntime::C4A_C6_FIXTURE_SHA, P11OnlineRuntime::C4A_C6_RATE_FIXTURE_SHA
+    File.binwrite(@fixture, source)
+    %w[single qctx capacity].each do |name|
+      failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, name) }
+    end
+    manifest = prepare(case: 'c4a-dedicated')
+    assert_equal P11OnlineRuntime::C4A_C6_RATE_FIXTURE_SHA, manifest.fetch('sourceFixtureSha256')
+    actual = File.binread(File.join(manifest.fetch('runtime'), 'server/defaultconfigs/gramarye-server.toml'))
+    assert_equal Digest::SHA256.hexdigest(actual), manifest.fetch('fixtureSha256')
+    assert_includes actual, 'p11.control.tryBurst = 1'
+    assert_includes actual, 'p11.control.tryRefillPerSecond = 1'
+    assert_includes actual, 'p11.control.statusBurst = 4'
+    assert_includes actual, 'p11.control.statusRefillPerSecond = 4'
+    File.binwrite(@fixture, source + "\n")
+    failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, 'c4a-dedicated') }
+  end
+
+  def test_handoff_fixture_keeps_native_timeouts_and_uses_original_four_quanta
+    source = File.binread(File.expand_path('fixtures/p11-c4a-handoff-startup.toml', __dir__))
+    c6 = File.binread(File.expand_path('fixtures/p11-c4a-c6-startup.toml', __dir__))
+    assert_equal c6.sub('p11.control.mainQuantaPerTick = 1', 'p11.control.mainQuantaPerTick = 4'), source
+    assert_equal P11OnlineRuntime::C4A_HANDOFF_FIXTURE_SHA, Digest::SHA256.hexdigest(source)
+    File.binwrite(@fixture, source)
+    %w[single qctx capacity].each do |name|
+      failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, name) }
+    end
+    %w[c4a-dedicated c4a-host-lan].each do |name|
+      actual, hash = P11OnlineRuntime.startup_fixture!(@fixture, @private, name, with_source_hash: true)
+      assert_equal P11OnlineRuntime::C4A_HANDOFF_FIXTURE_SHA, hash
+      assert_equal source.sub('p11.retention.maxUuids = 4', 'p11.retention.maxUuids = 2')
+                         .sub('p11.save.dirtyUuidAdmissionWatermark = 4', 'p11.save.dirtyUuidAdmissionWatermark = 2'), actual
+      assert_includes actual, 'p11.control.admissionWaitMillis = 45000'
+      assert_includes actual, 'p11.control.mainQuantaPerTick = 4'
+    end
+    manifest = prepare(case: 'c4a-dedicated')
+    assert_equal P11OnlineRuntime::C4A_HANDOFF_FIXTURE_SHA, manifest.fetch('sourceFixtureSha256')
+    actual = File.binread(File.join(manifest.fetch('runtime'), 'server/defaultconfigs/gramarye-server.toml'))
+    assert_equal Digest::SHA256.hexdigest(actual), manifest.fetch('fixtureSha256')
+    %w[2 8].each do |quantum|
+      File.binwrite(@fixture, source.sub('mainQuantaPerTick = 4', "mainQuantaPerTick = #{quantum}"))
+      failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, 'c4a-dedicated') }
+    end
+  end
+
+  def test_c4a_pin_is_a_separate_exact_slot_not_an_environment_override
+    assert_equal %w[c4a-dedicated c4a-host-lan c4a-reward], P11OnlineRuntime::C4A_CASES
+    %w[single qctx capacity].each do |name|
+      assert_equal P11OnlineRuntime::JAR_SHA, P11OnlineRuntime.product_pin(name)
+      assert_equal 'gramarye-p11-online-harness.mixins.json', P11OnlineRuntime.mixin_config(name)
+    end
+    P11OnlineRuntime::C4A_CASES.each do |name|
+      assert_equal 'gramarye-p11-c4a-harness.mixins.json', P11OnlineRuntime.mixin_config(name)
+      pin = P11OnlineRuntime.product_pin(name)
+      assert_match(/\A[0-9a-f]{64}\z/, pin)
+      refute_equal P11OnlineRuntime::JAR_SHA, pin
+      failure('FROZEN_JAR_MISMATCH') { P11OnlineRuntime.verify_jar!(@jar, name) }
+      failure('FROZEN_JAR_MISMATCH') { P11OnlineRuntime.prepare(@options.merge(case: name)) }
+    end
+    assert_empty Dir.children(@options[:runtime_root])
+    assert_empty Dir.children(@options[:evidence_root])
+    %w[c4a c4a-dedicated.extra c4a-host-lan/../single c4a-other].each do |name|
+      failure('INVALID_CASE') { P11OnlineRuntime.product_pin(name) }
+    end
+    P11OnlineRuntime.stub(:product_pin, 'a' * 64) do
+      refute_equal P11OnlineRuntime.frozen_jar_path(@options[:runtime_root], 'single'),
+                   P11OnlineRuntime.frozen_jar_path(@options[:runtime_root], 'c4a-dedicated')
+    end
+  end
+
+  def test_reward_case_has_only_seven_pinned_public_fixture_files
+    manifest = prepare(case: 'c4a-reward')
+    assert_equal %w[server a b], manifest.fetch('roles')
+    assert_equal P11OnlineRuntime::REWARD_FIXTURE_HASHES, manifest.fetch('rewardFixtureHashes')
+    assert_equal P11OnlineRuntime::C4A_JAR_SHA, manifest.fetch('jarSha256')
+    receipt = JSON.parse(File.read(File.join(manifest.fetch('evidence'), 'reward-fixture.json')))
+    assert_equal 'EXACT_PUBLIC_NATIVE_REWARD_INPUTS_NOT_RUNTIME_PROOF', receipt.fetch('status')
+    assert_equal P11OnlineRuntime::REWARD_FIXTURE_HASHES, receipt.fetch('sourceHashes')
+    pack = File.join(manifest.fetch('runtime'), 'server/p11-online-world/datapacks/p11-online-engineering/data/gramarye_p11_engineering')
+    assert_equal (P11OnlineRuntime::REWARD_FIXTURE_HASHES.keys + ['advancement/delivery_root.json']).sort,
+                 Dir.glob(pack + '/**/*').select { |path| File.file?(path) }.map { |path| path.delete_prefix(pack + '/') }.sort
+    assert_equal JSON.pretty_generate(P11OnlineRuntime.delivery_root) + "\n", File.read(File.join(pack, 'advancement/delivery_root.json'))
+    P11OnlineRuntime.verify_reward_fixture!(manifest)
+    altered = Marshal.load(Marshal.dump(manifest)); altered['rewardFixtureHashes']['function/reward.mcfunction'] = '0' * 64
+    failure('REWARD_FIXTURE_MANIFEST_MISMATCH') { P11OnlineRuntime.verify_reward_fixture!(altered) }
+    File.write(File.join(pack, 'function/reward.mcfunction'), 'CHANGED_PUBLIC_FIXTURE_TEST_ONLY')
+    failure('REWARD_FIXTURE_CONTENT_CHANGED') { P11OnlineRuntime.verify_reward_fixture!(manifest) }
+    %w[c4a-reward.extra c4a-reward/../single c4a_reward].each do |name|
+      failure('INVALID_CASE') { P11OnlineRuntime.product_pin(name) }
+    end
+  end
+
+  def test_reward_fixture_rejects_source_change_and_other_cases_keep_original_data
+    source = File.join(@options[:repo], 'src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/function/reward.mcfunction')
+    File.write(source, 'CHANGED_PUBLIC_FIXTURE_TEST_ONLY')
+    failure('REWARD_FIXTURE_SOURCE_MISMATCH') { prepare(case: 'c4a-reward') }
+    assert_empty Dir.children(@options[:evidence_root])
+    %w[single qctx capacity c4a-dedicated c4a-host-lan c4a-qctx c4a-capacity].each_with_index do |name,index|
+      assert_empty P11OnlineRuntime.reward_fixture_sources!(@options[:repo], @private, name)
+      manifest = prepare(case: name, run_id: "unchanged-#{index}-fixture")
+      refute manifest.key?('rewardFixtureHashes')
+      refute File.exist?(File.join(manifest.fetch('evidence'), 'reward-fixture.json'))
+      pack = File.join(manifest.fetch('runtime'), 'server/p11-online-world/datapacks/p11-online-engineering/data/gramarye_p11_engineering')
+      assert_equal [File.join(pack, 'advancement/delivery_root.json')], Dir.glob(pack + '/**/*').select { |path| File.file?(path) }
+      assert_equal JSON.pretty_generate(P11OnlineRuntime.delivery_root) + "\n", File.read(File.join(pack, 'advancement/delivery_root.json'))
+    end
+    File.binwrite(@fixture, File.binread(File.join(__dir__, 'fixtures/p11-c4a-c6-startup.toml')))
+    failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, 'c4a-reward') }
+  end
+
+  def test_reward_status_admits_only_five_fixed_new_reports_without_content_reads
+    manifest = prepare(case: 'c4a-reward')
+    server = File.join(manifest.fetch('evidence'), 'server'); Dir.mkdir(server)
+    client = File.join(manifest.fetch('evidence'), 'client-a'); Dir.mkdir(client)
+    %w[reward-end-armed.json reward-end-complete.json reward-detached-logical.json
+       reward-continuity-server.json reward-continuity-server.json.extra latest.log].each do |name|
+      File.write(File.join(server, name), 'SYNTHETIC_CONTENT_NOT_READ')
+    end
+    %w[reward-delivery-client.json reward-delivery-client.json.extra account.json].each do |name|
+      File.write(File.join(client, name), 'SYNTHETIC_CONTENT_NOT_READ')
+    end
+    File.stub(:binread, ->(*) { flunk 'status must not read content' }) do
+      values = P11OnlineRuntime.status(manifest).fetch('present')
+      assert_equal %w[prepare.json launch-cues.txt reward-fixture.json server/reward-end-armed.json
+                      server/reward-end-complete.json server/reward-detached-logical.json
+                      server/reward-continuity-server.json client-a/reward-delivery-client.json], values
+      refute P11OnlineRuntime.status(manifest.merge('case' => 'c4a-dedicated')).fetch('present')
+                       .include?('client-a/reward-delivery-client.json')
+    end
+  end
+
+  def test_current_context_aliases_select_current_pin_but_not_c4a_scenarios
+    assert_equal %w[c4a-qctx c4a-capacity], P11OnlineRuntime::CURRENT_CONTEXT_CASES
+    assert_equal %w[c4a-dedicated c4a-host-lan c4a-reward], P11OnlineRuntime::C4A_CASES
+    %w[single qctx capacity].each do |name|
+      assert_equal P11OnlineRuntime::JAR_SHA, P11OnlineRuntime.product_pin(name)
+      refute P11OnlineRuntime.current_product_case?(name)
+    end
+    P11OnlineRuntime::CURRENT_CONTEXT_CASES.each do |name|
+      assert_equal P11OnlineRuntime::C4A_JAR_SHA, P11OnlineRuntime.product_pin(name)
+      refute_equal P11OnlineRuntime::JAR_SHA, P11OnlineRuntime.product_pin(name)
+      assert_equal %w[server a b], P11OnlineRuntime.roles_for(name)
+      assert_equal ['gramarye-p11-online-harness.mixins.json'], P11OnlineRuntime.mixin_configs(name)
+      assert_equal File.join(@options[:runtime_root], 'frozen-c4a', P11OnlineRuntime::C4A_JAR_SHA,
+                             'gramarye-1.0.0.jar'), P11OnlineRuntime.frozen_jar_path(@options[:runtime_root], name)
+      failure('FROZEN_JAR_MISMATCH') { P11OnlineRuntime.verify_jar!(@jar, name) }
+    end
+    %w[c4a-qctx.extra c4a-capacity-extra c4a-capacity/../qctx current-qctx c4a-single].each do |name|
+      failure('INVALID_CASE') { P11OnlineRuntime.product_pin(name) }
+      failure('INVALID_CASE') { P11OnlineRuntime.mixin_configs(name) }
+      failure('INVALID_CASE') { prepare(case: name) }
+    end
+  end
+
+  def test_current_context_aliases_preserve_the_alias_and_only_derive_original_t_limit
+    { 'c4a-qctx' => 2, 'c4a-capacity' => 1 }.each do |name, limit|
+      manifest = prepare(case: name, run_id: 'context-' + name)
+      assert_equal name, manifest.fetch('case')
+      assert_equal P11OnlineRuntime::C4A_JAR_SHA, manifest.fetch('jarSha256')
+      expected = FIXTURE.sub('p11.retention.maxUuids = 4', "p11.retention.maxUuids = #{limit}")
+                        .sub('p11.save.dirtyUuidAdmissionWatermark = 4', "p11.save.dirtyUuidAdmissionWatermark = #{limit}")
+      assert_equal expected, File.read(File.join(manifest['runtime'], 'server/defaultconfigs/gramarye-server.toml'))
+      assert_equal P11OnlineRuntime::FIXTURE_SHA, manifest.fetch('sourceFixtureSha256')
+      assert_equal Digest::SHA256.hexdigest(expected), manifest.fetch('fixtureSha256')
+      assert_equal manifest, P11OnlineRuntime.load_manifest(File.join(manifest['runtime'], 'manifest.json'),
+        runtime_root: @options[:runtime_root], private_root: @private)
+      write_ready(manifest, ready_record(manifest).merge('case' => name.delete_prefix('c4a-')))
+      failure('SERVER_READY_MISMATCH') { P11OnlineRuntime.server_ready_for_client!(manifest) }
+      write_ready(manifest)
+      assert P11OnlineRuntime.server_ready_for_client!(manifest)
+    end
+    %w[p11-c4a-c6-startup.toml p11-c4a-c6-rate-startup.toml p11-c4a-handoff-startup.toml].each do |leaf|
+      File.binwrite(@fixture, File.binread(File.join(__dir__, 'fixtures', leaf)))
+      P11OnlineRuntime::CURRENT_CONTEXT_CASES.each do |name|
+        failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, name) }
+      end
+    end
+  end
+
+  def test_current_context_alias_export_keeps_real_program_case_and_original_mixin_only
+    P11OnlineRuntime::CURRENT_CONTEXT_CASES.each do |name|
+      manifest = prepare(case: name, run_id: 'export-' + name)
+      base = generated_fixture(manifest)
+      file = File.join(base, 'p11OnlineClientARunProgramArgs.txt')
+      original = File.binread(file)
+      File.binwrite(file, original + "\n--mixin.config\ngramarye-p11-c4a-harness.mixins.json")
+      failure('GENERATED_PROGRAM_ARGUMENTS_MISMATCH') { export(manifest) }
+      refute File.exist?(File.join(manifest['runtime'], 'launch-bundle'))
+      File.binwrite(file, original)
+      frozen = export(manifest)
+      assert_equal name, frozen.fetch('case')
+      assert_equal P11OnlineRuntime::C4A_JAR_SHA, frozen.fetch('jarSha256')
+      vm = File.read(File.join(frozen['bundle'], 'originals/p11OnlineClientARunVmArgs.txt'))
+      assert_includes vm, '-Dgramarye.p11.online.case=' + name
+      assert_includes original, 'gramarye-p11-online-harness.mixins.json'
+      refute_includes original, 'gramarye-p11-c4a-harness.mixins.json'
+      refute_includes original, 'gramarye-p11-c6-observers.mixins.json'
+      assert P11OnlineRuntime.stub(:verify_jar!, true) { P11OnlineRuntime.verify_frozen!(frozen) }
+    end
+  end
+
+  def test_current_context_build_admission_is_exact_without_widening_scenario_selection
+    build = File.binread(File.join(P11OnlineRuntime::REPO, 'build.gradle'))
+    names = "['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward']"
+    valid = lambda do |source|
+      source.scan(/!p11OnlineJar\.isFile\(\) \|\| !\(p11OnlineCase in (\[[^\n]+\])\)/).flatten == [names]
+    end
+    assert valid.call(build)
+    [names.sub(", 'c4a-capacity'", ''), names.sub('c4a-qctx', 'c4a-qctx.extra'),
+     names.sub(']', ", 'foreign']")].each do |bad|
+      refute valid.call(build.sub(names, bad))
+    end
+    refute valid.call(build.sub("p11OnlineCase in #{names}", "p11OnlineCase.startsWith('c4a')"))
+    assert_equal 2, build.scan("p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']").size
+  end
+
+
+  def test_c6_extra_mixin_is_exactly_c4a_only_and_build_selector_is_closed
+    legacy = ['gramarye-p11-online-harness.mixins.json']
+    c4a = ['gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-c6-observers.mixins.json']
+    %w[single qctx capacity].each { |name| assert_equal legacy, P11OnlineRuntime.mixin_configs(name) }
+    %w[c4a-dedicated c4a-host-lan c4a-reward].each { |name| assert_equal c4a, P11OnlineRuntime.mixin_configs(name) }
+    %w[c4a c4a-dedicated.extra c4a-host-lan/../single c4a-foreign].each do |name|
+      failure('INVALID_CASE') { P11OnlineRuntime.mixin_configs(name) }
+    end
+    build = File.binread(File.expand_path('../build.gradle', __dir__))
+    exact = <<~GROOVY.strip
+      if (p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']) {
+          programArguments.addAll '--mixin.config', 'gramarye-p11-c6-observers.mixins.json'
+      }
+    GROOVY
+    valid = lambda do |source|
+      fragment = source[/if \(p11OnlineCase[^\n]*\) \{\s*programArguments\.addAll '--mixin\.config', 'gramarye-p11-c6-observers\.mixins\.json'\s*\}/m]
+      fragment && fragment.gsub(/\s+/, ' ').strip == exact.gsub(/\s+/, ' ').strip
+    end
+    assert valid.call(build)
+    ["p11OnlineCase.startsWith('c4a')",
+     "p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'single']",
+     "p11OnlineCase in ['c4a-dedicated']"].each do |bad|
+      refute valid.call(build.sub("p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']) {", bad + ') {'))
+    end
+    refute valid.call(build.sub('gramarye-p11-c6-observers.mixins.json', 'gramarye-p11-c6-observers.mixins.json.extra'))
+  end
+
+  def test_c6_export_requires_exact_order_and_no_foreign_or_duplicate_mixin_arguments
+    %w[c4a-dedicated single].each do |name|
+      manifest = prepare(case: name, run_id: 'mixin-' + name)
+      base = generated_fixture(manifest)
+      file = File.join(base, 'p11OnlineClientARunProgramArgs.txt')
+      original = File.read(file)
+      suffix = "\n--mixin.config\ngramarye-p11-c6-observers.mixins.json"
+      variants = if name == 'single'
+                   [original + suffix]
+                 else
+                   [original.delete_suffix(suffix),
+                    original + suffix,
+                    original.sub('gramarye-p11-c6-observers.mixins.json', 'foreign.mixins.json'),
+                    original.sub('gramarye-p11-c4a-harness.mixins.json', 'TEMP')
+                            .sub('gramarye-p11-c6-observers.mixins.json', 'gramarye-p11-c4a-harness.mixins.json')
+                            .sub('TEMP', 'gramarye-p11-c6-observers.mixins.json')]
+                 end
+      variants.each do |raw|
+        refute_equal original, raw
+        File.write(file, raw)
+        failure('GENERATED_PROGRAM_ARGUMENTS_MISMATCH') { export(manifest) }
+        refute File.exist?(File.join(manifest['runtime'], 'launch-bundle'))
+      end
+      File.write(file, original)
+      frozen = export(manifest)
+      assert P11OnlineRuntime.stub(:verify_jar!, true) { P11OnlineRuntime.verify_frozen!(frozen) }
+    end
+  end
+
+  def test_c6_resource_inventory_is_exact_four_and_rejects_near_names_or_missing_resource
+    assert_equal ['gramarye-p11-online-private-console.xml', 'gramarye-p11-online-harness.mixins.json',
+                  'gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-c6-observers.mixins.json'].sort,
+                 P11OnlineRuntime::COMPANION_RESOURCES
+    manifest = prepare(case: 'c4a-dedicated')
+    generated_fixture(manifest)
+    resources = File.join(manifest['repo'], 'build/resources/p11OnlineHarness')
+    selected = File.join(resources, 'gramarye-p11-c6-observers.mixins.json')
+    bytes = File.binread(selected)
+    File.unlink(selected)
+    failure('UNEXPECTED_COMPANION_RESOURCE') { export(manifest) }
+    ['gramarye-p11-c6-observers.mixins.json.extra', 'foreign.mixins.json',
+     'nested/gramarye-p11-c6-observers.mixins.json'].each do |bad|
+      replacement = File.join(resources, bad)
+      FileUtils.mkdir_p(File.dirname(replacement))
+      File.write(replacement, bytes)
+      failure('UNEXPECTED_COMPANION_RESOURCE') { export(manifest) }
+      File.unlink(replacement)
+    end
+    File.write(selected, bytes)
+    extra = File.join(resources, 'foreign.xml')
+    File.write(extra, '<SYNTHETIC/>')
+    failure('UNEXPECTED_COMPANION_RESOURCE') { export(manifest) }
+    File.unlink(extra)
+    frozen = export(manifest)
+    assert_equal 4, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
+  end
+
+  def test_integrated_preparation_retains_original_host_world_creation_and_partner_barrier
+    P11OnlineRuntime.stub(:product_pin, 'a' * 64) do
+      manifest = prepare(case: 'c4a-host-lan')
+      assert_equal %w[host b], manifest['roles']
+      assert_equal 'host', P11OnlineRuntime.launch_role(manifest, 'p11OnlineClientA')
+      assert_equal 'b', P11OnlineRuntime.launch_role(manifest, 'p11OnlineClientB')
+      assert File.file?(File.join(manifest['runtime'], 'host/defaultconfigs/gramarye-server.toml'))
+      refute File.exist?(File.join(manifest['runtime'], 'host/saves'))
+      refute File.exist?(File.join(manifest['evidence'], 'server'))
+      assert_equal File.join(@options[:runtime_root], 'frozen-c4a', 'a' * 64, 'gramarye-1.0.0.jar'), manifest['jar']
+      failure('INTEGRATED_HOST_REQUIRES_CLIENT_A') { P11OnlineRuntime.launch_server(manifest) }
+      failure('INTEGRATED_HOST_STOPS_WITH_CLIENT') { P11OnlineRuntime.stop(manifest) }
+      failure('SERVER_NOT_READY') { P11OnlineRuntime.server_ready_for_client!(manifest) }
+      # The historical dedicated receipt cannot authorize the integrated partner.
+      write_ready(manifest)
+      failure('SERVER_READY_MISMATCH') { P11OnlineRuntime.server_ready_for_client!(manifest) }
+      write_ready(manifest, ready_record(manifest).merge(
+        'status' => 'ONLINE_INTEGRATED_PUBLISHED_NO_PARTNER_AUTH_CLAIM', 'integrated' => true))
+      assert P11OnlineRuntime.server_ready_for_client!(manifest)
+    end
+  end
+
+  def test_c4a_launcher_export_checks_its_own_pin_and_rejects_historical_case_for_same_bytes
+    synthetic_pin = Digest::SHA256.file(@jar).hexdigest
+    pins = lambda do |case_name|
+      P11OnlineRuntime::C4A_CASES.include?(case_name) ? synthetic_pin : P11OnlineRuntime::JAR_SHA
+    end
+    P11OnlineRuntime.stub(:product_pin, pins) do
+      manifest = prepare(case: 'c4a-dedicated')
+      generated_fixture(manifest)
+      failure('FROZEN_JAR_MISMATCH') { P11OnlineRuntime.freeze_launchers(manifest.merge('case' => 'qctx')) }
+      refute File.exist?(File.join(manifest['runtime'], 'launch-bundle'))
+      report = P11OnlineRuntime.stub(:candidate_head, 'e' * 40) { P11OnlineRuntime.freeze_launchers(manifest) }
+      assert_equal synthetic_pin, report['productSha256']
+      assert_equal 'FROZEN_NOT_LAUNCHED_NOT_ACCEPTANCE', report['status']
+      frozen = P11OnlineRuntime.load_manifest(File.join(manifest['runtime'], 'frozen-manifest.json'),
+        runtime_root: @options[:runtime_root], private_root: @private)
+      assert P11OnlineRuntime.verify_frozen!(frozen)
+      original = File.read(File.join(frozen['bundle'], 'originals/p11OnlineClientARunProgramArgs.txt'))
+      assert_includes original, 'gramarye-p11-c4a-harness.mixins.json'
+      refute_includes original, 'gramarye-p11-online-harness.mixins.json'
+    end
+  end
+
+  def test_two_corrected_c4a_pins_coexist_without_replacing_prior_immutable_artifact
+    original = File.binread(@jar)
+    first_pin = Digest::SHA256.hexdigest(original)
+    current_pin = first_pin
+    P11OnlineRuntime.stub(:product_pin, ->(_case_name) { current_pin }) do
+      first = P11OnlineRuntime.freeze_jar!(@jar, @options[:runtime_root], @private, 'c4a-dedicated')
+      first_time = File.stat(first).mtime
+      File.write(@jar, 'SECOND_SYNTHETIC_PRODUCT_REVISION')
+      current_pin = Digest::SHA256.file(@jar).hexdigest
+      second_pin = current_pin
+      second = P11OnlineRuntime.freeze_jar!(@jar, @options[:runtime_root], @private, 'c4a-host-lan')
+      refute_equal first, second
+      assert_equal [first_pin, second_pin].sort, Dir.children(File.join(@options[:runtime_root], 'frozen-c4a')).sort
+      assert_equal first_pin, Digest::SHA256.file(first).hexdigest
+      assert_equal second_pin, Digest::SHA256.file(second).hexdigest
+      assert_equal 0o400, File.stat(first).mode & 0o777
+      assert_equal 0o400, File.stat(second).mode & 0o777
+      current_pin = first_pin
+      failure('FROZEN_JAR_MISMATCH') do
+        P11OnlineRuntime.freeze_jar!(@jar, @options[:runtime_root], @private, 'c4a-dedicated')
+      end
+      File.write(@jar, original)
+      assert_equal first, P11OnlineRuntime.freeze_jar!(@jar, @options[:runtime_root], @private, 'c4a-dedicated')
+      assert_equal first_time, File.stat(first).mtime
+      assert_equal second_pin, Digest::SHA256.file(second).hexdigest
+    end
+    assert_equal File.join(@options[:runtime_root], 'frozen/gramarye-1.0.0.jar'),
+                 P11OnlineRuntime.frozen_jar_path(@options[:runtime_root], 'single')
   end
 
   def online_configuration_paths
@@ -336,6 +743,25 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
     end
   end
 
+  def test_capacity_respawn_status_lists_only_three_exact_structured_receipts
+    manifest = prepare(case: 'c4a-capacity')
+    client = File.join(manifest['evidence'], 'client-b')
+    server = File.join(manifest['evidence'], 'server')
+    Dir.mkdir(client)
+    Dir.mkdir(server)
+    %w[capacity-respawn.json capacity-respawn.json.extra capacity-death.ready latest.log].each do |leaf|
+      File.write(File.join(client, leaf), 'SYNTHETIC_CONTENT_NOT_READ')
+    end
+    %w[b-capacity-death.json b-capacity-respawn.json b-capacity-respawn.json.extra b-capacity-death.ready].each do |leaf|
+      File.write(File.join(server, leaf), 'SYNTHETIC_CONTENT_NOT_READ')
+    end
+    File.stub(:binread, ->(*) { flunk 'status must not read receipt content or native logs' }) do
+      values = P11OnlineRuntime.status(manifest).fetch('present')
+      assert_equal %w[prepare.json launch-cues.txt server/b-capacity-death.json
+                      server/b-capacity-respawn.json client-b/capacity-respawn.json], values
+    end
+  end
+
   def test_manifest_exact_location_and_roundtrip_without_arbitrary_json_read
     manifest = prepare
     file = File.join(manifest['runtime'], 'manifest.json')
@@ -387,6 +813,8 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
     [resources, File.join(source, 'resources')].each do |dir|
       File.write(File.join(dir, P11OnlineRuntime::CONSOLE_XML), console)
       File.write(File.join(dir, 'gramarye-p11-online-harness.mixins.json'), '{"required":true}')
+      File.write(File.join(dir, 'gramarye-p11-c4a-harness.mixins.json'), '{"required":true}')
+      File.write(File.join(dir, 'gramarye-p11-c6-observers.mixins.json'), '{"required":true}')
     end
     dependency = File.join(@root, '.gradle/caches/modules-2/files-2.1/fixture/dependency/1', '0' * 40, 'dependency.jar')
     FileUtils.mkdir_p(File.dirname(dependency))
@@ -427,7 +855,7 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
                 end
       program += %w[--gameDir . --fml.fmlVersion 4.0.43 --fml.mcVersion 1.21.1 --fml.neoForgeVersion 21.1.241 --fml.neoFormVersion 20240808.144430]
       program << '--nogui' if role == 'server'
-      program += %w[--mixin.config gramarye-p11-online-harness.mixins.json]
+      program += P11OnlineRuntime.mixin_configs(manifest.fetch('case')).flat_map { |config| ['--mixin.config', config] }
       File.write(File.join(base, stem + 'RunProgramArgs.txt'), program.join("\n"))
       File.write(File.join(base, stem + 'Log4j2.xml'), '<Configuration><Root level="DEBUG"/></Configuration>')
     end
@@ -471,6 +899,24 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
     File.write(File.join(base, 'p11OnlineClientARunVmArgs.txt'), 'LATER_DIFFERENT_COHORT')
     P11OnlineRuntime.stub(:verify_jar!, true) { assert P11OnlineRuntime.verify_frozen!(frozen) }
     failure('BUNDLE_ALREADY_EXISTS') { export(manifest) }
+  end
+
+  def test_expanded_exact_companion_inventory_and_bounded_launch_guard
+    manifest = prepare(case: 'c4a-dedicated')
+    generated_fixture(manifest)
+    130.times do |index|
+      name = "com/yo1no/gramarye/InventoryFixture#{index}"
+      File.write(File.join(manifest['repo'], 'src/p11OnlineHarness/java', name + '.java'), 'SYNTHETIC_SOURCE_ONLY')
+      File.write(File.join(manifest['repo'], 'build/classes/java/p11OnlineHarness', name + '.class'), 'SYNTHETIC_CLASS_ONLY')
+    end
+    frozen = export(manifest)
+    assert_operator frozen.fetch('bundleFiles').size, :>, 256
+    P11OnlineRuntime.stub(:verify_jar!, true) { assert P11OnlineRuntime.verify_frozen!(frozen) }
+    oversized = frozen.merge('bundleFiles' => (0..P11OnlineRuntime::MAX_FROZEN_BUNDLE_FILES).to_h { |i| ["file#{i}", '0' * 64] })
+    failure('INVALID_BUNDLE_INVENTORY') { P11OnlineRuntime.verify_frozen!(oversized) }
+    [nil, {}, (0...24).to_h { |i| ["file#{i}", '0' * 64] }].each do |invalid|
+      failure('INVALID_BUNDLE_INVENTORY') { P11OnlineRuntime.verify_frozen!(frozen.merge('bundleFiles' => invalid)) }
+    end
   end
 
   def test_export_rejects_wrong_cohort_unsafe_flags_and_prefix_near_classpath
@@ -581,14 +1027,21 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
           STDERR.stub(:tty?, true) do
             Process.stub(:spawn, checked_spawn) do
               report = P11OnlineRuntime.launch_client(frozen, 'a')
-              assert_equal({ 'status' => 'OWNED_CLIENT_PROCESS_EXIT_NOT_ACCEPTANCE', 'exitCode' => 0, 'signal' => nil }, report)
+              assert_equal 'OWNED_CLIENT_PROCESS_EXIT_NOT_ACCEPTANCE', report.fetch('status')
+              assert_equal 0, report.fetch('exitCode')
+              assert_nil report.fetch('signal')
+              assert_match(/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\z/, report.fetch('startedAtUtc'))
+              assert_match(/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\z/, report.fetch('endedAtUtc'))
+              assert_operator Time.iso8601(report.fetch('endedAtUtc')), :>=, Time.iso8601(report.fetch('startedAtUtc'))
+              assert_kind_of Numeric, report.fetch('elapsedSeconds')
+              assert_operator report.fetch('elapsedSeconds'), :>=, 0
             end
           end
         end
       end
     end
     receipt = JSON.parse(File.read(File.join(manifest['evidence'], 'client-a-process-exit.json')))
-    assert_equal %w[exitCode signal status], receipt.keys.sort
+    assert_equal %w[elapsedSeconds endedAtUtc exitCode signal startedAtUtc status], receipt.keys.sort
   end
 
   def ready_record(manifest)

@@ -33,6 +33,8 @@ final class P11TransitionControl {
     private boolean freshProven;
     private boolean settled;
     private boolean serverPending;
+    private boolean configurationTaskPassed;
+    private long serverRequestSequence;
     private boolean notification;
     private boolean preferNotification;
     private long exactRateRejected;
@@ -135,6 +137,8 @@ final class P11TransitionControl {
         freshProven = fresh;
         settled = false;
         serverPending = !fresh;
+        configurationTaskPassed = false;
+        serverRequestSequence = 0;
         exactRateRejected = 0;
         if (nextKind == Kind.JOIN || nextKind == Kind.RETURN_TO_WORLD) {
             // A genuinely new admission episode, never a query/retry/phase handoff.
@@ -147,7 +151,9 @@ final class P11TransitionControl {
     synchronized Offer offer(Listener expected, Request request, long nowMillis) {
         Objects.requireNonNull(request, "request");
         if (disposition != Disposition.OPEN) { return Offer.CLOSED; }
-        if (!validListener(expected) || !matches(request)) { return Offer.STALE; }
+        if (!validListener(expected)) { return Offer.STALE; }
+        if (matchesSuccessor(request)) { return offerSuccessor(request); }
+        if (!matches(request)) { return Offer.STALE; }
         if (request.requestSeq() == 0) {
             // An initial server task is retained from inception, not inferred from empty inbox.
             notification = true;
@@ -192,6 +198,16 @@ final class P11TransitionControl {
         return replaced ? Offer.COALESCED : Offer.RETAINED;
     }
 
+    /** The inactive successor may be visible, but the old RUNNING/held request still owns admission. */
+    private Offer offerSuccessor(Request request) {
+        if (!successor.actor.currentBinding() || request.requestSeq() <= fence
+                || request.requestSeq() <= lastClientSequence) { return Offer.STALE; }
+        // Coalesce only a notification, not an executable or a negative receipt. After
+        // activation STATUS may prove this n was never retained; it cannot execute n.
+        notification = true;
+        return request.command() == Command.STATUS ? Offer.COALESCED : Offer.BUSY;
+    }
+
     /** Poll values are actor-free; the caller must arrange its own bounded scheduler. */
     synchronized Optional<Drain> reserveDrain(Listener expected) {
         if (disposition != Disposition.OPEN || !validListener(expected)
@@ -210,10 +226,41 @@ final class P11TransitionControl {
             return Optional.empty();
         }
         var request = new Request(scope, connection.epoch(), sceneSerial,
-                originalActor, 0, Command.STATUS, kind);
+                originalActor, serverRequestSequence, Command.STATUS, kind);
         drain = new Drain(expected, request, true);
         return Optional.of(drain);
     }
+
+    /** Early CONFIG admission only advances the existing task, never starts an actor body. */
+    synchronized boolean passConfigurationTask(Drain reserved, Gate gate, long nowMillis) {
+        if (!validDrain(reserved) || reserved.began || configurationTaskPassed
+                || scope != Scope.CONFIG || (kind != Kind.JOIN && kind != Kind.RETURN_TO_WORLD)
+                || attempt != null || handoff != null || !bound.currentBinding()
+                || (!reserved.serverIssued && reserved.request.command() != Command.TRY)) {
+            return false;
+        }
+        if (gate != Gate.ALLOW) {
+            begin(reserved, gate, nowMillis);
+            return false;
+        }
+        long sequence = reserved.request.requestSeq();
+        if (!reserved.serverIssued && (sequence <= fence || sequence <= lastClientSequence
+                || (!freshProven && !retryableTerminal()))) { return false; }
+        if (!publish(sequence, Outcome.PENDING, Availability.DISABLED, Reason.NONE, 0)) {
+            return false;
+        }
+        serverRequestSequence = sequence;
+        fence = Math.max(fence, sequence);
+        lastClientSequence = Math.max(lastClientSequence, sequence);
+        configurationTaskPassed = true;
+        serverPending = true;
+        freshProven = false;
+        settled = false;
+        reserved.began = true;
+        return true;
+    }
+
+    synchronized boolean configurationTaskPassed() { return configurationTaskPassed; }
 
     synchronized Optional<State> processStatus(Drain reserved) {
         if (!validDrain(reserved) || reserved.serverIssued
@@ -311,6 +358,30 @@ final class P11TransitionControl {
         return true;
     }
 
+    /** Admission failed before any native frame/caller terminal; retain its non-retryable record. */
+    synchronized boolean abortAdmission(Drain reserved) {
+        if (disposition == Disposition.RETIRED || reserved == null || drain != reserved
+                || reserved.listener != listener || !matches(reserved.request) || handoff != null
+                || attempt != null && (attempt.frameActor != null || attempt.callerTerminal
+                    || !sameRequest(attempt.request, reserved.request))) {
+            return false;
+        }
+        boolean accepted = attempt != null;
+        if (attempt != null) { attempt.finished = true; attempt = null; }
+        drain = null;
+        successor = null;
+        serverPending = false;
+        freshProven = false;
+        settled = false;
+        disposition = Disposition.UNKNOWN;
+        long n = reserved.request.requestSeq();
+        fence = Math.max(fence, n);
+        lastClientSequence = Math.max(lastClientSequence, n);
+        publish(n, accepted ? Outcome.FAULT : Outcome.UNKNOWN, Availability.DISABLED,
+                accepted ? Reason.SOURCE_UNAVAILABLE : Reason.STATUS_UNAVAILABLE, 0);
+        return true;
+    }
+
     synchronized boolean nativeFrame(Attempt expected, P11IdentityOwner.CapturedIdentity next) {
         if (!validAttempt(expected) || kind == Kind.ENTER_CONFIG || !sameConnection(next)
                 || !next.currentBinding()
@@ -342,8 +413,11 @@ final class P11TransitionControl {
         expected.callerTerminal = true;
         expected.targetGeneration = targetGeneration;
         settleIfComplete(expected);
-        publish(expected.request.requestSeq(), Outcome.COMPLETED,
-                Availability.DISABLED, Reason.NONE, targetGeneration);
+        // ENTER_CONFIG has no B frame: native caller return alone is not a CONFIG terminal.
+        if (kind != Kind.ENTER_CONFIG || expected.finished) {
+            publish(expected.request.requestSeq(), Outcome.COMPLETED,
+                    Availability.DISABLED, Reason.NONE, targetGeneration);
+        }
         return true;
     }
 
@@ -459,14 +533,62 @@ final class P11TransitionControl {
         return Optional.of(listener);
     }
 
+    /** Same connection, exact newly installed actorless listener; no new control owner. */
+    synchronized boolean bindActorlessHandoff(Handoff reserved,
+            P11IdentityOwner.CapturedIdentity next) {
+        if (reserved == null || handoff != reserved || !sameConnection(next)
+                || !next.currentBinding() || next.actorGeneration() != 0
+                || reserved.target == Scope.PLAY) { return false; }
+        bound = next;
+        return true;
+    }
+
+    synchronized P11IdentityOwner.CapturedIdentity binding() { return bound; }
+
+    synchronized boolean executableHeld() { return held(); }
+
+    /** CONFIG protocol completion can park after PREPLAY was already reserved. */
+    synchronized boolean rebindParked(P11IdentityOwner.CapturedIdentity next) {
+        if (disposition != Disposition.OPEN || scope != Scope.PREPLAY || held()
+                || !sameConnection(next) || !next.currentBinding() || next.actorGeneration() != 0) {
+            return false;
+        }
+        bound = next;
+        return true;
+    }
+
+    synchronized boolean releaseCompletedDrain() {
+        if (drain == null) { return true; }
+        return drain.began && finishDrain(drain);
+    }
+
+    synchronized boolean hasService() { return hasService(true); }
+
+    synchronized boolean hasService(boolean notificationsAllowed) {
+        return disposition != Disposition.RETIRED && drain == null && handoff == null
+                && (notificationsAllowed && notification || disposition == Disposition.OPEN && inbox != null);
+    }
+
     synchronized boolean retainSuccessor(P11IdentityOwner.CapturedIdentity actor, Kind nextKind) {
         if (disposition != Disposition.OPEN || successor != null || attempt == null
                 || attempt.frameActor != actor || !sameConnection(actor) || !actor.currentBinding()
                 || (nextKind != Kind.DEATH && nextKind != Kind.END)) {
             return false;
         }
-        successor = new Successor(actor, nextKind);
+        if (sceneSerial == Long.MAX_VALUE || statusVersion == Long.MAX_VALUE
+                || lastClientSequence == Long.MAX_VALUE) {
+            exhaust();
+            return false;
+        }
+        var binding = new State(Scope.PLAY, connection.epoch(), sceneSerial + 1, actor.actorGeneration(),
+                0, ++statusVersion, nextKind, Outcome.BINDING, Availability.DISABLED, Reason.NONE, 0);
+        successor = new Successor(actor, binding);
         return true;
+    }
+
+    /** Ordered before B's original death/credits packet; does not replace the old receipt. */
+    synchronized Optional<State> successorBinding() {
+        return successor == null ? Optional.empty() : Optional.of(successor.binding);
     }
 
     synchronized boolean bindActorlessAfterConfiguration(
@@ -493,7 +615,28 @@ final class P11TransitionControl {
         }
         successor = null;
         bound = next.actor;
-        return open(Scope.PLAY, next.kind, next.actor.actorGeneration(), true);
+        // This scene was already published before B's native screen. Never allocate it again.
+        sceneSerial = next.binding.sceneSerial();
+        scope = Scope.PLAY;
+        kind = next.binding.kind();
+        originalActor = next.actor.actorGeneration();
+        freshProven = true;
+        settled = false;
+        serverPending = false;
+        configurationTaskPassed = false;
+        serverRequestSequence = 0;
+        exactRateRejected = 0;
+        return publish(0, Outcome.BINDING, Availability.DISABLED, Reason.NONE, 0);
+    }
+
+    synchronized boolean refreshRetryAvailability(Listener expected, boolean clear, long nowMillis) {
+        if (!validListener(expected) || disposition != Disposition.OPEN || held()
+                || !bound.currentBinding() || !retryableTerminal() || !clear
+                || state.availability() != Availability.WAIT_NOTIFY
+                || tryRate.availability(nowMillis) != P11ControlBudgets.RateResult.ACCEPTED) {
+            return false;
+        }
+        return publish(state.requestSeq(), Outcome.NOT_STARTED, Availability.MAY_TRY, Reason.NONE, 0);
     }
 
     synchronized boolean blockersEnded(Listener expected, boolean recheckedClear) {
@@ -522,12 +665,14 @@ final class P11TransitionControl {
         return result;
     }
 
-    synchronized Service nextService() {
+    synchronized Service nextService() { return nextService(true); }
+
+    synchronized Service nextService(boolean notificationsAllowed) {
         if (disposition == Disposition.RETIRED || drain != null || handoff != null) {
             return Service.NONE;
         }
         boolean hasInbox = disposition == Disposition.OPEN && inbox != null;
-        if (notification && (!hasInbox || preferNotification)) {
+        if (notificationsAllowed && notification && (!hasInbox || preferNotification)) {
             preferNotification = false;
             return Service.NOTIFICATION;
         }
@@ -590,6 +735,14 @@ final class P11TransitionControl {
                 && request.connectionEpoch() == connection.epoch()
                 && request.sceneSerial() == sceneSerial
                 && request.actorGeneration() == originalActor && request.kind() == kind;
+    }
+
+    private boolean matchesSuccessor(Request request) {
+        if (successor == null) { return false; }
+        var binding = successor.binding;
+        return request.scope() == binding.scope() && request.connectionEpoch() == binding.connectionEpoch()
+                && request.sceneSerial() == binding.sceneSerial()
+                && request.actorGeneration() == binding.actorGeneration() && request.kind() == binding.kind();
     }
 
     private boolean validListener(Listener expected) {
@@ -672,5 +825,5 @@ final class P11TransitionControl {
         }
     }
 
-    private record Successor(P11IdentityOwner.CapturedIdentity actor, Kind kind) { }
+    private record Successor(P11IdentityOwner.CapturedIdentity actor, State binding) { }
 }

@@ -54,17 +54,20 @@ final class P11IdentityOwnerTest {
 
     @Test
     void newConnectionDoesNotInheritOldConnectionIdentity() {
-        var owner = P11IdentityOwner.isolatedModel(1);
+        var owner = P11IdentityOwner.isolatedModel(1, 2);
         var actor = owner.modelActor(UUID_A, 1);
         var oldConnection = owner.modelConnection();
         var first = owner.bindModel(actor, oldConnection).orElseThrow();
         var second = owner.bindModel(actor, owner.modelConnection()).orElseThrow();
-        assertFalse(owner.current(first));
-        assertFalse(first.connection().currentConnection());
+        assertTrue(owner.current(first), "another exact connection is not a UUID-latest replacement");
+        assertTrue(first.connection().currentConnection());
         assertNotSame(first.connection(), second.connection());
         assertTrue(second.connectionEpoch() > first.connectionEpoch());
         assertSame(first.account(), second.account());
         assertEquals(1, second.actorGeneration());
+        assertEquals(2, owner.retainedBindings());
+        assertTrue(owner.retireConnection(first));
+        assertTrue(owner.current(second));
         assertTrue(owner.bindModel(actor, oldConnection).isEmpty());
     }
 
@@ -130,7 +133,9 @@ final class P11IdentityOwnerTest {
     void retirementDoesNotReleaseAccountDataResponsibilityOrPermitConnectionReplay() {
         var owner = P11IdentityOwner.isolatedModel(1);
         var connection = owner.modelConnection();
-        var captured = owner.bindModel(owner.modelActor(UUID_A, 1), connection).orElseThrow();
+        var actor = owner.modelActor(UUID_A, 1);
+        var data = owner.captureModelSource(actor).orElseThrow();
+        var captured = owner.bindModel(actor, connection).orElseThrow();
         assertTrue(owner.retireConnection(captured));
         assertFalse(owner.retireConnection(captured));
         assertFalse(captured.currentBinding());
@@ -138,9 +143,13 @@ final class P11IdentityOwnerTest {
         assertEquals(0, owner.retainedBindings());
         assertEquals(1, owner.retainedAccounts());
         assertTrue(owner.owns(captured.account()));
+        assertTrue(owner.ownsData(data));
         assertTrue(owner.modelActorless(UUID_A, connection).isEmpty());
         assertTrue(owner.bindModel(owner.modelActor(UUID_A, 2), connection).isEmpty());
-        assertTrue(owner.bindModel(owner.modelActor(UUID_B, 3), owner.modelConnection()).isEmpty());
+        var ordinary = owner.modelActor(UUID_B, 3);
+        assertTrue(owner.bindModel(ordinary, owner.modelConnection()).isPresent(), "T-full is not control admission");
+        assertTrue(owner.captureModelSource(ordinary).isEmpty());
+        assertEquals(1, owner.retainedDataAccounts());
     }
 
     @Test
@@ -167,7 +176,9 @@ final class P11IdentityOwnerTest {
         var connection = owner.modelConnection();
         var first = owner.modelActorless(UUID_A, connection).orElseThrow();
         var oldDischarge = ledger.dischargeUnusedAccount(first.account()).orElseThrow();
-        var replacement = owner.bindModel(owner.modelActor(UUID_A, 1), connection).orElseThrow();
+        var actor = owner.modelActor(UUID_A, 1);
+        var replacement = owner.bindModel(actor, connection).orElseThrow();
+        owner.captureModelSource(actor).orElseThrow();
         assertTrue(owner.retireConnection(replacement));
         assertFalse(owner.releaseUnboundAccount(oldDischarge));
         assertEquals(1, owner.retainedAccounts());
@@ -226,6 +237,54 @@ final class P11IdentityOwnerTest {
     void capacitiesRejectInvalidInputsRatherThanCreatingUnboundedOwners() {
         assertThrows(IllegalArgumentException.class, () -> P11IdentityOwner.isolatedModel(0));
         assertThrows(IllegalArgumentException.class, () -> P11IdentityOwner.isolatedModel(-1));
+        assertThrows(IllegalArgumentException.class, () -> P11IdentityOwner.isolatedModel(1, 0));
+        assertThrows(IllegalArgumentException.class, () -> P11IdentityOwner.isolatedModel(1, -1));
+    }
+
+    @Test
+    void fullDataCapacityStillAllowsIndependentExactConnectionControl() {
+        var owner = P11IdentityOwner.isolatedModel(1, 2);
+        var managed = owner.modelActor(UUID_A, 1);
+        var data = owner.captureModelSource(managed).orElseThrow();
+        var first = owner.bindModel(managed, owner.modelConnection()).orElseThrow();
+        var ordinary = owner.modelActor(UUID_B, 2);
+        var secondConnection = owner.modelConnection();
+        var waiting = owner.modelActorless(UUID_B, secondConnection).orElseThrow();
+        var playing = owner.bindModel(ordinary, secondConnection).orElseThrow();
+        assertSame(waiting.connection(), playing.connection());
+        assertTrue(owner.current(first));
+        assertTrue(owner.current(playing));
+        assertTrue(owner.ownsData(data));
+        assertTrue(owner.captureModelSource(ordinary).isEmpty());
+        assertEquals(1, owner.retainedDataAccounts());
+        assertEquals(2, owner.retainedBindings());
+        assertTrue(owner.modelActorless(UUID_A, owner.modelConnection()).isEmpty(), "C remains bounded independently");
+        assertTrue(owner.retireConnection(playing));
+        assertEquals(1, owner.retainedAccounts(), "a source-free retired control account has no invented data duty");
+        assertEquals(1, owner.retainedDataAccounts());
+        assertTrue(owner.modelActorless(UUID_B, owner.modelConnection()).isPresent());
+    }
+
+    @Test
+    void waitingKDoesNotConsumeTAndItsReleaseDoesNotDischargeData() {
+        var identities = P11IdentityOwner.isolatedModel(1, 3);
+        var limits = new P11StartupLimits(1, 1, 30_000L, 2, 2, 4, 4, 2,
+                1, 10L, 1, 10_000L);
+        var resources = new P11ControlBudgets.Resources(limits);
+        var data = identities.captureModelSource(identities.modelActor(UUID_A, 1)).orElseThrow();
+        var control = identities.modelActorless(UUID_B, identities.modelConnection()).orElseThrow();
+        var other = identities.modelActorless(UUID_A, identities.modelConnection()).orElseThrow();
+        var waiting = resources.tryAcquireWaiting(resources.newConnectionOwner(control.connectionEpoch())).orElseThrow();
+        assertTrue(resources.tryAcquireWaiting(resources.newConnectionOwner(other.connectionEpoch())).isEmpty());
+        assertEquals(1, resources.counts().waitingConnections());
+        assertEquals(0, resources.counts().retainedUuids(), "K itself creates no resource T membership");
+        assertTrue(identities.current(control));
+        assertTrue(identities.ownsData(data));
+        assertTrue(resources.releaseWaiting(waiting));
+        assertEquals(1, identities.retainedDataAccounts());
+        assertTrue(identities.retireConnection(control));
+        assertTrue(identities.ownsData(data));
+        assertTrue(resources.tryAcquireWaiting(resources.newConnectionOwner(other.connectionEpoch())).isPresent());
     }
 
     @Test

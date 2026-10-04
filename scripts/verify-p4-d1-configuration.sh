@@ -245,6 +245,9 @@ is_reviewed_p7_s2_or_p8_s4_platform_owner() {
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/P8S3PresentationGameTests.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/PresentationEventPayload.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/ProfileCatalogPayload.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/P11TransitionPayloads.java | \
+        PayloadRegistrar:src/main/java/com/yo1no/gramarye/Gramarye.java | \
+        PayloadRegistrar:src/main/java/com/yo1no/gramarye/P11TransitionPayloadRegistrar.java | \
         PayloadRegistrar:src/main/java/com/yo1no/gramarye/P8PayloadRegistrationBridge.java | \
         PayloadRegistrar:src/main/java/com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java)
             return 0

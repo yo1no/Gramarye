@@ -10,6 +10,8 @@ import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
+import net.minecraft.server.network.ServerCommonPacketListenerImpl;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 
 /**
  * A slot-local, bounded identity custodian, not an actor locator or execution grant.
@@ -20,27 +22,35 @@ final class P11IdentityOwner {
     private final SlotKey slot;
     private MinecraftServer server;
     private final int maxUuids;
+    private final long maxControlConnections;
     private final Map<UUID, Account> accounts = new HashMap<>();
+    private final Map<ConnectionKey, Binding> bindings = new HashMap<>();
+    private int dataAccounts;
     private long lastConnectionEpoch;
     private boolean stopped;
     private ReceiptDomain receiptDomain;
 
-    P11IdentityOwner(MinecraftServer server, int maxUuids) {
-        this(Objects.requireNonNull(server, "server"), maxUuids, false);
+    P11IdentityOwner(MinecraftServer server, int maxUuids, long maxControlConnections) {
+        this(Objects.requireNonNull(server, "server"), maxUuids, maxControlConnections, false);
     }
 
-    private P11IdentityOwner(MinecraftServer server, int maxUuids, boolean isolated) {
-        if (maxUuids < 1 || (server == null) != isolated) {
+    private P11IdentityOwner(MinecraftServer server, int maxUuids, long maxControlConnections, boolean isolated) {
+        if (maxUuids < 1 || maxControlConnections < 1 || (server == null) != isolated) {
             throw new IllegalArgumentException("invalid identity domain");
         }
         this.server = server;
         this.maxUuids = maxUuids;
+        this.maxControlConnections = maxControlConnections;
         this.slot = new SlotKey(isolated);
     }
 
     /** Pure fixtures use a separate domain which can never pass liveCurrent. */
     static P11IdentityOwner isolatedModel(int maxUuids) {
-        return new P11IdentityOwner(null, maxUuids, true);
+        return isolatedModel(maxUuids, maxUuids);
+    }
+
+    static P11IdentityOwner isolatedModel(int maxUuids, int maxControlConnections) {
+        return new P11IdentityOwner(null, maxUuids, maxControlConnections, true);
     }
 
     SlotKey slot() {
@@ -67,12 +77,16 @@ final class P11IdentityOwner {
 
     private Optional<DataIdentity> captureSource(UUID uuid, SourceReference reference) {
         var account = accounts.get(uuid);
-        if (account == null) {
-            if (accounts.size() >= maxUuids) {
+        if (account == null || !account.dataReserved) {
+            if (dataAccounts >= maxUuids) {
                 return Optional.empty();
             }
-            account = new Account(new AccountKey(slot, uuid));
-            accounts.put(uuid, account);
+            if (account == null) {
+                account = new Account(new AccountKey(slot, uuid));
+                accounts.put(uuid, account);
+            }
+            account.dataReserved = true;
+            dataAccounts++;
         }
         if (account.source != null && account.source.reference.sameActor(reference)) {
             return Optional.of(account.source.identity);
@@ -177,6 +191,14 @@ final class P11IdentityOwner {
 
     synchronized Optional<CapturedIdentity> bindAuthenticatedActorless(
             ServerConfigurationPacketListenerImpl listener) {
+        return bindActorless(listener);
+    }
+
+    synchronized Optional<CapturedIdentity> bindParked(P11ParkingPacketListener listener) {
+        return bindActorless(listener);
+    }
+
+    private Optional<CapturedIdentity> bindActorless(ServerCommonPacketListenerImpl listener) {
         Objects.requireNonNull(listener, "listener");
         var connection = listener.getConnection();
         if (server == null || stopped || !server.isSameThread()
@@ -200,8 +222,7 @@ final class P11IdentityOwner {
                 || !expectedActor.getUUID().equals(current.uuid())) {
             return Optional.empty();
         }
-        var account = accounts.get(current.uuid());
-        var connection = nativeConnection(account.binding.references);
+        var connection = nativeConnection(bindings.get(current.connection).references);
         if (connection == null
                 || expectedActor.connection == null
                 || expectedActor.connection.getConnection() != connection
@@ -243,17 +264,18 @@ final class P11IdentityOwner {
     }
 
     private Optional<CapturedIdentity> bind(UUID uuid, References references) {
-        for (var existing : accounts.values()) {
-            if (!existing.key.uuid.equals(uuid) && existing.binding != null
-                    && existing.binding.references.sameConnection(references)) {
-                return Optional.empty();
+        Binding prior = null;
+        for (var existing : bindings.values()) {
+            if (existing.references.sameConnection(references)) {
+                if (!existing.capture.uuid().equals(uuid)) { return Optional.empty(); }
+                prior = existing;
+                break;
             }
         }
         var account = accounts.get(uuid);
-        if (account == null && accounts.size() >= maxUuids) {
+        if (prior == null && bindings.size() >= maxControlConnections) {
             return Optional.empty();
         }
-        var prior = account == null ? null : account.binding;
         if (prior != null && prior.references.sameActor(references)
                 && prior.references.sameConnection(references)) {
             return Optional.of(prior.capture);
@@ -279,16 +301,10 @@ final class P11IdentityOwner {
         account.discharge = null;
         if (prior != null) {
             prior.capture.currentBinding = false;
-            if (!sameConnection) {
-                prior.capture.connection.currentConnection = false;
-                var oldModelConnection = modelConnection(prior.references);
-                if (oldModelConnection != null) {
-                    oldModelConnection.retired = true;
-                }
-            }
         }
         // Replacing a binding releases the old native graph; stale captures contain only keys.
-        account.binding = new Binding(capture, references, Math.max(lastActor, generation));
+        // Another authenticated connection never relabels or retires this connection by UUID.
+        bindings.put(connection, new Binding(capture, references, Math.max(lastActor, generation)));
         return Optional.of(capture);
     }
 
@@ -296,16 +312,15 @@ final class P11IdentityOwner {
         if (stopped || capture == null || capture.slot() != slot) {
             return false;
         }
-        var account = accounts.get(capture.uuid());
-        return account != null && account.binding != null
-                && account.binding.capture == capture;
+        var binding = bindings.get(capture.connection);
+        return binding != null && binding.capture == capture;
     }
 
     synchronized boolean liveCurrent(CapturedIdentity capture) {
         if (server == null || !server.isSameThread() || !current(capture)) {
             return false;
         }
-        var bound = accounts.get(capture.uuid()).binding.references;
+        var bound = bindings.get(capture.connection).references;
         if (bound instanceof NativeActorlessReferences actorless) {
             return actorless.listener.getMainThreadEventLoop() == server
                     && actorless.connection.getPacketListener() == actorless.listener
@@ -322,6 +337,34 @@ final class P11IdentityOwner {
                 && references.connection.isConnected();
     }
 
+    /** Exact producer correlation also works after native END removes A from the roster. */
+    synchronized Optional<CapturedIdentity> exactControlActor(ServerPlayer actor, Connection connection) {
+        if (server == null || stopped || !server.isSameThread() || actor.getServer() != server
+                || !connection.isConnected()) { return Optional.empty(); }
+        for (var binding : bindings.values()) {
+            if (binding.references instanceof NativeReferences nativeRef
+                    && nativeRef.actor == actor && nativeRef.connection == connection
+                    && actor.connection != null && actor.connection.getConnection() == connection
+                    && current(binding.capture)) { return Optional.of(binding.capture); }
+        }
+        return Optional.empty();
+    }
+
+    /** Read-only ACK correlation, also on Netty after native roster removal; never a locator. */
+    synchronized boolean matchesConfigurationPredecessor(CapturedIdentity expected,
+            ServerGamePacketListenerImpl previous, ServerConfigurationPacketListenerImpl installed) {
+        if (server == null || previous == null || installed == null || !current(expected)) { return false; }
+        var references = bindings.get(expected.connection).references;
+        if (!(references instanceof NativeReferences nativeRef)) { return false; }
+        return nativeRef.actor == previous.player && nativeRef.actor.connection == previous
+                && nativeRef.actor.getServer() == server
+                && previous.getMainThreadEventLoop() == server && installed.getMainThreadEventLoop() == server
+                && nativeRef.connection == previous.getConnection()
+                && nativeRef.connection == installed.getConnection()
+                && nativeRef.connection.getPacketListener() == installed
+                && nativeRef.connection.isConnected();
+    }
+
     synchronized boolean owns(AccountKey account) {
         return !stopped && account != null && account.slot == slot
                 && accounts.containsKey(account.uuid)
@@ -333,24 +376,37 @@ final class P11IdentityOwner {
             return false;
         }
         var account = accounts.get(capture.uuid());
-        var nativeConnection = nativeConnection(account.binding.references);
+        var binding = bindings.get(capture.connection);
+        var nativeConnection = nativeConnection(binding.references);
         if (nativeConnection != null && nativeConnection.isConnected()) {
             return false;
         }
-        var modelConnection = modelConnection(account.binding.references);
+        var modelConnection = modelConnection(binding.references);
         if (modelConnection != null) {
             modelConnection.retired = true;
         }
-        account.binding.capture.currentBinding = false;
-        account.binding.capture.connection.currentConnection = false;
+        binding.capture.currentBinding = false;
+        binding.capture.connection.currentConnection = false;
         // Retirement is final for this connection; it is not a phase-handoff shortcut.
         // Control retirement drops actor/connection roots, not account/data responsibility.
-        account.binding = null;
+        bindings.remove(capture.connection);
+        if (!account.dataReserved && account.discharge == null && !hasBinding(account.key)) {
+            accounts.remove(capture.uuid());
+        }
         return true;
     }
 
     synchronized int retainedAccounts() {
         return accounts.size();
+    }
+
+    synchronized int retainedDataAccounts() { return dataAccounts; }
+
+    private boolean hasBinding(AccountKey key) {
+        for (var binding : bindings.values()) {
+            if (binding.capture.account == key) { return true; }
+        }
+        return false;
     }
 
     synchronized ReceiptDomain claimReceiptDomain() {
@@ -366,9 +422,11 @@ final class P11IdentityOwner {
             return OptionalLong.empty();
         }
         var account = accounts.get(current.uuid());
-        if (account.lastSourceEpoch == Long.MAX_VALUE) {
+        if (account.lastSourceEpoch == Long.MAX_VALUE
+                || (!account.dataReserved && dataAccounts >= maxUuids)) {
             return OptionalLong.empty();
         }
+        if (!account.dataReserved) { account.dataReserved = true; dataAccounts++; }
         // Allocation starts a new source responsibility. Revoke in this same boundary so
         // retirement cannot use an old discharge before the ledger installs that source.
         account.discharge = null;
@@ -394,10 +452,11 @@ final class P11IdentityOwner {
             return false;
         }
         var account = accounts.get(discharge.account().uuid);
-        if (account.binding != null || account.discharge != discharge) {
+        if (hasBinding(account.key) || account.discharge != discharge) {
             return false;
         }
         accounts.remove(discharge.account().uuid);
+        if (account.dataReserved) { dataAccounts--; }
         return true;
     }
 
@@ -416,24 +475,18 @@ final class P11IdentityOwner {
     }
 
     synchronized int retainedBindings() {
-        int count = 0;
-        for (var account : accounts.values()) {
-            if (account.binding != null) {
-                count++;
-            }
-        }
-        return count;
+        return bindings.size();
     }
 
     synchronized void stop() {
         stopped = true;
-        for (var account : accounts.values()) {
-            if (account.binding != null) {
-                account.binding.capture.currentBinding = false;
-                account.binding.capture.connection.currentConnection = false;
-            }
+        for (var binding : bindings.values()) {
+            binding.capture.currentBinding = false;
+            binding.capture.connection.currentConnection = false;
         }
+        bindings.clear();
         accounts.clear();
+        dataAccounts = 0;
         server = null;
     }
 
@@ -581,7 +634,7 @@ final class P11IdentityOwner {
 
     private static final class Account {
         private final AccountKey key;
-        private Binding binding;
+        private boolean dataReserved;
         private SourceCustody source;
         private SourceCustody candidate;
         private P11ReceiptLedger.Discharge discharge;
@@ -660,7 +713,7 @@ final class P11IdentityOwner {
     }
 
     private record NativeActorlessReferences(
-            ServerConfigurationPacketListenerImpl listener, Connection connection) implements References {
+            ServerCommonPacketListenerImpl listener, Connection connection) implements References {
         @Override
         public boolean sameActor(References other) {
             return other instanceof NativeActorlessReferences actorless && listener == actorless.listener;

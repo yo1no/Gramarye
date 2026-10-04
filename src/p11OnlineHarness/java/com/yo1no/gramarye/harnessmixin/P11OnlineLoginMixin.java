@@ -2,6 +2,7 @@ package com.yo1no.gramarye.harnessmixin;
 
 import com.yo1no.gramarye.P11OnlineLoginAccess;
 import com.yo1no.gramarye.P11OnlineServerHarness;
+import com.yo1no.gramarye.P11C4aServerHarness;
 import java.util.UUID;
 import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
@@ -19,5 +20,6 @@ abstract class P11OnlineLoginMixin implements P11OnlineLoginAccess {
     @Override
     public void p11$onlineAuthenticated(UUID authenticatedUuid) {
         P11OnlineServerHarness.authenticated(server, connection, authenticatedUuid);
+        P11C4aServerHarness.authenticated(server, connection, authenticatedUuid);
     }
 }

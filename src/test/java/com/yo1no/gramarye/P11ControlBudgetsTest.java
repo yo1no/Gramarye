@@ -26,6 +26,60 @@ import org.junit.jupiter.api.Test;
 /** Direct scalar production tests; these are not native, writer, or offline integration evidence. */
 final class P11ControlBudgetsTest {
     @Test
+    void globalWakeupCoalescesPacketsAndRetainsArrivalAcrossEmptyPoll() {
+        var wake = new P11ControlBudgets.MainWakeup();
+        assertTrue(wake.request());
+        for (int i = 0; i < 1_000; i++) { assertFalse(wake.request()); }
+        assertTrue(wake.beginQueued());
+        assertFalse(wake.beginQueued());
+        assertFalse(wake.beginTick(false));
+        assertFalse(wake.request());
+        assertTrue(wake.complete(true), "arrival during service reserves one successor wakeup");
+        assertFalse(wake.request());
+        assertTrue(wake.beginQueued());
+        assertFalse(wake.complete(true));
+        assertTrue(wake.request());
+    }
+
+    @Test
+    void globalWakeupBudgetExhaustionWaitsForRealTickAndKeepsQueuedReservation() {
+        var wake = new P11ControlBudgets.MainWakeup();
+        assertTrue(wake.request());
+        assertTrue(wake.beginTick(true));
+        assertFalse(wake.request());
+        assertFalse(wake.complete(false));
+        assertFalse(wake.request());
+        // The existing native task may still execute, but cannot replenish the dispatcher.
+        assertTrue(wake.beginQueued());
+        assertFalse(wake.request());
+        assertFalse(wake.complete(false));
+        assertFalse(wake.request());
+        assertTrue(wake.beginTick(true));
+        assertFalse(wake.complete(true));
+        assertTrue(wake.request());
+        wake.retire();
+        assertFalse(wake.beginQueued());
+        assertFalse(wake.request());
+        assertFalse(wake.beginTick(true));
+    }
+
+    @Test
+    void dispatcherQueuedAndTickPumpsShareExactQuantaWithoutSyntheticTicks() {
+        var dispatcher = new P11ControlBudgets.FairDispatcher(1, 2);
+        var member = dispatcher.register(1).orElseThrow();
+        assertTrue(dispatcher.eligible(member));
+        for (int i = 0; i < 2; i++) {
+            assertTrue(dispatcher.budgetRemaining(30));
+            assertTrue(dispatcher.complete(dispatcher.poll(30).orElseThrow(), true));
+        }
+        assertFalse(dispatcher.budgetRemaining(30));
+        assertTrue(dispatcher.poll(30).isEmpty());
+        assertTrue(dispatcher.budgetRemaining(31));
+        assertTrue(dispatcher.complete(dispatcher.poll(31).orElseThrow(), false));
+        assertThrows(IllegalArgumentException.class, () -> dispatcher.budgetRemaining(30));
+    }
+
+    @Test
     void separateBucketsPreserveFractionalRefillAndNeverShareTryOrStatusCredit() {
         var tries = new P11ControlBudgets.TokenBucket(2, 2, 0);
         var statuses = new P11ControlBudgets.TokenBucket(4, 4, 0);
@@ -75,6 +129,19 @@ final class P11ControlBudgetsTest {
                 () -> new P11ControlBudgets.TokenBucket(0, 1, 0));
         assertThrows(IllegalArgumentException.class,
                 () -> new P11ControlBudgets.TokenBucket(1, 0, 0));
+    }
+
+    @Test
+    void readinessRefillsWithoutSpendingCreditOrRecoveringARegressedClock() {
+        var bucket = new P11ControlBudgets.TokenBucket(1, 2, 0);
+        for (int index = 0; index < 100; index++) { assertEquals(ACCEPTED, bucket.availability(0)); }
+        assertEquals(ACCEPTED, bucket.take(0));
+        assertEquals(RATE_LIMITED, bucket.availability(499));
+        for (int index = 0; index < 100; index++) { assertEquals(ACCEPTED, bucket.availability(500)); }
+        assertEquals(ACCEPTED, bucket.take(500));
+        assertEquals(RATE_LIMITED, bucket.take(500));
+        assertEquals(CLOCK_UNAVAILABLE, bucket.availability(499));
+        assertEquals(CLOCK_UNAVAILABLE, bucket.take(Long.MAX_VALUE));
     }
 
     @Test

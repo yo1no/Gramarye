@@ -15,7 +15,7 @@ fail() {
     exit 1
 }
 
-for required_tool in bash grep find mktemp rm jar dirname pwd; do
+for required_tool in bash grep find mktemp rm jar dirname pwd awk; do
     command -v "${required_tool}" >/dev/null 2>&1 \
         || fail "P4-C2-A configuration verifier cannot find required tool: ${required_tool}"
 done
@@ -226,6 +226,8 @@ verify_exact_sources_and_registration() {
     local p9_entity_registration='src/main/java/com/yo1no/gramarye/P9StarterProjectileRegistration.java'
     local p9_client_input='src/main/java/com/yo1no/gramarye/magic/network/P9ClientCastInput.java'
     local p11_storage_boundary='src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java'
+    local p11_configuration='src/main/java/com/yo1no/gramarye/P11ConfigurationBoundary.java'
+    local p11_registration=''
     local serialize_line=''
     local death_line=''
 
@@ -373,13 +375,26 @@ verify_exact_sources_and_registration() {
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" 'event.register(' "${p8_client_factories}" \
         "${p8_client}" "${p9_client_input}" \
-        'event.register escaped the exact P8 registry/factory and P9 key owners'
+        'event.register escaped the exact P8 registry/factory, P9 key and P11 Configuration task owners' \
+        "${p11_configuration}"
     require_fixed_count "${p8_client_factories}" 'event.register(' 1 \
         'P8 built-in factory owner must perform exactly one startup registration batch'
     require_fixed_count "${p8_client}" 'event.register(' 1 \
         'P8 client bootstrap must register exactly one client factory registry'
     require_fixed_count "${p9_client_input}" 'event.register(' 1 \
         'P9 client input must register exactly one key mapping through its event'
+    require_fixed_count "${p11_configuration}" 'event.register(' 1 \
+        'P11 Configuration must register exactly one native Configuration task'
+    require_fixed_count "${p11_configuration}" \
+        'event.register(new P11ConfigurationTask(listener));' 1 \
+        'P11 Configuration registration must retain its exact task and listener'
+    p11_registration="$(LC_ALL=C awk '
+        /^    public static void registerTasks\(/ { selected = 1 }
+        selected { line = $0; gsub(/[[:space:]]/, "", line); body = body line }
+        selected && /^    }/ { print body; selected = 0 }
+    ' "${p11_configuration}")"
+    [[ "${p11_registration}" == 'publicstaticvoidregisterTasks(RegisterConfigurationTasksEventevent){if(event.getListener()instanceofServerConfigurationPacketListenerImpllistener){event.register(newP11ConfigurationTask(listener));}}' ]] \
+        || fail 'P11 Configuration task registration escaped its exact native listener method'
     for literal in \
         'DeferredRegister<AttachmentType<?>>' \
         'DeferredHolder' \

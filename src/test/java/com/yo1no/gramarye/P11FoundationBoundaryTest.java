@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import net.neoforged.bus.api.BusBuilder;
 import net.neoforged.bus.api.IEventBus;
@@ -117,6 +118,7 @@ final class P11FoundationBoundaryTest {
         assertEquals(List.of(
                 "private final P11FoundationService p11FoundationService;",
                 "p11FoundationService = new P11FoundationService(p11SourceProvenance, playerSkillAttachmentService);",
+                "NeoForge.EVENT_BUS.addListener(p11FoundationService::tick);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::stopping);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::stopped);",
                 "p11FoundationService.started(event, snapshot.p11State());"),
@@ -131,18 +133,24 @@ final class P11FoundationBoundaryTest {
                 "skillRuntimeService.handleRuntimeStarted(event, limits);");
         assertEquals(1, start.split("snapshotAllForStarted\\(", -1).length - 1);
         assertFalse(start.contains("catch ("));
+        assertTrue(root.contains("modBus.addListener(P11TransitionPayloadRegistrar::register);"));
+        assertTrue(root.contains("modBus.addListener(P11ConfigurationBoundary::registerTasks);"));
 
         var service = Files.readString(JAVA_ROOT.resolve("P11FoundationService.java"));
         assertOrdered(service, "startupState = snapshot;",
                 "if (snapshot instanceof P11StartupLoadState.Ready ready)",
                 "slot = new P11FoundationSlot(ready.limits(),",
-                "new P11IdentityOwner(exact, ready.limits().maxUuids())");
+                "new P11IdentityOwner(exact, ready.limits().maxUuids(),",
+                "Math.addExact((long) exact.getMaxPlayers(), ready.limits().maxWaitingConnections())");
+        assertOrdered(service, "slot.sources = new P11QualifiedSourceOwner(",
+                "transitions = new P11LiveTransitionService(exact, ready.limits(), slot.identities, slot.sources);");
         assertTrue(service.contains("server == exact"));
         assertTrue(service.contains("if (server != exact) { return; }"));
         assertOrdered(service, "terminalSummary = slot.sources.retire(nativeStopNormal);",
                 "provenance.stopped(exact);", "slot.retire();", "slot = null;", "server = null;");
         var stopping = service.substring(service.indexOf("void stopping("), service.indexOf("void stopped("));
         assertTrue(stopping.contains("source.stopping()"));
+        assertOrdered(stopping, "control.stop()", "source.stopping()");
         assertFalse(stopping.contains("retire("));
         assertTrue(service.contains("P11_START_WRONG_THREAD"));
         assertTrue(service.contains("P11_STOP_WRONG_THREAD"));
@@ -154,15 +162,22 @@ final class P11FoundationBoundaryTest {
 
     @Test
     void newCommonFoundationHasNoTransportWriterClientOrGameplayRegistration() throws Exception {
+        var clientOnly = Set.of("P11ClientTransitions.java", "P11ClientTransitionScreen.java",
+                "P11ClientLeaveScreen.java");
+        var observedClient = new java.util.HashSet<String>();
         try (var sources = Files.list(JAVA_ROOT)) {
             for (var path : sources.filter(path -> path.getFileName().toString().startsWith("P11"))
                     .filter(path -> path.toString().endsWith(".java")).toList()) {
                 var source = Files.readString(path);
+                var name = path.getFileName().toString();
+                if (source.contains("import net.minecraft.client.")) { observedClient.add(name); }
                 assertAll(path.getFileName().toString(),
-                        () -> assertFalse(source.contains("import net.minecraft.client.")),
-                        () -> assertFalse(source.contains("RegisterPayloadHandlersEvent")),
-                        () -> assertFalse(source.contains("RegisterConfigurationTasksEvent")),
-                        () -> assertFalse(source.contains(".addListener(")),
+                        () -> assertEquals(clientOnly.contains(name), source.contains("import net.minecraft.client.")),
+                        () -> assertEquals(name.equals("P11TransitionPayloadRegistrar.java"),
+                                source.contains("RegisterPayloadHandlersEvent")),
+                        () -> assertEquals(name.equals("P11ConfigurationBoundary.java"),
+                                source.contains("RegisterConfigurationTasksEvent")),
+                        () -> assertEquals(name.equals("P11ClientTransitions.java"), source.contains(".addListener(")),
                         () -> assertFalse(source.contains("@Mixin")),
                         () -> assertFalse(source.contains("@Inject")),
                         () -> assertFalse(source.contains("admitAuthenticatedPlayerCast(")),
@@ -170,6 +185,16 @@ final class P11FoundationBoundaryTest {
                         () -> assertFalse(source.contains("java.lang.reflect")),
                         () -> assertFalse(source.contains("sun.misc.Unsafe")));
             }
+        }
+        assertEquals(clientOnly, observedClient);
+        var registrar = Files.readString(JAVA_ROOT.resolve("P11TransitionPayloadRegistrar.java"));
+        assertTrue(registrar.contains("HandlerThread.NETWORK).commonToServer("));
+        assertTrue(registrar.contains("HandlerThread.MAIN).commonToClient("));
+        assertFalse(registrar.contains(".optional("));
+        assertFalse(registrar.contains("context.player("));
+        var dispatch = Files.readString(JAVA_ROOT.resolve("P11ClientTransitionDispatch.java"));
+        for (var client : clientOnly) {
+            assertFalse(dispatch.contains(client.replace(".java", "")));
         }
     }
 

@@ -18,6 +18,7 @@ public final class GramaryeClient {
                 () -> Minecraft.getInstance().isSameThread(), p8Execution);
         p8Lifecycle = new P8ClientPresentationLifecycle(p8State, p8Execution, modBus);
         P8ClientPayloadDispatchFactory.installClient(p8State);
+        P11ClientTransitions.install();
     }
 
     private static void registerClientRegistry(NewRegistryEvent event) {

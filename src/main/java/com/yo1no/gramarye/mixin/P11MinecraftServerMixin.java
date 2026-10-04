@@ -31,6 +31,13 @@ abstract class P11MinecraftServerMixin implements P11NativeWorldAccess.ServerSto
     }
 
     @Inject(method = "stopServer()V", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/server/players/PlayerList;saveAll()V", shift = At.Shift.AFTER),
+            require = 1, expect = 1, allow = 1)
+    private void p11$detachedPlayersStop(CallbackInfo callback) {
+        P11NativeStorageBoundary.flushDetachedPlayersAtStop((MinecraftServer) (Object) this, storageSource);
+    }
+
+    @Inject(method = "stopServer()V", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;close()V"),
             require = 1, expect = 1, allow = 1)
     private void p11$detachedIndependentStop(CallbackInfo callback) {

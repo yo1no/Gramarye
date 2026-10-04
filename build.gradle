@@ -1393,11 +1393,16 @@ neoForge {
                 additionalRuntimeClasspathConfiguration.exclude(
                         group: 'org.apache.commons', module: 'commons-compress')
                 def role = dedicated ? 'server' : onlineName.endsWith('A')
-                        ? (p11OnlineCase == 'single' ? 'single' : 'a') : 'b'
+                        ? (p11OnlineCase == 'single' ? 'single' : p11OnlineCase == 'c4a-host-lan' ? 'host' : 'a') : 'b'
                 gameDirectory = file(p11OnlineRuntimeText.isBlank()
                         ? 'build/p11-online-explicit-runtime-required/' + role
                         : p11OnlineRuntimeText + '/' + role)
-                programArguments.addAll '--mixin.config', 'gramarye-p11-online-harness.mixins.json'
+                programArguments.addAll '--mixin.config',
+                        p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']
+                                ? 'gramarye-p11-c4a-harness.mixins.json' : 'gramarye-p11-online-harness.mixins.json'
+                if (p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']) {
+                    programArguments.addAll '--mixin.config', 'gramarye-p11-c6-observers.mixins.json'
+                }
                 systemProperty 'gramarye.p11.online.output', p11OnlineOutputText
                 systemProperty 'gramarye.p11.online.host', '127.0.0.1'
                 systemProperty 'gramarye.p11.online.port', p11OnlinePort
@@ -1599,7 +1604,8 @@ tasks.named('runServer', JavaExec).configure {
             }
             def paths = [p11OnlineRuntimeText, p11OnlineOutputText, p11OnlinePrivateText]
             if (paths.any { it.isBlank() || !java.nio.file.Path.of(it).isAbsolute() }
-                    || !p11OnlineJar.isFile() || !(p11OnlineCase in ['single', 'qctx', 'capacity'])
+                    || !p11OnlineJar.isFile() || !(p11OnlineCase in ['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward'])
+                    || p11OnlineCase == 'c4a-host-lan'
                     || !(p11OnlineRunId ==~ /[a-zA-Z0-9_-]{8,64}/)
                     || !(p11OnlinePort ==~ /[0-9]{4,5}/)
                     || Integer.parseInt(p11OnlinePort) > 65535) {

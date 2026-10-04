@@ -2,6 +2,7 @@ package com.yo1no.gramarye.magic.network;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.yo1no.gramarye.Gramarye;
+import com.yo1no.gramarye.P11ClientTransitions;
 import java.util.Objects;
 import java.util.OptionalLong;
 import net.minecraft.client.KeyMapping;
@@ -36,6 +37,7 @@ final class P9ClientCastInput {
     private boolean keyMappingRegistered;
     private boolean senderSessionAvailable;
     private boolean pendingFlushRequired = true;
+    private long transitionSuppressionGeneration;
     private final OutgoingSequence outgoingSequence = new OutgoingSequence();
 
     private P9ClientCastInput() {}
@@ -143,6 +145,11 @@ final class P9ClientCastInput {
         }
         requireClientThread();
         var minecraft = Minecraft.getInstance();
+        long observedTransition = P11ClientTransitions.inputSuppressionGeneration();
+        if (transitionSuppressionGeneration != observedTransition) {
+            transitionSuppressionGeneration = observedTransition;
+            pendingFlushRequired = true;
+        }
         var gate = evaluateGates(liveGateProbe(minecraft, !pendingFlushRequired));
         if (gate != GateDecision.ALLOW
                 && gate != GateDecision.PENDING_FLUSH_REQUIRED) {
@@ -176,6 +183,7 @@ final class P9ClientCastInput {
         return new LiveGateProbe(
                 minecraft,
                 senderSessionAvailable,
+                transitionSuppressionGeneration,
                 noPendingFlush);
     }
 
@@ -205,6 +213,9 @@ final class P9ClientCastInput {
         }
         if (!probe.clientNotPaused()) {
             return GateDecision.CLIENT_PAUSED;
+        }
+        if (!probe.noTransitionPending()) {
+            return GateDecision.TRANSITION_PENDING;
         }
         return probe.noPendingFlush()
                 ? GateDecision.ALLOW
@@ -239,6 +250,8 @@ final class P9ClientCastInput {
 
         boolean clientNotPaused();
 
+        boolean noTransitionPending();
+
         boolean noPendingFlush();
     }
 
@@ -250,6 +263,7 @@ final class P9ClientCastInput {
         SCREEN_OPEN,
         WINDOW_INACTIVE,
         CLIENT_PAUSED,
+        TRANSITION_PENDING,
         PENDING_FLUSH_REQUIRED,
         ALLOW
     }
@@ -307,6 +321,7 @@ final class P9ClientCastInput {
     private record LiveGateProbe(
             Minecraft minecraft,
             boolean senderSessionAvailable,
+            long transitionSuppressionGeneration,
             boolean noPendingFlush) implements GateProbe {
         private LiveGateProbe {
             Objects.requireNonNull(minecraft, "minecraft");
@@ -340,6 +355,13 @@ final class P9ClientCastInput {
         @Override
         public boolean clientNotPaused() {
             return !minecraft.isPaused();
+        }
+
+        @Override
+        public boolean noTransitionPending() {
+            return !P11ClientTransitions.blocksCast()
+                    && transitionSuppressionGeneration
+                            == P11ClientTransitions.inputSuppressionGeneration();
         }
     }
 }

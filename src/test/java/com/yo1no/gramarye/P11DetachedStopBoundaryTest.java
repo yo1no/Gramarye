@@ -66,7 +66,7 @@ final class P11DetachedStopBoundaryTest {
         assertEquals(void.class, ownerEntry.getReturnType());
         String boundary = read("P11NativeStorageBoundary.java");
         String stop = boundary.substring(boundary.indexOf("public static void stop("),
-                boundary.indexOf("/** Exact original stop caller"));
+                boundary.indexOf("/** Only stop's original player-save return"));
         assertEquals("publicstaticvoidstop(MinecraftServerserver,Operation<Void>original){"
                 + "varprevious=STOP_SERVER.get();STOP_SERVER.set(server);booleannormal=false;"
                 + "try{original.call();normal=true;}finally{"

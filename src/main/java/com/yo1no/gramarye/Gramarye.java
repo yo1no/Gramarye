@@ -83,6 +83,9 @@ public final class Gramarye {
         skillSubmissionRecoveryService.registerOn(NeoForge.EVENT_BUS);
         p5ServerRuntimeConfig = new P5ServerRuntimeConfig(modBus, exactContainer);
         p11FoundationService = new P11FoundationService(p11SourceProvenance, playerSkillAttachmentService);
+        modBus.addListener(P11TransitionPayloadRegistrar::register);
+        modBus.addListener(P11ConfigurationBoundary::registerTasks);
+        NeoForge.EVENT_BUS.addListener(p11FoundationService::tick);
         skillRuntimeService = SkillRuntimeService.create(
                 NeoForge.EVENT_BUS,
                 skillDefinitionStoreService,

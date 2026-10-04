@@ -17,6 +17,7 @@ import net.minecraft.stats.ServerStatsCounter;
 final class P11QualifiedSourceOwner {
     enum InputKind { PRIMARY, HOST_PRIMARY, ABSENT, MEMORY, ERROR, FALLBACK, UNKNOWN }
     enum Fault { NONE, PARTIAL, READ, FALLBACK, MATERIAL, REENTRANT, STALE, CAPACITY, CLEANUP, WRITE }
+    enum ControlGate { CLEAR, UNMANAGED, ACTIVE_OPERATION, ACTIVE_CONTEXT, ACTIVE_TRANSITION, SOURCE_UNKNOWN }
 
     private final MinecraftServer server;
     private final P11IdentityOwner identities;
@@ -27,6 +28,7 @@ final class P11QualifiedSourceOwner {
     private final PlayerSkillAttachmentService attachments;
     private final Map<UUID, Account> accounts = new HashMap<>();
     private boolean stopping;
+    private boolean detachedPlayersStopFlushed;
     private boolean detachedStopFlushed;
     private boolean retired;
     private long serializations;
@@ -66,6 +68,74 @@ final class P11QualifiedSourceOwner {
         requireMain();
         var account = accounts.get(playerId);
         return account == null ? null : account.current;
+    }
+
+    /** Read-only per-account admission facts. An untracked connection never reserves T here. */
+    ControlGate controlGate(UUID playerId, ServerPlayer expectedActor) {
+        requireMain();
+        var account = accounts.get(playerId);
+        if (account == null) { return ControlGate.UNMANAGED; }
+        var body = account.current;
+        if (body == null || account.constructorFailed || account.cleanupUnknown
+                || body.fault != Fault.NONE || (expectedActor != null && body.actor != expectedActor)) {
+            return ControlGate.SOURCE_UNKNOWN;
+        }
+        // A known in-flight successor is H, not an invented complete B or an unmanaged UUID.
+        if (account.candidate != null && account.candidate.fault != Fault.NONE) {
+            return ControlGate.SOURCE_UNKNOWN;
+        }
+        if (account.candidate == null && account.constructing == null
+                && (!canCopy(body) || !canonicalInputComplete(body))) {
+            return ControlGate.SOURCE_UNKNOWN;
+        }
+        var blocker = nativeBlocker(account);
+        if (blocker != ControlGate.CLEAR) { return blocker; }
+        return canCopy(body) && canonicalInputComplete(body) ? ControlGate.CLEAR : ControlGate.SOURCE_UNKNOWN;
+    }
+
+    private static ControlGate nativeBlocker(Account account) {
+        if (account.nativeCounts[P11ControlBudgets.Root.OPERATION.ordinal()] != 0) {
+            return ControlGate.ACTIVE_OPERATION;
+        }
+        if (account.nativeCounts[P11ControlBudgets.Root.COMMAND_CONTEXT.ordinal()] != 0) {
+            return ControlGate.ACTIVE_CONTEXT;
+        }
+        if (account.nativeCounts[P11ControlBudgets.Root.TRANSITION.ordinal()] != 0) {
+            return ControlGate.ACTIVE_TRANSITION;
+        }
+        return ControlGate.CLEAR;
+    }
+
+    /** Root dispatcher only: true native-body custody, not NETWORK waiting or an admission grant. */
+    ControlCustody beginControlCustody(UUID playerId) {
+        requireMain();
+        var gate = controlGate(playerId, null);
+        if (gate == ControlGate.UNMANAGED) { return null; }
+        if (gate != ControlGate.CLEAR) { throw new SourceUnavailable(); }
+        var body = accounts.get(playerId).current;
+        var custody = new ControlCustody(this, body);
+        if (!retainNativeRoot(body, P11ControlBudgets.Root.TRANSITION)) { throw new SourceUnavailable(); }
+        return custody;
+    }
+
+    /** Only the root's exact active factory ticket may adopt a newly acquired first-B account. */
+    ControlCustody attachControlCustody(Body body) {
+        requireMain();
+        if (body == null || body(body.actor) != body || body.fault != Fault.NONE) {
+            throw new SourceUnavailable();
+        }
+        var custody = new ControlCustody(this, body);
+        if (!retainNativeRoot(body, P11ControlBudgets.Root.TRANSITION)) { throw new SourceUnavailable(); }
+        return custody;
+    }
+
+    void closeControlCustody(ControlCustody custody) {
+        if (custody == null) { return; }
+        requireMain();
+        if (custody.owner != this) { throw new SourceUnavailable(); }
+        if (custody.closed) { return; }
+        custody.closed = true;
+        releaseNativeRoot(custody.body, P11ControlBudgets.Root.TRANSITION);
     }
 
     /** Validate retained canonical input. Disk durability is not a rebind prerequisite. */
@@ -286,6 +356,10 @@ final class P11QualifiedSourceOwner {
             resources.releaseRoot(account.nativeRoots[index]);
             account.nativeRoots[index] = null;
             account.nativeSince[index] = 0;
+            if (kind == P11ControlBudgets.Root.OPERATION || kind == P11ControlBudgets.Root.COMMAND_CONTEXT
+                    || kind == P11ControlBudgets.Root.TRANSITION) {
+                P11LiveTransitionBoundary.blockersChanged(server, body.actor.getUUID());
+            }
         }
     }
 
@@ -479,12 +553,13 @@ final class P11QualifiedSourceOwner {
     }
 
     P11ReceiptLedger.PhysicalWriterReceipt beginSynchronousPlayerWriter(Body body) {
-        if (body == null || !canSerialize(body)
-                || !physicalClean(body, P11ReceiptLedger.WriterKind.STATISTICS)
-                || !physicalClean(body, P11ReceiptLedger.WriterKind.ADVANCEMENTS)) {
+        if (body == null || !canSerialize(body)) {
             retainSynchronousDuty(body);
             return null;
         }
+        // The original PlayerList.save writes PD before its canonical JSON tails. Their
+        // outstanding durability duty cannot prevent this fresh PD attempt from starting;
+        // each original writer must still earn its own exact-version physical receipt.
         return beginWriter(body, P11ReceiptLedger.WriterKind.PLAYER_DATA, true);
     }
 
@@ -766,6 +841,46 @@ final class P11QualifiedSourceOwner {
 
     void stopping() { stopping = true; }
 
+    /** Stop's player-save phase, before removeAll and the original world/host writer. */
+    void flushDetachedPlayersAtStop() {
+        requireMain();
+        if (!stopping || detachedPlayersStopFlushed) { return; }
+        detachedPlayersStopFlushed = true;
+        for (var account : java.util.List.copyOf(accounts.values())) {
+            var body = account.current;
+            try {
+                if (body == null || !detachedStopCurrent(body, body.source)
+                        || receipts.physicalFacts(body.source, P11ReceiptLedger.WriterKind.PLAYER_DATA)
+                                .filter(P11ReceiptLedger.PhysicalFacts::dirty).isEmpty()) { continue; }
+                P11NativeStorageBoundary.saveDetachedAtStop(this, body);
+            } catch (RuntimeException | Error failure) {
+                // This additional save cannot replace native stop's primary or skip another UUID.
+                failures = increment(failures);
+                try {
+                    if (body != null && accounts.get(body.actor.getUUID()) == account
+                            && account.current == body && account.candidate == null) {
+                        account.fault = Fault.WRITE;
+                        receipts.markDirty(body.source, P11ReceiptLedger.WriterKind.PLAYER_DATA);
+                        account.dirty = resources.markDirty(account.resource, now()).orElseThrow();
+                    }
+                } catch (RuntimeException | Error secondary) {
+                    failures = increment(failures);
+                }
+            }
+        }
+    }
+
+    /** Exact existing source only; the stop caller and one-use request are checked by the bridge. */
+    boolean detachedStopCurrent(Body body, P11ReceiptLedger.Source version) {
+        requireMain();
+        return stopping && body != null && body.source == version && accounts.get(body.actor.getUUID()) == body.account
+                && canSerialize(body) && !body.logoutActive && body.actor.connection != null
+                && body.account.nativeCounts[P11ControlBudgets.Root.OPERATION.ordinal()] == 0
+                && body.account.nativeCounts[P11ControlBudgets.Root.COMMAND_CONTEXT.ordinal()] == 0
+                && server.getPlayerList().getPlayer(body.actor.getUUID()) == null
+                && server.getPlayerList().getPlayers().stream().noneMatch(actor -> actor == body.actor);
+    }
+
     /** Last native stop anchor while the world lock is still held; never serializes a body. */
     void flushDetachedIndependentAtStop() {
         requireMain();
@@ -927,6 +1042,17 @@ final class P11QualifiedSourceOwner {
             this.mana = P11ManaMaterial.capture(actor);
             this.source = source;
             this.material = material;
+        }
+    }
+
+    /** The exact original account remains held even when its material body changes A to B. */
+    static final class ControlCustody {
+        private final P11QualifiedSourceOwner owner;
+        private final Body body;
+        private boolean closed;
+        private ControlCustody(P11QualifiedSourceOwner owner, Body body) {
+            this.owner = owner;
+            this.body = body;
         }
     }
 

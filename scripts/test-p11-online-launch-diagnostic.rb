@@ -5,6 +5,7 @@ require 'json'
 require 'minitest/autorun'
 require 'open3'
 require 'tmpdir'
+require 'digest'
 
 class P11OnlineLaunchDiagnosticTest < Minitest::Test
   REPO = File.expand_path('..', __dir__).freeze
@@ -85,6 +86,8 @@ class P11OnlineLaunchDiagnosticTest < Minitest::Test
                 stage.setAccessible(true);
                 Method exit = type.getDeclaredMethod("explicitExit", StackTraceElement[].class);
                 exit.setAccessible(true);
+                Method exitSite = type.getDeclaredMethod("exitSite", StackTraceElement[].class);
+                exitSite.setAccessible(true);
                 StackTraceElement oauth = frame("net.covers1624.devlogin.MicrosoftOAuth", "getMinecraftProfile");
                 StackTraceElement transport = frame("net.covers1624.devlogin.http.java11.JavaHttpEngine", "makeRequest");
                 check("MINECRAFT_PROFILE".equals(stage.invoke(null, (Object) new StackTraceElement[] { transport, oauth })));
@@ -98,10 +101,33 @@ class P11OnlineLaunchDiagnosticTest < Minitest::Test
                 check(Boolean.FALSE.equals(exit.invoke(null, (Object) new StackTraceElement[] { system, runtime, shutdown, oauth })));
                 check(Boolean.FALSE.equals(exit.invoke(null, (Object) new StackTraceElement[] { runtime, system, oauth })));
                 check(Boolean.FALSE.equals(exit.invoke(null, (Object) new StackTraceElement[] { oauth })));
+                String devlogin = "net.covers1624.devlogin.DevLogin";
+                String minecraft = "net.minecraft.client.Minecraft";
+                check("DEVLOGIN_MISSING_TARGET".equals(site(exitSite, shutdown, runtime, system, frame(devlogin, "main", 45))));
+                check("DEVLOGIN_DUMP_REQUESTED".equals(site(exitSite, shutdown, runtime, system, frame(devlogin, "main", 99))));
+                check("DEVLOGIN_ARGUMENT_BOUND".equals(site(exitSite, shutdown, runtime, system, frame(devlogin, "consumeArgs", 120))));
+                check("NATIVE_CLIENT_DESTROY".equals(site(exitSite, shutdown, runtime, system, frame(minecraft, "destroy", 1098))));
+                check("OTHER_EXPLICIT_EXIT".equals(site(exitSite, shutdown, runtime, system, frame(devlogin, "main", 107))));
+                check("OTHER_EXPLICIT_EXIT".equals(site(exitSite, shutdown, runtime, system, frame(devlogin, "main", -1))));
+                check("OTHER_EXPLICIT_EXIT".equals(site(exitSite, shutdown, runtime, system, frame(devlogin + "Extra", "main", 99))));
+                check("OTHER_EXPLICIT_EXIT".equals(site(exitSite, shutdown, runtime, system, frame(devlogin, "mainExtra", 99))));
+                check("OTHER_EXPLICIT_EXIT".equals(site(exitSite, shutdown, runtime, system, frame("unlisted.Target", "exit", 99), frame(devlogin, "main", 99))));
+                check("OTHER_EXPLICIT_EXIT".equals(site(exitSite, shutdown, runtime, system, frame(minecraft, "destroy", 1099))));
+                check("OTHER_EXPLICIT_EXIT".equals(site(exitSite, shutdown, runtime, system)));
+                check("OTHER_EXPLICIT_EXIT".equals(site(exitSite, shutdown, runtime, system, system, frame(devlogin, "main", 99))));
+                check("NOT_OBSERVED".equals(site(exitSite, system, runtime, shutdown, frame(devlogin, "main", 99))));
+                check("NOT_OBSERVED".equals(site(exitSite, frame(devlogin, "main", 99))));
+                check("NOT_OBSERVED".equals(site(exitSite, runtime, system, frame(devlogin, "main", 99))));
                 System.out.println("EXACT_CLASSIFIER_CONTROLS_PASS");
             }
             private static StackTraceElement frame(String owner, String method) {
                 return new StackTraceElement(owner, method, "#{SENTINEL}", 123);
+            }
+            private static StackTraceElement frame(String owner, String method, int line) {
+                return new StackTraceElement(owner, method, "#{SENTINEL}", line);
+            }
+            private static String site(Method method, StackTraceElement... frames) throws Exception {
+                return method.invoke(null, (Object) frames).toString();
             }
             private static void check(boolean condition) {
                 if (!condition) throw new AssertionError("SYNTHETIC_CLASSIFIER_FAILURE");
@@ -154,8 +180,8 @@ class P11OnlineLaunchDiagnosticTest < Minitest::Test
     raw = File.binread(file)
     refute_includes raw, SENTINEL
     result = JSON.parse(raw)
-    assert_equal %w[authentication category event schema stage], result.keys.sort
-    assert_equal 1, result['schema']
+    assert_equal %w[authentication category event exitSite schema stage], result.keys.sort
+    assert_equal 2, result['schema']
     assert_equal 'NOT_PROVEN', result['authentication']
     result
   end
@@ -168,6 +194,7 @@ class P11OnlineLaunchDiagnosticTest < Minitest::Test
     assert_equal 'MAIN_EXPLICIT_EXIT_NOT_AUTH_PROOF', actual['event']
     assert_equal 'DEVLOGIN_MAIN', actual['stage']
     assert_equal 'NOT_OBSERVED', actual['category']
+    assert_equal 'OTHER_EXPLICIT_EXIT', actual['exitSite'] # Name-only fixture line is not pinned vendor code.
     refute File.exist?(File.join(@output, 'uncaught.json'))
   end
 
@@ -256,5 +283,26 @@ class P11OnlineLaunchDiagnosticTest < Minitest::Test
     assert status.success?
     assert_equal "EXACT_CLASSIFIER_CONTROLS_PASS\n", stdout
     assert_empty stderr
+  end
+
+  def test_public_pinned_exit_instructions_and_lines
+    devlogin = '/Users/yashen/.gradle/caches/modules-2/files-2.1/net.covers1624/DevLogin/0.1.0.5/3bf5856d8336ba5a3197d169f4c52cbf6ddd23ad/DevLogin-0.1.0.5.jar'
+    platform = '/Users/yashen/Desktop/Gramarye/build/moddev/artifacts/neoforge-21.1.241.jar'
+    assert_equal 'dfb3379a190c57c9601f34adc5bcb01c7d3298ffa02c97f1b26428c9301bbf86', Digest::SHA256.file(devlogin).hexdigest
+    assert_equal '1a9fef8eb83ceb8c92023f4a8f2086744fdb46b52db6c6cd82a0a4684dac9279', Digest::SHA256.file(platform).hexdigest
+    [[devlogin, 'net.covers1624.devlogin.DevLogin', { 'main' => [[90, 45], [522, 99]], 'consumeArgs' => [[92, 120]] }],
+     [platform, 'net.minecraft.client.Minecraft', { 'destroy' => [[78, 1098], [101, 1098]] }]].each do |jar, klass, methods|
+      text, error, result = Open3.capture3(CLEAN_JAVA_ENV, File.join(JAVA_HOME, 'bin/javap'), '-p', '-c', '-l', '-classpath', jar, klass)
+      assert result.success?, error
+      methods.each do |method, expected|
+        part = text.split(/^  (?:public|private|protected|static).*\b#{method}\(/, 2).last
+        refute_nil part
+        part = part.split(/^  (?:public|private|protected|static) /, 2).first
+        offsets = part.scan(/^\s+(\d+): invokestatic\s+.*java\/lang\/System.exit:\(I\)V/).flatten.map(&:to_i)
+        lines = part.scan(/^\s+line (\d+): (\d+)/).map { |line, offset| [offset.to_i, line.to_i] }
+        actual = offsets.map { |offset| [offset, lines.select { |entry| entry[0] <= offset }.max_by(&:first)[1]] }
+        assert_equal expected, actual
+      end
+    end
   end
 end

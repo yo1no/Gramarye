@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.yo1no.gramarye.Gramarye;
 import java.io.File;
@@ -110,6 +111,20 @@ class P4C2AApiGateTest {
                 "com/yo1no/gramarye/magic/api/registry/"
                         + "P8BuiltInClientProfileFactories.java",
                 "com/yo1no/gramarye/magic/network/P9ClientCastInput.java");
+        var p11ConfigurationRelative = "com/yo1no/gramarye/P11ConfigurationBoundary.java";
+        var eventRegistrationOwners = new java.util.HashSet<>(p8ClientRegistryOwners);
+        eventRegistrationOwners.add(p11ConfigurationRelative);
+        var p11Configuration = withoutCommentsAndLiterals(
+                read(MAIN_JAVA.resolve(p11ConfigurationRelative)));
+        assertP11ConfigurationRegistration(p11Configuration);
+        for (var mutation : List.of(
+                p11Configuration.replace("void registerTasks(", "void unexpectedTask("),
+                p11Configuration.replace("new P11ConfigurationTask(listener)",
+                        "new P11ConfigurationTask(null)"),
+                p11Configuration.replace("event.register(new P11ConfigurationTask(listener));",
+                        "event.register(new P11ConfigurationTask(listener)); unsafe();"))) {
+            assertThrows(AssertionError.class, () -> assertP11ConfigurationRegistration(mutation));
+        }
         var registryMutationOwners = production.stream()
                 .filter(path -> !p8ClientRegistryOwners.contains(relative(path)))
                 .filter(path -> {
@@ -119,7 +134,8 @@ class P4C2AApiGateTest {
                             || source.contains("NeoForgeRegistries.Keys.ATTACHMENT_TYPES")
                             || source.contains("ATTACHMENT_TYPES.register(")
                             || source.contains("RegisterEvent")
-                            || source.contains("event.register(");
+                            || (source.contains("event.register(")
+                                    && !relative(path).equals(p11ConfigurationRelative));
                 })
                 .map(P4C2AApiGateTest::relative)
                 .collect(Collectors.toSet());
@@ -177,7 +193,7 @@ class P4C2AApiGateTest {
                                 + "P8BuiltInClientProfileFactories.java"),
                         relativeFilesContaining(production, "RegisterEvent")),
                 () -> assertEquals(
-                        p8ClientRegistryOwners,
+                        eventRegistrationOwners,
                         relativeFilesContaining(production, "event.register(")),
                 () -> assertTrue(registryMutationFragments.stream()
                         .noneMatch(manaDefinition::contains)),
@@ -510,12 +526,15 @@ class P4C2AApiGateTest {
                         "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java",
                         "com/yo1no/gramarye/P8PacketSubmission.java",
                         "com/yo1no/gramarye/PresentationEventPayload.java",
-                        "com/yo1no/gramarye/ProfileCatalogPayload.java"),
+                        "com/yo1no/gramarye/ProfileCatalogPayload.java",
+                        "com/yo1no/gramarye/P11TransitionPayloads.java"),
                 relativeFilesContaining(javaSources(MAIN_JAVA), "CustomPacketPayload"));
         assertEquals(
                 Set.of(
                         "com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java",
-                        "com/yo1no/gramarye/P8PayloadRegistrationBridge.java"),
+                        "com/yo1no/gramarye/P8PayloadRegistrationBridge.java",
+                        "com/yo1no/gramarye/P11TransitionPayloadRegistrar.java",
+                        "com/yo1no/gramarye/Gramarye.java"),
                 relativeFilesContaining(javaSources(MAIN_JAVA), "PayloadRegistrar"));
         assertFalse(productionWithoutReviewedReconciliationOwners.contains("Reconciliation"),
                 "reconciliation escaped the exact B2-A/B2-B owners");
@@ -691,6 +710,14 @@ class P4C2AApiGateTest {
             }
         }
         throw new AssertionError("project root not found");
+    }
+
+    private static void assertP11ConfigurationRegistration(String source) {
+        assertEquals(1, occurrences(source, "event.register("));
+        assertTrue(source.replaceAll("\\s+", "").contains(
+                "publicstaticvoidregisterTasks(RegisterConfigurationTasksEventevent){"
+                        + "if(event.getListener()instanceofServerConfigurationPacketListenerImpllistener){"
+                        + "event.register(newP11ConfigurationTask(listener));}}"));
     }
 
     private static String withoutCommentsAndLiterals(String source) {

@@ -82,17 +82,125 @@ final class P11SynchronousSourceBoundaryTest {
                 "src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java"));
         var source = Files.readString(ROOT.resolve(
                 "src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java"));
-        int flush = boundary.indexOf("source.flushIndependentBeforeLogin(previous)");
-        int seal = boundary.indexOf("selection.memory = source.seal(previous");
-        int fence = boundary.indexOf("source.constructorStarted(selection.independent)");
-        int constructor = boundary.indexOf("var actor = original.call(profile, information)");
-        assertTrue(flush >= 0 && flush < seal && seal < fence && fence < constructor);
+        // The earlier no-predecessor branch also invokes the factory. This contract concerns
+        // only retained canonical input, whose constructor must follow its own source fence.
+        var managed = boundary.substring(boundary.indexOf("var selection = new LoginSelection(source, previous);"),
+                boundary.indexOf("private static void closeSelection("));
+        assertManagedLoginOrder(managed);
+        assertThrows(AssertionError.class, () -> assertManagedLoginOrder(managed.replace(
+                "source.constructorStarted(selection.independent);",
+                "var actor = original.call(profile, information);\nsource.constructorStarted(selection.independent);")));
         var validator = source.substring(source.indexOf("void flushIndependentBeforeLogin"),
                 source.indexOf("void finishLoginIndependent"));
         assertTrue(validator.contains("canonicalInputComplete(body)"));
         assertTrue(!validator.contains("physicalClean(") && !validator.contains(".save()"));
         assertTrue(source.contains("actor.getStats() != account.current.stats"));
         assertTrue(source.contains("actor.getAdvancements() != account.current.advancements"));
+    }
+
+    private static void assertManagedLoginOrder(String managed) {
+        int flush = managed.indexOf("source.flushIndependentBeforeLogin(previous)");
+        int seal = managed.indexOf("selection.memory = source.seal(previous");
+        int fence = managed.indexOf("source.constructorStarted(selection.independent)");
+        int constructor = managed.indexOf("var actor = original.call(profile, information)");
+        assertTrue(flush >= 0 && flush < seal && seal < fence && fence < constructor);
+    }
+
+    @Test
+    void synchronousFallbackStartsPlayerWriterWithoutCrossCategoryDiskPrerequisite() throws IOException {
+        // A dirty statistics/PA file is independent durability duty, not missing player material.
+        // Actual native dirty-JSON fallback/readback remains an excluded-harness assertion.
+        var source = Files.readString(ROOT.resolve(
+                "src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java"));
+        assertSynchronousAdmission(source);
+        assertThrows(AssertionError.class, () -> assertSynchronousAdmission(source.replace(
+                "if (body == null || !canSerialize(body)) {\n            retainSynchronousDuty(body);",
+                "if (body == null || !canSerialize(body) || !physicalClean(body, "
+                        + "P11ReceiptLedger.WriterKind.STATISTICS)) {\n            retainSynchronousDuty(body);")));
+        assertThrows(AssertionError.class, () -> assertSynchronousAdmission(source.replace(
+                "if (body == null || !canSerialize(body)) {\n            retainSynchronousDuty(body);",
+                "if (body == null || !canSerialize(body) || !physicalClean(body, "
+                        + "P11ReceiptLedger.WriterKind.ADVANCEMENTS)) {\n            retainSynchronousDuty(body);")));
+        assertThrows(AssertionError.class, () -> assertSynchronousAdmission(source.replace(
+                "if (body == null || !canSerialize(body)) {\n            retainSynchronousDuty(body);",
+                "if (body == null) {\n            retainSynchronousDuty(body);")));
+        assertThrows(AssertionError.class, () -> assertSynchronousAdmission(source.replace(
+                "return beginWriter(body, P11ReceiptLedger.WriterKind.PLAYER_DATA, true);",
+                "return beginWriter(body, P11ReceiptLedger.WriterKind.PLAYER_DATA, false);")));
+    }
+
+    @Test
+    void synchronousFallbackPreservesOneNativeSaveFreshReceiptAndReadback() throws IOException {
+        var boundary = metadataBoundarySource();
+        var source = Files.readString(ROOT.resolve(
+                "src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java"));
+        var mixin = Files.readString(ROOT.resolve("src/main/java/com/yo1no/gramarye/mixin/P11PlayerListMixin.java"));
+        assertSynchronousReceiptChain(boundary, source, mixin);
+        assertThrows(AssertionError.class, () -> assertSynchronousReceiptChain(boundary.replace(
+                "originalSave.call(request.previous.actor);",
+                "originalSave.call(request.previous.actor); originalSave.call(request.previous.actor);"), source, mixin));
+        assertThrows(AssertionError.class, () -> assertSynchronousReceiptChain(boundary.replace(
+                "request.duplicateWriter ||", "false ||"), source, mixin));
+        assertThrows(AssertionError.class, () -> assertSynchronousReceiptChain(boundary.replace(
+                "((P11NativeWorldAccess.PrimaryReader) storage).p11$readPrimary(request);", ""), source, mixin));
+        assertThrows(AssertionError.class, () -> assertSynchronousReceiptChain(boundary.replace(
+                "!request.material.equals(latest)", "false"), source, mixin));
+        assertThrows(AssertionError.class, () -> assertSynchronousReceiptChain(boundary, source.replace(
+                "current.capturedSource() != receipt.source()", "false"), mixin));
+        assertThrows(AssertionError.class, () -> assertSynchronousReceiptChain(boundary, source.replace(
+                "current.materialVersion() != receipt.materialVersion()", "false"), mixin));
+        assertThrows(AssertionError.class, () -> assertSynchronousReceiptChain(boundary, source.replace(
+                "attempt.observation(step) != P11ReceiptLedger.Observation.SUCCEEDED", "false"), mixin));
+        assertThrows(AssertionError.class, () -> assertSynchronousReceiptChain(boundary, source, mixin.replace(
+                "save((ServerPlayer) args[0]);", "playerIo.save((ServerPlayer) args[0]);")));
+    }
+
+    private static void assertSynchronousAdmission(String source) {
+        assertEquals("if(body==null||!canSerialize(body)){retainSynchronousDuty(body);returnnull;}"
+                        + "returnbeginWriter(body,P11ReceiptLedger.WriterKind.PLAYER_DATA,true);",
+                compactMethodBody(source, "P11ReceiptLedger.PhysicalWriterReceiptbeginSynchronousPlayerWriter("));
+    }
+
+    private static void assertSynchronousReceiptChain(String boundary, String source, String mixin) {
+        var prepare = compactMethodBody(boundary, "publicstaticvoidpreparePrimary(");
+        assertEquals(1, occurrences(prepare, "originalSave.call(request.previous.actor);"));
+        assertTrue(prepare.contains("||!request.owner.canSerialize(request.previous)){throwunavailable();}"));
+        assertTrue(prepare.contains("request.stage=PrimaryStage.SAVING;originalSave.call(request.previous.actor);"
+                + "if(request.duplicateWriter||!request.owner.completedPlayerWrite(request.previous,request.receipt))"
+                + "{throwunavailable();}request.stage=PrimaryStage.READ_REQUESTED;"
+                + "((P11NativeWorldAccess.PrimaryReader)storage).p11$readPrimary(request);"));
+        assertEquals(3, occurrences(prepare,
+                "!request.owner.completedPlayerWrite(request.previous,request.receipt)"));
+        assertTrue(prepare.contains("if(request.stage!=PrimaryStage.READ||request.material==null"));
+        assertTrue(prepare.contains("varlatest=selectedMaterial(request.previous);NbtUtils.addCurrentDataVersion(latest);"
+                + "if(!request.material.equals(latest)||!request.owner.completedPlayerWrite(request.previous,request.receipt))"
+                + "{throwunavailable();}request.witness=request.owner.captureSelection(request.previous);"
+                + "request.stage=PrimaryStage.VERIFIED;"));
+        assertEquals("P11NativeStorageBoundary.preparePrimary((PlayerList)(Object)this,playerIo,request,"
+                        + "args->{save((ServerPlayer)args[0]);returnnull;});",
+                compactMethodBody(mixin, "publicvoidp11$preparePrimary("));
+        var reader = compactMethodBody(boundary, "publicstaticvoidreadPrimary(");
+        assertTrue(reader.contains("||!request.owner.completedPlayerWrite(request.previous,request.receipt))"
+                + "{throwunavailable();}request.stage=PrimaryStage.READING;"
+                + "varresult=originalRead.call(request.previous.actor,\".dat\");"));
+        assertTrue(reader.contains("if(!request.readEntered||request.readState!=ReadState.READ||result.isEmpty())"
+                + "{throwunavailable();}"));
+        var receipt = compactMethodBody(source, "booleancompletedPlayerWrite(Bodybody,"
+                + "P11ReceiptLedger.PhysicalWriterReceiptreceipt,SelectionWitnesswitness)");
+        assertTrue(receipt.contains("if(receipt==null||receipt.kind()!=P11ReceiptLedger.WriterKind.PLAYER_DATA"
+                + "||!selectedInputCurrent(body,receipt.source(),witness)){returnfalse;}"));
+        assertTrue(receipt.contains("if(current==null||attempt==null||current.dirty()"
+                + "||current.materialVersion()!=receipt.materialVersion()"
+                + "||current.capturedSource()!=receipt.source()"
+                + "||current.terminal()!=P11ReceiptLedger.Terminal.COMPLETED"
+                + "||attempt.terminal()!=P11ReceiptLedger.Terminal.COMPLETED){returnfalse;}"));
+        assertTrue(receipt.contains("P11ReceiptLedger.PhysicalStep.ENCODE,P11ReceiptLedger.PhysicalStep.WRITE,"
+                + "P11ReceiptLedger.PhysicalStep.CLOSE,P11ReceiptLedger.PhysicalStep.REPLACE"));
+        assertTrue(receipt.contains("if(attempt.observation(step)!=P11ReceiptLedger.Observation.SUCCEEDED){returnfalse;}"));
+    }
+
+    private static int occurrences(String source, String text) {
+        return source.split(java.util.regex.Pattern.quote(text), -1).length - 1;
     }
 
     @Test

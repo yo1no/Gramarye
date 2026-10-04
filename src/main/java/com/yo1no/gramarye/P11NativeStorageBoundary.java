@@ -26,6 +26,7 @@ import net.minecraft.server.PlayerAdvancements;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.network.CommonListenerCookie;
+import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import net.minecraft.server.players.PlayerList;
 import net.minecraft.stats.ServerStatsCounter;
@@ -59,6 +60,7 @@ public final class P11NativeStorageBoundary {
     private static final ThreadLocal<MetadataManaObservation> METADATA_MANA = new ThreadLocal<>();
     private static final ThreadLocal<P11QualifiedSourceOwner.Body> SELECTED_SERIALIZE = new ThreadLocal<>();
     private static final ThreadLocal<MinecraftServer> STOP_SERVER = new ThreadLocal<>();
+    private static final ThreadLocal<DetachedStopSaveRequest> DETACHED_STOP_SAVE = new ThreadLocal<>();
     private static final ResourceLocation SKILLS = ResourceLocation.fromNamespaceAndPath("gramarye", "player_skills");
     private static final ResourceLocation MANA = ResourceLocation.fromNamespaceAndPath("gramarye", "player_mana");
     private static long observerFailures;
@@ -387,7 +389,29 @@ public final class P11NativeStorageBoundary {
         var previous = CONFIGURATION.get();
         var scope = new ConfigurationScope(listener, previous);
         CONFIGURATION.set(scope);
-        try { original.call(packet); }
+        try { P11LiveTransitionBoundary.configurationFinished(listener, packet, original); }
+        finally {
+            try { closeSelection(scope.selection); }
+            finally {
+                if (previous == null) { CONFIGURATION.remove(); } else { CONFIGURATION.set(previous); }
+            }
+        }
+    }
+
+    /** A newly admitted parked attempt uses only this synchronous factory-to-placement scope. */
+    public static void parkedConfiguration(ServerCommonPacketListenerImpl listener, GameProfile profile,
+            ClientInformation information, Runnable originalTail) {
+        if (P11LiveTransitionBoundary.currentNativeAttempt(listener) == null
+                || !listener.getMainThreadEventLoop().isSameThread()
+                || !listener.getConnection().isConnected()
+                || listener.getConnection().getPacketListener() != listener
+                || !listener.getOwner().getId().equals(profile.getId())) { throw unavailable(); }
+        java.util.Objects.requireNonNull(information, "information");
+        java.util.Objects.requireNonNull(originalTail, "originalTail");
+        var previous = CONFIGURATION.get();
+        var scope = new ConfigurationScope(listener, previous);
+        CONFIGURATION.set(scope);
+        try { originalTail.run(); }
         finally {
             try { closeSelection(scope.selection); }
             finally {
@@ -399,9 +423,14 @@ public final class P11NativeStorageBoundary {
     /** Select before the original constructor can install successor JSON owners in native maps. */
     public static ServerPlayer loginPlayer(net.minecraft.server.players.PlayerList list,
             GameProfile profile, ClientInformation information, Operation<ServerPlayer> original) {
+        P11LiveTransitionBoundary.requireFactoryTicket(list, profile, information);
         var source = root == null ? null : root.writerOwner(list);
         var previous = source == null ? null : source.current(profile.getId());
-        if (previous == null) { return original.call(profile, information); }
+        if (previous == null) {
+            var actor = original.call(profile, information);
+            P11LiveTransitionBoundary.expectedActor(actor);
+            return actor;
+        }
         var context = CONFIGURATION.get();
         if (context == null || context.selection != null
                 || context.listener.getMainThreadEventLoop() != previous.actor.getServer()
@@ -431,6 +460,7 @@ public final class P11NativeStorageBoundary {
             source.constructorStarted(selection.independent);
             selection.constructorStarted = true;
             var actor = original.call(profile, information);
+            P11LiveTransitionBoundary.expectedActor(actor);
             source.finishLoginIndependent(selection.independent, actor);
             // Constructor callbacks may publish or mutate native fields. Never select a stale
             // root merely because an e/v pair failed to observe an ordinary vanilla change.
@@ -490,14 +520,27 @@ public final class P11NativeStorageBoundary {
         }
     }
 
+    /** The unique native respawn NEW returned this B, including an ordinary T-full body. */
+    public static void respawnConstructed(ServerPlayer player) {
+        P11LiveTransitionBoundary.expectedActor(player);
+        var copy = COPY.get();
+        if (copy != null) {
+            if (copy.next == null || copy.next.actor != player
+                    || !P11LiveTransitionBoundary.adoptSourceBody(copy.next, copy.owner)) { throw unavailable(); }
+        }
+    }
+
     public static void place(MinecraftServer server, Connection connection, ServerPlayer player,
             CommonListenerCookie cookie, Operation<Void> original) {
         var source = root == null ? null : root.sourceOwner(server);
         // Constructor identity alone is not admission. This is the real configuration→PLAY call.
+        var configuration = CONFIGURATION.get();
         boolean authenticated = connection.isConnected()
-                && connection.getPacketListener() instanceof ServerConfigurationPacketListenerImpl listener
-                && listener.getMainThreadEventLoop() == server
-                && listener.getOwner().getId().equals(player.getUUID());
+                && configuration != null && connection.getPacketListener() == configuration.listener
+                && configuration.listener.getConnection() == connection
+                && configuration.listener.getMainThreadEventLoop() == server
+                && configuration.listener.getOwner().getId().equals(player.getUUID())
+                && P11LiveTransitionBoundary.currentNativeAttempt(configuration.listener) != null;
         if (source == null || !authenticated) {
             if (source != null && source.account(player) != null) { throw unavailable(); }
             original.call(connection, player, cookie);
@@ -521,6 +564,7 @@ public final class P11NativeStorageBoundary {
             }
             var body = source.candidate(player);
             if (body == null) { original.call(connection, player, cookie); normal = true; return; }
+            if (!P11LiveTransitionBoundary.adoptSourceBody(body, source)) { throw unavailable(); }
             scope = new LoadScope(source, body, selection == null ? null : selection.memory,
                     selection == null ? null : selection.bodyMemory,
                     selection == null ? null : selection.primary, selection == null ? null : selection.lineage);
@@ -926,7 +970,8 @@ public final class P11NativeStorageBoundary {
             if (body.envelope != null && !body.logoutActive) {
                 // Retained lifecycle fields never escape through an arbitrary serializer call.
                 // Owned physical consumers only read; selected load copies under reservation.
-                if ((writer == null || writer.body != body) && SELECTED_SERIALIZE.get() != body) {
+                if ((writer == null || writer.body != body) && SELECTED_SERIALIZE.get() != body
+                        && !detachedStopCacheEnvelope(body)) {
                     throw unavailable();
                 }
                 body.envelope.apply(result);
@@ -969,8 +1014,9 @@ public final class P11NativeStorageBoundary {
         }
     }
 
-    public static ServerPlayer respawn(ServerPlayer old, boolean keepEverything,
+    public static ServerPlayer respawn(PlayerList list, ServerPlayer old, boolean keepEverything,
             Entity.RemovalReason reason, Operation<ServerPlayer> original) {
+        P11LiveTransitionBoundary.requireRespawnTicket(list, old, keepEverything);
         var source = lifecycleOwner(old);
         var body = source == null ? null : source.body(old);
         if (body == null) { return original.call(old, keepEverything, reason); }
@@ -1085,12 +1131,21 @@ public final class P11NativeStorageBoundary {
         var body = source != null && player instanceof ServerPlayer actor ? source.body(actor) : null;
         boolean managed = source != null && player instanceof ServerPlayer actor && source.account(actor) != null;
         var previous = WRITE.get();
+        var stop = DETACHED_STOP_SAVE.get();
+        boolean stopWriter = stop != null && stop.entered && !stop.closed
+                && stop.owner == source && stop.body == body && stop.storage == storage;
+        if (stopWriter) {
+            if (stop.playerWriterEntered) { stop.duplicateWriter = true; return; }
+            stop.playerWriterEntered = true;
+            if (!detachedStopRequestCurrent(stop)) { return; }
+        }
         if (managed && previous != null) { return; }
         var request = PRIMARY_READ.get();
         boolean synchronous = request != null && request.stage == PrimaryStage.SAVING
                 && request.previous == body && request.storage == storage;
         var receipt = !managed ? null : synchronous ? source.beginSynchronousPlayerWriter(body)
                 : source.beginWriter(body, P11ReceiptLedger.WriterKind.PLAYER_DATA);
+        if (stopWriter) { stop.receipt = receipt; }
         if (managed && receipt == null) { return; } // Do not truncate the caller's stats/PA tail.
         if (synchronous) {
             if (request.receipt != null) { request.duplicateWriter = true; }
@@ -1446,6 +1501,74 @@ public final class P11NativeStorageBoundary {
         }
     }
 
+    /** Only stop's original player-save return, before removeAll/world save; no actor save grant. */
+    public static void flushDetachedPlayersAtStop(MinecraftServer server,
+            LevelStorageSource.LevelStorageAccess storage) {
+        if (server == null || STOP_SERVER.get() != server || root == null) { return; }
+        try {
+            var source = root.sourceOwner(server);
+            if (source != null && root.writerOwner(storage, null) == source) {
+                source.flushDetachedPlayersAtStop();
+            }
+        } catch (RuntimeException | Error secondary) {
+            if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
+        }
+    }
+
+    /** Package owner mints this only for an already retained dirty body in the exact stop scope. */
+    static void saveDetachedAtStop(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body) {
+        if (body == null || root == null || STOP_SERVER.get() != body.actor.getServer()
+                || root.sourceOwner(body.actor.getServer()) != source
+                || DETACHED_STOP_SAVE.get() != null || WRITE.get() != null || CACHE.get() != null
+                || PRIMARY_READ.get() != null || SERIALIZE.get() != null
+                || !source.detachedStopCurrent(body, body.source)) { throw unavailable(); }
+        var request = new DetachedStopSaveRequest(source, body);
+        DETACHED_STOP_SAVE.set(request);
+        try {
+            ((P11NativeWorldAccess.PlayerStorage) request.list).p11$saveDetachedAtStop(request);
+            if (!request.completed) { throw unavailable(); }
+        } finally {
+            request.closed = true;
+            DETACHED_STOP_SAVE.remove();
+        }
+    }
+
+    /** Opaque one-use bridge to the original virtual save, never a load or a second physical writer. */
+    public static void saveDetachedAtStop(PlayerList list, PlayerDataStorage storage,
+            DetachedStopSaveRequest request, Operation<Void> originalSave) {
+        if (request == null || DETACHED_STOP_SAVE.get() != request || request.entered || request.closed
+                || request.list != list || !detachedStopRequestCurrent(request)
+                || root.playerStorageOwner(storage, request.body.actor) != request.owner
+                || !((P11NativeWorldAccess.PlayerStorage) list).p11$independentOwnersMatch(request.body.actor)) {
+            throw unavailable();
+        }
+        request.storage = storage;
+        request.entered = true;
+        originalSave.call(request.body.actor);
+        if (request.duplicateWriter || !request.playerWriterEntered || request.receipt == null
+                || request.receipt.source() != request.version || !detachedStopRequestCurrent(request)
+                || !request.owner.completedPlayerWrite(request.body, request.receipt)) { throw unavailable(); }
+        request.completed = true;
+    }
+
+    private static boolean detachedStopRequestCurrent(DetachedStopSaveRequest request) {
+        return request != null && DETACHED_STOP_SAVE.get() == request && !request.closed
+                && STOP_SERVER.get() == request.server && root != null
+                && request.server.getPlayerList() == request.list
+                && root.writerOwner(request.list, request.body.actor) == request.owner
+                && request.owner.detachedStopCurrent(request.body, request.version);
+    }
+
+    /** Cache is an envelope consumer only inside the exact stop-save request and its own receipt. */
+    private static boolean detachedStopCacheEnvelope(P11QualifiedSourceOwner.Body body) {
+        var request = DETACHED_STOP_SAVE.get();
+        var cache = CACHE.get();
+        return request != null && request.entered && request.body == body && detachedStopRequestCurrent(request)
+                && WRITE.get() == null && cache != null && cache.list == request.list
+                && cache.source == request.owner && cache.body == body && cache.receipt != null
+                && cache.receipt.source() == request.version && request.owner.mayWrite(body, cache.receipt);
+    }
+
     /** Exact original stop caller, before its unique world-lock close; not a public save grant. */
     public static void flushDetachedIndependentAtStop(MinecraftServer server,
             LevelStorageSource.LevelStorageAccess storage) {
@@ -1461,11 +1584,31 @@ public final class P11NativeStorageBoundary {
     }
 
     private enum ReadState { UNOBSERVED, ABSENT, PRESENT, READ, ERROR }
+
+    /** Private-ctor and call-local only. No public actor, material or writer accessor. */
+    public static final class DetachedStopSaveRequest {
+        private final P11QualifiedSourceOwner owner;
+        private final P11QualifiedSourceOwner.Body body;
+        private final P11ReceiptLedger.Source version;
+        private final MinecraftServer server;
+        private final PlayerList list;
+        private PlayerDataStorage storage;
+        private P11ReceiptLedger.PhysicalWriterReceipt receipt;
+        private boolean entered, playerWriterEntered, duplicateWriter, completed, closed;
+
+        private DetachedStopSaveRequest(P11QualifiedSourceOwner owner, P11QualifiedSourceOwner.Body body) {
+            this.owner = owner;
+            this.body = body;
+            version = body.source;
+            server = body.actor.getServer();
+            list = server.getPlayerList();
+        }
+    }
     private static final class ConfigurationScope {
-        final ServerConfigurationPacketListenerImpl listener;
+        final ServerCommonPacketListenerImpl listener;
         final ConfigurationScope previous;
         LoginSelection selection;
-        ConfigurationScope(ServerConfigurationPacketListenerImpl listener, ConfigurationScope previous) {
+        ConfigurationScope(ServerCommonPacketListenerImpl listener, ConfigurationScope previous) {
             this.listener = listener; this.previous = previous;
         }
     }

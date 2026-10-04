@@ -31,6 +31,7 @@ final class P11FoundationService {
     private boolean nativeStopNormal;
     private P11QualifiedSourceOwner.Summary terminalSummary;
     private volatile PlayerStorageBinding playerStorageBinding;
+    private volatile P11LiveTransitionService transitions;
 
     P11FoundationService(P11SourceProvenance provenance, PlayerSkillAttachmentService attachments) {
         this.provenance = Objects.requireNonNull(provenance, "provenance");
@@ -41,6 +42,7 @@ final class P11FoundationService {
         });
         P11NativeStorageBoundary.install(this);
         P11NativeOperationBoundary.install(this);
+        P11LiveTransitionBoundary.install(this);
     }
 
     void started(ServerStartedEvent event, P11StartupLoadState snapshot) {
@@ -63,10 +65,12 @@ final class P11FoundationService {
                 throw new IllegalStateException("P11_REQUIRED_NATIVE_HOOK_UNAVAILABLE");
             }
             slot = new P11FoundationSlot(ready.limits(),
-                    new P11IdentityOwner(exact, ready.limits().maxUuids()));
+                    new P11IdentityOwner(exact, ready.limits().maxUuids(),
+                            Math.addExact((long) exact.getMaxPlayers(), ready.limits().maxWaitingConnections())));
             provenance.started(exact);
             slot.sources = new P11QualifiedSourceOwner(exact, slot.identities, slot.receipts,
                     slot.resources, ready.limits(), provenance, attachments);
+            transitions = new P11LiveTransitionService(exact, ready.limits(), slot.identities, slot.sources);
             playerStorageBinding = new PlayerStorageBinding(exact,
                     (P11NativeWorldAccess.PlayerStorage) exact.getPlayerList(),
                     (P11NativeWorldAccess.ServerStorage) exact,
@@ -88,10 +92,19 @@ final class P11FoundationService {
     }
 
     void stopping(ServerStoppingEvent event) {
+        var control = transitions;
+        if (control != null && control.ownsServer(event.getServer())) { control.stop(); }
         var source = sourceOwner(event.getServer());
         if (source != null) { source.stopping(); }
     }
     void stopped(ServerStoppedEvent event) { stopExact(event.getServer()); }
+
+    P11LiveTransitionService transitions() { return transitions; }
+
+    void tick(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+        var control = transitions;
+        if (event.getServer() == server && control != null) { control.tick(); }
+    }
 
     P11SourceProvenance provenance() { return provenance; }
 
@@ -325,6 +338,7 @@ final class P11FoundationService {
             provenance.inactiveBoundary();
         }
         slot = null;
+        transitions = null;
         playerStorageBinding = null;
         server = null;
         startupState = P11StartupLoadState.Unavailable.INSTANCE;

@@ -4,6 +4,6 @@
   "package": "com.yo1no.gramarye.harnessmixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": ["P11OnlineLoginMixin", "P11OnlineAuthenticatorMixin", "P11OnlineRewardObservationMixin"],
-  "client": ["P11OnlineClientObservationMixin"],
+  "client": ["P11OnlineClientObservationMixin", "P11C4aMouseInputMixin"],
   "injectors": {"defaultRequire": 1}
 }

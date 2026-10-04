@@ -2,9 +2,11 @@ package com.yo1no.gramarye.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.authlib.GameProfile;
 import com.yo1no.gramarye.P11NativeStorageBoundary;
 import com.yo1no.gramarye.P11NativePresence;
+import com.yo1no.gramarye.P11LiveTransitionBoundary;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerLevel;
@@ -17,6 +19,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ServerPlayer.class)
 abstract class P11ServerPlayerMixin {
+    @WrapOperation(method = "die(Lnet/minecraft/world/damagesource/DamageSource;)V",
+            at = @At(value = "INVOKE", target = "Lnet/neoforged/neoforge/common/CommonHooks;onLivingDeath(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/damagesource/DamageSource;)Z"),
+            require = 1, expect = 1, allow = 1)
+    private boolean p11$deathScene(net.minecraft.world.entity.LivingEntity actor,
+            net.minecraft.world.damagesource.DamageSource damage, Operation<Boolean> original) {
+        boolean cancelled = original.call(actor, damage);
+        if (!cancelled) { P11LiveTransitionBoundary.publishDeath((ServerPlayer) (Object) this); }
+        return cancelled;
+    }
+
+    @Inject(method = "showEndCredits()V",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;send(Lnet/minecraft/network/protocol/Packet;)V"),
+            require = 1, expect = 1, allow = 1)
+    private void p11$endScene(CallbackInfo callback) {
+        P11LiveTransitionBoundary.publishEnd((ServerPlayer) (Object) this);
+    }
+
     @Inject(method = "<init>(Lnet/minecraft/server/MinecraftServer;Lnet/minecraft/server/level/ServerLevel;Lcom/mojang/authlib/GameProfile;Lnet/minecraft/server/level/ClientInformation;)V",
             at = @At("RETURN"), require = 1, expect = 1)
     private void p11$constructed(MinecraftServer server, ServerLevel level, GameProfile profile,

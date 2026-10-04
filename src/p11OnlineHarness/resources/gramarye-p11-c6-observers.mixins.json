@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.yo1no.gramarye.harnessmixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "P11C4aC6LiveMixin",
+    "P11C4aC6EntryViewMixin",
+    "P11C4aC6ControlMixin",
+    "P11C4aC6BucketMixin",
+    "P11C4aC6DispatcherMixin",
+    "P11C4aC6WaitMixin",
+    "P11C4aRateFairLiveMixin",
+    "P11C4aRateFairControlMixin",
+    "P11C4aRateFairBucketMixin",
+    "P11C4aRateFairDispatcherMixin",
+    "P11C4aRateFairCommonMixin"
+  ],
+  "client": ["P11C4aC6ClientMixin", "P11C4aRateFairClientMixin"],
+  "injectors": {"defaultRequire": 1}
+}

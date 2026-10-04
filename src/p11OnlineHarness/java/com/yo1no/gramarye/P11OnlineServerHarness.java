@@ -45,6 +45,7 @@ public final class P11OnlineServerHarness {
     private static Path output;
     private static String runId;
     private static String cohort;
+    private static String semanticCohort;
     private static boolean readyOnly;
     private static boolean fixtureDone;
     private static boolean finishIssued;
@@ -55,12 +56,22 @@ public final class P11OnlineServerHarness {
     private static long phaseStart;
     private static int expected;
     private static AdvancementRewards fixtureRewards;
+    private static boolean capacityRespawnStarted;
+    private static boolean capacityRespawnDone;
+    private static long capacityRespawnStartedAt;
+    private static int capacityRespawnEvents;
+    private static P11QualifiedSourceOwner capacityPeerOwner;
+    private static P11QualifiedSourceOwner.Account capacityPeerAccount;
+    private static P11QualifiedSourceOwner.Body capacityPeerBody;
+    private static P11ReceiptLedger.Source capacityPeerSource;
+    private static net.minecraft.server.PlayerAdvancements capacityPeerAdvancements;
+    private static net.minecraft.stats.ServerStatsCounter capacityPeerStats;
 
     private P11OnlineServerHarness() {}
 
     /** Called only after the original online hasJoinedServer result's profile() returns. */
     public static synchronized void authenticated(MinecraftServer exact, Connection connection, UUID id) {
-        if (System.getProperty("gramarye.p11.online.output") == null || terminal) { return; }
+        if (System.getProperty("gramarye.p11.online.output") == null || !P11OnlineInputs.onlineContextCase() || terminal) { return; }
         if (exact != server || connection == null || id == null || AUTH.size() >= 8
                 || AUTH.containsKey(connection)) {
             authenticationOverflow = true;
@@ -71,7 +82,7 @@ public final class P11OnlineServerHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void started(ServerStartedEvent event) {
-        if (System.getProperty("gramarye.p11.online.output") == null) { return; }
+        if (System.getProperty("gramarye.p11.online.output") == null || !P11OnlineInputs.onlineContextCase()) { return; }
         try {
             server = event.getServer();
             require(server.isDedicatedServer() && server.usesAuthentication()
@@ -79,8 +90,8 @@ public final class P11OnlineServerHarness {
             runId = System.getProperty("gramarye.p11.online.runId");
             require(runId != null && runId.matches("[a-zA-Z0-9_-]{8,64}"), "BAD_RUN_ID");
             cohort = System.getProperty("gramarye.p11.online.case");
-            require(List.of("single", "qctx", "capacity").contains(cohort), "BAD_CASE");
-            expected = cohort.equals("single") ? 1 : 2;
+            semanticCohort = P11OnlineInputs.semanticOnlineCase();
+            expected = semanticCohort.equals("single") ? 1 : 2;
             readyOnly = Boolean.parseBoolean(System.getProperty("gramarye.p11.online.readyOnly"));
             var root = Path.of(System.getProperty("gramarye.p11.online.output")).toAbsolutePath().normalize();
             require(Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(root), "BAD_OUTPUT");
@@ -113,7 +124,7 @@ public final class P11OnlineServerHarness {
             var state = ACTORS.get(player.getUUID());
             if (state == null) {
                 require(ACTORS.size() < expected && !fixtureDone, "UNEXPECTED_EXTRA_ACTOR");
-                String role = cohort.equals("single") ? "single" : ACTORS.isEmpty() ? "a" : "b";
+                String role = semanticCohort.equals("single") ? "single" : ACTORS.isEmpty() ? "a" : "b";
                 state = new Actor(role, player);
                 ACTORS.put(player.getUUID(), state);
             } else {
@@ -127,6 +138,26 @@ public final class P11OnlineServerHarness {
                     "encrypted", true, "hasJoinedNonNullProfile", true, "sameExactConnection", true,
                     "newConnection", state.logins == 2));
         } catch (IOException | RuntimeException failure) { fail("LOGIN_PROVENANCE", failure); }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void respawn(PlayerEvent.PlayerRespawnEvent event) {
+        if (server == null || terminal || !"c4a-capacity".equals(cohort)
+                || !(event.getEntity() instanceof ServerPlayer player) || player.getServer() != server) { return; }
+        try {
+            var state = ACTORS.get(player.getUUID());
+            require(server.isSameThread() && state != null && state.role.equals("b")
+                    && capacityRespawnStarted && !capacityRespawnDone && !fixtureDone
+                    && capacityRespawnEvents == 0 && !event.isEndConquered()
+                    && state.current == state.first && player != state.first
+                    && player.connection == state.first.connection
+                    && player.connection.getConnection() == state.firstConnection
+                    && state.logins == 1 && state.logouts == 0,
+                    "CAPACITY_RESPAWN_EVENT_IDENTITY");
+            // Observation of the actual native replacement; this does not bind a product identity.
+            state.current = player;
+            capacityRespawnEvents++;
+        } catch (RuntimeException failure) { fail("CAPACITY_NATIVE_RESPAWN", failure); }
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -185,8 +216,10 @@ public final class P11OnlineServerHarness {
             }
             if (!fixtureDone && ACTORS.size() == expected && allPresent(1)) {
                 if (!ACTORS.values().stream().allMatch(P11OnlineServerHarness::materialReady)) { return; }
+                if (cohort.equals("c4a-capacity") && !capacityRespawnDone
+                        && !capacityRespawnBeforeFixture()) { return; }
                 if (expected == 2) {
-                    var report = P11OnlineNativeContextProbe.run(server, output.resolve("native-context"), cohort.equals("capacity"));
+                    var report = P11OnlineNativeContextProbe.run(server, output.resolve("native-context"), semanticCohort.equals("capacity"));
                     write("native-context-result.json", Map.of("passed", report.passed(),
                             "expectedManaged", report.expectedManaged(), "actualManaged", report.actualManaged(),
                             "observations", report.observations(), "failure", report.failure()));
@@ -254,11 +287,92 @@ public final class P11OnlineServerHarness {
                 && server.getPlayerList().getPlayer(s.current.getUUID()) == s.current && s.current.connection.isAcceptingMessages());
     }
 
+    private static boolean capacityRespawnBeforeFixture() throws IOException {
+        var alpha = ACTORS.values().stream().filter(value -> value.role.equals("a")).findFirst().orElseThrow();
+        var beta = ACTORS.values().stream().filter(value -> value.role.equals("b")).findFirst().orElseThrow();
+        var owner = P11NativeStorageBoundary.nativeSourceOwner(alpha.current);
+        require(owner != null && owner == P11NativeStorageBoundary.nativeSourceOwner(beta.current)
+                && alpha.current == alpha.first && alpha.current.isAlive()
+                && alpha.current.connection.getConnection() == alpha.firstConnection
+                && alpha.firstConnection.isConnected() && owner.hasAccount(alpha.current.getUUID())
+                && !owner.hasAccount(beta.current.getUUID()) && owner.nativeRecipient(beta.current) == null
+                && owner.diagnostics(alpha.current.getUUID()).resources().retainedUuids() == 1
+                && materialReady(alpha) && materialReady(beta), "CAPACITY_RESPAWN_SOURCE_CUSTODY");
+        require(alpha.progressEvents == 0 && beta.progressEvents == 0 && alpha.rewardCalls == 0
+                && beta.rewardCalls == 0 && alpha.current.totalExperience == 0
+                && beta.current.totalExperience == 0, "CAPACITY_RESPAWN_BEFORE_REWARD_ONLY");
+        require(!server.isHardcore() && !server.getGameRules().getBoolean(
+                net.minecraft.world.level.GameRules.RULE_DO_IMMEDIATE_RESPAWN), "CAPACITY_NATIVE_DEATH_RULES");
+        if (!capacityRespawnStarted) {
+            require(beta.current == beta.first && beta.current.isAlive() && capacityRespawnEvents == 0,
+                    "CAPACITY_RESPAWN_FRESH_B");
+            capacityPeerOwner = owner;
+            capacityPeerAccount = owner.account(alpha.current);
+            capacityPeerBody = owner.body(alpha.current);
+            capacityPeerSource = capacityPeerBody.source;
+            capacityPeerAdvancements = alpha.current.getAdvancements();
+            capacityPeerStats = alpha.current.getStats();
+            capacityRespawnStarted = true;
+            capacityRespawnStartedAt = ticks;
+            cue("b-capacity-death.ready");
+            beta.current.kill();
+            require(beta.current.isDeadOrDying(), "CAPACITY_ORIGINAL_KILL_NOT_DEAD");
+            write("b-capacity-death.json", Map.of("status", "ORIGINAL_KILL_RETURNED_NOT_RESPAWN_PROOF",
+                    "managed", false, "retainedAccounts", 1, "nativeKillCalls", 1,
+                    "xpBeforeRewards", beta.current.totalExperience, "worldRulesChanged", false));
+            return false;
+        }
+        require(ticks - capacityRespawnStartedAt < 2400, "CAPACITY_RESPAWN_DEADLINE");
+        if (capacityRespawnEvents == 0) { return false; }
+        require(owner == capacityPeerOwner && owner.account(alpha.current) == capacityPeerAccount
+                && owner.body(alpha.current) == capacityPeerBody
+                && capacityPeerAccount.current == capacityPeerBody && capacityPeerBody.actor == alpha.current
+                && capacityPeerBody.source.account() == capacityPeerSource.account()
+                && capacityPeerBody.source.dataIdentity() == capacityPeerSource.dataIdentity()
+                && capacityPeerBody.source.identity() == capacityPeerSource.identity()
+                && capacityPeerBody.source.epoch() == capacityPeerSource.epoch()
+                && capacityPeerBody.advancements == capacityPeerAdvancements
+                && alpha.current.getAdvancements() == capacityPeerAdvancements
+                && capacityPeerBody.stats == capacityPeerStats && alpha.current.getStats() == capacityPeerStats,
+                "CAPACITY_RETAINED_A_ACCOUNT_OR_SOURCE_REPLACED");
+        require(capacityRespawnEvents == 1 && beta.current != beta.first && beta.first.isRemoved()
+                && beta.current.isAlive() && !beta.current.wonGame
+                && beta.current.connection == beta.first.connection
+                && beta.current.connection.getConnection() == beta.firstConnection
+                && beta.firstConnection.isConnected()
+                && server.getPlayerList().getPlayer(beta.current.getUUID()) == beta.current
+                && beta.current.getUUID().equals(beta.first.getUUID()), "CAPACITY_REAL_REPLACEMENT_NOT_CURRENT");
+        // Only coordination: this file does not replace the independent server facts above.
+        if (!Files.isRegularFile(output.getParent().resolve("client-b/capacity-respawn.json"),
+                LinkOption.NOFOLLOW_LINKS)) { return false; }
+        var facts = new LinkedHashMap<String, Object>();
+        facts.put("status", "PASS_UNMANAGED_NATIVE_DEATH_RESPAWN_SERVER_ONLY");
+        facts.put("nativeRespawnEvents", capacityRespawnEvents);
+        facts.put("nativeKillCalls", 1);
+        facts.put("newOriginalActor", beta.current != beta.first);
+        facts.put("sameOriginalConnectionAndListener", beta.current.connection == beta.first.connection);
+        facts.put("oldActorRemoved", beta.first.isRemoved());
+        facts.put("managedBeforeAndAfter", false);
+        facts.put("sourceEpochAfter", owner.diagnostics(beta.current.getUUID()).sourceEpoch());
+        facts.put("retainedAccounts", owner.diagnostics(alpha.current.getUUID()).resources().retainedUuids());
+        facts.put("peerSameOriginalActorAlive", alpha.current == alpha.first && alpha.current.isAlive());
+        facts.put("peerExactOwnerAccountBodyAndSourceIdentity", true);
+        facts.put("peerExactCanonicalAdvancementsAndStats", true);
+        facts.put("peerSourceEpochBefore", capacityPeerSource.epoch());
+        facts.put("peerSourceEpochAfter", capacityPeerBody.source.epoch());
+        facts.put("xpBeforeRewards", beta.current.totalExperience);
+        facts.put("worldRulesChanged", false);
+        facts.put("clientHandlerProofRequiredSeparately", true);
+        write("b-capacity-respawn.json", facts);
+        capacityRespawnDone = true;
+        return true;
+    }
+
     private static boolean materialReady(Actor state) {
         var owner = P11NativeStorageBoundary.nativeSourceOwner(state.current);
         var diagnostic = P11NativeStorageBoundary.diagnostics(server, state.current.getUUID());
         if (owner == null || !diagnostic.active()) { return false; }
-        boolean expectedManaged = !cohort.equals("capacity") || !state.role.equals("b");
+        boolean expectedManaged = !semanticCohort.equals("capacity") || !state.role.equals("b");
         require(owner.hasAccount(state.current.getUUID()) == expectedManaged, "ROLE_ENROLLMENT_CHANGED");
         if (!expectedManaged) {
             require(owner.nativeRecipient(state.current) == null && diagnostic.sourceFault().equals("UNMANAGED")

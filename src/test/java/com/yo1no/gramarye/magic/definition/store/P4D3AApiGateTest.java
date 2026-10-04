@@ -455,12 +455,15 @@ final class P4D3AApiGateTest {
                         "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java",
                         "com/yo1no/gramarye/P8PacketSubmission.java",
                         "com/yo1no/gramarye/PresentationEventPayload.java",
-                        "com/yo1no/gramarye/ProfileCatalogPayload.java"),
+                        "com/yo1no/gramarye/ProfileCatalogPayload.java",
+                        "com/yo1no/gramarye/P11TransitionPayloads.java"),
                 relativeProductionPathsContaining("CustomPacketPayload"));
         assertEquals(
                 Set.of(
                         "com/yo1no/gramarye/magic/network/P7PayloadRegistrar.java",
-                        "com/yo1no/gramarye/P8PayloadRegistrationBridge.java"),
+                        "com/yo1no/gramarye/P8PayloadRegistrationBridge.java",
+                        "com/yo1no/gramarye/P11TransitionPayloadRegistrar.java",
+                        "com/yo1no/gramarye/Gramarye.java"),
                 relativeProductionPathsContaining("PayloadRegistrar"));
         assertFalse(productionWithoutReviewedReconciliationOwners.contains("Reconciliation"),
                 "reconciliation escaped the exact E1/E2 owners");

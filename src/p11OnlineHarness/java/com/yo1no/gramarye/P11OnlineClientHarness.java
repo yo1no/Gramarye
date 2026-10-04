@@ -16,6 +16,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.DisconnectedScreen;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.ServerData;
@@ -23,7 +25,9 @@ import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.game.ClientboundRecipePacket;
+import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundUpdateAdvancementsPacket;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
@@ -75,10 +79,20 @@ public final class P11OnlineClientHarness {
     private static boolean onboardingContinueStarted;
     private static boolean onboardingContinueReturned;
     private static String observationFailure;
+    private static boolean capacityClickStarted;
+    private static boolean capacityClickReturned;
+    private static boolean capacityRespawnComplete;
+    private static int capacityCloneEvents;
+    private static int capacityFrameReturns;
+    private static long capacityScene;
+    private static long capacityEpoch;
+    private static long capacityOriginalGeneration;
 
     private P11OnlineClientHarness() {}
 
-    private static boolean enabled() { return System.getProperty(PREFIX + "output") != null; }
+    private static boolean enabled() {
+        return System.getProperty(PREFIX + "output") != null && P11OnlineInputs.onlineContextCase();
+    }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void tick(ClientTickEvent.Post ignored) {
@@ -150,8 +164,8 @@ public final class P11OnlineClientHarness {
         caseName = property("case");
         runId = property("runId");
         check(role.equals("single") || role.equals("a") || role.equals("b"), "INVALID_ROLE");
-        check(caseName.equals("single") || caseName.equals("qctx") || caseName.equals("capacity"), "INVALID_CASE");
-        check(caseName.equals("single") == role.equals("single"), "CASE_ROLE_MISMATCH");
+        check(P11OnlineInputs.onlineContextCase(), "INVALID_CASE");
+        check(P11OnlineInputs.semanticOnlineCase().equals("single") == role.equals("single"), "CASE_ROLE_MISMATCH");
         check(runId.matches("[A-Za-z0-9_-]{1,80}"), "INVALID_RUN_ID");
         check(property("host").equals("127.0.0.1"), "NON_LOOPBACK_ENDPOINT");
         var portText = property("port");
@@ -247,6 +261,25 @@ public final class P11OnlineClientHarness {
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void cloned(ClientPlayerNetworkEvent.Clone event) {
+        if (!enabled() || terminal || !capacityRespawnSelected()) { return; }
+        try {
+            var minecraft = Minecraft.getInstance();
+            check(minecraft.isSameThread() && phase == Phase.FIRST_PLAY && capacityClickStarted
+                    && !capacityRespawnComplete && capacityCloneEvents == 0
+                    && event.getOldPlayer() == currentPlayer && event.getNewPlayer() != currentPlayer
+                    && event.getConnection() == currentConnection && event.getNewPlayer() == minecraft.player
+                    && event.getNewPlayer().connection == currentListener
+                    && currentListener.getConnection() == currentConnection
+                    && currentConnection.isConnected() && currentConnection.getPacketListener() == currentListener
+                    && event.getNewPlayer().getUUID().equals(playerId), "CAPACITY_NATIVE_CLONE_IDENTITY");
+            currentPlayer = event.getNewPlayer();
+            capacityCloneEvents++;
+        } catch (ObservationFault failure) { recordFailure(failure.code); }
+        catch (RuntimeException | Error failure) { recordFailure("CAPACITY_CLONE_OBSERVATION_FAILURE"); }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     static void loggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         if (!enabled() || terminal) { return; }
         try {
@@ -270,6 +303,10 @@ public final class P11OnlineClientHarness {
 
     private static void firstPlay(Minecraft minecraft) {
         exactCurrent(minecraft, currentListener);
+        if (capacityRespawnSelected() && !capacityRespawnComplete) {
+            capacityRespawn(minecraft);
+            return;
+        }
         if (!FIRST.initialObserved() || !FIRST.fixtureDone || !minecraft.player.getRecipeBook().contains(BREAD)
                 || !cue("reconnect")) { return; }
         var report = summary("FIRST_NATIVE_STATE_OBSERVED");
@@ -277,6 +314,86 @@ public final class P11OnlineClientHarness {
         write("first-play.json", report);
         disconnect(minecraft, false);
         write("first-disconnected.json", summary("EXACT_FIRST_CLIENT_DISCONNECTED"));
+    }
+
+    private static boolean capacityRespawnSelected() {
+        return "c4a-capacity".equals(caseName) && "b".equals(role);
+    }
+
+    private static void capacityRespawn(Minecraft minecraft) {
+        if (!FIRST.initialObserved() || !cue("capacity-death")) { return; }
+        var view = P11ClientTransitions.view();
+        if (!capacityClickStarted) {
+            if (minecraft.getOverlay() != null || !(minecraft.screen instanceof DeathScreen screen)) { return; }
+            if (view == null || view.kind() != P11TransitionProtocol.Kind.DEATH
+                    || view.scope() != P11TransitionProtocol.Scope.PLAY
+                    || view.outcome() != P11TransitionProtocol.Outcome.BINDING) { return; }
+            Button selected = null;
+            for (var child : screen.children()) {
+                if (child instanceof Button button && button.visible && button.active
+                        && button.getMessage().getContents() instanceof TranslatableContents text
+                        && text.getKey().equals("deathScreen.respawn")) {
+                    check(selected == null, "CAPACITY_AMBIGUOUS_RESPAWN_BUTTON");
+                    selected = button;
+                }
+            }
+            if (selected == null) { return; }
+            check(minecraft.mouseHandler instanceof P11C4aClientInputProbe.MouseInput,
+                    "CAPACITY_NATIVE_MOUSE_HOOK_MISSING");
+            var mouse = (P11C4aClientInputProbe.MouseInput) minecraft.mouseHandler;
+            var window = minecraft.getWindow();
+            double x = (selected.getX() + selected.getWidth() / 2.0)
+                    * window.getScreenWidth() / window.getGuiScaledWidth();
+            double y = (selected.getY() + selected.getHeight() / 2.0)
+                    * window.getScreenHeight() / window.getGuiScaledHeight();
+            capacityScene = view.sceneSerial();
+            capacityEpoch = view.connectionEpoch();
+            capacityOriginalGeneration = view.actorGeneration();
+            capacityClickStarted = true;
+            mouse.p11$move(window.getWindow(), x, y);
+            mouse.p11$press(window.getWindow(), org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                    org.lwjgl.glfw.GLFW.GLFW_PRESS, 0);
+            mouse.p11$press(window.getWindow(), org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                    org.lwjgl.glfw.GLFW.GLFW_RELEASE, 0);
+            capacityClickReturned = true;
+            return;
+        }
+        if (capacityCloneEvents != 1 || capacityFrameReturns != 1 || view == null
+                || view.outcome() != P11TransitionProtocol.Outcome.COMPLETED) { return; }
+        check(capacityClickReturned && view.kind() == P11TransitionProtocol.Kind.DEATH
+                && view.scope() == P11TransitionProtocol.Scope.PLAY
+                && view.connectionEpoch() == capacityEpoch && view.sceneSerial() == capacityScene
+                && view.actorGeneration() == capacityOriginalGeneration && view.requestSeq() > 0
+                && view.targetActorGeneration() > capacityOriginalGeneration
+                && minecraft.player.isAlive() && minecraft.player.totalExperience == 0
+                && P11ClientTransitions.allowActorFunctions(currentListener), "CAPACITY_DEATH_COMPLETED_CORRELATION");
+        var facts = summary("PASS_UNMANAGED_NATIVE_DEATH_RESPAWN_CLIENT_ONLY");
+        facts.addProperty("originalMouseCallbackInjectionNotPhysicalOSInput", true);
+        facts.addProperty("nativeButtonClicks", 1);
+        facts.addProperty("nativeCloneEvents", capacityCloneEvents);
+        facts.addProperty("nativeRespawnHandlerReturns", capacityFrameReturns);
+        facts.addProperty("sameOriginalConnectionAndListener", true);
+        facts.addProperty("sceneSerial", capacityScene);
+        facts.addProperty("connectionEpoch", capacityEpoch);
+        facts.addProperty("requestSeq", view.requestSeq());
+        facts.addProperty("originalActorGeneration", capacityOriginalGeneration);
+        facts.addProperty("targetActorGeneration", view.targetActorGeneration());
+        facts.addProperty("managedSourceProofRequiredSeparately", true);
+        write("capacity-respawn.json", facts);
+        capacityRespawnComplete = true;
+    }
+
+    public static void afterRespawn(ClientPacketListener listener, ClientboundRespawnPacket packet) {
+        if (!enabled() || terminal || !capacityRespawnSelected()) { return; }
+        try {
+            exactCurrent(Minecraft.getInstance(), listener);
+            check(phase == Phase.FIRST_PLAY && capacityClickStarted && capacityCloneEvents == 1
+                    && capacityFrameReturns == 0 && !capacityRespawnComplete
+                    && !packet.shouldKeep(ClientboundRespawnPacket.KEEP_ALL_DATA),
+                    "CAPACITY_NATIVE_RESPAWN_HANDLER_ORDER");
+            capacityFrameReturns++;
+        } catch (ObservationFault failure) { recordFailure(failure.code); }
+        catch (RuntimeException | Error failure) { recordFailure("CAPACITY_RESPAWN_OBSERVATION_FAILURE"); }
     }
 
     private static void reconnectAfterServerRemoval(Minecraft minecraft) {

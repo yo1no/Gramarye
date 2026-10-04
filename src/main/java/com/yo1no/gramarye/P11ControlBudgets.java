@@ -40,6 +40,13 @@ final class P11ControlBudgets {
         }
 
         synchronized RateResult take(long nowMillis) {
+            var available = availability(nowMillis);
+            if (available == RateResult.ACCEPTED) { units -= 1_000L; }
+            return available;
+        }
+
+        /** Same checked refill, without consuming a TRY for a bounded readiness notification. */
+        synchronized RateResult availability(long nowMillis) {
             requireClockEncoding(nowMillis);
             if (clockRegressed || nowMillis == -1) {
                 return RateResult.CLOCK_UNAVAILABLE;
@@ -59,7 +66,6 @@ final class P11ControlBudgets {
             if (units < 1_000L) {
                 return RateResult.RATE_LIMITED;
             }
-            units -= 1_000L;
             return RateResult.ACCEPTED;
         }
     }
@@ -115,9 +121,55 @@ final class P11ControlBudgets {
         }
     }
 
+    /** One actor-free wakeup for the whole dispatcher, not one native task per packet. */
+    static final class MainWakeup {
+        private boolean queued;
+        private boolean running;
+        private boolean dirty;
+        private boolean exhausted;
+        private boolean retired;
+
+        synchronized boolean request() {
+            if (retired) { return false; }
+            dirty = true;
+            if (queued || running || exhausted) { return false; }
+            queued = true;
+            return true;
+        }
+
+        synchronized boolean beginQueued() {
+            if (!queued) { return false; }
+            queued = false;
+            if (retired || running) { return false; }
+            running = true;
+            dirty = false;
+            return true;
+        }
+
+        synchronized boolean beginTick(boolean newTick) {
+            if (newTick) { exhausted = false; }
+            if (retired || running) { return false; }
+            // A previously queued native task still exists. Do not erase its reservation.
+            running = true;
+            dirty = false;
+            return true;
+        }
+
+        synchronized boolean complete(boolean budgetRemaining) {
+            if (!running) { throw new IllegalStateException("P11_WAKEUP_NOT_RUNNING"); }
+            running = false;
+            exhausted = !budgetRemaining;
+            if (retired || queued || exhausted || !dirty) { return false; }
+            queued = true;
+            return true;
+        }
+
+        synchronized void retire() { retired = true; }
+    }
+
     /** Explicit membership capacity is not K_waiting or the P7 session ceiling. */
     static final class FairDispatcher {
-        private final int capacity;
+        private final long capacity;
         private final int quantaPerTick;
         private final Map<Long, Member> members = new HashMap<>();
         private final ArrayDeque<Long> ready = new ArrayDeque<>();
@@ -125,7 +177,7 @@ final class P11ControlBudgets {
         private int usedQuanta;
         private boolean retired;
 
-        FairDispatcher(int capacity, int quantaPerTick) {
+        FairDispatcher(long capacity, int quantaPerTick) {
             if (capacity < 1 || quantaPerTick < 1) {
                 throw new IllegalArgumentException("invalid dispatcher limits");
             }
@@ -216,6 +268,13 @@ final class P11ControlBudgets {
 
         synchronized int queued() {
             return ready.size();
+        }
+
+        synchronized boolean budgetRemaining(long currentTick) {
+            if (currentTick < 0 || currentTick < tick) {
+                throw new IllegalArgumentException("control tick regressed");
+            }
+            return !retired && (currentTick != tick || usedQuanta < quantaPerTick);
         }
 
         synchronized boolean retireSlot() {

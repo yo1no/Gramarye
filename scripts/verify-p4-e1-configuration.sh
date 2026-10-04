@@ -92,7 +92,9 @@ verify_p11_mixin_configuration() {
     local source="$1"
     local actual=''
     local expected='{"required":true,"minVersion":"0.8.7","package":"com.yo1no.gramarye.mixin","compatibilityLevel":"JAVA_21","mixins":['
-    expected+='"P11PlayerListMixin","P11ConfigurationSourceMixin","P11PlayerDataStorageMixin","P11ServerPlayerMixin",'
+    expected+='"P11PlayerListMixin","P11ConfigurationSourceMixin","P11ConfigurationAdmissionMixin","P11ParkingPlacementMixin",'
+    expected+='"P11KeepAliveCommonMixin","P11KeepAliveConnectionMixin","P11LivePlayMixin","P11LiveCommonSendMixin",'
+    expected+='"P11PlayerDataStorageMixin","P11ServerPlayerMixin",'
     expected+='"P11EntityMaterialMixin","P11AttachmentMaterialMixin","P11BrainMaterialMixin","P11MinecraftServerMixin",'
     expected+='"P11LevelStorageMixin","P11LevelRawReadMixin","P11PrimaryLevelDataMixin","P11NbtIoMixin",'
     expected+='"P11UtilMixin","P11StringFallbackMixin","P11StatsMixin","P11AdvancementsMixin",'
@@ -101,12 +103,13 @@ verify_p11_mixin_configuration() {
     expected+='"P11SimpleCriterionTriggerMixin","P11CommandsMixin","P11ExecutionContextMixin","P11ServerPlayerScoreMixin",'
     expected+='"P11LivingEntityCreditMixin","P11EnderDragonCreditMixin","P11SculkCatalystCreditMixin","P11ExecuteCommandMixin",'
     expected+='"P11BuildContextsMixin","P11CallFunctionMixin","P11EntityCreditRemovalMixin","P11EntityRemovalMixin",'
-    expected+='"P11EntityManagerCleanupMixin","P11LevelEntityCleanupMixin","P11EntityLookupMixin"],'
-    expected+='"client":["P11IntegratedPlayerListMixin"],"injectors":{"defaultRequire":1}}'
+    expected+='"P11EntityManagerCleanupMixin","P11LevelEntityCleanupMixin","P11EntityLookupMixin","P11ServerBossEventMixin"],'
+    expected+='"client":["P11IntegratedPlayerListMixin","P11ClientPlayerMixin","P11ClientMinecraftMixin",'
+    expected+='"P11ClientKeyboardMixin","P11ClientSceneScreenMixin","P11ClientPacketListenerMixin","P11ClientConfigurationMixin"],"injectors":{"defaultRequire":1}}'
     require_regular_file "${source}" 'P11 Mixin configuration is missing or not regular'
     [[ ! -L "${source}" ]] || fail 'P11 Mixin configuration must not be a symlink'
     # Ignore only JSON whitespace outside strings; the complete expected document
-    # fixes the schema, all 39 common entries, the sole client entry and required hooks.
+    # fixes the schema, all 46 common entries, the seven client entries and required hooks.
     actual="$(LC_ALL=C awk '
         {
             for (i = 1; i <= length($0); i++) {
@@ -912,7 +915,15 @@ verify_changed_paths() {
                     [ ! -x "$candidate" ] \
                         || fail "allowed P4-E3 build/workflow path is executable: $path"
                     ;;
+                scripts/fixtures/p11-c4a-c6-startup.toml | \
+                scripts/fixtures/p11-c4a-handoff-startup.toml | \
+                scripts/fixtures/p11-c4a-c6-rate-startup.toml)
+                    [ ! -x "$candidate" ] \
+                        || fail "allowed P11 startup fixture is executable: $path"
+                    ;;
                 src/main/resources/gramarye.p11.mixins.json | \
+                src/p11OnlineHarness/resources/gramarye-p11-c4a-harness.mixins.json | \
+                src/p11OnlineHarness/resources/gramarye-p11-c6-observers.mixins.json | \
                 src/p11OnlineHarness/resources/gramarye-p11-online-harness.mixins.json | \
                 src/p11OnlineHarness/resources/gramarye-p11-online-private-console.xml | \
                 src/p9S5ClientHarness/resources/gramarye-p11-native-harness.mixins.json | \
@@ -980,6 +991,7 @@ self_regression() {
         's/"required": true/"required": false/' \
         's/"defaultRequire": 1/"defaultRequire": 0/' \
         's/P11EntityLookupMixin/P11UnexpectedMixin/' \
+        's/P11ServerBossEventMixin/P11UnexpectedBossMixin/' \
         's/P11IntegratedPlayerListMixin/P11PlayerListMixin/' \
         's/P11PlayerListMixin/P11 PlayerListMixin/' \
         's/"minVersion":/"foreign": true, "minVersion":/'; do

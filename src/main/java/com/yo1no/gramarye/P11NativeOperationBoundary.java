@@ -21,7 +21,6 @@ public final class P11NativeOperationBoundary {
     private static final ThreadLocal<OperationScope> OPERATION = new ThreadLocal<>();
     private static final ThreadLocal<CommandInvocation> COMMAND = new ThreadLocal<>();
     private static final ThreadLocal<Credit> CREDIT = new ThreadLocal<>();
-    private static final ThreadLocal<P11QualifiedSourceOwner> ENGINEERING = new ThreadLocal<>();
     private static long observerFailures;
 
     private P11NativeOperationBoundary() {}
@@ -46,7 +45,7 @@ public final class P11NativeOperationBoundary {
         return scope;
     }
 
-    /** Excluded companion entry only. It neither supplies nor fabricates source/material proof. */
+    /** Excluded companion entry only. Validation is not native continuity authorization. */
     static <T> T engineering(ServerPlayer actor, Supplier<T> nativeWork) {
         var source = owner(actor);
         if (source == null || actor.isFakePlayer() || !actor.getServer().isSameThread()
@@ -57,15 +56,7 @@ public final class P11NativeOperationBoundary {
                 || source.nativeRecipient(actor) == null) {
             throw new IllegalStateException("P11_ENGINEERING_REQUIRES_AUTHENTICATED_CURRENT_SOURCE");
         }
-        var previous = ENGINEERING.get();
-        if (previous != null && previous != source) {
-            throw new IllegalStateException("P11_ENGINEERING_WRONG_ROOT");
-        }
-        ENGINEERING.set(source);
-        try { return nativeWork.get(); }
-        finally {
-            if (previous == null) { ENGINEERING.remove(); } else { ENGINEERING.set(previous); }
-        }
+        return nativeWork.get();
     }
 
     /** Entered only after native predicates selected this exact captured listener. */
@@ -98,6 +89,10 @@ public final class P11NativeOperationBoundary {
     }
 
     private static OperationScope begin(ServerPlayer actor) {
+        return begin(actor, null);
+    }
+
+    private static OperationScope begin(ServerPlayer actor, Context context) {
         if (actor == null) { return null; }
         Binding binding = null;
         boolean retained = false;
@@ -105,26 +100,35 @@ public final class P11NativeOperationBoundary {
             var source = owner(actor);
             if (source == null) { return null; }
             source.nativeEscape(actor);
+            var continuity = P11LiveTransitionBoundary.nativeContinuity(source);
+            boolean retainedCause = false;
             var previous = OPERATION.get();
             for (var outer = previous; outer != null; outer = outer.previous) {
                 if (outer.binding.owner == source
                         && (outer.origin == actor || outer.binding.recipient == actor)) {
                     binding = outer.binding;
+                    retainedCause = true;
                     break;
                 }
             }
+            if (binding == null && continuity != null) {
+                binding = bindingInContext(context, source, actor);
+                retainedCause = binding != null;
+            }
             if (binding == null) {
                 var credit = CREDIT.get();
-                var body = ENGINEERING.get() == source && credit != null && !credit.closed
-                        && credit.actor == actor && credit.owner == source
+                boolean fieldCause = continuity != null && credit != null && !credit.closed
+                        && credit.actor == actor && credit.owner == source;
+                var body = fieldCause
                         ? source.nativeRecipient(credit.body) : source.nativeRecipient(actor);
                 if (body == null) { return null; }
                 binding = new Binding(source, body);
+                retainedCause = fieldCause;
             }
-            // Even an inherited observation cannot upgrade a now-detached or superseded body.
-            // The original native call still runs; this is not a new transition/reward gate.
+            // No UUID lookup or idle native object grants detached continuity. The source
+            // capability and the actual retained N/Fop/Qctx cause are both required.
             if (source.nativeRecipient(binding.recipient) != binding.body
-                    || (source.detachedPresence(binding.recipient) && ENGINEERING.get() != source)) {
+                    || (source.detachedPresence(binding.recipient) && (continuity == null || !retainedCause))) {
                 return null;
             }
             if (!source.retainNativeRoot(binding.body, P11ControlBudgets.Root.OPERATION)) { return null; }
@@ -251,7 +255,7 @@ public final class P11NativeOperationBoundary {
             Consumer<ExecutionContext<CommandSourceStack>> consumer, ExecutionContext<?> existing,
             Operation<Void> original) {
         var previous = COMMAND.get();
-        var invocation = new CommandInvocation(previous, existing, begin(source.getPlayer()));
+        var invocation = new CommandInvocation(previous, existing, begin(source.getPlayer(), nativeContext(existing)));
         COMMAND.set(invocation);
         boolean normal = false;
         try {
@@ -275,9 +279,30 @@ public final class P11NativeOperationBoundary {
 
     /** Actual execute-as sources are observed without rewriting their native coordinates. */
     public static OperationScope beginCommandSource(Object nativeSource, ExecutionContext<?> exact) {
-        var scope = nativeSource instanceof CommandSourceStack source ? begin(source.getPlayer()) : null;
-        if (exact instanceof ContextAccess access) { attach(access.p11$nativeContext(), scope); }
+        var context = nativeContext(exact);
+        var scope = nativeSource instanceof CommandSourceStack source ? begin(source.getPlayer(), context) : null;
+        attach(context, scope);
         return scope;
+    }
+
+    private static Context nativeContext(ExecutionContext<?> exact) {
+        if (!(exact instanceof ContextAccess access)) { return null; }
+        var context = access.p11$nativeContext();
+        return context != null && context.exact == exact ? context : null;
+    }
+
+    /** Only the still-active original Commands owner may use its already-retained binding. */
+    private static Binding bindingInContext(Context context, P11QualifiedSourceOwner source, ServerPlayer actor) {
+        if (context == null || context.facts.terminal()) { return null; }
+        boolean active = false;
+        for (var invocation = COMMAND.get(); invocation != null; invocation = invocation.previous) {
+            if (invocation.context == context) { active = true; break; }
+        }
+        if (!active) { return null; }
+        for (var binding : context.bindings) {
+            if (binding.owner == source && binding.recipient == actor) { return binding; }
+        }
+        return null;
     }
 
     public static List<OperationScope> beginCommandSources(Object originalSource,

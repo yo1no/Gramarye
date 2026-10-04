@@ -22,6 +22,7 @@ public final class P11NativeWorldAccess {
         boolean p11$independentOwnersMatch(ServerPlayer player);
         void p11$preparePrimary(P11NativeStorageBoundary.PrimaryReadRequest request);
         void p11$loadPreparedPrimary(P11NativeStorageBoundary.PrimaryReadRequest request);
+        void p11$saveDetachedAtStop(P11NativeStorageBoundary.DetachedStopSaveRequest request);
     }
 
     /** A private-ctor, call-local request is required; no raw NBT or native owner is exposed. */
