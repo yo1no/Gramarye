@@ -918,7 +918,12 @@ final class P5RuntimeKernelTest {
                         "permit.state = RuntimeProjectileContinuationPermit.State."
                                 + "CLOSED_AFTER_HIT;")),
                 () -> assertFalse(permitSource.contains("transferAfterAppliedSpawn")),
-                () -> assertFalse(permitSource.contains("P9StarterProjectile")));
+                () -> assertTrue(permitSource.contains(
+                        "owner.projectileQualification(server, this, projectile)")),
+                () -> assertTrue(permitSource.contains(
+                        "owner.projectileActor(server, this, projectile)")),
+                () -> assertFalse(Arrays.stream(RuntimeProjectileContinuationPermit.class.getDeclaredFields())
+                        .anyMatch(field -> net.minecraft.world.entity.Entity.class.isAssignableFrom(field.getType()))));
     }
 
     @Test

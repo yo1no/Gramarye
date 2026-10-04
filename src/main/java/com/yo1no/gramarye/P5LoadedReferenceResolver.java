@@ -27,6 +27,32 @@ final class P5LoadedReferenceResolver implements RuntimeReferenceResolver {
                 event.target());
     }
 
+    @Override
+    public RuntimeReferenceResolutionOutcome resolve(
+            MinecraftServer server, RuntimeEvent event,
+            SkillRuntimeService.AcceptedWorkActor acceptedWork) {
+        if (acceptedWork == null) {
+            return resolve(server, event);
+        }
+        var actor = acceptedWork.resolve(server, event);
+        if (actor == null || !(event.origin() instanceof PlayerOrigin)) {
+            return classifySourceFailure(RuntimeReferenceFailureReason.MISSING);
+        }
+        // Only this privately issued, current P5 origin may be detached. Targets
+        // still use the ordinary loaded-only resolver, including player targets.
+        var target = event.target().<TargetResolution>map(value -> resolveTarget(
+                        server, event.cancellationToken().serverSlotToken(), value))
+                .orElseGet(() -> new TargetResolution.Resolved(NoResolvedRuntimeTarget.INSTANCE));
+        if (target instanceof TargetResolution.Missing missing) {
+            return classifyTargetFailure(missing.reason());
+        }
+        if (target instanceof TargetResolution.Invalid invalid) {
+            return classifyTargetFailure(invalid.reason());
+        }
+        return new RuntimeReferenceResolutionOutcome.Resolved(new ResolvedRuntimeReferenceContext(
+                new ResolvedPlayerOrigin(actor), ((TargetResolution.Resolved) target).target()));
+    }
+
     static RuntimeReferenceResolutionOutcome resolveLoadedReferences(
             MinecraftServer server,
             RuntimeServerToken serverToken,

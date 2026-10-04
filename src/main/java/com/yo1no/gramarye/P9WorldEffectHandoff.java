@@ -16,6 +16,7 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
     private final MinecraftServer server;
     private final ServerPlayer actor;
     private final RuntimeExecutionData executionData;
+    private final SkillRuntimeService.RuntimeExecutionGuardState executionGuard;
     private final Optional<RuntimeProjectileContinuationOpenResult.Opened>
             openedContinuation;
 
@@ -23,10 +24,12 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
             MinecraftServer server,
             ServerPlayer actor,
             RuntimeExecutionData executionData,
-            Optional<RuntimeProjectileContinuationOpenResult.Opened> openedContinuation) {
+            Optional<RuntimeProjectileContinuationOpenResult.Opened> openedContinuation,
+            SkillRuntimeService.RuntimeExecutionGuardState executionGuard) {
         this.server = Objects.requireNonNull(server, "server");
         this.actor = Objects.requireNonNull(actor, "actor");
         this.executionData = Objects.requireNonNull(executionData, "executionData");
+        this.executionGuard = Objects.requireNonNull(executionGuard, "executionGuard");
         this.openedContinuation = Objects.requireNonNull(
                 openedContinuation, "openedContinuation");
         var validSpawnPair = executionData instanceof CastGeometryExecutionDataV0
@@ -67,7 +70,7 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
                     actor,
                     opened,
                     geometry);
-            if (!liveSpawnOrigin(geometry)) {
+            if (!currentActor(geometry.dimension()) || !liveSpawnOrigin(geometry)) {
                 closeReservation(opened, ProjectileClosureReason.SPAWN_NOT_APPLIED);
                 projectile.discard();
                 return CommitDisposition.NOT_APPLIED;
@@ -135,7 +138,7 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
                 || !projectile.isAlive()
                 || projectile.getOwner() != actor
                 || !projectile.hasAuthenticatedCasterIdentity(actor)
-                || target == actor
+                || target.getUUID().equals(actor.getUUID())
                 || target.level() != serverLevel
                 || !target.isAddedToLevel()
                 || target.isRemoved()
@@ -160,12 +163,7 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
                 && actor.getServer() == server
                 && actor.serverLevel().getServer() == server
                 && actor.serverLevel().dimension().location().equals(dimension)
-                && server.getPlayerList().getPlayer(actor.getUUID()) == actor
-                && actor.isAddedToLevel()
-                && !actor.isRemoved()
-                && actor.isAlive()
-                && actor.connection != null
-                && actor.connection.isAcceptingMessages();
+                && executionGuard.allowsP9NativeActor(actor);
     }
 
     private boolean liveSpawnOrigin(CastGeometryExecutionDataV0 geometry) {

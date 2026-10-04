@@ -19,6 +19,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.Connection;
+import net.minecraft.network.DisconnectionDetails;
 import net.minecraft.network.protocol.configuration.ServerboundFinishConfigurationPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -28,6 +29,7 @@ import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.server.players.PlayerList;
 import net.minecraft.stats.ServerStatsCounter;
 import net.minecraft.world.entity.Entity;
@@ -61,6 +63,7 @@ public final class P11NativeStorageBoundary {
     private static final ThreadLocal<P11QualifiedSourceOwner.Body> SELECTED_SERIALIZE = new ThreadLocal<>();
     private static final ThreadLocal<MinecraftServer> STOP_SERVER = new ThreadLocal<>();
     private static final ThreadLocal<DetachedStopSaveRequest> DETACHED_STOP_SAVE = new ThreadLocal<>();
+    private static final ThreadLocal<NormalLogoutProof> NORMAL_LOGOUT = new ThreadLocal<>();
     private static final ResourceLocation SKILLS = ResourceLocation.fromNamespaceAndPath("gramarye", "player_skills");
     private static final ResourceLocation MANA = ResourceLocation.fromNamespaceAndPath("gramarye", "player_mana");
     private static long observerFailures;
@@ -990,6 +993,80 @@ public final class P11NativeStorageBoundary {
         }
     }
 
+    /** The named whole game-listener exit, not removePlayerFromWorld's shared helper. */
+    public static void normalLogout(ServerGamePacketListenerImpl listener,
+            DisconnectionDetails details, Operation<Void> original) {
+        var actor = listener.player;
+        var foundation = root;
+        var source = actor == null ? null : owner(actor);
+        var body = source == null ? null : source.body(actor);
+        NormalLogoutProof proof = null;
+        SkillRuntimeService.NormalLogoutScope work = null;
+        try {
+            if (foundation != null && actor != null && actor.getServer().isSameThread()
+                    && actor.connection == listener && listener.getConnection().getPacketListener() == listener
+                    && source != null && source.canCopy(body) && !body.logoutAttempted
+                    && !body.logoutActive && !actor.isFakePlayer() && actor.isAlive() && !actor.isRemoved()
+                    && actor.getServer().getPlayerList().getPlayer(actor.getUUID()) == actor
+                    && P11LiveTransitionBoundary.nativeContinuity(source) != null) {
+                proof = new NormalLogoutProof(source, body, NORMAL_LOGOUT.get());
+                NORMAL_LOGOUT.set(proof);
+                work = foundation.beginNormalLogout(listener, actor);
+            }
+        } catch (RuntimeException | Error secondary) {
+            if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
+        }
+        boolean normal = false;
+        try { original.call(details); normal = true; }
+        finally {
+            try {
+                if (foundation != null) { foundation.endNormalLogout(work, proof, normal); }
+            } catch (RuntimeException | Error secondary) {
+                if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
+            } finally {
+                if (proof != null) {
+                    proof.closed = true;
+                    if (NORMAL_LOGOUT.get() == proof) {
+                        if (proof.previous == null) { NORMAL_LOGOUT.remove(); }
+                        else { NORMAL_LOGOUT.set(proof.previous); }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Only this call-local native wrapper can mint/complete it; P5 cannot cache the proof. */
+    static final class NormalLogoutProof {
+        private final P11QualifiedSourceOwner source;
+        private final P11QualifiedSourceOwner.Body body;
+        private final long epoch;
+        private final NormalLogoutProof previous;
+        private boolean removeObserved;
+        private boolean wholeRemove;
+        private boolean closed;
+
+        private NormalLogoutProof(P11QualifiedSourceOwner source,
+                P11QualifiedSourceOwner.Body body, NormalLogoutProof previous) {
+            this.source = source; this.body = body; this.epoch = body.source.epoch(); this.previous = previous;
+        }
+
+        boolean confirms(MinecraftServer server, ServerPlayer exactA) {
+            return !closed && NORMAL_LOGOUT.get() == this && removeObserved && wholeRemove
+                    && body.actor == exactA && source.owns(server)
+                    && P11LiveTransitionBoundary.nativeContinuity(source) != null
+                    && body.source.epoch() == epoch && source.canCopy(body)
+                    && !body.logoutActive && body.logoutAttempted && body.envelope != null
+                    && server.getPlayerList().getPlayer(exactA.getUUID()) != exactA;
+        }
+
+        private void removed(P11QualifiedSourceOwner exactSource, P11QualifiedSourceOwner.Body exactBody,
+                P11NativeCleanup.LogoutOutcome outcome) {
+            if (closed || NORMAL_LOGOUT.get() != this || source != exactSource || body != exactBody) { return; }
+            wholeRemove = !removeObserved && outcome == P11NativeCleanup.LogoutOutcome.WHOLE_NATIVE_COMPLETED;
+            removeObserved = true;
+        }
+    }
+
     public static void remove(ServerPlayer player, Operation<Void> original) {
         var source = lifecycleOwner(player);
         var body = source == null ? null : source.body(player);
@@ -1010,6 +1087,8 @@ public final class P11NativeStorageBoundary {
             if (outcome != P11NativeCleanup.LogoutOutcome.WHOLE_NATIVE_COMPLETED) {
                 lifecycleFailureWithoutReplacingPrimary(source, body);
             }
+            var normalLogout = NORMAL_LOGOUT.get();
+            if (normalLogout != null) { normalLogout.removed(source, body, outcome); }
             source.releaseNativeRoot(body, P11ControlBudgets.Root.TRANSITION);
         }
     }

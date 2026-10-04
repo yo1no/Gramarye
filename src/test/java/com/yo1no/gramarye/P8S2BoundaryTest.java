@@ -719,7 +719,8 @@ final class P8S2BoundaryTest {
                 SkillSubmissionPolicyProvider.class,
                 ProfileAvailabilityView.class,
                 P6RuntimeExecutionCapability.class,
-                P8ServerPresentationService.class);
+                P8ServerPresentationService.class,
+                P11FoundationService.class);
         var projector = P5RuntimeProjector.class.getDeclaredConstructor(
                 ProfileAvailabilityView.class);
         var root = read(GRAMARYE_SOURCE);
@@ -740,7 +741,7 @@ final class P8S2BoundaryTest {
                 "skillRuntimeService\\s*=\\s*SkillRuntimeService\\.create\\(\\s*"
                         + "NeoForge\\.EVENT_BUS,\\s*skillDefinitionStoreService,\\s*"
                         + "skillSubmissionPolicyProvider,\\s*profileAvailability,\\s*"
-                        + "runtimeCapability,\\s*p8ServerPresentationService\\s*\\);",
+                        + "runtimeCapability,\\s*p8ServerPresentationService,\\s*p11FoundationService\\s*\\);",
                 Pattern.DOTALL);
         var capabilityWiring = Pattern.compile(
                 "var\\s+runtimeCapability\\s*=\\s*"

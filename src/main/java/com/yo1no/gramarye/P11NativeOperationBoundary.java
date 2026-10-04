@@ -92,6 +92,27 @@ public final class P11NativeOperationBoundary {
         return begin(actor, null);
     }
 
+    /** Only a live root-issued W receipt reaches this entry after P5's exact-work guard. */
+    static OperationScope beginAcceptedWork(P11QualifiedSourceOwner source,
+            P11QualifiedSourceOwner.Body body, ServerPlayer exactA) {
+        if (source == null || body == null || exactA == null || owner(exactA) != source
+                || P11LiveTransitionBoundary.nativeContinuity(source) == null
+                || source.nativeRecipient(body.actor) != body || !source.canCopy(body)) { return null; }
+        var binding = new Binding(source, body);
+        boolean retained = false;
+        try {
+            if (!source.retainNativeRoot(body, P11ControlBudgets.Root.OPERATION)) { return null; }
+            retained = true;
+            source.nativeMutation(body);
+            var scope = new OperationScope(binding, exactA, OPERATION.get());
+            OPERATION.set(scope);
+            return scope;
+        } catch (RuntimeException | Error failure) {
+            if (retained) { release(binding, P11ControlBudgets.Root.OPERATION); }
+            throw failure;
+        }
+    }
+
     private static OperationScope begin(ServerPlayer actor, Context context) {
         if (actor == null) { return null; }
         Binding binding = null;
@@ -162,7 +183,19 @@ public final class P11NativeOperationBoundary {
         try {
             var source = owner(actor);
             if (source != null) { source.nativeEscape(actor); }
-            var body = source == null ? null : source.nativeRecipient(actor);
+            P11QualifiedSourceOwner.Body body = null;
+            if (source != null && P11LiveTransitionBoundary.nativeContinuity(source) != null) {
+                // The actual hurt/native producer is inside the already fixed A -> R call.
+                // Reconnecting B changes the source body, never this operation's cause A.
+                for (var operation = OPERATION.get(); operation != null; operation = operation.previous) {
+                    if (!operation.closed && operation.origin == actor && operation.binding.owner == source
+                            && source.nativeRecipient(operation.binding.recipient) == operation.binding.body) {
+                        body = operation.binding.body;
+                        break;
+                    }
+                }
+            }
+            if (body == null) { body = source == null ? null : source.nativeRecipient(actor); }
             if (body == null) { return null; }
             var credit = new Credit(source, body, holder, actor);
             return source.retainNativeRoot(body, P11ControlBudgets.Root.NATIVE_CREDIT) ? credit : null;

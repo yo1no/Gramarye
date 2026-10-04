@@ -52,12 +52,14 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
         Objects.requireNonNull(openedContinuation, "openedContinuation");
         Objects.requireNonNull(geometry, "geometry");
         var permit = openedContinuation.permit();
+        this.continuationPermit = permit;
+        this.authenticatedCasterIdentity = actor;
+        this.dimension = geometry.dimension();
+        setUUID(openedContinuation.plannedProjectileId());
         var origin = BlockPos.containing(
                 geometry.originX(), geometry.originY(), geometry.originZ());
         if (actor.serverLevel() != level
                 || actor.getServer() != level.getServer()
-                || actor.isRemoved()
-                || !actor.isAlive()
                 || !geometry.dimension().equals(level.dimension().location())
                 || !level.isInWorldBounds(origin)
                 || !level.isLoaded(origin)
@@ -67,14 +69,11 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
                 || permit.state != RuntimeProjectileContinuationPermit.State.RESERVED
                 || !permit.dimension.equals(geometry.dimension())
                 || !permit.plannedProjectileId.equals(
-                        openedContinuation.plannedProjectileId())) {
+                        openedContinuation.plannedProjectileId())
+                || permit.qualifiedActor(level.getServer(), this) != actor) {
             throw new IllegalArgumentException("invalid authoritative projectile construction");
         }
 
-        this.continuationPermit = permit;
-        this.authenticatedCasterIdentity = actor;
-        this.dimension = geometry.dimension();
-        setUUID(openedContinuation.plannedProjectileId());
         setOwner(actor);
         setPos(geometry.originX(), geometry.originY(), geometry.originZ());
 
@@ -110,6 +109,10 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
         }
         if (tickCount > 100) {
             terminate(ProjectileClosureReason.AGE_EXHAUSTED);
+            return;
+        }
+        if (continuationPermit.qualification(serverLevel.getServer(), this)
+                == SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS) {
             return;
         }
         if (!validServerState(serverLevel)) {
@@ -223,6 +226,16 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
     }
 
     @Override
+    public Entity getOwner() {
+        if (level().isClientSide()) {
+            return super.getOwner();
+        }
+        return level() instanceof ServerLevel serverLevel && continuationPermit != null
+                ? continuationPermit.qualifiedActor(serverLevel.getServer(), this)
+                : null;
+    }
+
+    @Override
     protected void onHitEntity(EntityHitResult hit) {
         if (level().isClientSide() || locallyClaimedOrTerminal) {
             return;
@@ -231,10 +244,15 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
             terminate(ProjectileClosureReason.ENTITY_OR_LEVEL_REMOVED);
             return;
         }
+        if (continuationPermit.qualification(serverLevel.getServer(), this)
+                == SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS) {
+            return;
+        }
 
         Entity target = Objects.requireNonNull(hit, "hit").getEntity();
         if (!(target instanceof LivingEntity living)
-                || target == authenticatedCasterIdentity
+                || authenticatedCasterIdentity == null
+                || target.getUUID().equals(authenticatedCasterIdentity.getUUID())
                 || target.isRemoved()
                 || !target.isAddedToLevel()
                 || !living.isAlive()
@@ -296,6 +314,11 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
     protected void onHitBlock(BlockHitResult hit) {
         Objects.requireNonNull(hit, "hit");
         if (!level().isClientSide() && !locallyClaimedOrTerminal) {
+            if (level() instanceof ServerLevel serverLevel
+                    && continuationPermit.qualification(serverLevel.getServer(), this)
+                            == SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS) {
+                return;
+            }
             terminate(ProjectileClosureReason.BLOCK_OR_INVALID_HIT);
         }
     }
@@ -334,6 +357,10 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
         return continuationPermit == candidate;
     }
 
+    ServerPlayer actorWitness(RuntimeProjectileContinuationPermit expected) {
+        return continuationPermit == expected ? authenticatedCasterIdentity : null;
+    }
+
     private boolean validServerState(ServerLevel serverLevel) {
         var server = serverLevel.getServer();
         return server.isSameThread()
@@ -343,17 +370,12 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
                 && authenticatedCasterIdentity != null
                 && authenticatedCasterIdentity.getServer() == server
                 && authenticatedCasterIdentity.serverLevel() == serverLevel
-                && server.getPlayerList().getPlayer(authenticatedCasterIdentity.getUUID())
-                        == authenticatedCasterIdentity
-                && !authenticatedCasterIdentity.isRemoved()
-                && authenticatedCasterIdentity.isAlive()
-                && authenticatedCasterIdentity.connection != null
-                && authenticatedCasterIdentity.connection.isAcceptingMessages()
                 && continuationPermit.mode
                         == RuntimeProjectileContinuationPermit.Mode.REAL
                 && continuationPermit.state
                         == RuntimeProjectileContinuationPermit.State.OPEN
-                && getOwner() == authenticatedCasterIdentity;
+                && continuationPermit.qualifiedActor(server, this)
+                        == authenticatedCasterIdentity;
     }
 
     private void terminate(ProjectileClosureReason reason) {

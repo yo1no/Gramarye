@@ -29,6 +29,7 @@ final class P11LiveNativeBoundaryTest {
 
     @Test void retainedCreditDirtyAndWriterDutiesDoNotBecomeTransitionBlockers() throws Exception {
         var account = new P11QualifiedSourceOwner.Account(null);
+        account.nativeCounts[P11ControlBudgets.Root.WORK.ordinal()] = 2;
         account.nativeCounts[P11ControlBudgets.Root.NATIVE_CREDIT.ordinal()] = 1;
         account.nativeCounts[P11ControlBudgets.Root.DIRTY.ordinal()] = 1;
         account.nativeCounts[P11ControlBudgets.Root.WRITE.ordinal()] = 1;

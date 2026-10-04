@@ -368,6 +368,46 @@ final class P11ControlBudgetsTest {
     }
 
     @Test
+    void repeatedAggregateWorkCannotBypassNewWorkDirtyAdmission() {
+        var resources = new P11ControlBudgets.Resources(limits(2, 1, 1, 10, 1));
+        var owner = resources.newAccountOwner(id(1));
+        assertTrue(resources.mayAdmitWork(owner));
+        var work = resources.tryAcquireRoot(owner, WORK, true).orElseThrow();
+        assertTrue(resources.mayAdmitWork(owner));
+        var dirty = resources.markDirty(owner, 0).orElseThrow();
+        // Idempotent root lookup is not permission to accept another P5 work.
+        assertSame(work, resources.tryAcquireRoot(owner, WORK, true).orElseThrow());
+        assertFalse(resources.mayAdmitWork(owner));
+        assertFalse(resources.mayAdmitWork(resources.newAccountOwner(id(2))));
+        assertTrue(resources.retainRoot(owner, OPERATION).isPresent());
+        assertTrue(resources.retainRoot(owner, NATIVE_CREDIT).isPresent());
+        assertTrue(resources.releaseDirty(dirty));
+        assertTrue(resources.mayAdmitWork(owner));
+        assertEquals(1, resources.counts().retainedUuids());
+    }
+
+    @Test
+    void newWorkChecksExactAccountCapacityRetirementAndNeverMintsMembership() {
+        var resources = new P11ControlBudgets.Resources(limits(1, 1, 1, 10, 1));
+        var owner = resources.newAccountOwner(id(1));
+        var foreign = new P11ControlBudgets.Resources(limits(1, 1, 1, 10, 1));
+        assertFalse(resources.mayAdmitWork(null));
+        assertFalse(resources.mayAdmitWork(foreign.newAccountOwner(id(1))));
+        assertTrue(resources.mayAdmitWork(owner));
+        assertEquals(0, resources.counts().retainedUuids());
+        var work = resources.tryAcquireRoot(owner, WORK, true).orElseThrow();
+        assertTrue(resources.mayAdmitWork(owner));
+        assertFalse(resources.mayAdmitWork(resources.newAccountOwner(id(1))));
+        assertFalse(resources.mayAdmitWork(resources.newAccountOwner(id(2))));
+        assertTrue(resources.releaseRoot(work));
+        assertFalse(resources.mayAdmitWork(owner));
+        var next = resources.newAccountOwner(id(1));
+        assertTrue(resources.mayAdmitWork(next));
+        resources.retireSlot();
+        assertFalse(resources.mayAdmitWork(next));
+    }
+
+    @Test
     void dirtyWatermarkRefusesOnlyNewDirtyWorkAndAgeNeverEvictsExistingObligations() {
         var resources = new P11ControlBudgets.Resources(limits(4, 3, 2, 8_388_608, 3));
         var owners = new ArrayList<P11ControlBudgets.Resources.AccountOwner>();

@@ -69,17 +69,31 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
         }
 
         var damageCommitEntered = new boolean[] {false};
+        var nativeCommitEntered = new boolean[] {false};
+        var nativeOperation = new P11NativeOperationBoundary.OperationScope[] {null};
+        var normal = false;
         try {
             if (damageInvocation) {
                 diagnostics.reportP9S4Stage(P9RuntimeDiagnosticStage.NODE1_MATCHED);
             }
             var commitPort = new P9WorldEffectHandoff(
-                    context.server(), input.actor(), event.executionData(), opened);
+                    context.server(), input.actor(), event.executionData(), opened, diagnostics);
             GuardPort guard = (point, stepIndex) -> {
                 if (damageInvocation && point == P6RuntimeExecutionBridge.GuardPoint.PRE_COMMIT) {
                     diagnostics.reportP9S4Stage(P9RuntimeDiagnosticStage.DAMAGE_RESOLVED);
                 }
                 var decision = mapGuardDecision(context.executionGuard().check());
+                if (point == P6RuntimeExecutionBridge.GuardPoint.BEFORE_STEP
+                        && stepIndex == 0
+                        && decision == GuardDecision.ALLOWED) {
+                    if (nativeCommitEntered[0]) {
+                        throw new IllegalStateException("P9 native commit guard was entered twice");
+                    }
+                    nativeCommitEntered[0] = true;
+                    nativeOperation[0] = diagnostics.beginP9NativeMutation(input.actor());
+                    decision = mapGuardDecision(diagnostics.afterP9NativeMutation(
+                            input.actor(), nativeOperation[0]));
+                }
                 if (decision != null && decision != GuardDecision.ALLOWED) {
                     closeOpened(
                             opened,
@@ -109,6 +123,7 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
             if (damageInvocation && damageCommitEntered[0]) {
                 diagnostics.finishP9DamageCommit();
             }
+            normal = true;
         } catch (RuntimeException failure) {
             if (opened.isPresent()
                     && isAdapterOwnedReservationState(
@@ -119,6 +134,8 @@ final class P6RuntimeExecutionPortAdapter implements RuntimeExecutionPort {
             throw failure;
         } catch (Error failure) {
             throw failure;
+        } finally {
+            P11NativeOperationBoundary.end(nativeOperation[0], normal);
         }
         return completedEmpty();
     }
@@ -288,7 +305,7 @@ enum ProductionP6RuntimeExecutionInputMapper implements P6RuntimeExecutionInputM
                 && event.executionData() instanceof ProjectileHitExecutionDataV0 hit
                 && context.resolvedReferences().target()
                         instanceof ResolvedEntityTarget entityTarget
-                && entityTarget.entity() != playerOrigin.player()
+                && !entityTarget.entity().getUUID().equals(playerOrigin.player().getUUID())
                 && entityTarget.entity().getUUID().equals(hit.targetId())
                 && entityTarget.entity().level() == playerOrigin.player().serverLevel()
                 && hit.dimension().equals(

@@ -52,6 +52,68 @@ final class P6RuntimeExecutionAdapterTest {
     }
 
     @Test
+    void l1NativeCustodyStartsOnlyAtAllowedFirstStepAndEndsAfterOriginalOrderedCommit()
+            throws IOException {
+        var adapter = Files.readString(ADAPTER_SOURCE);
+        assertNativeCustodyContract(adapter);
+        var handoff = Files.readString(HANDOFF_SOURCE);
+        assertTrue(handoff.contains(
+                "private final SkillRuntimeService.RuntimeExecutionGuardState executionGuard;"));
+        assertTrue(handoff.contains("executionGuard.allowsP9NativeActor(actor)"));
+        assertFalse(handoff.contains("getPlayerList().getPlayer("));
+        assertEquals(1, occurrences(handoff, ".hurt("));
+    }
+
+    @Test
+    void l1NativeCustodySourceGuardRejectsMissingRecheckReleaseAndSecondAcquire()
+            throws IOException {
+        var adapter = Files.readString(ADAPTER_SOURCE);
+        assertThrows(AssertionError.class, () -> assertNativeCustodyContract(adapter.replace(
+                "diagnostics.afterP9NativeMutation(", "diagnostics.uncheckedMutation(")));
+        assertThrows(AssertionError.class, () -> assertNativeCustodyContract(adapter.replace(
+                "P11NativeOperationBoundary.end(nativeOperation[0], normal);", "")));
+        assertThrows(AssertionError.class, () -> assertNativeCustodyContract(adapter.replace(
+                "if (nativeCommitEntered[0])", "if (false)")));
+        assertThrows(AssertionError.class, () -> assertNativeCustodyContract(adapter.replace(
+                "&& decision == GuardDecision.ALLOWED", "&& decision != GuardDecision.ALLOWED")));
+    }
+
+    private static void assertNativeCustodyContract(String adapter) {
+        var execute = sourceBlock(adapter, "RuntimeExecutionBatch executeMapped(");
+        assertOrdered(execute,
+                "var nativeCommitEntered = new boolean[] {false};",
+                "var nativeOperation = new P11NativeOperationBoundary.OperationScope[] {null};",
+                "var normal = false;",
+                "try {",
+                "var decision = mapGuardDecision(context.executionGuard().check());",
+                "if (point == P6RuntimeExecutionBridge.GuardPoint.BEFORE_STEP",
+                "&& stepIndex == 0",
+                "&& decision == GuardDecision.ALLOWED)",
+                "if (nativeCommitEntered[0])",
+                "throw new IllegalStateException(\"P9 native commit guard was entered twice\");",
+                "nativeCommitEntered[0] = true;",
+                "nativeOperation[0] = diagnostics.beginP9NativeMutation(input.actor());",
+                "decision = mapGuardDecision(diagnostics.afterP9NativeMutation(",
+                "input.actor(), nativeOperation[0]));",
+                "if (decision != null && decision != GuardDecision.ALLOWED)",
+                "closeOpened(",
+                "diagnostics.enterP9DamageCommit();",
+                "return decision;",
+                "bridgeInvoker.execute(",
+                "diagnostics.finishP9DamageCommit();",
+                "normal = true;",
+                "catch (RuntimeException failure)",
+                "throw failure;",
+                "catch (Error failure)",
+                "throw failure;",
+                "finally {",
+                "P11NativeOperationBoundary.end(nativeOperation[0], normal);");
+        assertEquals(1, occurrences(execute, "diagnostics.beginP9NativeMutation("));
+        assertEquals(1, occurrences(execute, "P11NativeOperationBoundary.end("));
+        assertEquals(1, occurrences(execute, "bridgeInvoker.execute("));
+    }
+
+    @Test
     void publishedEventIdentityMapsLosslesslyToBothBridgeIds() {
         P6RuntimeExecutionIdentity identity =
                 P6RuntimeExecutionIdentity.fromPublishedEventId(9_223_372_036_854L);

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.action.type.ActionPayload;
@@ -235,7 +236,7 @@ final class P9S1BoundaryTest {
                 .toList();
         var construction = handoff.indexOf("projectile = new P9StarterProjectile(");
         var immediateLiveRecheck = handoff.indexOf(
-                "if (!liveSpawnOrigin(geometry))", construction);
+                "if (!currentActor(geometry.dimension()) || !liveSpawnOrigin(geometry))", construction);
         var insertion = handoff.indexOf("level.addFreshEntity(projectile)", construction);
         var hasBeenShotGuard = projectile.indexOf("if (!this.hasBeenShot)");
         var shootEvent = projectile.indexOf(
@@ -326,7 +327,7 @@ final class P9S1BoundaryTest {
                 () -> assertTrue(projectile.indexOf("if (tickCount > 100)") < baseTick),
                 () -> assertTrue(projectile.contains(
                         "var remaining = 64.0 - accumulatedTravelDistance;")),
-                () -> assertEquals(5, occurrences(projectile, "@Override")),
+                () -> assertEquals(6, occurrences(projectile, "@Override")),
                 () -> assertEquals(2, occurrences(projectile, "P9StarterProjectile(")),
                 () -> assertEquals(
                         2,
@@ -338,7 +339,8 @@ final class P9S1BoundaryTest {
                 () -> assertEquals(
                         Set.of(
                                 "hasAuthenticatedCasterIdentity",
-                                "hasContinuationPermitIdentity"),
+                                "hasContinuationPermitIdentity",
+                                "actorWitness"),
                         Arrays.stream(P9StarterProjectile.class.getDeclaredMethods())
                                 .filter(method -> !method.isSynthetic())
                                 .filter(method -> !Modifier.isPrivate(method.getModifiers()))
@@ -386,6 +388,109 @@ final class P9S1BoundaryTest {
                         < runtimeCleanup.indexOf("permit.closeWithoutHit(server, reason)")),
                 () -> assertTrue(runtimeCleanup.indexOf("permit.closeWithoutHit(server, reason)")
                         < runtimeCleanup.indexOf("projectile.discard()")));
+    }
+
+    @Test
+    void l1OwnerIsAnExactPermitValidatedOverrideWithoutRecursiveOrUuidFallback()
+            throws Exception {
+        var projectile = read(PROJECTILE_SOURCE);
+        assertL1OwnerContract(projectile);
+        var owner = P9StarterProjectile.class.getDeclaredMethod("getOwner");
+        var witness = P9StarterProjectile.class.getDeclaredMethod(
+                "actorWitness", RuntimeProjectileContinuationPermit.class);
+        assertAll(
+                () -> assertTrue(Modifier.isPublic(owner.getModifiers())),
+                () -> assertEquals(net.minecraft.world.entity.Entity.class, owner.getReturnType()),
+                () -> assertFalse(owner.isBridge()),
+                () -> assertEquals(0, owner.getParameterCount()),
+                () -> assertEquals(0, owner.getExceptionTypes().length),
+                () -> assertEquals(net.minecraft.server.level.ServerPlayer.class,
+                        witness.getReturnType()),
+                () -> assertFalse(Modifier.isPublic(witness.getModifiers())
+                        || Modifier.isProtected(witness.getModifiers())
+                        || Modifier.isPrivate(witness.getModifiers())),
+                () -> assertEquals(0, witness.getExceptionTypes().length));
+        assertThrows(AssertionError.class, () -> assertL1OwnerContract(projectile.replace(
+                "? continuationPermit.qualifiedActor(serverLevel.getServer(), this)",
+                "? super.getOwner()")));
+        assertThrows(AssertionError.class, () -> assertL1OwnerContract(projectile.replace(
+                "return continuationPermit == expected ? authenticatedCasterIdentity : null;",
+                "return authenticatedCasterIdentity;")));
+        assertThrows(AssertionError.class, () -> assertL1OwnerContract(projectile.replace(
+                "&& continuationPermit.qualifiedActor(server, this)",
+                "&& getOwner()")));
+    }
+
+    @Test
+    void l1PendingLogoutDoesNotCloseOrRewriteFlightAndSelfExclusionUsesAttributionUuid() {
+        var projectile = read(PROJECTILE_SOURCE);
+        var handoff = read(HANDOFF_SOURCE);
+        var adapter = read(ADAPTER_SOURCE);
+        var tick = sourceBlock(projectile, "public void tick()");
+        var pending = tick.indexOf("if (continuationPermit.qualification(");
+        var validation = tick.indexOf("if (!validServerState(serverLevel))");
+        assertTrue(tick.indexOf("if (tickCount > 100)") < pending && pending < validation);
+        assertEquals("""
+                if (continuationPermit.qualification(serverLevel.getServer(), this)
+                                == SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS) {
+                            return;
+                        }
+                """.strip(), tick.substring(pending, validation).strip());
+        assertAll(
+                () -> assertEquals(3, occurrences(projectile,
+                        "== SkillRuntimeService.WorkQualification.LOGOUT_IN_PROGRESS")),
+                () -> assertFalse(projectile.contains("tickCount =")
+                        || projectile.contains("tickCount++")),
+                () -> assertTrue(projectile.contains(
+                        "target.getUUID().equals(authenticatedCasterIdentity.getUUID())")),
+                () -> assertTrue(handoff.contains("target.getUUID().equals(actor.getUUID())")),
+                () -> assertTrue(adapter.contains(
+                        "!entityTarget.entity().getUUID().equals(playerOrigin.player().getUUID())")),
+                () -> assertTrue(sourceBlock(handoff, "private boolean currentActor(")
+                        .contains("executionGuard.allowsP9NativeActor(actor)")),
+                () -> assertFalse(handoff.contains("getPlayerList().getPlayer(")),
+                () -> assertTrue(projectile.indexOf("setUUID(openedContinuation.plannedProjectileId())")
+                        < projectile.indexOf("permit.qualifiedActor(level.getServer(), this)")),
+                () -> assertTrue(projectile.indexOf("permit.qualifiedActor(level.getServer(), this)")
+                        < projectile.indexOf("setOwner(actor)")));
+    }
+
+    private static void assertL1OwnerContract(String projectile) {
+        assertEquals("""
+                public Entity getOwner() {
+                        if (level().isClientSide()) {
+                            return super.getOwner();
+                        }
+                        return level() instanceof ServerLevel serverLevel && continuationPermit != null
+                                ? continuationPermit.qualifiedActor(serverLevel.getServer(), this)
+                                : null;
+                    }
+                """.strip(), sourceBlock(projectile, "public Entity getOwner()"));
+        assertEquals("""
+                ServerPlayer actorWitness(RuntimeProjectileContinuationPermit expected) {
+                        return continuationPermit == expected ? authenticatedCasterIdentity : null;
+                    }
+                """.strip(), sourceBlock(projectile, "ServerPlayer actorWitness("));
+        var validation = sourceBlock(projectile, "private boolean validServerState(");
+        assertTrue(validation.contains("continuationPermit.qualifiedActor(server, this)"));
+        assertFalse(validation.contains("getOwner()"));
+        assertFalse(projectile.contains("getPlayerList().getPlayer("));
+    }
+
+    private static String sourceBlock(String source, String declaration) {
+        var start = source.indexOf(declaration);
+        assertTrue(start >= 0, declaration);
+        var open = source.indexOf('{', start + declaration.length());
+        assertTrue(open >= 0, declaration);
+        var depth = 0;
+        for (var index = open; index < source.length(); index++) {
+            if (source.charAt(index) == '{') {
+                depth++;
+            } else if (source.charAt(index) == '}' && --depth == 0) {
+                return source.substring(start, index + 1);
+            }
+        }
+        throw new AssertionError("unterminated block: " + declaration);
     }
 
     @Test

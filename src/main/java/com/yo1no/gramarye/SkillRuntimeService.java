@@ -33,6 +33,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.bus.api.EventPriority;
@@ -51,6 +52,7 @@ final class SkillRuntimeService {
     private final P5RuntimeProjector projector;
     private final RuntimeReferenceResolver referenceResolver;
     private final RuntimeExecutionPort executionPort;
+    private final P11FoundationService foundation;
     private final AtomicBoolean p9ReloadCloseRequested = new AtomicBoolean();
     private final IdentityHashMap<MinecraftServer, ServerSlot> slots = new IdentityHashMap<>(1);
     private long serverTokenHighWater;
@@ -61,11 +63,22 @@ final class SkillRuntimeService {
             P5RuntimeProjector projector,
             RuntimeReferenceResolver referenceResolver,
             RuntimeExecutionPort executionPort) {
+        this(storeService, policyProvider, projector, referenceResolver, executionPort, null);
+    }
+
+    private SkillRuntimeService(
+            SkillDefinitionStoreService storeService,
+            SkillSubmissionPolicyProvider policyProvider,
+            P5RuntimeProjector projector,
+            RuntimeReferenceResolver referenceResolver,
+            RuntimeExecutionPort executionPort,
+            P11FoundationService foundation) {
         this.storeService = Objects.requireNonNull(storeService, "storeService");
         this.policyProvider = Objects.requireNonNull(policyProvider, "policyProvider");
         this.projector = Objects.requireNonNull(projector, "projector");
         this.referenceResolver = Objects.requireNonNull(referenceResolver, "referenceResolver");
         this.executionPort = Objects.requireNonNull(executionPort, "executionPort");
+        this.foundation = foundation;
     }
 
     static SkillRuntimeService create(
@@ -74,17 +87,19 @@ final class SkillRuntimeService {
             SkillSubmissionPolicyProvider policyProvider,
             ProfileAvailabilityView profiles,
             P6RuntimeExecutionCapability capability,
-            P8ServerPresentationService presentationService) {
+            P8ServerPresentationService presentationService,
+            P11FoundationService foundation) {
         Objects.requireNonNull(gameBus, "gameBus");
         Objects.requireNonNull(profiles, "profiles");
         Objects.requireNonNull(capability, "capability");
         Objects.requireNonNull(presentationService, "presentationService");
+        Objects.requireNonNull(foundation, "foundation");
         var service = new SkillRuntimeService(
                 storeService,
                 policyProvider,
                 new P5RuntimeProjector(profiles),
                 new P5LoadedReferenceResolver(),
-                new P6RuntimeExecutionPortAdapter(capability, presentationService));
+                new P6RuntimeExecutionPortAdapter(capability, presentationService), foundation);
         gameBus.addListener(EventPriority.LOWEST, service::handleRuntimePost);
         gameBus.addListener(service::handleRuntimeStopping);
         gameBus.addListener(service::handleRuntimeStopped);
@@ -372,8 +387,7 @@ final class SkillRuntimeService {
             return continuationRejected(
                     RuntimeProjectileContinuationOpenRejectionReason.INVARIANT_REJECTED);
         }
-        var actorCandidate = server.getPlayerList().getPlayer(
-                playerAttribution.playerId().value());
+        var actorCandidate = instance.p9ActorWitness();
         if (!isCurrentP9AuthenticatedActor(
                 server, instance, actorCandidate, geometry.dimension())) {
             return continuationRejected(
@@ -474,7 +488,7 @@ final class SkillRuntimeService {
                 || projectile.level() != level
                 || projectile.isRemoved()
                 || !projectile.isAlive()
-                || projectile.getOwner() != actor
+                || projectile.actorWitness(permit) != actor
                 || !projectile.hasAuthenticatedCasterIdentity(actor)) {
             recordP9SpawnResult(
                     slot, instance, RuntimePermitTransferDisposition.REJECTED);
@@ -572,7 +586,7 @@ final class SkillRuntimeService {
                 || projectile.isRemoved()
                 || !projectile.isAlive()
                 || !projectile.hasContinuationPermitIdentity(permit)
-                || livingTarget == actor
+                || livingTarget.getUUID().equals(actor.getUUID())
                 || livingTarget.level() != level
                 || livingTarget.isRemoved()
                 || !livingTarget.isAlive()
@@ -929,37 +943,56 @@ final class SkillRuntimeService {
             ServerSlot.InstanceState instance,
             ServerPlayer candidate,
             ResourceLocation dimension) {
-        if (!server.isSameThread()
-                || !server.isRunning()
-                || server.isStopped()
-                || candidate == null
-                || !(instance.attribution instanceof PlayerRuntimeBudgetAttribution player)) {
-            return false;
+        return candidate != null && instanceActor(server, instance) == candidate
+                && actorQualification(server, instance, candidate, dimension)
+                        == WorkQualification.EXECUTABLE;
+    }
+
+    private static ServerPlayer instanceActor(MinecraftServer server, ServerSlot.InstanceState instance) {
+        var witness = instance.p9ActorWitness();
+        if (witness != null) { return witness; }
+        var permit = instance.activeProjectileContinuation;
+        var projectile = permit == null ? null : loadedProjectile(server, permit);
+        return projectile == null ? null : projectile.actorWitness(permit);
+    }
+
+    private static WorkQualification actorQualification(
+            MinecraftServer server, ServerSlot.InstanceState instance,
+            ServerPlayer candidate, ResourceLocation dimension) {
+        if (!server.isSameThread() || !server.isRunning() || server.isStopped()
+                || candidate == null || instance.terminal || instance.cancellationRequested
+                || instance.lease.pin.isClosed()
+                || !(instance.attribution instanceof PlayerRuntimeBudgetAttribution player)
+                || !candidate.getUUID().equals(player.playerId().value())
+                || candidate.getServer() != server
+                || candidate.serverLevel().getServer() != server
+                || !candidate.serverLevel().dimension().location().equals(dimension)
+                || server.getLevel(candidate.serverLevel().dimension()) != candidate.serverLevel()
+                || candidate.isDeadOrDying() || candidate.getHealth() <= 0.0F
+                || instance.logoutState == LogoutState.INVALID) {
+            return WorkQualification.INVALID;
         }
-        var playerId = player.playerId().value();
-        if (!candidate.getUUID().equals(playerId)
-                || server.getPlayerList().getPlayer(candidate.getUUID()) != candidate
-                || !instance.hasP9AuthenticatedActorWitness(candidate)
-                || candidate.getServer() != server) {
-            return false;
+        if (instance.logoutState == LogoutState.IN_PROGRESS) {
+            return instance.work != null && instance.logoutScope != null && instance.logoutScope.active
+                    ? WorkQualification.LOGOUT_IN_PROGRESS : WorkQualification.INVALID;
         }
-        var level = candidate.serverLevel();
-        return level.getServer() == server
-                && !candidate.isRemoved()
-                && candidate.isAlive()
-                && level.dimension().location().equals(dimension)
-                && candidate.connection != null
-                && candidate.connection.isAcceptingMessages();
+        if (instance.work != null && !instance.work.qualifies(candidate)) {
+            return WorkQualification.INVALID;
+        }
+        if (instance.logoutState == LogoutState.COMPLETE) {
+            return instance.work != null ? WorkQualification.EXECUTABLE : WorkQualification.INVALID;
+        }
+        return server.getPlayerList().getPlayer(candidate.getUUID()) == candidate
+                && !candidate.isRemoved() && candidate.isAlive()
+                && candidate.connection != null && candidate.connection.isAcceptingMessages()
+                ? WorkQualification.EXECUTABLE : WorkQualification.INVALID;
     }
 
     private static ServerPlayer currentP9Actor(
             MinecraftServer server,
             ServerSlot.InstanceState instance,
             ResourceLocation dimension) {
-        if (!(instance.attribution instanceof PlayerRuntimeBudgetAttribution player)) {
-            return null;
-        }
-        var candidate = server.getPlayerList().getPlayer(player.playerId().value());
+        var candidate = instanceActor(server, instance);
         return isCurrentP9AuthenticatedActor(server, instance, candidate, dimension)
                 ? candidate
                 : null;
@@ -970,25 +1003,12 @@ final class SkillRuntimeService {
             ServerSlot.InstanceState instance,
             Entity loadedProjectile,
             RuntimeProjectileContinuationPermit permit) {
-        if (!(loadedProjectile instanceof P9StarterProjectile projectile)
-                || !(instance.attribution instanceof PlayerRuntimeBudgetAttribution player)) {
+        if (!(loadedProjectile instanceof P9StarterProjectile projectile)) {
             return null;
         }
-        var candidate = server.getPlayerList().getPlayer(player.playerId().value());
-        if (!server.isSameThread()
-                || !server.isRunning()
-                || server.isStopped()
-                || candidate == null
-                || !candidate.getUUID().equals(player.playerId().value())
-                || server.getPlayerList().getPlayer(candidate.getUUID()) != candidate
-                || candidate.getServer() != server
-                || candidate.serverLevel().getServer() != server
-                || !candidate.serverLevel().dimension().location().equals(permit.dimension)
-                || candidate.isRemoved()
-                || !candidate.isAlive()
-                || candidate.connection == null
-                || !candidate.connection.isAcceptingMessages()
-                || projectile.getOwner() != candidate
+        var candidate = projectile.actorWitness(permit);
+        if (actorQualification(server, instance, candidate, permit.dimension)
+                        != WorkQualification.EXECUTABLE
                 || projectile.level() != candidate.serverLevel()
                 || !projectile.hasAuthenticatedCasterIdentity(candidate)
                 || !projectile.hasContinuationPermitIdentity(permit)) {
@@ -1007,12 +1027,234 @@ final class SkillRuntimeService {
         return null;
     }
 
-    private static ServerPlayer currentP9ChildActor(
-            MinecraftServer server, RuntimeEvent event) {
-        if (!(event.origin() instanceof PlayerOrigin origin)) {
+    enum WorkQualification { EXECUTABLE, LOGOUT_IN_PROGRESS, INVALID }
+
+    enum LogoutState { ONLINE, IN_PROGRESS, COMPLETE, INVALID }
+
+    /** Actor-free permit inspection; the only actor is read from the actual entity witness. */
+    WorkQualification projectileQualification(
+            MinecraftServer server, RuntimeProjectileContinuationPermit permit,
+            P9StarterProjectile projectile) {
+        if (!server.isSameThread() || !server.isRunning() || server.isStopped()) {
+            return WorkQualification.INVALID;
+        }
+        var slot = slots.get(server);
+        if (slot == null || slot.state != ServerSlot.State.RUNNING
+                || p9ReloadCloseRequested.get() || permit.mode != RuntimeProjectileContinuationPermit.Mode.REAL
+                || !slot.token.equals(permit.serverSlotToken)
+                || slot.activeProjectileContinuations.get(permit.permitId) != permit) {
+            return WorkQualification.INVALID;
+        }
+        var instance = slot.instances.get(permit.skillInstanceId);
+        var level = levelForDimension(server, permit.dimension);
+        if (instance == null || instance.activeProjectileContinuation != permit
+                || instance.terminal || instance.cancellationRequested || instance.lease.pin.isClosed()
+                || !instance.lease.reference.equals(permit.exactReference)
+                || !instance.attribution.equals(permit.budgetAttribution)
+                || !permit.sourceFamily.skillInstanceId().equals(instance.id)
+                || permit.sourceDerivationDepth != 0 || level == null || projectile == null
+                || (permit.state != RuntimeProjectileContinuationPermit.State.RESERVED
+                        && (level.getEntity(permit.plannedProjectileId) != projectile
+                                || !projectile.isAddedToLevel()))
+                || projectile.level() != level
+                || projectile.isRemoved() || !projectile.isAlive()
+                || !projectile.getUUID().equals(permit.plannedProjectileId)
+                || !projectile.hasContinuationPermitIdentity(permit)) {
+            return WorkQualification.INVALID;
+        }
+        if (permit.state == RuntimeProjectileContinuationPermit.State.CLOSED_NO_HIT
+                || permit.state == RuntimeProjectileContinuationPermit.State.CLOSED_AFTER_HIT
+                || (permit.state == RuntimeProjectileContinuationPermit.State.CLAIMED_PENDING_DAMAGE
+                        ? slot.runtimeTick > permit.deadlineRuntimeTick
+                        : slot.runtimeTick >= permit.deadlineRuntimeTick)) {
+            return WorkQualification.INVALID;
+        }
+        var actor = projectile.actorWitness(permit);
+        if (actor == null || actor.serverLevel() != level
+                || !projectile.hasAuthenticatedCasterIdentity(actor)) {
+            return WorkQualification.INVALID;
+        }
+        if (permit.state == RuntimeProjectileContinuationPermit.State.RESERVED
+                && (!instance.hasP9AuthenticatedActorWitness(actor) || !instance.inFlight
+                        || !slot.dispatching || slot.currentEvent == null
+                        || !slot.currentEvent.skillInstanceId().equals(instance.id)
+                        || !slot.currentEvent.eventId().equals(permit.sourceFamily.sourceEventId())
+                        || !(slot.currentEvent.executionData() instanceof CastGeometryExecutionDataV0)
+                        || !slot.currentEvent.skillReference().equals(permit.exactReference))) {
+            return WorkQualification.INVALID;
+        }
+        if (permit.state == RuntimeProjectileContinuationPermit.State.CLAIMED_PENDING_DAMAGE) {
+            var child = slot.eventIndex.get(permit.heldChildEventId);
+            if (child == null || !hasP9S4DiagnosticCustody(slot, instance, child)) {
+                return WorkQualification.INVALID;
+            }
+        }
+        return actorQualification(server, instance, actor, permit.dimension);
+    }
+
+    ServerPlayer projectileActor(MinecraftServer server,
+            RuntimeProjectileContinuationPermit permit, P9StarterProjectile projectile) {
+        return projectileQualification(server, permit, projectile) == WorkQualification.EXECUTABLE
+                ? projectile.actorWitness(permit) : null;
+    }
+
+    private WorkQualification eventQualification(MinecraftServer server, ServerSlot slot,
+            ServerSlot.InstanceState instance, RuntimeEvent event) {
+        if (slots.get(server) != slot || slot.state != ServerSlot.State.RUNNING
+                || slot.instances.get(instance.id) != instance || slot.eventIndex.get(event.eventId()) != event
+                || !slot.token.equals(event.cancellationToken().serverSlotToken())
+                || !instance.id.equals(event.skillInstanceId())
+                || !instance.lease.reference.equals(event.skillReference())
+                || p9ReloadCloseRequested.get() || deadlineExpired(slot, event)) {
+            return WorkQualification.INVALID;
+        }
+        if (event.executionData() instanceof CastGeometryExecutionDataV0 geometry) {
+            return actorQualification(server, instance, instanceActor(server, instance), geometry.dimension());
+        }
+        if (event.executionData() instanceof ProjectileHitExecutionDataV0 hit) {
+            var permit = slot.activeProjectileContinuations.get(hit.permitId());
+            return permit == null ? WorkQualification.INVALID
+                    : projectileQualification(server, permit, loadedProjectile(server, permit));
+        }
+        return WorkQualification.INVALID;
+    }
+
+    /** Call-local proof: never stored in an event, permit, instance, or P6 service. */
+    static final class AcceptedWorkActor {
+        private final SkillRuntimeService owner;
+        private final MinecraftServer server;
+        private final ServerSlot slot;
+        private final ServerSlot.InstanceState instance;
+        private final RuntimeEvent event;
+
+        private AcceptedWorkActor(SkillRuntimeService owner, MinecraftServer server,
+                ServerSlot slot, ServerSlot.InstanceState instance, RuntimeEvent event) {
+            this.owner = owner;
+            this.server = server;
+            this.slot = slot;
+            this.instance = instance;
+            this.event = event;
+        }
+
+        ServerPlayer resolve(MinecraftServer expectedServer, RuntimeEvent expectedEvent) {
+            if (server != expectedServer || event != expectedEvent || !server.isSameThread()
+                    || !slot.dispatching || slot.currentEvent != event || !instance.inFlight
+                    || owner.eventQualification(server, slot, instance, event) != WorkQualification.EXECUTABLE
+                    || !(event.origin() instanceof PlayerOrigin origin)
+                    || !origin.server().equals(slot.token)) {
+                return null;
+            }
+            var actor = event.executionData() instanceof CastGeometryExecutionDataV0
+                    ? instanceActor(server, instance) : currentP9ChildActor(server, slot, instance, event);
+            return actor != null && actor.getUUID().equals(origin.player().value())
+                    && actor.serverLevel().dimension().equals(origin.dimension()) ? actor : null;
+        }
+    }
+
+    /** Exact original onDisconnect call, not a reusable normal-logout grant. */
+    static final class NormalLogoutScope {
+        private final SkillRuntimeService owner;
+        private final MinecraftServer server;
+        private final ServerSlot slot;
+        private final ServerGamePacketListenerImpl listener;
+        private final ServerPlayer actor;
+        private boolean active = true;
+
+        private NormalLogoutScope(SkillRuntimeService owner, MinecraftServer server, ServerSlot slot,
+                ServerGamePacketListenerImpl listener, ServerPlayer actor) {
+            this.owner = owner;
+            this.server = server;
+            this.slot = slot;
+            this.listener = listener;
+            this.actor = actor;
+        }
+    }
+
+    NormalLogoutScope beginNormalLogout(MinecraftServer server,
+            ServerGamePacketListenerImpl listener, ServerPlayer actor) {
+        var slot = slots.get(server);
+        if (!server.isSameThread() || !server.isRunning() || server.isStopped()
+                || slot == null || slot.state != ServerSlot.State.RUNNING || foundation == null
+                || actor == null || listener == null || actor.connection != listener || listener.player != actor
+                || listener.getConnection().getPacketListener() != listener
+                || server.getPlayerList().getPlayer(actor.getUUID()) != actor
+                || actor.isRemoved() || !actor.isAlive() || p9ReloadCloseRequested.get()) {
             return null;
         }
-        return server.getPlayerList().getPlayer(origin.player().value());
+        var scope = new NormalLogoutScope(this, server, slot, listener, actor);
+        try {
+            for (var instance : slot.instances.values()) {
+                if (instance.work == null || instance.logoutState != LogoutState.ONLINE
+                        || instance.terminal || instance.cancellationRequested || instance.lease.pin.isClosed()) {
+                    continue;
+                }
+                var permit = instance.activeProjectileContinuation;
+                var projectile = permit == null ? null : loadedProjectile(server, permit);
+                var witness = instance.p9ActorWitness();
+                if (witness == null && projectile != null) { witness = projectile.actorWitness(permit); }
+                if (witness == actor && instance.work.qualifies(actor)) {
+                    instance.logoutScope = scope;
+                    instance.logoutState = LogoutState.IN_PROGRESS;
+                }
+            }
+            return scope;
+        } catch (RuntimeException | Error primary) {
+            scope.active = false;
+            revokeLogoutScope(scope);
+            throw primary;
+        }
+    }
+
+    void endNormalLogout(NormalLogoutScope scope,
+            P11NativeStorageBoundary.NormalLogoutProof proof, boolean originalNormal) {
+        if (scope == null) { return; }
+        if (scope.owner != this || !scope.active || !scope.server.isSameThread()) {
+            throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        scope.active = false;
+        // Invalidate first. Any proof/qualification failure leaves no partial grant.
+        for (var instance : scope.slot.instances.values()) {
+            if (instance.logoutScope == scope) { instance.logoutState = LogoutState.INVALID; }
+        }
+        try {
+            boolean complete = originalNormal && proof != null && proof.confirms(scope.server, scope.actor)
+                    && slots.get(scope.server) == scope.slot && scope.slot.state == ServerSlot.State.RUNNING
+                    && scope.listener.player == scope.actor && !p9ReloadCloseRequested.get();
+            for (var instance : scope.slot.instances.values()) {
+                if (instance.logoutScope == scope && complete && !instance.terminal
+                        && !instance.cancellationRequested && !instance.lease.pin.isClosed()
+                        && instance.work != null && instance.work.qualifies(scope.actor)) {
+                    instance.logoutState = LogoutState.COMPLETE;
+                }
+            }
+        } catch (RuntimeException | Error primary) {
+            revokeLogoutScope(scope);
+            throw primary;
+        } finally {
+            for (var instance : scope.slot.instances.values()) {
+                if (instance.logoutScope == scope) { instance.logoutScope = null; }
+            }
+        }
+    }
+
+    private static void revokeLogoutScope(NormalLogoutScope scope) {
+        for (var instance : scope.slot.instances.values()) {
+            if (instance.logoutScope == scope) {
+                instance.logoutState = LogoutState.INVALID;
+                instance.logoutScope = null;
+            }
+        }
+    }
+
+    private static ServerPlayer currentP9ChildActor(
+            MinecraftServer server, ServerSlot slot, ServerSlot.InstanceState instance,
+            RuntimeEvent event) {
+        if (!(event.executionData() instanceof ProjectileHitExecutionDataV0 hit)) {
+            return null;
+        }
+        var permit = slot.activeProjectileContinuations.get(hit.permitId());
+        return permit == null ? null : currentP9EntityActor(
+                server, instance, loadedProjectile(server, permit), permit);
     }
 
     private static Entity currentP9ChildTarget(
@@ -1078,7 +1320,7 @@ final class SkillRuntimeService {
                 && !projectile.isRemoved()
                 && projectile.isAlive()
                 && projectile.hasContinuationPermitIdentity(permit)
-                && livingTarget != actor
+                && !livingTarget.getUUID().equals(actor.getUUID())
                 && livingTarget.level() == level
                 && !livingTarget.isRemoved()
                 && livingTarget.isAlive();
@@ -1320,6 +1562,7 @@ final class SkillRuntimeService {
             ServerPlayer p9AuthenticatedActorWitness,
             ServerPlayer resolvedP9Actor) {
         var leaseAcquisition = acquireLease(server, slot, spec.skillReference());
+        ServerSlot.InstanceState prospectiveInstance = null;
         try {
             if (slot.state != ServerSlot.State.RUNNING) {
                 releaseProvisionalLease(slot, leaseAcquisition);
@@ -1364,12 +1607,27 @@ final class SkillRuntimeService {
                     prospectiveEvent.budgetAttribution(),
                     lease,
                     p9AuthenticatedActorWitness);
+            prospectiveInstance = instance;
             if (prospectiveEvent.executionData() instanceof CastGeometryExecutionDataV0 geometry
                     && !isCurrentP9AuthenticatedActor(
                             server, instance, resolvedP9Actor, geometry.dimension())) {
                 releaseProvisionalLease(slot, leaseAcquisition);
                 return new RuntimeAdmissionResult.InvalidRuntimeReference(
                         RuntimeReferenceFailureReason.MISSING);
+            }
+            if (p9AuthenticatedActorWitness != null && foundation != null
+                    && !foundation.observedInactiveForRuntime(server)) {
+                instance.work = foundation.acquireWork(p9AuthenticatedActorWitness);
+                if (instance.work == null) {
+                    releaseProvisionalLease(slot, leaseAcquisition);
+                    return new RuntimeAdmissionResult.OwnerInstanceUnavailable();
+                }
+                if (!isCurrentP9AuthenticatedActor(server, instance, resolvedP9Actor,
+                        ((CastGeometryExecutionDataV0) prospectiveEvent.executionData()).dimension())) {
+                    instance.releaseWork();
+                    releaseProvisionalLease(slot, leaseAcquisition);
+                    return new RuntimeAdmissionResult.OwnerInstanceUnavailable();
+                }
             }
             publishRoot(
                     slot,
@@ -1380,6 +1638,13 @@ final class SkillRuntimeService {
                     instance);
             return accepted;
         } catch (RuntimeException | Error primary) {
+            if (prospectiveInstance != null) {
+                try {
+                    prospectiveInstance.releaseWork();
+                } catch (RuntimeException | Error ignoredCleanupFailure) {
+                    // Publication failure remains the primary; slot cleanup retries its own custody.
+                }
+            }
             closeProvisionalAfterRootFault(leaseAcquisition);
             throw primary;
         }
@@ -1547,21 +1812,22 @@ final class SkillRuntimeService {
                 throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
             }
             var projectile = loadedProjectile(server, permit);
-            var actor = currentP9EntityActor(server, instance, projectile, permit);
+            var qualification = permit.qualification(server, projectile);
             var expired = permit.state == RuntimeProjectileContinuationPermit.State.OPEN
                     ? slot.runtimeTick >= permit.deadlineRuntimeTick
                     : slot.runtimeTick > permit.deadlineRuntimeTick;
             var claimedChildMissing = permit.state
                             == RuntimeProjectileContinuationPermit.State.CLAIMED_PENDING_DAMAGE
                     && slot.eventIndex.get(permit.heldChildEventId) == null;
-            if (!expired && projectile != null && actor != null && !claimedChildMissing) {
+            if (!expired && projectile != null
+                    && qualification != WorkQualification.INVALID && !claimedChildMissing) {
                 continue;
             }
             var reason = expired
                     ? ProjectileClosureReason.DEADLINE_REACHED
                     : projectile == null
                             ? ProjectileClosureReason.ENTITY_OR_LEVEL_REMOVED
-                            : actor == null
+                            : qualification == WorkQualification.INVALID
                                     ? ProjectileClosureReason.OWNER_INVALIDATED
                                     : ProjectileClosureReason.RUNTIME_FAULT;
             slot.p9BatchContinuationCloseInProgress = true;
@@ -1706,6 +1972,7 @@ final class SkillRuntimeService {
                 continue;
             }
             instance.clearP9AuthenticatedActorWitness();
+            instance.releaseWork();
             iterator.remove();
             var attribution = requireAttribution(slot, instance.attribution);
             if (attribution.activeInstances <= 0) {
@@ -1802,6 +2069,17 @@ final class SkillRuntimeService {
                             slot,
                             new RuntimeExecutionOutcome.DeadlineExpired(
                                     event.deadlineRuntimeTick(), slot.runtimeTick));
+                    continue;
+                }
+                if (isP9ExecutionData(event.executionData())
+                        && eventQualification(server, slot, instance, event)
+                                == WorkQualification.LOGOUT_IN_PROGRESS) {
+                    if (slot.deferredCount == slot.deferred.length) {
+                        throw kernel(RuntimeKernelException.Code.DEFERRED_BUFFER_OVERFLOW);
+                    }
+                    // Exclude only execution during this exact native cleanup call.
+                    // The original scheduled tick and deadline remain unchanged.
+                    slot.deferred[slot.deferredCount++] = event;
                     continue;
                 }
                 var attribution = requireAttribution(slot, instance.attribution);
@@ -1919,7 +2197,9 @@ final class SkillRuntimeService {
         ResolvedRuntimeReferenceContext resolvedReferences = null;
         RuntimeExecutionContext context = null;
         try {
-            resolution = referenceResolver.resolve(server, event);
+            var acceptedWork = isP9ExecutionData(event.executionData())
+                    ? new AcceptedWorkActor(this, server, slot, instance, event) : null;
+            resolution = referenceResolver.resolve(server, event, acceptedWork);
             if (slot.state != ServerSlot.State.RUNNING) {
                 return AbortedInvocation.INSTANCE;
             }
@@ -1953,16 +2233,18 @@ final class SkillRuntimeService {
                 }
                 guardedP9Actor = playerOrigin.player();
                 guardedP9Dimension = geometry.dimension();
-            } else if (event.executionData() instanceof ProjectileHitExecutionDataV0
-                    && (!validClaimedP9Child(server, slot, instance, event)
+            } else if (event.executionData() instanceof ProjectileHitExecutionDataV0 hit) {
+                if (!validClaimedP9Child(server, slot, instance, event)
                             || !(resolvedReferences.origin()
                                     instanceof ResolvedPlayerOrigin playerOrigin)
                             || !(resolvedReferences.target()
                                     instanceof ResolvedEntityTarget entityTarget)
-                            || playerOrigin.player() != currentP9ChildActor(server, event)
-                            || entityTarget.entity() != currentP9ChildTarget(server, event))) {
-                return new TerminalInvocation(
-                        new RuntimeExecutionOutcome.OwnerInstanceUnavailable());
+                            || playerOrigin.player() != currentP9ChildActor(server, slot, instance, event)
+                            || entityTarget.entity() != currentP9ChildTarget(server, event)) {
+                    return new TerminalInvocation(new RuntimeExecutionOutcome.OwnerInstanceUnavailable());
+                }
+                guardedP9Actor = ((ResolvedPlayerOrigin) resolvedReferences.origin()).player();
+                guardedP9Dimension = hit.dimension();
             }
             var reservation = reserveForPort(slot, instance, attribution, event);
             var node = lease.definition.nodes().get(event.nodeIndex());
@@ -2831,6 +3113,7 @@ final class SkillRuntimeService {
             return;
         }
         instance.clearP9AuthenticatedActorWitness();
+        instance.releaseWork();
         slot.instances.remove(instanceId);
         var attribution = requireAttribution(slot, instance.attribution);
         if (attribution.activeInstances <= 0) {
@@ -3647,6 +3930,7 @@ final class SkillRuntimeService {
                 }
             }
             instance.clearP9AuthenticatedActorWitness();
+            instance.releaseWork();
             if (instance.p9Diagnostic != null) {
                 recordP9Terminal(slot, instance, reason, disposition);
             }
@@ -3906,6 +4190,11 @@ final class SkillRuntimeService {
                 ServerSlot.InstanceState instance) {
             if (instance != null) {
                 instance.clearP9AuthenticatedActorWitness();
+                try {
+                    instance.releaseWork();
+                } catch (RuntimeException | Error ignoredCleanupFailure) {
+                    // Preserve the original Error; Stopped retains this exact cleanup owner.
+                }
             }
         }
     }
@@ -3946,13 +4235,21 @@ final class SkillRuntimeService {
 
         @Override
         public RuntimeExecutionGuardDecision check() {
+            if (!server.isSameThread() || owner.slots.get(server) != slot
+                    || slot.instances.get(instance.id) != instance || !slot.dispatching
+                    || slot.currentEvent != event || !instance.inFlight
+                    || slot.eventIndex.get(event.eventId()) != event) {
+                return RuntimeExecutionGuardDecision.CANCELLED;
+            }
             if (owner.p9ReloadCloseRequested.get()
                     && isP9ExecutionData(event.executionData())) {
                 return RuntimeExecutionGuardDecision.CANCELLED;
             }
-            if (p9Actor != null
-                    && !isCurrentP9AuthenticatedActor(
-                            server, instance, p9Actor, p9Dimension)) {
+            if (p9Actor != null && (owner.eventQualification(server, slot, instance, event)
+                            != WorkQualification.EXECUTABLE
+                    || instanceActor(server, instance) != p9Actor
+                    || actorQualification(server, instance, p9Actor, p9Dimension)
+                            != WorkQualification.EXECUTABLE)) {
                 return RuntimeExecutionGuardDecision.CANCELLED;
             }
             if (event.executionData() instanceof ProjectileHitExecutionDataV0
@@ -3960,6 +4257,26 @@ final class SkillRuntimeService {
                 return RuntimeExecutionGuardDecision.CANCELLED;
             }
             return owner.runtimeExecutionGuardDecision(slot, instance, event);
+        }
+
+        boolean allowsP9NativeActor(ServerPlayer exactActor) {
+            return exactActor != null && p9Actor == exactActor
+                    && check() == RuntimeExecutionGuardDecision.ALLOWED;
+        }
+
+        P11NativeOperationBoundary.OperationScope beginP9NativeMutation(ServerPlayer exactActor) {
+            if (!allowsP9NativeActor(exactActor)) {
+                return null;
+            }
+            return instance.work == null ? null : instance.work.beginNative(exactActor);
+        }
+
+        RuntimeExecutionGuardDecision afterP9NativeMutation(ServerPlayer exactActor,
+                P11NativeOperationBoundary.OperationScope scope) {
+            if (exactActor == null || p9Actor != exactActor || instance.work != null && scope == null) {
+                return RuntimeExecutionGuardDecision.CANCELLED;
+            }
+            return check();
         }
 
         void reportP9S4Stage(P9RuntimeDiagnosticStage stage) {
@@ -4273,6 +4590,16 @@ final class RuntimeProjectileContinuationPermit {
         return owner.claimProjectileHit(server, this, candidate);
     }
 
+    SkillRuntimeService.WorkQualification qualification(
+            MinecraftServer server, P9StarterProjectile projectile) {
+        return mode == Mode.REAL ? owner.projectileQualification(server, this, projectile)
+                : SkillRuntimeService.WorkQualification.INVALID;
+    }
+
+    ServerPlayer qualifiedActor(MinecraftServer server, P9StarterProjectile projectile) {
+        return mode == Mode.REAL ? owner.projectileActor(server, this, projectile) : null;
+    }
+
     RuntimePermitCloseDisposition closeWithoutHit(
             MinecraftServer server,
             ProjectileClosureReason reason) {
@@ -4424,6 +4751,9 @@ final class ServerSlot {
         final RuntimeBudgetAttribution attribution;
         final RuntimeRevisionLease lease;
         private ServerPlayer p9AuthenticatedActorWitness;
+        P11QualifiedSourceOwner.WorkReservation work;
+        SkillRuntimeService.LogoutState logoutState = SkillRuntimeService.LogoutState.ONLINE;
+        SkillRuntimeService.NormalLogoutScope logoutScope;
         int committedPending;
         int reservedPending;
         int lifetimeEvents;
@@ -4450,6 +4780,20 @@ final class ServerSlot {
 
         boolean hasP9AuthenticatedActorWitness(ServerPlayer candidate) {
             return candidate != null && p9AuthenticatedActorWitness == candidate;
+        }
+
+        ServerPlayer p9ActorWitness() {
+            return p9AuthenticatedActorWitness;
+        }
+
+        void releaseWork() {
+            logoutScope = null;
+            logoutState = SkillRuntimeService.LogoutState.INVALID;
+            var retained = work;
+            if (retained != null) {
+                retained.release();
+                work = null;
+            }
         }
 
         void clearP9AuthenticatedActorWitness() {

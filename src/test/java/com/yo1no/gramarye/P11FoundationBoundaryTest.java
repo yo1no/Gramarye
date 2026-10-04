@@ -119,6 +119,8 @@ final class P11FoundationBoundaryTest {
                 "private final P11FoundationService p11FoundationService;",
                 "p11FoundationService = new P11FoundationService(p11SourceProvenance, playerSkillAttachmentService);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::tick);",
+                "p11FoundationService);",
+                "p11FoundationService.bindRuntime(skillRuntimeService);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::stopping);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::stopped);",
                 "p11FoundationService.started(event, snapshot.p11State());"),

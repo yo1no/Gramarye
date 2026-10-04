@@ -202,7 +202,7 @@ final class P5RuntimeStaticGateTest {
                 "private RuntimeExecutionOutcome finishPort(");
         assertInOrder(
                 invocation,
-                "referenceResolver.resolve(server, event)",
+                "referenceResolver.resolve(server, event, acceptedWork)",
                 "slot.state != ServerSlot.State.RUNNING",
                 "!server.isRunning() || server.isStopped()",
                 "instance.cancellationRequested",
@@ -607,7 +607,14 @@ record ProjectileHitExecutionDataV0(
                                 + "projectileContinuationOpener")),
                 () -> assertEquals(1, occurrences(
                         s2Vocabulary, s2ExecutionDataDeclaration)),
-                () -> assertEquals(s2Vocabulary, Files.readString(VOCABULARY_SOURCE)));
+                () -> assertEquals(s2Vocabulary.replace(
+                        "    RuntimeReferenceResolutionOutcome resolve(MinecraftServer server, RuntimeEvent event);\n}",
+                        "    RuntimeReferenceResolutionOutcome resolve(MinecraftServer server, RuntimeEvent event);\n"
+                                + "\n    default RuntimeReferenceResolutionOutcome resolve(\n"
+                                + "            MinecraftServer server, RuntimeEvent event,\n"
+                                + "            SkillRuntimeService.AcceptedWorkActor acceptedWork) {\n"
+                                + "        return resolve(server, event);\n    }\n}"),
+                        Files.readString(VOCABULARY_SOURCE)));
     }
 
     @Test
@@ -885,7 +892,13 @@ record ProjectileHitExecutionDataV0(
                                         + "com.yo1no.gramarye.ProjectileHitCandidateV0)",
                                 "com.yo1no.gramarye.RuntimePermitCloseDisposition "
                                         + "closeWithoutHit(net.minecraft.server.MinecraftServer,"
-                                        + "com.yo1no.gramarye.ProjectileClosureReason)"),
+                                        + "com.yo1no.gramarye.ProjectileClosureReason)",
+                                "com.yo1no.gramarye.SkillRuntimeService$WorkQualification "
+                                        + "qualification(net.minecraft.server.MinecraftServer,"
+                                        + "com.yo1no.gramarye.P9StarterProjectile)",
+                                "net.minecraft.server.level.ServerPlayer "
+                                        + "qualifiedActor(net.minecraft.server.MinecraftServer,"
+                                        + "com.yo1no.gramarye.P9StarterProjectile)"),
                         declaredMethodSignatures(permit)),
                 () -> assertEquals(2, permit.getDeclaredClasses().length),
                 () -> assertTrue(permitState.isEnum()),
@@ -1548,7 +1561,13 @@ record ProjectileHitExecutionDataV0(
                                 "void enterP9DamageCommit()",
                                 "void armP9AppliedObservation()",
                                 "void reportP9AppliedFactIfArmed()",
-                                "void finishP9DamageCommit()"),
+                                "void finishP9DamageCommit()",
+                                "boolean allowsP9NativeActor(net.minecraft.server.level.ServerPlayer)",
+                                "com.yo1no.gramarye.P11NativeOperationBoundary$OperationScope "
+                                        + "beginP9NativeMutation(net.minecraft.server.level.ServerPlayer)",
+                                "com.yo1no.gramarye.RuntimeExecutionGuardDecision "
+                                        + "afterP9NativeMutation(net.minecraft.server.level.ServerPlayer,"
+                                        + "com.yo1no.gramarye.P11NativeOperationBoundary$OperationScope)"),
                         declaredMethodSignatures(executionGuardType)),
                 () -> assertEquals(1, Arrays.stream(executionGuardType.getDeclaredMethods())
                         .filter(method -> Modifier.isPublic(method.getModifiers())
@@ -1558,25 +1577,10 @@ record ProjectileHitExecutionDataV0(
                 () -> assertTrue(actorAdmission.contains("resolvedP9Actor")),
                 () -> assertEquals(6, occurrences(
                         serviceSource, "isCurrentP9AuthenticatedActor(")),
-                () -> assertInOrder(
-                        predicateSource,
-                        "!server.isSameThread()",
-                        "!server.isRunning()",
-                        "server.isStopped()",
-                        "candidate == null",
-                        "instance.attribution instanceof PlayerRuntimeBudgetAttribution player",
-                        "var playerId = player.playerId().value()",
-                        "!candidate.getUUID().equals(playerId)",
-                        "server.getPlayerList().getPlayer(",
-                        "instance.hasP9AuthenticatedActorWitness(candidate)",
-                        "candidate.getServer()",
-                        "var level = candidate.serverLevel()",
-                        "level.getServer()",
-                        "candidate.isRemoved()",
-                        "candidate.isAlive()",
-                        "level.dimension().location()",
-                        "candidate.connection != null",
-                        "candidate.connection.isAcceptingMessages()"),
+                () -> assertInOrder(predicateSource,
+                        "candidate != null", "instanceActor(server, instance) == candidate",
+                        "actorQualification(server, instance, candidate, dimension)",
+                        "WorkQualification.EXECUTABLE"),
                 () -> assertInOrder(
                         genericAdmission,
                         "spec.executionData() instanceof CastGeometryExecutionDataV0",
@@ -1599,7 +1603,7 @@ record ProjectileHitExecutionDataV0(
                         "addCommittedEvent("),
                 () -> assertInOrder(
                         invocation,
-                        "referenceResolver.resolve(server, event)",
+                        "referenceResolver.resolve(server, event, acceptedWork)",
                         "isCurrentP9AuthenticatedActor(",
                         "reserveForPort(",
                         "new RuntimeExecutionGuardState(",
@@ -1859,8 +1863,8 @@ record ProjectileHitExecutionDataV0(
                 () -> assertTrue(resolver.contains("server.getPlayerList().getPlayer(")),
                 () -> assertTrue(resolver.contains("level.getEntity(")),
                 () -> assertTrue(resolver.contains("level.isLoaded(position)")),
-                () -> assertEquals(3, occurrences(resolver, "classifySourceFailure(")),
-                () -> assertEquals(3, occurrences(resolver, "classifyTargetFailure(")));
+                () -> assertEquals(4, occurrences(resolver, "classifySourceFailure(")),
+                () -> assertEquals(5, occurrences(resolver, "classifyTargetFailure(")));
     }
 
     @Test
@@ -2281,7 +2285,7 @@ record ProjectileHitExecutionDataV0(
                 "private RuntimeExecutionOutcome finishPort(");
         assertInOrder(
                 invocation,
-                "resolution = referenceResolver.resolve(server, event)",
+                "resolution = referenceResolver.resolve(server, event, acceptedWork)",
                 "if (slot.state != ServerSlot.State.RUNNING)",
                 "if (!server.isRunning() || server.isStopped())",
                 "if (instance.cancellationRequested)",
@@ -2306,7 +2310,7 @@ record ProjectileHitExecutionDataV0(
                 guard,
                 "p9ReloadCloseRequested.get()",
                 "p9Actor != null",
-                "isCurrentP9AuthenticatedActor(",
+                "owner.eventQualification(server, slot, instance, event)",
                 "validClaimedP9Child(",
                 "owner.runtimeExecutionGuardDecision(slot, instance, event)");
         var finishPort = section(
@@ -2432,6 +2436,161 @@ record ProjectileHitExecutionDataV0(
             }
         }
         return combined.toString();
+    }
+
+    @Test
+    void acceptedWorkProofIsCallLocalAndDoesNotAddAnActorToEventsOrPermits() {
+        var proof = SkillRuntimeService.AcceptedWorkActor.class;
+        assertAll(
+                () -> assertTrue(Arrays.stream(proof.getDeclaredConstructors())
+                        .allMatch(value -> Modifier.isPrivate(value.getModifiers()))),
+                () -> assertTrue(Arrays.stream(proof.getDeclaredFields())
+                        .allMatch(value -> Modifier.isPrivate(value.getModifiers())
+                                && Modifier.isFinal(value.getModifiers()))),
+                () -> assertEquals(Set.of("owner", "server", "slot", "instance", "event"),
+                        Arrays.stream(proof.getDeclaredFields()).map(value -> value.getName())
+                                .collect(java.util.stream.Collectors.toSet())),
+                () -> assertFalse(Arrays.stream(proof.getDeclaredFields())
+                        .anyMatch(value -> Entity.class.isAssignableFrom(value.getType()))),
+                () -> assertFalse(Arrays.stream(RuntimeProjectileContinuationPermit.class.getDeclaredFields())
+                        .anyMatch(value -> Entity.class.isAssignableFrom(value.getType()))),
+                () -> assertEquals(1, Arrays.stream(ServerSlot.InstanceState.class.getDeclaredFields())
+                        .filter(value -> value.getType() == ServerPlayer.class).count()),
+                () -> assertEquals(1, Arrays.stream(ServerSlot.InstanceState.class.getDeclaredFields())
+                        .filter(value -> value.getType() == P11QualifiedSourceOwner.WorkReservation.class)
+                        .count()),
+                () -> assertTrue(Arrays.stream(SkillRuntimeService.NormalLogoutScope.class
+                                .getDeclaredConstructors())
+                        .allMatch(value -> Modifier.isPrivate(value.getModifiers()))));
+    }
+
+    @Test
+    void injectedResolverStillReceivesExactlyOneOriginalCallbackThroughTheWorkOverload() {
+        int[] calls = {0};
+        var expected = new RuntimeReferenceResolutionOutcome.SourceMissing(
+                RuntimeReferenceFailureReason.MISSING);
+        RuntimeReferenceResolver resolver = (server, event) -> {
+            calls[0]++;
+            return expected;
+        };
+        assertTrue(resolver.resolve(null, null, null) == expected);
+        assertEquals(1, calls[0]);
+    }
+
+    @Test
+    void acceptedWorkAdmissionReservesBeforePublicationAndKeepsLegacyFallbackExplicit() throws Exception {
+        var source = Files.readString(SERVICE_SOURCE);
+        var admission = methodSource(source, "private RuntimeAdmissionResult acquireAndPublishRoot(");
+        assertInOrder(admission,
+                "new ServerSlot.InstanceState(", "isCurrentP9AuthenticatedActor(",
+                "!foundation.observedInactiveForRuntime(server)",
+                "instance.work = foundation.acquireWork(p9AuthenticatedActorWitness)",
+                "if (instance.work == null)", "new RuntimeAdmissionResult.OwnerInstanceUnavailable()",
+                "isCurrentP9AuthenticatedActor(server, instance, resolvedP9Actor,", "publishRoot(");
+        assertInOrder(admission, "catch (RuntimeException | Error primary)",
+                "prospectiveInstance.releaseWork()", "closeProvisionalAfterRootFault(leaseAcquisition)",
+                "throw primary");
+        assertTrue(hasL1AdmissionBoundary(admission));
+        assertFalse(hasL1AdmissionBoundary(admission.replace(
+                "!foundation.observedInactiveForRuntime(server)", "true")));
+        assertFalse(hasL1AdmissionBoundary(admission.replace(
+                "instance.work = foundation.acquireWork(p9AuthenticatedActorWitness)", "instance.work = null")));
+        assertFalse(hasL1AdmissionBoundary(admission.replace("if (instance.work == null)", "if (false)")));
+    }
+
+    @Test
+    void normalLogoutProofIsWholeCallAndPartialObserverFailureCannotLeaveAnExecutableGrant()
+            throws Exception {
+        var source = Files.readString(SERVICE_SOURCE);
+        var begin = methodSource(source, "NormalLogoutScope beginNormalLogout(");
+        var end = methodSource(source, "void endNormalLogout(");
+        var revoke = methodSource(source, "private static void revokeLogoutScope(");
+        var predicate = methodSource(source, "private static WorkQualification actorQualification(");
+        assertAll(
+                () -> assertTrue(begin.contains("listener.getConnection().getPacketListener() != listener")),
+                () -> assertTrue(begin.contains("server.getPlayerList().getPlayer(actor.getUUID()) != actor")),
+                () -> assertInOrder(begin, "instance.work.qualifies(actor)", "instance.logoutScope = scope",
+                        "instance.logoutState = LogoutState.IN_PROGRESS"),
+                () -> assertInOrder(begin, "catch (RuntimeException | Error primary)", "scope.active = false",
+                        "revokeLogoutScope(scope)", "throw primary"),
+                () -> assertInOrder(end, "scope.active = false", "LogoutState.INVALID",
+                        "originalNormal && proof != null && proof.confirms(scope.server, scope.actor)",
+                        "instance.work.qualifies(scope.actor)", "LogoutState.COMPLETE",
+                        "catch (RuntimeException | Error primary)", "revokeLogoutScope(scope)",
+                        "finally", "instance.logoutScope = null"),
+                () -> assertInOrder(revoke, "instance.logoutScope == scope", "LogoutState.INVALID",
+                        "instance.logoutScope = null"),
+                () -> assertTrue(predicate.contains("instance.logoutScope.active")),
+                () -> assertTrue(hasL1LogoutProof(end)),
+                () -> assertFalse(hasL1LogoutProof(end.replace("originalNormal &&", ""))),
+                () -> assertFalse(hasL1LogoutProof(end.replace(
+                        "proof.confirms(scope.server, scope.actor)", "true"))),
+                () -> assertFalse(hasL1LogoutProof(end.replace("revokeLogoutScope(scope)", ""))));
+    }
+
+    @Test
+    void acceptedWorkUsesOneExactWitnessAndTheSameQualificationAtNativeAndResolverBoundaries()
+            throws Exception {
+        var source = Files.readString(SERVICE_SOURCE);
+        var actor = methodSource(source, "private static ServerPlayer instanceActor(");
+        var predicate = methodSource(source, "private static WorkQualification actorQualification(");
+        var projectile = methodSource(source, "WorkQualification projectileQualification(");
+        var event = methodSource(source, "private WorkQualification eventQualification(");
+        var resolver = methodSource(Files.readString(RESOLVER_SOURCE),
+                "public RuntimeReferenceResolutionOutcome resolve(\n            MinecraftServer server, RuntimeEvent event,");
+        var after = methodSource(source, "RuntimeExecutionGuardDecision afterP9NativeMutation(");
+        assertAll(
+                () -> assertInOrder(actor, "instance.p9ActorWitness()", "loadedProjectile(server, permit)",
+                        "projectile.actorWitness(permit)"),
+                () -> assertFalse(actor.contains("getPlayerList")),
+                () -> assertInOrder(predicate, "candidate.isDeadOrDying()", "LogoutState.IN_PROGRESS",
+                        "instance.logoutScope.active", "instance.work.qualifies(candidate)",
+                        "LogoutState.COMPLETE", "server.getPlayerList()"),
+                () -> assertTrue(projectile.contains("return actorQualification(server, instance, actor, permit.dimension)")),
+                () -> assertFalse(projectile.contains("getOwner()")),
+                () -> assertTrue(projectile.contains("permit.state != RuntimeProjectileContinuationPermit.State.RESERVED")),
+                () -> assertTrue(projectile.contains("!instance.hasP9AuthenticatedActorWitness(actor)")),
+                () -> assertTrue(projectile.contains("hasP9S4DiagnosticCustody(slot, instance, child)")),
+                () -> assertTrue(event.contains("actorQualification(server, instance, instanceActor(server, instance)")),
+                () -> assertTrue(event.contains("projectileQualification(server, permit, loadedProjectile(server, permit))")),
+                () -> assertInOrder(resolver, "acceptedWork.resolve(server, event)", "resolveTarget(",
+                        "new ResolvedPlayerOrigin(actor)"),
+                () -> assertTrue(after.contains("p9Actor != exactActor || instance.work != null && scope == null")),
+                () -> assertTrue(after.contains("return check()")));
+    }
+
+    @Test
+    void logoutHoldDoesNotExtendDeadlinesAndEveryTerminalOwnerReleasesWork() throws Exception {
+        var source = Files.readString(SERVICE_SOURCE);
+        var drain = methodSource(source, "private void drain(");
+        var release = methodSource(source, "void releaseWork()");
+        var normal = methodSource(source, "private static void terminalizeRemainingP9(");
+        var error = section(source, "static final class P9InstanceErrorCleanup", "/** Existing call-scoped P5 guard");
+        assertAll(
+                () -> assertInOrder(drain, "deadlineExpired(slot, event)", "WorkQualification.LOGOUT_IN_PROGRESS",
+                        "slot.deferred[slot.deferredCount++] = event", "claim(slot, event, instance, attribution)"),
+                () -> assertInOrder(release, "LogoutState.INVALID", "retained.release()", "work = null"),
+                () -> assertTrue(normal.contains("instance.releaseWork()")),
+                () -> assertInOrder(error, "instance.clearP9AuthenticatedActorWitness()", "instance.releaseWork()",
+                        "catch (RuntimeException | Error ignoredCleanupFailure)"),
+                () -> assertTrue(methodSource(source, "private static void maybeRemoveInstance(")
+                        .contains("instance.releaseWork()")),
+                () -> assertTrue(methodSource(source, "private static void removeEmptyInstances(")
+                        .contains("instance.releaseWork()")));
+    }
+
+    private static boolean hasL1AdmissionBoundary(String source) {
+        return source.contains("!foundation.observedInactiveForRuntime(server)")
+                && source.contains("instance.work = foundation.acquireWork(p9AuthenticatedActorWitness)")
+                && source.contains("if (instance.work == null)")
+                && source.indexOf("foundation.acquireWork(") < source.indexOf("publishRoot(");
+    }
+
+    private static boolean hasL1LogoutProof(String source) {
+        return source.contains("originalNormal && proof != null && proof.confirms(scope.server, scope.actor)")
+                && source.contains("instance.work.qualifies(scope.actor)")
+                && source.contains("revokeLogoutScope(scope)")
+                && source.indexOf("LogoutState.INVALID") < source.indexOf("proof.confirms(");
     }
 
     private static int occurrences(String source, String fragment) {

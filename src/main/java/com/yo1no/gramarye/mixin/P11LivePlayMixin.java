@@ -6,7 +6,9 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.yo1no.gramarye.P11LivePlayAccess;
 import com.yo1no.gramarye.P11LiveTransitionBoundary;
+import com.yo1no.gramarye.P11NativeStorageBoundary;
 import net.minecraft.network.Connection;
+import net.minecraft.network.DisconnectionDetails;
 import net.minecraft.network.PacketListener;
 import net.minecraft.network.ProtocolInfo;
 import net.minecraft.network.protocol.game.ServerboundClientCommandPacket;
@@ -40,6 +42,12 @@ abstract class P11LivePlayMixin implements P11LivePlayAccess {
     public boolean p11$configurationActorRetired() {
         var listener = (ServerGamePacketListenerImpl) (Object) this;
         return listener.getMainThreadEventLoop().isSameThread() && p11$retiredConfigurationActor();
+    }
+
+    @WrapMethod(method = "onDisconnect(Lnet/minecraft/network/DisconnectionDetails;)V",
+            require = 1, expect = 1, allow = 1)
+    private void p11$normalLogout(DisconnectionDetails details, Operation<Void> original) {
+        P11NativeStorageBoundary.normalLogout((ServerGamePacketListenerImpl) (Object) this, details, original);
     }
 
     @WrapMethod(method = "handleClientCommand(Lnet/minecraft/network/protocol/game/ServerboundClientCommandPacket;)V",

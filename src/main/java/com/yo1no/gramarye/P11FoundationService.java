@@ -32,6 +32,7 @@ final class P11FoundationService {
     private P11QualifiedSourceOwner.Summary terminalSummary;
     private volatile PlayerStorageBinding playerStorageBinding;
     private volatile P11LiveTransitionService transitions;
+    private SkillRuntimeService runtime;
 
     P11FoundationService(P11SourceProvenance provenance, PlayerSkillAttachmentService attachments) {
         this.provenance = Objects.requireNonNull(provenance, "provenance");
@@ -89,6 +90,32 @@ final class P11FoundationService {
 
     Optional<P11StartupLoadState> startupState(MinecraftServer exact) {
         return server != null && server == exact ? Optional.of(startupState) : Optional.empty();
+    }
+
+    void bindRuntime(SkillRuntimeService exact) {
+        if (runtime != null) { throw new IllegalStateException("P11_RUNTIME_ALREADY_BOUND"); }
+        runtime = Objects.requireNonNull(exact, "runtime");
+    }
+
+    boolean observedInactiveForRuntime(MinecraftServer exact) {
+        return server == exact && exact != null && exact.isSameThread()
+                && (startupState instanceof P11StartupLoadState.Invalid
+                        || startupState instanceof P11StartupLoadState.Unavailable);
+    }
+
+    P11QualifiedSourceOwner.WorkReservation acquireWork(ServerPlayer actor) {
+        var source = actor == null ? null : sourceOwner(actor.getServer());
+        return source == null ? null : source.acquireWork(actor);
+    }
+
+    SkillRuntimeService.NormalLogoutScope beginNormalLogout(
+            net.minecraft.server.network.ServerGamePacketListenerImpl listener, ServerPlayer actor) {
+        return runtime == null ? null : runtime.beginNormalLogout(actor.getServer(), listener, actor);
+    }
+
+    void endNormalLogout(SkillRuntimeService.NormalLogoutScope scope,
+            P11NativeStorageBoundary.NormalLogoutProof proof, boolean normal) {
+        if (runtime != null) { runtime.endNormalLogout(scope, proof, normal); }
     }
 
     void stopping(ServerStoppingEvent event) {

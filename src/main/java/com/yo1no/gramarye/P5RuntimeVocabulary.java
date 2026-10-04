@@ -1258,6 +1258,12 @@ sealed interface RuntimeReferenceResolutionOutcome
 
 interface RuntimeReferenceResolver {
     RuntimeReferenceResolutionOutcome resolve(MinecraftServer server, RuntimeEvent event);
+
+    default RuntimeReferenceResolutionOutcome resolve(
+            MinecraftServer server, RuntimeEvent event,
+            SkillRuntimeService.AcceptedWorkActor acceptedWork) {
+        return resolve(server, event);
+    }
 }
 
 interface RuntimeExecutionPort {

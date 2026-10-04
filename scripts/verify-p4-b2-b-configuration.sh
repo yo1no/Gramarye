@@ -386,6 +386,7 @@ verify_p11_observer_error_catches() {
         BEGIN {
             split("metadataInitialSync beginMetadataManaObservation endMetadataManaObservation closeSelection respawn failWithoutReplacingPrimary lifecycleFailureWithoutReplacingPrimary faultLogoutAfterAttempt retainWithoutReplacingPrimary statsMutated advancementsMutated endIndependent finish integratedSave flushDetachedPlayersAtStop flushDetachedIndependentAtStop", names, " ")
             for (i in names) expected[names[i]] = 1
+            expected["normalLogout"] = 2
         }
         {
             line = $0
@@ -408,6 +409,10 @@ verify_p11_observer_error_catches() {
                 state = 2; next
             }
             if (state == 2) {
+                if (method == "normalLogout" && seen[method] == 2) {
+                    if (compact != "}finally{") reject("missing logout proof finalizer")
+                    state = 10; next
+                }
                 if (method == "closeSelection" && compact == "}finally{") { state = 3; next }
                 if (method == "endMetadataManaObservation" && compact == "}finally{") { state = 6; next }
                 if (method == "beginMetadataManaObservation" && compact == "returnnull;") { state = 5; next }
@@ -439,16 +444,40 @@ verify_p11_observer_error_catches() {
                 if (compact != "}") reject("added observation-finalizer behavior")
                 state = 0; next
             }
+            if (state == 10) {
+                if (compact != "if(proof!=null){") reject("changed logout proof guard")
+                state = 11; next
+            }
+            if (state == 11) {
+                if (compact != "proof.closed=true;") reject("changed logout proof close")
+                state = 12; next
+            }
+            if (state == 12) {
+                if (compact != "if(NORMAL_LOGOUT.get()==proof){") reject("changed exact logout proof identity")
+                state = 13; next
+            }
+            if (state == 13) {
+                if (compact != "if(proof.previous==null){NORMAL_LOGOUT.remove();}") reject("changed empty logout stack restore")
+                state = 14; next
+            }
+            if (state == 14) {
+                if (compact != "else{NORMAL_LOGOUT.set(proof.previous);}") reject("changed previous logout stack restore")
+                state = 15; next
+            }
+            if (state >= 15 && state <= 17) {
+                if (compact != "}") reject("added logout finalizer behavior")
+                state = state == 17 ? 0 : state + 1; next
+            }
             if (line ~ /catch[[:space:]]*\([^)]*(Error|Throwable)/) {
                 if (line !~ /catch \(RuntimeException \| Error secondary\) \{$/) reject("changed catch type or binding")
-                if (!(method in expected) || ++seen[method] != 1) reject("unreviewed or duplicate method " method)
+                if (!(method in expected) || ++seen[method] > expected[method]) reject("unreviewed or duplicate method " method)
                 total++; state = 1
             }
         }
         END {
             if (bad) exit 1
-            if (state != 0 || total != 16) reject("incomplete exact sixteen catches")
-            for (method in expected) if (seen[method] != 1) reject("missing method " method)
+            if (state != 0 || total != 18) reject("incomplete exact eighteen catches")
+            for (method in expected) if (seen[method] != expected[method]) reject("missing method " method)
         }
     ' "$1" || fail 'P11 native observer Error catches escaped the exact secondary-only contract'
 }
@@ -466,6 +495,7 @@ verify_p11_native_helper_error_catches() {
             if (kind == "operation") {
                 simple = "catch(RuntimeException|Errorsecondary){observerFailed();}"
                 expect("publicstaticOperationScopebeginAdvancement(PlayerAdvancementscanonical,ServerPlayeractor)", 1, simple)
+                expect("staticOperationScopebeginAcceptedWork(P11QualifiedSourceOwnersource,P11QualifiedSourceOwner.Bodybody,ServerPlayerexactA)", 1, "catch(RuntimeException|Errorfailure){if(retained){release(binding,P11ControlBudgets.Root.OPERATION);}throwfailure;}")
                 expect("privatestaticOperationScopebegin(ServerPlayeractor,Contextcontext)", 1, "catch(RuntimeException|Errorsecondary){if(retained){release(binding,P11ControlBudgets.Root.OPERATION);}observerFailed();returnnull;}")
                 expect("publicstaticvoidend(OperationScopescope,booleannormal)", 1, simple)
                 expect("publicstaticCreditacquireCredit(Entityholder,ServerPlayeractor)", 1, "catch(RuntimeException|Errorsecondary){observerFailed();returnnull;}")
@@ -517,18 +547,35 @@ verify_p11_native_helper_error_catches() {
                 expect("flushDetachedPlayersAtStop", 1, "catch(RuntimeException|Errorfailure){failures=increment(failures);try{if(body!=null&&accounts.get(body.actor.getUUID())==account&&account.current==body&&account.candidate==null){account.fault=Fault.WRITE;receipts.markDirty(body.source,P11ReceiptLedger.WriterKind.PLAYER_DATA);account.dirty=resources.markDirty(account.resource,now()).orElseThrow();}}catch(RuntimeException|Errorsecondary){failures=increment(failures);}}")
                 expect("flushDetachedPlayersAtStop", 2, "catch(RuntimeException|Errorsecondary){failures=increment(failures);}")
                 expect("flushDetachedIndependent", 1, "catch(RuntimeException|Errorfailure){body.account.fault=Fault.WRITE;failures=increment(failures);}")
+            } else if (kind == "p5_l1") {
+                expect("beginNormalLogout", 1, "catch(RuntimeException|Errorprimary){scope.active=false;revokeLogoutScope(scope);throwprimary;}")
+                expect("endNormalLogout", 1, "catch(RuntimeException|Errorprimary){revokeLogoutScope(scope);throwprimary;}")
+                expect("acquireAndPublishRoot", 1, "catch(RuntimeException|Errorprimary){if(prospectiveInstance!=null){try{prospectiveInstance.releaseWork();}catch(RuntimeException|ErrorignoredCleanupFailure){}}closeProvisionalAfterRootFault(leaseAcquisition);throwprimary;}")
+                expect("acquireAndPublishRoot", 2, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
+                expect("P9InstanceErrorCleanup.accept", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
             } else reject("unknown helper kind")
         }
         {
             line = $0
             sub(/\/\/.*$/, "", line)
+            if (kind == "p5_l1") {
+                if (line == "    static final class P9InstanceErrorCleanup") instanceCleanup = 1
+                if (instanceCleanup && line ~ /^        public void accept\(/) method = "P9InstanceErrorCleanup.accept"
+                if (instanceCleanup && line == "    }") { instanceCleanup = 0; method = "" }
+            }
             if (line ~ /^    ((public|private) )?(static )?.*\(/ && line !~ /^        /) {
                 method = line; sub(/\(.*/, "", method); sub(/^.*[ \t]/, "", method)
                 if (kind == "operation") {
+                    while (line !~ /[={;]/) {
+                        if ((getline continuation) <= 0) reject("incomplete operation method declaration")
+                        sub(/\/\/.*$/, "", continuation)
+                        line = line continuation
+                    }
                     method = line; sub(/[[:space:]]*\{.*$/, "", method)
                     gsub(/[[:space:]]/, "", method)
                 }
             }
+            if (kind == "p5_l1" && method != "beginNormalLogout" && method != "endNormalLogout" && method != "acquireAndPublishRoot" && method != "P9InstanceErrorCleanup.accept") next
             gsub(/[[:space:]]/, "", line)
             source[method] = source[method] line
         }
@@ -834,7 +881,11 @@ verify_search_helpers() {
         '/token.lease.continuation.manaObservationFailed(token.lease);/d' \
         's/METADATA_MANA.set(token.previous);/METADATA_MANA.remove();/g' \
         's/void closeSelection(/void unreviewedSelection(/g' \
-        's/void flushDetachedPlayersAtStop(/void unreviewedDetachedPlayers(/g'; do
+        's/void flushDetachedPlayersAtStop(/void unreviewedDetachedPlayers(/g' \
+        's/void normalLogout(/void unreviewedNormalLogout(/g' \
+        's/proof.closed = true;/proof.closed = false;/g' \
+        's/NORMAL_LOGOUT.get() == proof/true/g' \
+        's/NORMAL_LOGOUT.set(proof.previous);/NORMAL_LOGOUT.remove();/g'; do
         sed "${mutation}" "${p11_boundary}" > "${HELPER_FIXTURE}"
         if (verify_p11_observer_error_catches "${HELPER_FIXTURE}") >/dev/null 2>&1; then
             fail 'P11 observer self-check accepted a wrong binding, added behavior, or unreviewed method'
@@ -842,7 +893,7 @@ verify_search_helpers() {
     done
     local native_source=''
     local native_kind=''
-    for native_kind in operation cleanup sync source_stop live_transition keep_alive; do
+    for native_kind in operation cleanup sync source_stop live_transition keep_alive p5_l1; do
         if [[ "${native_kind}" == operation ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
         elif [[ "${native_kind}" == cleanup ]]; then
@@ -853,6 +904,8 @@ verify_search_helpers() {
             native_source='src/main/java/com/yo1no/gramarye/P11LiveTransitionService.java'
         elif [[ "${native_kind}" == keep_alive ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11KeepAliveBoundary.java'
+        elif [[ "${native_kind}" == p5_l1 ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
         else
             native_source='src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java'
         fi
@@ -866,6 +919,10 @@ verify_search_helpers() {
             's/throw primary;/throw new Error();/g' \
             's/void releaseCredit(/void unreviewedCredit(/g' \
             's/begin(ServerPlayer actor, Context context)/begin(ServerPlayer actor, Object context)/g' \
+            's/OperationScope beginAcceptedWork(/OperationScope unreviewedAcceptedWork(/g' \
+            's/P11QualifiedSourceOwner.Body body, ServerPlayer exactA)/P11QualifiedSourceOwner.Body body, Object exactA)/g' \
+            '/static OperationScope beginAcceptedWork(/,/private static OperationScope begin(ServerPlayer actor, Context context)/s/if (retained) { release(binding, P11ControlBudgets.Root.OPERATION); }/if (retained) { observerFailed(); }/' \
+            '/static OperationScope beginAcceptedWork(/,/private static OperationScope begin(ServerPlayer actor, Context context)/s/throw failure;/return null;/' \
             's/attach(Context context, OperationScope scope)/attach(Context context, Object scope)/g' \
             's/boolean creditRemoval(/boolean unreviewedRemoval(/g' \
             's/void creditRevived(/void unreviewedRevival(/g' \
@@ -893,6 +950,11 @@ verify_search_helpers() {
             's/wakeup.retire();/wakeup.retire(); unsafe();/g' \
             's/P7ServerSyncState commitFamily(/P7ServerSyncState unreviewedFamily(/g' \
             's/LogoutOutcome finishLogout(/LogoutOutcome unreviewedLogout(/g'; do
+            if [[ "${native_kind}" == p5_l1 \
+                && "${mutation}" != 's/Error primary/Error unreviewed/g' \
+                && "${mutation}" != 's/throw primary;/throw new Error();/g' ]]; then
+                continue
+            fi
             sed "${mutation}" "${native_source}" > "${HELPER_FIXTURE}"
             # A mutation targeting the other helper is not a negative fixture.
             if cmp -s "${native_source}" "${HELPER_FIXTURE}"; then continue; fi
@@ -900,6 +962,20 @@ verify_search_helpers() {
                 fail 'P11 native helper self-check accepted a changed binding/body/primary or foreign method'
             fi
         done
+    done
+    native_source='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
+    for mutation in \
+        's/NormalLogoutScope beginNormalLogout(/NormalLogoutScope unreviewedNormalLogout(/g' \
+        's/void endNormalLogout(/void unreviewedLogoutEnd(/g' \
+        's/scope.active = false;/scope.active = true;/g' \
+        's/revokeLogoutScope(scope);/unsafe();/g' \
+        's/prospectiveInstance.releaseWork();/unsafe();/g' \
+        's/Error ignoredCleanupFailure/Error unreviewed/g' \
+        's/static final class P9InstanceErrorCleanup/static final class UnreviewedInstanceCleanup/g'; do
+        sed "${mutation}" "${native_source}" > "${HELPER_FIXTURE}"
+        if (verify_p11_native_helper_error_catches "${HELPER_FIXTURE}" p5_l1) >/dev/null 2>&1; then
+            fail 'P5 L1 self-check accepted changed exact cleanup, primary, or native logout owner'
+        fi
     done
     local stop_path=''
     for stop_path in \
@@ -912,7 +988,7 @@ verify_search_helpers() {
             fail 'P11 stop direct path classification accepted an unreviewed suffix'
         fi
     done
-    printf '%s\n' 'Verified exact sixteen P11 observer, twenty-one native helper/stop-writer, twenty C4a transition, one keep-alive and four P7 sender catches; changed binding/body/primary and foreign method rejected; two stop paths and their suffix negatives checked.'
+    printf '%s\n' 'Verified exact eighteen P11 observer, twenty-two native helper/stop-writer, twenty C4a transition, one keep-alive, four P7 sender and five scoped P5 L1 catches; changed binding/body/primary and foreign method rejected; two stop paths and their suffix negatives checked.'
 }
 
 verify_p4_a3_contract_markers() {
@@ -1745,6 +1821,7 @@ verify_b2_sources_and_outputs() {
     verify_p11_native_helper_error_catches "${p11_source_owner}" source_stop
     verify_p11_native_helper_error_catches "${p11_live_transition}" live_transition
     verify_p11_native_helper_error_catches "${p11_keep_alive}" keep_alive
+    verify_p11_native_helper_error_catches "${runtime_service}" p5_l1
     require_ere_count "${p4_recovery_game_tests}" \
         'catch[[:space:]]*\([^)]*(Error|Throwable)' 1 \
         'the exact recovery GameTest must retain one primary-preserving Error catch'
@@ -1774,13 +1851,13 @@ verify_b2_sources_and_outputs() {
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
-        19 \
-        'SkillRuntimeService must contain exactly its nineteen reviewed Error cleanup catches'
+        23 \
+        'SkillRuntimeService must contain exactly its twenty-three reviewed Error cleanup catches'
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error[[:space:]]+primary[[:space:]]*\)' \
-        8 \
-        'SkillRuntimeService must contain exactly eight same-identity primary Error catches'
+        10 \
+        'SkillRuntimeService must contain exactly ten same-identity primary Error catches'
     require_ere_count \
         "${runtime_service}" \
         '^[[:space:]]*clearSlotAfterError\(slot\);$' \

@@ -133,13 +133,13 @@ final class P7AuthenticatedPlayerCastIngressTest {
         var storeService = SkillDefinitionStoreService.registerOn(
                 gameBus, attachmentService, (server, actor) -> {});
         var presentationService = P8ServerPresentationService.create();
-        var runtimeService = SkillRuntimeService.create(
-                gameBus,
+        var runtimeService = new SkillRuntimeService(
                 storeService,
                 SkillSubmissionPolicyProvider.defaults(),
-                ProfileAvailabilityView.unknown(),
-                P6RuntimeExecutionCapability.forRuntimeAdapter(),
-                presentationService);
+                new P5RuntimeProjector(ProfileAvailabilityView.unknown()),
+                new P5LoadedReferenceResolver(),
+                new P6RuntimeExecutionPortAdapter(
+                        P6RuntimeExecutionCapability.forRuntimeAdapter(), presentationService));
         var ingress = new P7AuthenticatedPlayerCastIngress(
                 runtimeService, attachmentService, storeService);
 

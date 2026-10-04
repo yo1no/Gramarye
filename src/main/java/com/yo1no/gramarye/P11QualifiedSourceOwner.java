@@ -326,6 +326,55 @@ final class P11QualifiedSourceOwner {
         return currentMaterial(current) ? current : null;
     }
 
+    /** Prepared before P5 publishes an accepted instance. The receipt never owns an actor. */
+    WorkReservation acquireWork(ServerPlayer actor) {
+        if (actor == null || !owns(actor.getServer()) || stopping
+                || P11LiveTransitionBoundary.nativeContinuity(this) == null) { return null; }
+        var body = body(actor);
+        if (!canCopy(body) || !canonicalInputComplete(body)
+                || server.getPlayerList().getPlayer(actor.getUUID()) != actor
+                || actor.isRemoved() || !actor.isAlive() || actor.isFakePlayer()
+                || actor.connection == null || actor.connection.player != actor
+                || !actor.connection.getConnection().isConnected()
+                || actor.connection.getConnection().getPacketListener() != actor.connection) { return null; }
+        var account = body.account;
+        int index = P11ControlBudgets.Root.WORK.ordinal();
+        if (account.nativeCounts[index] == Long.MAX_VALUE || !resources.mayAdmitWork(account.resource)) {
+            return null;
+        }
+        // Allocate the receipt before the aggregate reservation/count is changed.
+        var work = new WorkReservation(this, account.resource, actor.getUUID());
+        if (account.nativeCounts[index] == 0) {
+            var reservation = resources.tryAcquireRoot(account.resource, P11ControlBudgets.Root.WORK, true);
+            if (reservation.isEmpty()) { return null; }
+            account.nativeRoots[index] = reservation.orElseThrow();
+            account.nativeSince[index] = now();
+        }
+        account.nativeCounts[index]++;
+        account.nativePeaks[index] = Math.max(account.nativePeaks[index], account.nativeCounts[index]);
+        return work;
+    }
+
+    private Body workRecipient(WorkReservation work, ServerPlayer exactA) {
+        if (work == null || work.owner != this || work.closed || stopping || exactA == null
+                || !owns(exactA.getServer()) || !work.playerId.equals(exactA.getUUID())
+                || P11LiveTransitionBoundary.nativeContinuity(this) == null) { return null; }
+        var account = accounts.get(work.playerId);
+        if (account == null || account.resource != work.account
+                || account.nativeCounts[P11ControlBudgets.Root.WORK.ordinal()] == 0) { return null; }
+        var recipient = account.current;
+        return canCopy(recipient) && canonicalInputComplete(recipient) ? recipient : null;
+    }
+
+    private void releaseWork(WorkReservation work) {
+        if (work == null || work.owner != this || work.closed) { return; }
+        requireMain();
+        work.closed = true;
+        var account = accounts.get(work.playerId);
+        if (account == null || account.resource != work.account) { return; }
+        releaseRoot(account, work.playerId, P11ControlBudgets.Root.WORK);
+    }
+
     boolean retainNativeRoot(Body body, P11ControlBudgets.Root kind) {
         requireMain();
         if (body == null || accounts.get(body.actor.getUUID()) != body.account
@@ -349,7 +398,10 @@ final class P11QualifiedSourceOwner {
 
     void releaseNativeRoot(Body body, P11ControlBudgets.Root kind) {
         if (body == null || !owns(body.actor.getServer())) { return; }
-        var account = body.account;
+        releaseRoot(body.account, body.actor.getUUID(), kind);
+    }
+
+    private void releaseRoot(Account account, UUID playerId, P11ControlBudgets.Root kind) {
         int index = kind.ordinal();
         if (account.nativeCounts[index] == 0) { return; }
         if (--account.nativeCounts[index] == 0) {
@@ -358,7 +410,7 @@ final class P11QualifiedSourceOwner {
             account.nativeSince[index] = 0;
             if (kind == P11ControlBudgets.Root.OPERATION || kind == P11ControlBudgets.Root.COMMAND_CONTEXT
                     || kind == P11ControlBudgets.Root.TRANSITION) {
-                P11LiveTransitionBoundary.blockersChanged(server, body.actor.getUUID());
+                P11LiveTransitionBoundary.blockersChanged(server, playerId);
             }
         }
     }
@@ -989,7 +1041,7 @@ final class P11QualifiedSourceOwner {
                 else { detached++; }
             }
         }
-        for (var kind : new P11ControlBudgets.Root[] { P11ControlBudgets.Root.NATIVE_CREDIT,
+        for (var kind : new P11ControlBudgets.Root[] { P11ControlBudgets.Root.WORK, P11ControlBudgets.Root.NATIVE_CREDIT,
                 P11ControlBudgets.Root.OPERATION, P11ControlBudgets.Root.COMMAND_CONTEXT,
                 P11ControlBudgets.Root.TRANSITION }) {
             long count = 0, peaks = 0, oldest = 0;
@@ -1074,6 +1126,26 @@ final class P11QualifiedSourceOwner {
                 new P11ControlBudgets.Resources.RootReservation[P11ControlBudgets.Root.values().length];
         Fault fault = Fault.NONE;
         Account(P11ControlBudgets.Resources.AccountOwner resource) { this.resource = resource; }
+    }
+
+    /** P5 alone keeps its exact-A witness; this is only the same account's bounded W duty. */
+    static final class WorkReservation {
+        private final P11QualifiedSourceOwner owner;
+        private final P11ControlBudgets.Resources.AccountOwner account;
+        private final UUID playerId;
+        private boolean closed;
+
+        private WorkReservation(P11QualifiedSourceOwner owner,
+                P11ControlBudgets.Resources.AccountOwner account, UUID playerId) {
+            this.owner = owner; this.account = account; this.playerId = playerId;
+        }
+
+        boolean qualifies(ServerPlayer exactA) { return owner.workRecipient(this, exactA) != null; }
+        void release() { owner.releaseWork(this); }
+        P11NativeOperationBoundary.OperationScope beginNative(ServerPlayer exactA) {
+            var recipient = owner.workRecipient(this, exactA);
+            return recipient == null ? null : P11NativeOperationBoundary.beginAcceptedWork(owner, recipient, exactA);
+        }
     }
 
     /** At most one pre-constructor continuity witness; never an independent save permission. */

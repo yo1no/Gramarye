@@ -92,7 +92,9 @@ public final class Gramarye {
                 skillSubmissionPolicyProvider,
                 profileAvailability,
                 runtimeCapability,
-                p8ServerPresentationService);
+                p8ServerPresentationService,
+                p11FoundationService);
+        p11FoundationService.bindRuntime(skillRuntimeService);
         p8ServerPresentationService.registerAfterP5(NeoForge.EVENT_BUS);
         var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(
                 skillRuntimeService,

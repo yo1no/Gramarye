@@ -373,6 +373,16 @@ final class P11ControlBudgets {
             return new ConnectionOwner(this, connectionId);
         }
 
+        /** Every newly accepted W checks admission, even when aggregate membership exists. */
+        synchronized boolean mayAdmitWork(AccountOwner owner) {
+            if (!issued(owner) || owner.finished) { return false; }
+            var current = accounts.get(owner.playerId);
+            return (current == null || current == owner)
+                    && accounts.size() <= limits.maxUuids()
+                    && (current != null || accounts.size() < limits.maxUuids())
+                    && dirtyCount < limits.dirtyUuidAdmissionWatermark();
+        }
+
         /** New responsibility admission; an exact repeated reservation is a no-op, not new work. */
         synchronized Optional<RootReservation> tryAcquireRoot(
                 AccountOwner owner, Root root, boolean newDirtyWork) {
@@ -397,9 +407,10 @@ final class P11ControlBudgets {
                 return Optional.empty();
             }
             var reservation = new RootReservation(owner, root);
+            var result = Optional.of(reservation);
             accounts.put(owner.playerId, owner);
             owner.roots[root.ordinal()] = reservation;
-            return Optional.of(reservation);
+            return result;
         }
 
         /**
@@ -419,8 +430,9 @@ final class P11ControlBudgets {
                 return Optional.of(existing);
             }
             var reservation = new RootReservation(owner, root);
+            var result = Optional.of(reservation);
             owner.roots[root.ordinal()] = reservation;
-            return Optional.of(reservation);
+            return result;
         }
 
         synchronized boolean releaseRoot(RootReservation reservation) {
