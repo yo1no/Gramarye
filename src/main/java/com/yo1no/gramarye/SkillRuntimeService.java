@@ -2356,10 +2356,17 @@ final class SkillRuntimeService {
         if (permit == null) {
             return;
         }
+        var projectile = loadedProjectile(server, permit);
+        if (projectile != null && !projectile.hasContinuationPermitIdentity(permit)) {
+            projectile = null;
+        }
         var disposition = permit.closeWithoutHit(server, reason);
         if (disposition != RuntimePermitCloseDisposition.CLOSED
                 && disposition != RuntimePermitCloseDisposition.ALREADY_CLOSED) {
             throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+        }
+        if (projectile != null) {
+            P11P9TrackingCleanup.discardClosed(projectile);
         }
     }
 

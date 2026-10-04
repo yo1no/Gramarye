@@ -340,6 +340,7 @@ final class P9S1BoundaryTest {
                         Set.of(
                                 "hasAuthenticatedCasterIdentity",
                                 "hasContinuationPermitIdentity",
+                                "closedForTrackingRemoval",
                                 "actorWitness"),
                         Arrays.stream(P9StarterProjectile.class.getDeclaredMethods())
                                 .filter(method -> !method.isSynthetic())

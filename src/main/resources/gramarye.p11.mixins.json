@@ -47,6 +47,8 @@
     "P11EntityCreditRemovalMixin",
     "P11EntityRemovalMixin",
     "P11EntityManagerCleanupMixin",
+    "P11P9EntitySectionMixin",
+    "P11P9EntityMoveMixin",
     "P11LevelEntityCleanupMixin",
     "P11EntityLookupMixin",
     "P11ServerBossEventMixin"

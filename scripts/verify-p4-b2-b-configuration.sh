@@ -553,6 +553,12 @@ verify_p11_native_helper_error_catches() {
                 expect("acquireAndPublishRoot", 1, "catch(RuntimeException|Errorprimary){if(prospectiveInstance!=null){try{prospectiveInstance.releaseWork();}catch(RuntimeException|ErrorignoredCleanupFailure){}}closeProvisionalAfterRootFault(leaseAcquisition);throwprimary;}")
                 expect("acquireAndPublishRoot", 2, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
                 expect("P9InstanceErrorCleanup.accept", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
+            } else if (kind == "p9_tracking") {
+                expect("chunkStatus", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
+                expect("chunkStatus", 2, "catch(RuntimeException|Errorfailure){cleanup=failure;}")
+                expect("moved", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
+                expect("moved", 2, "catch(RuntimeException|Errorfailure){cleanup=failure;}")
+                expect("leave", 1, "catch(RuntimeException|Errorfailure){if(cleanup==null){cleanup=failure;}}")
             } else reject("unknown helper kind")
         }
         {
@@ -893,7 +899,7 @@ verify_search_helpers() {
     done
     local native_source=''
     local native_kind=''
-    for native_kind in operation cleanup sync source_stop live_transition keep_alive p5_l1; do
+    for native_kind in operation cleanup sync source_stop live_transition keep_alive p5_l1 p9_tracking; do
         if [[ "${native_kind}" == operation ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
         elif [[ "${native_kind}" == cleanup ]]; then
@@ -906,6 +912,8 @@ verify_search_helpers() {
             native_source='src/main/java/com/yo1no/gramarye/P11KeepAliveBoundary.java'
         elif [[ "${native_kind}" == p5_l1 ]]; then
             native_source='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
+        elif [[ "${native_kind}" == p9_tracking ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/P11P9TrackingCleanup.java'
         else
             native_source='src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java'
         fi
@@ -949,7 +957,10 @@ verify_search_helpers() {
             's/recordTerminalFailure(null, secondary);/recordTerminalFailure(null, secondary); unsafe();/g' \
             's/wakeup.retire();/wakeup.retire(); unsafe();/g' \
             's/P7ServerSyncState commitFamily(/P7ServerSyncState unreviewedFamily(/g' \
-            's/LogoutOutcome finishLogout(/LogoutOutcome unreviewedLogout(/g'; do
+            's/LogoutOutcome finishLogout(/LogoutOutcome unreviewedLogout(/g' \
+            's/void chunkStatus(/void unreviewedChunkStatus(/g' \
+            's/void moved(/void unreviewedMoved(/g' \
+            's/cleanup = failure;/cleanup = new Error();/g'; do
             if [[ "${native_kind}" == p5_l1 \
                 && "${mutation}" != 's/Error primary/Error unreviewed/g' \
                 && "${mutation}" != 's/throw primary;/throw new Error();/g' ]]; then
@@ -988,7 +999,7 @@ verify_search_helpers() {
             fail 'P11 stop direct path classification accepted an unreviewed suffix'
         fi
     done
-    printf '%s\n' 'Verified exact eighteen P11 observer, twenty-two native helper/stop-writer, twenty C4a transition, one keep-alive, four P7 sender and five scoped P5 L1 catches; changed binding/body/primary and foreign method rejected; two stop paths and their suffix negatives checked.'
+    printf '%s\n' 'Verified exact eighteen P11 observer, twenty-two native helper/stop-writer, twenty C4a transition, one keep-alive, four P7 sender, five scoped P5 L1 and five P9 tracking-cleanup catches; changed binding/body/primary and foreign method rejected; two stop paths and their suffix negatives checked.'
 }
 
 verify_p4_a3_contract_markers() {
@@ -1575,6 +1586,7 @@ verify_b2_sources_and_outputs() {
     local p11_live_transition='src/main/java/com/yo1no/gramarye/P11LiveTransitionService.java'
     local p11_keep_alive='src/main/java/com/yo1no/gramarye/P11KeepAliveBoundary.java'
     local p11_native_cleanup='src/main/java/com/yo1no/gramarye/P11NativeCleanup.java'
+    local p11_p9_tracking='src/main/java/com/yo1no/gramarye/P11P9TrackingCleanup.java'
     local p11_source_owner='src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java'
     local p4_recovery_game_tests='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java'
 
@@ -1797,6 +1809,7 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p11_live_transition}" \
                 || "${source}" == "${p11_keep_alive}" \
                 || "${source}" == "${p11_native_cleanup}" \
+                || "${source}" == "${p11_p9_tracking}" \
                 || "${source}" == "${p11_source_owner}" \
                 || "${source}" == "${p4_recovery_game_tests}" \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
@@ -1822,6 +1835,7 @@ verify_b2_sources_and_outputs() {
     verify_p11_native_helper_error_catches "${p11_live_transition}" live_transition
     verify_p11_native_helper_error_catches "${p11_keep_alive}" keep_alive
     verify_p11_native_helper_error_catches "${runtime_service}" p5_l1
+    verify_p11_native_helper_error_catches "${p11_p9_tracking}" p9_tracking
     require_ere_count "${p4_recovery_game_tests}" \
         'catch[[:space:]]*\([^)]*(Error|Throwable)' 1 \
         'the exact recovery GameTest must retain one primary-preserving Error catch'

@@ -361,6 +361,21 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
         return continuationPermit == expected ? authenticatedCasterIdentity : null;
     }
 
+    // Native tracking loss may leave this object in a non-ticking section. Only
+    // an already-closed exact work may be discarded after that traversal unwinds.
+    boolean closedForTrackingRemoval() {
+        return level() instanceof ServerLevel serverLevel
+                && serverLevel.getServer().isSameThread()
+                && authenticatedCasterIdentity != null
+                && authenticatedCasterIdentity.getServer() == serverLevel.getServer()
+                && serverLevel.dimension().location().equals(dimension)
+                && continuationPermit.mode == RuntimeProjectileContinuationPermit.Mode.REAL
+                && continuationPermit.plannedProjectileId.equals(getUUID())
+                && (continuationPermit.state == RuntimeProjectileContinuationPermit.State.CLOSED_NO_HIT
+                        || continuationPermit.state == RuntimeProjectileContinuationPermit.State.CLOSED_AFTER_HIT)
+                && !isRemoved();
+    }
+
     private boolean validServerState(ServerLevel serverLevel) {
         var server = serverLevel.getServer();
         return server.isSameThread()
