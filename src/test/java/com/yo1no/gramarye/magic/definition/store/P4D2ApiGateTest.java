@@ -2,6 +2,7 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
@@ -248,8 +249,9 @@ final class P4D2ApiGateTest {
                         "new ValidationContext(MagicPolicyLimits.DEFAULTS)"));
         assertEquals(Set.of("SkillDefinitionStoreSubmissionPort.java"),
                 relativeStoreSourcesMatching(Pattern.compile("\\.\\s*commit\\s*\\(")));
-        assertEquals(Set.of("PlayerSkillAttachmentService.java", "ManaAttachments.java"),
-                relativeSourcesMatching(Pattern.compile("\\.\\s*setData\\s*\\(")));
+        var attachmentOwners = relativeSourcesMatching(Pattern.compile("\\.\\s*setData\\s*\\("));
+        assertAttachmentWriteOwners(attachmentOwners);
+        rejectForeignAttachmentOwners(attachmentOwners);
         var draftService = withoutCommentsAndLiterals(read(
                 SUBMISSION_ROOT.resolve("SkillDraftCreationService.java")));
         assertEquals(1, occurrences(
@@ -372,6 +374,23 @@ final class P4D2ApiGateTest {
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
+    }
+
+    private static void assertAttachmentWriteOwners(Set<String> owners) {
+        assertEquals(Set.of("PlayerSkillAttachmentService.java", "ManaAttachments.java",
+                "P11CastCooldownAttachments.java", "PlayerSkillAttachmentGameTests.java"), owners);
+    }
+
+    private static void rejectForeignAttachmentOwners(Set<String> owners) {
+        for (var foreign : List.of("P11CastCooldownAttachmentsExtra.java", "ForeignOwner.java")) {
+            var changed = new java.util.HashSet<>(owners);
+            assertTrue(changed.remove("P11CastCooldownAttachments.java"));
+            assertTrue(changed.add(foreign));
+            assertThrows(AssertionError.class, () -> assertAttachmentWriteOwners(changed));
+        }
+        var missing = new java.util.HashSet<>(owners);
+        assertTrue(missing.remove("PlayerSkillAttachmentGameTests.java"));
+        assertThrows(AssertionError.class, () -> assertAttachmentWriteOwners(missing));
     }
 
     private static Set<String> relativeProductionPathsContaining(String fragment)

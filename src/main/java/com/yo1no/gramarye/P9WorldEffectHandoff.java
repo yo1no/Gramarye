@@ -75,6 +75,11 @@ final class P9WorldEffectHandoff implements WorldCommitPort {
                 projectile.discard();
                 return CommitDisposition.NOT_APPLIED;
             }
+            if (!opened.prepareBeforeNativeAdd(server, projectile)) {
+                closeReservation(opened, ProjectileClosureReason.SPAWN_NOT_APPLIED);
+                projectile.discard();
+                return CommitDisposition.NOT_APPLIED;
+            }
             if (!level.addFreshEntity(projectile)) {
                 closeReservation(opened, ProjectileClosureReason.SPAWN_NOT_APPLIED);
                 projectile.discard();

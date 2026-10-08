@@ -1,4 +1,11 @@
 {
+  "hud.gramarye.cooldown.syncing": "Skill: syncing…",
+  "hud.gramarye.cooldown.unequipped": "Skill: unequipped",
+  "hud.gramarye.cooldown.ready": "Skill: ready",
+  "hud.gramarye.cooldown.active": "Skill: %s ticks remaining (server)",
+  "hud.gramarye.cooldown.pending": "Skill: preparing",
+  "hud.gramarye.cooldown.recovery": "Skill: recovery required",
+  "hud.gramarye.cooldown.unavailable": "Skill: unavailable",
   "commands.gramarye.starter.slot_occupied": "Starter skill slot is already occupied",
   "key.gramarye.cast": "Cast Skill",
   "key.categories.gramarye": "Gramarye",

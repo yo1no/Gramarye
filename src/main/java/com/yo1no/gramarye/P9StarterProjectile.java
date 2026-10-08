@@ -101,6 +101,9 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
             super.tick();
             return;
         }
+        if (continuationPermit.isPreparedSpawn()) {
+            return;
+        }
         if (locallyClaimedOrTerminal) {
             setDeltaMovement(Vec3.ZERO);
             setNoGravity(true);
@@ -255,7 +258,8 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
 
     @Override
     protected void onHitEntity(EntityHitResult hit) {
-        if (level().isClientSide() || locallyClaimedOrTerminal || observedHit != null) {
+        if (level().isClientSide() || continuationPermit.isPreparedSpawn()
+                || locallyClaimedOrTerminal || observedHit != null) {
             return;
         }
         if (!(level() instanceof ServerLevel serverLevel)) {
@@ -363,6 +367,7 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
     @Override
     protected void onHitBlock(BlockHitResult hit) {
         Objects.requireNonNull(hit, "hit");
+        if (continuationPermit.isPreparedSpawn()) { return; }
         if (!level().isClientSide() && !locallyClaimedOrTerminal) {
             terminate(ProjectileClosureReason.BLOCK_OR_INVALID_HIT);
         }

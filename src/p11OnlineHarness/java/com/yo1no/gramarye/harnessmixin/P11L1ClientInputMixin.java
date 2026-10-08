@@ -20,6 +20,7 @@ abstract class P11L1ClientInputMixin {
     private void p11$l1InputReady(Operation<Void> original) {
         original.call();
 com.yo1no.gramarye.P11L1HostStopClientProbe.inputReady(keyMappingRegistered && senderSessionAvailable && !pendingFlushRequired);
+com.yo1no.gramarye.P11CooldownHostClientProbe.inputReady(keyMappingRegistered && senderSessionAvailable && !pendingFlushRequired);
 P11L1ClientHarness.inputReady(keyMappingRegistered && senderSessionAvailable && !pendingFlushRequired);
     }
     @Inject(method = "sendPayload(Lcom/yo1no/gramarye/magic/network/CastIntentPayload;)V", at = @At("RETURN"), require = 1, expect = 1, allow = 1)

@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "package": "com.yo1no.gramarye.harnessmixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["P11OnlineAuthenticatorMixin", "P11CooldownLoginMixin", "P11CooldownCompositionMixin", "P11CooldownOwnerMixin", "P11CooldownRuntimeMixin", "P11CooldownInstanceMixin", "P11CooldownFoundationMixin", "P11CooldownFaultAddMixin", "P11CooldownFaultProjectileMixin", "P11CooldownFaultRuntimeMixin", "P11CooldownFaultServerMixin", "P11CooldownCostCellMixin", "P11CooldownCostMixin", "P11CooldownFaultArmMixin", "P11CooldownCloneCopyMixin", "P11CooldownCloneSerializerMixin", "P11CooldownCostPacketMixin", "P11CooldownDurabilityAddMixin", "P11CooldownDurabilityWriterMixin", "P11CooldownFaultOperationMixin", "P11CooldownFaultSourceMixin"],
+  "client": ["P11CooldownClientInputMixin", "P11CooldownClientMirrorMixin", "P11CooldownHudMixin", "P11CooldownCloneClientMixin", "P11C4aMouseInputMixin"],
+  "injectors": {"defaultRequire": 1}
+}

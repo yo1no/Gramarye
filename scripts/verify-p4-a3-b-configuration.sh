@@ -390,6 +390,7 @@ main() {
                 'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
                 && "${file}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
                 && "${file}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+                && "${file}" != 'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java' \
                 && "${file}" != 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 && "${file}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]]; then
             forbid_fixed "${file}" 'PlayerEvent' \

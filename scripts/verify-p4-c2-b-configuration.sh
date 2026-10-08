@@ -243,6 +243,21 @@ require_fixed_in_file_list() {
     fail "${message}"
 }
 
+verify_quarantine_clone_component() {
+    require_fixed_count "$1" 'PlayerEvent' 1 \
+        'quarantine component must retain its one exact PlayerEvent.Clone occurrence'
+    LC_ALL=C awk '
+        /^    private static ServerPlayer componentCopy\(/ { recording = 1; found++ }
+        recording { body = body $0 }
+        recording && /^    }$/ { recording = 0 }
+        END {
+            gsub(/[[:space:]]/, "", body)
+            expected = "privatestaticServerPlayercomponentCopy(MinecraftServerserver,ServerPlayeroriginal,booleandeath){vartarget=unplacedPlayer(server,original.getUUID(),\"p4c2-copy-component\");net.neoforged.neoforge.attachment.AttachmentInternals.onPlayerClone(newnet.neoforged.neoforge.event.entity.player.PlayerEvent.Clone(target,original,death));returntarget;}"
+            if (found != 1 || recording || body != expected) exit 1
+        }
+    ' "$1" || fail 'quarantine Clone escaped the exact unplaced component-copy method'
+}
+
 extract_yaml_job() {
     local yaml="$1"
     local job="$2"
@@ -294,6 +309,19 @@ verify_search_helpers() {
         fi
     done
     printf '%s\n' 'Verified exact P11 Mixin resource; schema, side, inventory and protected-path negatives rejected.'
+    local attachment_tests='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java'
+    verify_quarantine_clone_component "${attachment_tests}"
+    for mutation in \
+        's/ServerPlayer componentCopy(/ServerPlayer unreviewedCopy(/' \
+        's/PlayerEvent.Clone(target, original, death)/PlayerEvent.Clone(original, target, death)/' \
+        's/PlayerEvent.Clone(target, original, death)/PlayerEvent.Clone(target, original, true)/' \
+        's/AttachmentInternals.onPlayerClone(/AttachmentInternals.unreviewedClone(/' \
+        's/return target;/return original;/'; do
+        sed "${mutation}" "${attachment_tests}" > "${fixture}"
+        if (verify_quarantine_clone_component "${fixture}") >/dev/null 2>&1; then
+            fail 'quarantine Clone self-check accepted a changed method, input, original call or result'
+        fi
+    done
     printf '%s\n' 'present contract' > "${fixture}"
     require_fixed "${fixture}" 'present contract' 'helper failed to find a present contract'
     forbid_fixed "${fixture}" 'absent contract' 'helper reported an absent contract as present'
@@ -905,12 +933,15 @@ verify_sources() {
                 'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+                && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]]; then
             forbid_fixed "${source}" 'PlayerEvent' \
                 'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist'
         fi
     done < "${PRODUCTION_SOURCE_LIST}"
+    verify_quarantine_clone_component \
+        'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java'
 }
 
 verify_build_contract() {

@@ -74,7 +74,7 @@ public final class P8S3PresentationGameTests {
     public static void appliedFactHandoffRollsBackFailuresAndDrainsCurrentTick(
             GameTestHelper helper) {
         MinecraftServer server = helper.getLevel().getServer();
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        ServerPlayer player = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, 0x8101L);
         var transport = new RecordingTransport(player.getUUID());
         var service = new P8ServerPresentationService(transport);
         try {
@@ -207,7 +207,7 @@ public final class P8S3PresentationGameTests {
                     });
         } finally {
             service.stopForTesting();
-            server.getPlayerList().remove(player);
+            P7S4LoginManaGameTests.closeCooldownMockPlayer(player);
         }
         helper.assertTrue(service.presentationSequenceHighWaterForTesting() == 0L
                         && service.bufferedEventsForTesting().isEmpty(),
@@ -225,7 +225,7 @@ public final class P8S3PresentationGameTests {
             GameTestHelper helper) {
         MinecraftServer server = helper.getLevel().getServer();
         ServerLevel targetLevel = helper.getLevel();
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        ServerPlayer player = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, 0x8102L);
         NetworkRegistry.configureMockConnection(player.connection.getConnection());
         Vec3 playerPosition = player.position();
         Entity origin = new ArmorStand(
@@ -312,7 +312,7 @@ public final class P8S3PresentationGameTests {
                 service.stopForTesting();
                 origin.discard();
                 target.discard();
-                server.getPlayerList().remove(player);
+                P7S4LoginManaGameTests.closeCooldownMockPlayer(player);
             }
             if (passed[0]) {
                 helper.succeed();
@@ -331,13 +331,14 @@ public final class P8S3PresentationGameTests {
     public static void productionTransportEncodesCatalogBeforePresentationEvent(
             GameTestHelper helper) {
         MinecraftServer server = helper.getLevel().getServer();
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
+        ServerPlayer player = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, 0x8103L);
         Connection connection = player.connection.getConnection();
         EmbeddedChannel channel = (EmbeddedChannel) connection.channel();
         var service = P8ServerPresentationService.create();
         try {
             NetworkRegistry.configureMockConnection(connection);
-            Connection.configureInMemoryPipeline(channel.pipeline(), PacketFlow.SERVERBOUND);
+            helper.assertTrue(channel.pipeline().get("encoder") != null,
+                    "qualified mock must retain its original PLAY encoder");
             ProtocolInfo<ClientGamePacketListener> playProtocol =
                     GameProtocols.CLIENTBOUND_TEMPLATE.bind(
                             RegistryFriendlyByteBuf.decorator(
@@ -390,7 +391,7 @@ public final class P8S3PresentationGameTests {
                             "the unready event must not replay after catalog readiness");
                 } catch (RuntimeException | Error failure) {
                     service.stopForTesting();
-                    server.getPlayerList().remove(player);
+                    P7S4LoginManaGameTests.closeCooldownMockPlayer(player);
                     channel.finishAndReleaseAll();
                     throw failure;
                 }
@@ -475,7 +476,7 @@ public final class P8S3PresentationGameTests {
                                 });
                     } finally {
                         service.stopForTesting();
-                        server.getPlayerList().remove(player);
+                        P7S4LoginManaGameTests.closeCooldownMockPlayer(player);
                         channel.finishAndReleaseAll();
                     }
                     if (passed[0]) {
@@ -487,7 +488,7 @@ public final class P8S3PresentationGameTests {
             });
         } catch (RuntimeException | Error failure) {
             service.stopForTesting();
-            server.getPlayerList().remove(player);
+            P7S4LoginManaGameTests.closeCooldownMockPlayer(player);
             channel.finishAndReleaseAll();
             throw failure;
         }
@@ -502,9 +503,9 @@ public final class P8S3PresentationGameTests {
     public static void catalogFailurePoliciesUseActualDrainAndBoundedAccounting(
             GameTestHelper helper) {
         MinecraftServer server = helper.getLevel().getServer();
-        ServerPlayer player = helper.makeMockServerPlayerInLevel();
-        ServerPlayer secondPlayer = helper.makeMockServerPlayerInLevel();
-        ServerPlayer thirdPlayer = helper.makeMockServerPlayerInLevel();
+        ServerPlayer player = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, 0x8105L);
+        ServerPlayer secondPlayer = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, 0x8106L);
+        ServerPlayer thirdPlayer = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, 0x8107L);
         var players = List.of(player, secondPlayer, thirdPlayer);
         players.forEach(value ->
                 NetworkRegistry.configureMockConnection(value.connection.getConnection()));
@@ -971,7 +972,7 @@ public final class P8S3PresentationGameTests {
             List<P8ServerPresentationService> services,
             List<ServerPlayer> players) {
         services.forEach(P8ServerPresentationService::stopForTesting);
-        players.forEach(server.getPlayerList()::remove);
+        players.forEach(P7S4LoginManaGameTests::closeCooldownMockPlayer);
     }
 
     private static void assertOfferReentryGuards(

@@ -2,6 +2,7 @@ package com.yo1no.gramarye.magic.definition.store;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.Gramarye;
@@ -179,6 +180,7 @@ final class P4D2BApiGateTest {
         assertTrue(holderAnnotation != null
                 && holderAnnotation.value().equals(Gramarye.MOD_ID));
         assertEquals(Set.of(
+                        "isolatedPlayerSkillsInput",
                         "newServiceForSubmissionGameTests",
                         "registeredAttachmentPersistsThroughActualPlayerdataSaveAndReload",
                         "registeredQuarantineAndCopyLifecycleRemainTotal"),
@@ -187,6 +189,23 @@ final class P4D2BApiGateTest {
         assertTrue(Modifier.isPublic(bridge.getModifiers()));
         assertTrue(Modifier.isStatic(bridge.getModifiers()));
         assertEquals(PlayerSkillAttachmentService.class, bridge.getReturnType());
+        var inputFactory = playerHolder.getDeclaredMethod("isolatedPlayerSkillsInput",
+                ServerPlayer.class, net.minecraft.nbt.Tag.class);
+        assertTrue(Modifier.isPublic(inputFactory.getModifiers()));
+        assertTrue(Modifier.isStatic(inputFactory.getModifiers()));
+        assertEquals(net.minecraft.nbt.CompoundTag.class, inputFactory.getReturnType());
+        assertFalse(inputFactory.isAnnotationPresent(GameTest.class));
+        var playerFixture = read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java"));
+        assertIsolatedPlayerSkillsInput(playerFixture);
+        for (var mutation : List.of(
+                playerFixture.replace("readUnboundComponent(holder, attachment)", "readUnboundComponent(null, attachment)"),
+                playerFixture.replace("|| player.isAddedToLevel()", "|| false"),
+                playerFixture.replace("attachment.copy()", "attachment"),
+                playerFixture.replace("input.putUUID(\"UUID\", holder.getUUID());", "input.putUUID(\"UUID\", null);"))) {
+            assertFalse(mutation.equals(playerFixture));
+            assertThrows(AssertionError.class, () -> assertIsolatedPlayerSkillsInput(mutation));
+        }
         assertEquals(Set.of(
                         "fullSubmissionCommitsStoreJournalThenAttachmentExactlyOnce",
                         "postCommitAttachmentDriftReturnsPendingRecovery"),
@@ -210,8 +229,9 @@ final class P4D2BApiGateTest {
                         + "setData(hidden);\" '\\'' '\\\\' setData(real);"));
         assertEquals(Set.of("SkillDefinitionStoreSubmissionPort.java"),
                 relativeSourcesMatching(STORE_COMMIT_CALL));
-        assertEquals(Set.of("PlayerSkillAttachmentService.java", "ManaAttachments.java"),
-                relativeSourcesMatching(SET_DATA_CALL));
+        var attachmentOwners = relativeSourcesMatching(SET_DATA_CALL);
+        assertAttachmentWriteOwners(attachmentOwners);
+        rejectForeignAttachmentOwners(attachmentOwners);
         assertEquals(Set.of(
                         "GramaryeSkillSavedData.java",
                         "SkillDefinitionStoreService.java"),
@@ -325,6 +345,40 @@ final class P4D2BApiGateTest {
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
+    }
+
+    private static void assertIsolatedPlayerSkillsInput(String source) {
+        assertEquals("varstate=readUnboundComponent(holder,attachment);"
+                        + "varencoded=PlayerSkillAttachmentSerializer.INSTANCE.write(state,holder.registryAccess());"
+                        + "varinput=newCompoundTag();input.putUUID(\"UUID\",holder.getUUID());"
+                        + "putAttachmentFixture(input,encoded);returninput;",
+                methodBody(source, "public static CompoundTag isolatedPlayerSkillsInput").replaceAll("\\s+", ""));
+        assertEquals("if(player.getServer().getPlayerList().getPlayer(player.getUUID())==player"
+                        + "||player.isAddedToLevel()||player.hasData(PlayerSkillAttachments.type())){"
+                        + "thrownewAssertionError(\"componentinputrequiresanunplacedfreshholder\");}"
+                        + "returnPlayerSkillAttachmentSerializer.INSTANCE.read(player,attachment.copy(),player.registryAccess());",
+                methodBody(source, "private static PlayerSkillAttachmentState readUnboundComponent").replaceAll("\\s+", ""));
+        assertEquals("varattachments=newCompoundTag();"
+                        + "attachments.put(SERIALIZED_ATTACHMENT_KEY,attachment.copy());"
+                        + "root.put(AttachmentHolder.ATTACHMENTS_NBT_KEY,attachments);",
+                methodBody(source, "private static void putAttachmentFixture").replaceAll("\\s+", ""));
+    }
+
+    private static void assertAttachmentWriteOwners(Set<String> owners) {
+        assertEquals(Set.of("PlayerSkillAttachmentService.java", "ManaAttachments.java",
+                "P11CastCooldownAttachments.java", "PlayerSkillAttachmentGameTests.java"), owners);
+    }
+
+    private static void rejectForeignAttachmentOwners(Set<String> owners) {
+        for (var foreign : List.of("P11CastCooldownAttachmentsExtra.java", "ForeignOwner.java")) {
+            var changed = new java.util.HashSet<>(owners);
+            assertTrue(changed.remove("P11CastCooldownAttachments.java"));
+            assertTrue(changed.add(foreign));
+            assertThrows(AssertionError.class, () -> assertAttachmentWriteOwners(changed));
+        }
+        var missing = new java.util.HashSet<>(owners);
+        assertTrue(missing.remove("PlayerSkillAttachmentGameTests.java"));
+        assertThrows(AssertionError.class, () -> assertAttachmentWriteOwners(missing));
     }
 
     private static Set<String> relativeProductionPathsContaining(String fragment)

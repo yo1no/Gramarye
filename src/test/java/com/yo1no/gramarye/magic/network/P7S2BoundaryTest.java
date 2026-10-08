@@ -123,7 +123,7 @@ final class P7S2BoundaryTest {
             "P7AuthoritativeSyncService.java", "P7ServerLifecycleCoordinator.java",
             "P7ServerLifecycleEvents.java", "P7ReloadStartEvents.java",
             "P7Diagnostics.java", "P7ClientMirror.java",
-            "P7ClientMirrorDispatchFactory.java", "P7ClientLifecycleEvents.java");
+            "P7ClientMirrorDispatchFactory.java", "P7ClientLifecycleEvents.java", "P7CooldownHud.java");
     private static final Set<String> S5_PRODUCTION_PATHS = Set.of(
             "P9ClientCastInput.java", "P9ClientKeyMappings.java");
 
@@ -293,19 +293,19 @@ final class P7S2BoundaryTest {
         production.serverIntentDispatchPort().dispatch(new P7QueuedCastIntent(
                 playerId, 1, validIntent()));
         production.clientMirrorDispatchPort().onIntentAcknowledgement(
-                production.clientMirrorDispatchPort().captureDispatchGeneration(),
+                production.clientMirrorDispatchPort().captureDispatchGeneration(null, null),
                 new IntentAcknowledgement(
                         1,
                         IntentAcknowledgement.Disposition.ACCEPTED,
                         IntentAcknowledgement.SEQUENCE_CONSUMED,
                         null));
         production.clientMirrorDispatchPort().onPlayerManaSnapshot(
-                production.clientMirrorDispatchPort().captureDispatchGeneration(),
+                production.clientMirrorDispatchPort().captureDispatchGeneration(null, null),
                 new PlayerManaSnapshot(
                         1, PlayerManaSnapshot.Availability.UNAVAILABLE, 0));
         production.clientMirrorDispatchPort().onSkillCooldownSnapshot(
-                production.clientMirrorDispatchPort().captureDispatchGeneration(),
-                new SkillCooldownSnapshot(1, List.of()));
+                production.clientMirrorDispatchPort().captureDispatchGeneration(null, null),
+                P7S2CodecTestSupport.cooldown(1, List.of()));
         assertEquals(0, production.pendingPermitOwner().serverPending());
     }
 
@@ -480,7 +480,9 @@ final class P7S2BoundaryTest {
                 .filter(field -> java.lang.reflect.Modifier.isPublic(field.getModifiers())
                         || java.lang.reflect.Modifier.isProtected(field.getModifiers()))
                 .count());
-        assertEquals(Set.of(install, acquireLogin), Set.copyOf(publicOperations));
+        var installProjection = boundary.getDeclaredMethod("install", P6RuntimeExecutionCapability.class,
+                rootIngress, P7ServerAuthorizationBoundary.SyncProjectionPort.class);
+        assertEquals(Set.of(install, installProjection, acquireLogin), Set.copyOf(publicOperations));
         assertTrue(java.lang.reflect.Modifier.isStatic(acquireLogin.getModifiers()));
         assertEquals(loginReadyPort, acquireLogin.getReturnType());
         assertEquals(1, Arrays.stream(boundary.getDeclaredMethods())
@@ -496,7 +498,7 @@ final class P7S2BoundaryTest {
         assertTrue(java.lang.reflect.Modifier.isStatic(install.getModifiers()));
         assertEquals(void.class, install.getReturnType());
         assertEquals(0, install.getExceptionTypes().length);
-        assertEquals(1, Arrays.stream(boundary.getDeclaredMethods())
+        assertEquals(2, Arrays.stream(boundary.getDeclaredMethods())
                 .filter(method -> method.getName().equals("install"))
                 .count());
 
@@ -517,7 +519,8 @@ final class P7S2BoundaryTest {
                         "AdvisoryTargetCheck",
                         "AdmissionDisposition",
                         "TargetDisposition",
-                        "LoginReadyPort"),
+                        "LoginReadyPort", "SyncProjectionPort", "SyncCapture", "SyncProjection", "SyncEntry",
+                        "SyncSourceState", "SyncEntryState", "SyncReason"),
                 nested.stream().map(Class::getSimpleName).collect(Collectors.toSet()));
         assertTrue(nested.stream().allMatch(type ->
                 java.lang.reflect.Modifier.isPublic(type.getModifiers())));

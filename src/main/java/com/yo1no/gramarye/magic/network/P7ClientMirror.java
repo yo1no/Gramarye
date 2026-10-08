@@ -4,48 +4,88 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
+import java.util.function.BiPredicate;
+import net.minecraft.network.Connection;
+import net.minecraft.network.ConnectionProtocol;
+import net.minecraft.network.protocol.PacketFlow;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 
 final class P7ClientMirror implements P7ClientMirrorDispatchPort {
     private final BooleanSupplier clientThreadCheck;
+    private final BiPredicate<Connection, ICommonPacketListener> currentTransport;
     private volatile long dispatchGeneration;
+    private Connection connection;
+    private ICommonPacketListener listener;
+    private boolean worldAvailable;
     private IntentAcknowledgement lastAcknowledgement;
     private PlayerManaSnapshot.Availability manaAvailability =
             PlayerManaSnapshot.Availability.UNAVAILABLE;
     private long manaBalance;
-    private List<CooldownSnapshotEntry> cooldownEntries = List.of();
+    private SkillCooldownSnapshot cooldownSnapshot;
     private long lastAppliedManaSequence;
     private long lastAppliedCooldownSequence;
 
     P7ClientMirror(BooleanSupplier clientThreadCheck) {
+        this(clientThreadCheck, P7ClientMirror::nativeTransportCurrent);
+    }
+
+    P7ClientMirror(BooleanSupplier clientThreadCheck,
+            BiPredicate<Connection, ICommonPacketListener> currentTransport) {
         this.clientThreadCheck = Objects.requireNonNull(
                 clientThreadCheck, "clientThreadCheck");
+        this.currentTransport = Objects.requireNonNull(currentTransport, "currentTransport");
     }
 
-    void onConnected() {
+    synchronized void onConnected(Connection connection, ICommonPacketListener listener) {
         requireClientThread();
+        Objects.requireNonNull(connection, "connection");
+        Objects.requireNonNull(listener, "listener");
+        if (!currentTransport.test(connection, listener)) { return; }
+        if (this.connection == connection && this.listener == listener
+                && isConnectedGeneration(dispatchGeneration)) { return; }
         advanceGeneration(true);
+        this.connection = connection;
+        this.listener = listener;
+        worldAvailable = true;
         clearValues();
     }
 
-    void onDisconnected() {
+    synchronized void onDisconnected() {
         requireClientThread();
         advanceGeneration(false);
+        connection = null;
+        listener = null;
+        worldAvailable = false;
         clearValues();
     }
 
-    void onClientWorldUnload() {
+    synchronized void onClientWorldUnload() {
         requireClientThread();
         advanceGeneration(isConnectedGeneration(dispatchGeneration));
-        clearValues();
+        worldAvailable = false;
+        clearPresentation();
+    }
+
+    synchronized void onPlayerContextReplaced(Connection sourceConnection, ICommonPacketListener sourceListener) {
+        requireClientThread();
+        if (connection != sourceConnection || listener != sourceListener
+                || !isConnectedGeneration(dispatchGeneration) || !currentTransport.test(connection, listener)) { return; }
+        advanceGeneration(true);
+        worldAvailable = true;
+        clearPresentation();
     }
 
     @Override
-    public long captureDispatchGeneration() {
-        return dispatchGeneration;
+    public synchronized long captureDispatchGeneration(Connection sourceConnection, ICommonPacketListener sourceListener) {
+        return sourceConnection != null && sourceListener != null && sourceConnection == connection
+                && sourceListener == listener && worldAvailable && isConnectedGeneration(dispatchGeneration)
+                && currentTransport.test(connection, listener) ? dispatchGeneration : 0;
     }
 
+    long currentDispatchGeneration() { requireClientThread(); return dispatchGeneration; }
+
     @Override
-    public void onIntentAcknowledgement(
+    public synchronized void onIntentAcknowledgement(
             long expectedGeneration, IntentAcknowledgement acknowledgement) {
         requireClientThread();
         Objects.requireNonNull(acknowledgement, "acknowledgement");
@@ -55,7 +95,7 @@ final class P7ClientMirror implements P7ClientMirrorDispatchPort {
     }
 
     @Override
-    public void onPlayerManaSnapshot(
+    public synchronized void onPlayerManaSnapshot(
             long expectedGeneration, PlayerManaSnapshot snapshot) {
         requireClientThread();
         Objects.requireNonNull(snapshot, "snapshot");
@@ -68,13 +108,13 @@ final class P7ClientMirror implements P7ClientMirrorDispatchPort {
     }
 
     @Override
-    public void onSkillCooldownSnapshot(
+    public synchronized void onSkillCooldownSnapshot(
             long expectedGeneration, SkillCooldownSnapshot snapshot) {
         requireClientThread();
         Objects.requireNonNull(snapshot, "snapshot");
         if (accepts(expectedGeneration)
                 && snapshot.syncSequence() > lastAppliedCooldownSequence) {
-            cooldownEntries = snapshot.entries();
+            cooldownSnapshot = snapshot;
             lastAppliedCooldownSequence = snapshot.syncSequence();
         }
     }
@@ -96,7 +136,12 @@ final class P7ClientMirror implements P7ClientMirrorDispatchPort {
 
     List<CooldownSnapshotEntry> cooldownEntries() {
         requireClientThread();
-        return cooldownEntries;
+        return cooldownSnapshot == null ? List.of() : cooldownSnapshot.entries();
+    }
+
+    Optional<SkillCooldownSnapshot> cooldownSnapshot() {
+        requireClientThread();
+        return Optional.ofNullable(cooldownSnapshot);
     }
 
     long lastAppliedManaSequence() {
@@ -112,7 +157,9 @@ final class P7ClientMirror implements P7ClientMirrorDispatchPort {
     private boolean accepts(long expectedGeneration) {
         return expectedGeneration > 0
                 && expectedGeneration == dispatchGeneration
-                && isConnectedGeneration(expectedGeneration);
+                && isConnectedGeneration(expectedGeneration)
+                && worldAvailable
+                && connection != null && listener != null && currentTransport.test(connection, listener);
     }
 
     private void advanceGeneration(boolean connected) {
@@ -127,12 +174,16 @@ final class P7ClientMirror implements P7ClientMirrorDispatchPort {
     }
 
     private void clearValues() {
+        clearPresentation();
+        lastAppliedManaSequence = 0L;
+        lastAppliedCooldownSequence = 0L;
+    }
+
+    private void clearPresentation() {
         lastAcknowledgement = null;
         manaAvailability = PlayerManaSnapshot.Availability.UNAVAILABLE;
         manaBalance = 0L;
-        cooldownEntries = List.of();
-        lastAppliedManaSequence = 0L;
-        lastAppliedCooldownSequence = 0L;
+        cooldownSnapshot = null;
     }
 
     private void requireClientThread() {
@@ -144,5 +195,11 @@ final class P7ClientMirror implements P7ClientMirrorDispatchPort {
 
     private static boolean isConnectedGeneration(long generation) {
         return (generation & 1L) != 0L;
+    }
+
+    private static boolean nativeTransportCurrent(Connection connection, ICommonPacketListener listener) {
+        return connection != null && listener != null && connection.isConnected()
+                && connection.getPacketListener() == listener && listener.getConnection() == connection
+                && listener.protocol() == ConnectionProtocol.PLAY && listener.flow() == PacketFlow.CLIENTBOUND;
     }
 }

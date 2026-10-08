@@ -1,4 +1,11 @@
 {
+  "hud.gramarye.cooldown.syncing": "技能：同步中……",
+  "hud.gramarye.cooldown.unequipped": "技能：未裝備",
+  "hud.gramarye.cooldown.ready": "技能：就緒",
+  "hud.gramarye.cooldown.active": "技能：伺服器剩餘 %s ticks",
+  "hud.gramarye.cooldown.pending": "技能：準備中",
+  "hud.gramarye.cooldown.recovery": "技能：需要恢復",
+  "hud.gramarye.cooldown.unavailable": "技能：不可用",
   "commands.gramarye.starter.slot_occupied": "起始技能欄位已被佔用",
   "key.gramarye.cast": "施放技能",
   "key.categories.gramarye": "Gramarye",

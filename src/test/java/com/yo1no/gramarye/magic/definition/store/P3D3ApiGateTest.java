@@ -441,7 +441,7 @@ class P3D3ApiGateTest {
                     Set.of("P4_RECOVERY_GAMETEST_THREAD_PRECONDITION"),
                     1,
                     "8f5548e0d724bf902b3f6597f386fd2c73ec202cbd54a5bc6749d5562ce566dc",
-                    "302d5760dd90fbd1c5d84d54ad537d7c5cb1075a0d940319a7197ab5b81329b2"),
+                    "92bc082f7ba0c4f0f1712b5ca33eaaebea2d3c450391cf63b36c4383295795c0"),
             unrelatedFutureAuthority(
                     "SkillSavedDataCarrierMigrationFailure.java",
                     "com.yo1no.gramarye.magic.definition.store."

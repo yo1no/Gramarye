@@ -26,6 +26,7 @@ final class P11QualifiedSourceOwner {
     private final P11StartupLimits limits;
     private final P11SourceProvenance provenance;
     private final PlayerSkillAttachmentService attachments;
+    private P11CastCooldownService cooldowns;
     private final Map<UUID, Account> accounts = new HashMap<>();
     private boolean stopping;
     private boolean detachedPlayersStopFlushed;
@@ -53,6 +54,23 @@ final class P11QualifiedSourceOwner {
 
     boolean owns(MinecraftServer exact) {
         return !retired && exact == server && exact.isSameThread();
+    }
+
+    void bindCooldowns(P11CastCooldownService service) {
+        if (cooldowns != null) { throw new IllegalStateException("P11_COOLDOWN_ALREADY_BOUND"); }
+        cooldowns = java.util.Objects.requireNonNull(service, "service");
+    }
+
+    PlayerSkillAttachmentService cooldownEquipmentOwner() { return attachments; }
+
+    void reconcileCooldown(Body body) {
+        if (cooldowns != null && body != null && body.account.current == body && body.account.candidate == null) {
+            cooldowns.reconcile(this, body);
+        }
+    }
+
+    Body cooldownWorkRecipient(WorkReservation work, ServerPlayer exactCause) {
+        return workRecipient(work, exactCause);
     }
 
     Account account(ServerPlayer actor) {
@@ -529,6 +547,7 @@ final class P11QualifiedSourceOwner {
         body.complete = true;
         account.candidate = null;
         account.fault = Fault.NONE;
+        if (cooldowns != null && !cooldowns.materialAdopted(this, body)) { fail(body, Fault.MATERIAL); }
         // B never inherits A's logout envelope. The old actor graph is released here.
     }
 
@@ -578,7 +597,8 @@ final class P11QualifiedSourceOwner {
         return current.kind() == P11SourceProvenance.Kind.CURRENT
                 && current.sourceEpoch() == body.source.epoch()
                 && current.sourceVersion() == body.source.version()
-                && body.mana != null && body.mana.isCurrent(body.actor);
+                && body.mana != null && body.mana.isCurrent(body.actor)
+                && body.cooldown != null && body.cooldown.current(body.actor);
     }
 
     boolean manaRead(Body body, P11ManaMaterial.Read result) {
@@ -599,6 +619,24 @@ final class P11QualifiedSourceOwner {
         P11NativeStorageBoundary.metadataManaPublished(this, body, previous);
     }
 
+    boolean cooldownRead(Body body, P11CastCooldownMaterial.State result) {
+        if (body == null || result == null || !result.bound(body.actor)) { return false; }
+        body.cooldown = result;
+        return true;
+    }
+
+    void cooldownPublication(Body body, P11CastCooldownMaterial.State before,
+            P11CastCooldownMaterial.State after) {
+        if (body.cooldown == null || !body.cooldown.same(before) || after == null || !after.current(body.actor)) {
+            fail(body, Fault.MATERIAL);
+            throw new SourceUnavailable();
+        }
+        var previous = body.source;
+        body.cooldown = after;
+        publication(body.actor, body.source.epoch(), body.source.version());
+        P11NativeStorageBoundary.metadataCooldownPublished(this, body, previous);
+    }
+
     P11ReceiptLedger.PhysicalWriterReceipt beginWriter(Body body,
             P11ReceiptLedger.WriterKind kind) {
         return beginWriter(body, kind, false);
@@ -617,6 +655,9 @@ final class P11QualifiedSourceOwner {
 
     private P11ReceiptLedger.PhysicalWriterReceipt beginWriter(Body body,
             P11ReceiptLedger.WriterKind kind, boolean preserveIndependent) {
+        // Settle exact receipts and the trusted clock floor before the physical writer
+        // captures its immutable source version, never half way through that writer.
+        reconcileCooldown(body);
         if (!canSerialize(body)) {
             // A stale actor must not poison its successor. A refusal of the still-owned
             // current body, however, never leaves old successful proofs looking clean.
@@ -714,6 +755,12 @@ final class P11QualifiedSourceOwner {
             if (!success) { failures = increment(failures); }
             return;
         }
+        if (cooldowns != null && receipt.source() == body.source
+                && (receipt.kind() == P11ReceiptLedger.WriterKind.PLAYER_DATA
+                        || receipt.kind() == P11ReceiptLedger.WriterKind.LEVEL_PLAYER)) {
+            cooldowns.writerFinished(this, body, receipt.kind(),
+                    success && result == P11ReceiptLedger.Change.RECORDED);
+        }
         if (!success || result != P11ReceiptLedger.Change.RECORDED) {
             fault(body.account, Fault.WRITE);
             return;
@@ -795,23 +842,34 @@ final class P11QualifiedSourceOwner {
     }
 
     SelectionWitness captureSelection(Body body) {
+        reconcileCooldown(body);
         if (!canSerialize(body)) { throw new SourceUnavailable(); }
         var skills = attachments.captureP11Source(body.actor, provenance);
         var mana = P11ManaMaterial.capture(body.actor);
-        if (!skills.isCurrent(body.actor) || !mana.sameState(body.mana)) { throw new SourceUnavailable(); }
-        return new SelectionWitness(this, body, skills, mana);
+        var cooldown = P11CastCooldownMaterial.capture(body.actor);
+        if (!skills.isCurrent(body.actor) || !mana.sameState(body.mana) || !cooldown.same(body.cooldown)) {
+            throw new SourceUnavailable();
+        }
+        return new SelectionWitness(this, body, skills, mana, cooldown);
     }
 
     boolean metadataCurrent(Body body, P11ReceiptLedger.Source version, SelectionWitness witness) {
         return canSerialize(body) && body.source == version && witness != null
                 && witness.owner == this && witness.body == body && witness.source == version
                 && witness.skills.isCurrent(body.actor) && witness.mana.isCurrent(body.actor)
-                && witness.mana.sameState(body.mana);
+                && witness.mana.sameState(body.mana) && witness.cooldown.current(body.actor)
+                && witness.cooldown.same(body.cooldown);
     }
 
     boolean metadataSkillsCurrent(Body body, SelectionWitness witness) {
         return canSerialize(body) && witness != null && witness.owner == this && witness.body == body
                 && witness.skills.isCurrent(body.actor);
+    }
+
+    boolean metadataUnchangedExceptCooldown(Body body, SelectionWitness witness) {
+        return canSerialize(body) && witness != null && witness.owner == this && witness.body == body
+                && witness.skills.isCurrent(body.actor) && witness.mana.isCurrent(body.actor)
+                && witness.mana.sameState(body.mana);
     }
 
     Sealed seal(Body body, CompoundTag root) {
@@ -876,7 +934,8 @@ final class P11QualifiedSourceOwner {
         return account.candidate != body && account.candidate.material.selectedSource() == version
                 && witness != null && witness.owner == this && witness.body == body
                 && witness.source == version && witness.skills.isCurrent(body.actor)
-                && witness.mana.isCurrent(body.actor) && witness.mana.sameState(body.mana);
+                && witness.mana.isCurrent(body.actor) && witness.mana.sameState(body.mana)
+                && witness.cooldown.current(body.actor) && witness.cooldown.same(body.cooldown);
     }
 
     void release(Sealed sealed) {
@@ -1074,6 +1133,7 @@ final class P11QualifiedSourceOwner {
         final ServerStatsCounter stats;
         final PlayerAdvancements advancements;
         P11ManaMaterial.State mana;
+        P11CastCooldownMaterial.State cooldown;
         P11ReceiptLedger.Source source;
         final P11ReceiptLedger.MaterialReceipt material;
         boolean loadObserved;
@@ -1092,6 +1152,7 @@ final class P11QualifiedSourceOwner {
             this.stats = actor.getStats();
             this.advancements = actor.getAdvancements();
             this.mana = P11ManaMaterial.capture(actor);
+            this.cooldown = P11CastCooldownMaterial.capture(actor);
             this.source = source;
             this.material = material;
         }
@@ -1201,10 +1262,12 @@ final class P11QualifiedSourceOwner {
         private final P11ReceiptLedger.Source source;
         private final PlayerSkillAttachmentService.P11AttachmentSnapshot skills;
         private final P11ManaMaterial.State mana;
+        private final P11CastCooldownMaterial.State cooldown;
         private SelectionWitness(P11QualifiedSourceOwner owner, Body body,
-                PlayerSkillAttachmentService.P11AttachmentSnapshot skills, P11ManaMaterial.State mana) {
+                PlayerSkillAttachmentService.P11AttachmentSnapshot skills, P11ManaMaterial.State mana,
+                P11CastCooldownMaterial.State cooldown) {
             this.owner = owner; this.body = body; this.source = body.source;
-            this.skills = skills; this.mana = mana;
+            this.skills = skills; this.mana = mana; this.cooldown = cooldown;
         }
     }
 

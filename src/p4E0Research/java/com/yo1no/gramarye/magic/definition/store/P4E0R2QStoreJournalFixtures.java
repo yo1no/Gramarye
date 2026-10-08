@@ -53,8 +53,7 @@ public final class P4E0R2QStoreJournalFixtures {
 
     /** Builds the exact full Store once and derives both journals through production code. */
     public static Fixture buildExact() {
-        var d3 = P4D3StoreJournalFixture.build();
-        var source = d3.store().snapshot().histories();
+        var source = sourceHistories();
         if (source.size() != CURRENT_HISTORIES) {
             throw new AssertionError("R2Q source history count changed");
         }
@@ -182,6 +181,10 @@ public final class P4E0R2QStoreJournalFixtures {
             throw new AssertionError("R2Q exact owner distribution changed");
         }
         return new ExactSubmissionContext(server, service);
+    }
+
+    private static List<SkillHistorySnapshot> sourceHistories() {
+        return P4D3StoreJournalFixture.build().store().snapshot().histories();
     }
 
     private static SkillDefinitionStore restore(List<SkillHistorySnapshot> histories) {

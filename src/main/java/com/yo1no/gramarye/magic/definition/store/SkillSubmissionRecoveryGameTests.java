@@ -109,7 +109,7 @@ public final class SkillSubmissionRecoveryGameTests {
         var server = helper.getLevel().getServer();
         helper.assertTrue(server.isSameThread(),
                 "P4-D3-A GameTest requires the server logic thread");
-        var attachments = PlayerSkillAttachmentGameTests.newServiceForSubmissionGameTests();
+        var attachments = com.yo1no.gramarye.P7S4LoginManaGameTests.nativeGameTestAttachments(server);
         var firstTarget = new SkillReference(skillId, new SkillRevision(0));
         var finalTarget = new SkillReference(skillId, new SkillRevision(1));
         var draft = fixtureDraft(skillId);
@@ -542,16 +542,9 @@ public final class SkillSubmissionRecoveryGameTests {
 
     private static ConnectedPlayer placePlayer(
             MinecraftServer server, UUID playerId, String name) {
-        var cookie = CommonListenerCookie.createInitial(
-                new GameProfile(playerId, name), false);
-        var player = new ServerPlayer(
-                server,
-                server.overworld(),
-                cookie.gameProfile(),
-                cookie.clientInformation());
-        var connection = new Connection(PacketFlow.SERVERBOUND);
-        var channel = new EmbeddedChannel(connection);
-        server.getPlayerList().placeNewPlayer(connection, player, cookie);
+        var player = com.yo1no.gramarye.P7S4LoginManaGameTests.connectNativeGameTestPlayer(
+                server, playerId, name);
+        var channel = (EmbeddedChannel) player.connection.getConnection().channel();
         return new ConnectedPlayer(player, channel);
     }
 

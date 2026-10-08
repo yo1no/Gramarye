@@ -36,6 +36,8 @@ TEST_PLAYER_ROOT="${REPOSITORY_ROOT}/src/test/java/com/yo1no/gramarye/magic/defi
 STORE_SERVICE="${STORE_ROOT}/SkillDefinitionStoreService.java"
 AUDIT_SERVICE="${STORE_ROOT}/SkillRetentionRootAuditService.java"
 PLAYER_SERVICE="${PLAYER_ROOT}/PlayerSkillAttachmentService.java"
+PLAYER_GAME_TESTS="${PLAYER_ROOT}/PlayerSkillAttachmentGameTests.java"
+COOLDOWN_ATTACHMENTS="${ROOT_PACKAGE}/P11CastCooldownAttachments.java"
 MANA_ATTACHMENTS="${MAIN_JAVA}/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java"
 MANA_GAME_TESTS="${MAIN_JAVA}/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java"
 RECOVERY_SERVICE="${SUBMISSION_ROOT}/SkillSubmissionRecoveryService.java"
@@ -392,6 +394,39 @@ verify_p11_metadata_resume_contracts() {
         'publicvoidresumeMissingStages(ServerPlayerplayer,SkillSubmissionRecoveryService.RecoveryContinuationcontinuation,RecoveryKindkind,intentriesCleared,intstepsReplayed,Optional<String>existingExceptionClass){varmetadata=Objects.requireNonNull(continuation.metadata(this),"metadatareceipt");if(!metadata.resumeAuthorized(this,player)){thrownewIllegalStateException("P11_METADATA_RESUME_NOT_AUTHORIZED");}if(metadata.reconciliationDone()){loginReady(player,continuation);}else{reconcileAfterRecovery(player,continuation,kind,entriesCleared,stepsReplayed,existingExceptionClass);}}'
     require_exact_java_method "$2" '        public boolean resume(P11NativeStorageBoundary.MetadataLease candidate) {' \
         'publicbooleanresume(P11NativeStorageBoundary.MetadataLeasecandidate){if(candidate==null||candidate!=lease||resuming||!stages.resumable()||!P11NativeStorageBoundary.metadataCurrent(candidate)){returnfalse;}resuming=true;booleannormal=false;try{dependency.resumeMissingStages(player,continuation,projection.kind(),projection.entriesCleared(),projection.stepsReplayed(),projection.exceptionClass());normal=true;returntrue;}finally{resuming=false;stages.finishAttempt(normal);if(stages.complete()){release();}}}'
+}
+
+verify_attachment_write_owners() {
+    local owner=''
+    local writes=''
+    for owner in "${PLAYER_SERVICE}" "${MANA_ATTACHMENTS}" \
+            "${COOLDOWN_ATTACHMENTS}" "${PLAYER_GAME_TESTS}"; do
+        require_regular_file "${owner}" 'exact reviewed Attachment write owner is missing'
+        writes="$(LC_ALL=C awk '
+            { line = $0; while ((at = index(line, ".setData(")) > 0) {
+                count++; line = substr(line, at + length(".setData("))
+            } }
+            END { print count + 0 }
+        ' "${owner}")" || fail 'could not count exact Attachment write occurrences'
+        [[ "${writes}" -eq 1 ]] \
+            || fail 'each exact reviewed Attachment write owner must retain one write'
+    done
+    [[ "$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '.setData(')" -eq 4 ]] \
+        || fail 'Attachment setData escaped the three live owners and one unplaced component'
+    # The new live owner is the closed native cooldown publication boundary. The
+    # GameTest exception is only its original unplaced component, never a live writer.
+    require_exact_java_method "${COOLDOWN_ATTACHMENTS}" \
+        '    static P11CastCooldownData existing(ServerPlayer actor)' \
+        'staticP11CastCooldownDataexisting(ServerPlayeractor){returnactor.hasData(TYPE)?actor.getData(TYPE):null;}'
+    require_exact_java_method "${COOLDOWN_ATTACHMENTS}" \
+        '    static void replace(ServerPlayer actor,' \
+        'staticvoidreplace(ServerPlayeractor,P11CastCooldownDataexpected,P11CastCooldownDatareplacement){if(existing(actor)!=expected){thrownewIllegalStateException("COOLDOWN_MATERIAL_CHANGED");}varbefore=P11CastCooldownMaterial.capture(actor);actor.setData(TYPE,replacement);P11NativeStorageBoundary.cooldownPublished(before,P11CastCooldownMaterial.capture(actor));}'
+    require_exact_java_method "${PLAYER_GAME_TESTS}" \
+        '    private static void loadAttachmentFixture(ServerPlayer player,' \
+        'privatestaticvoidloadAttachmentFixture(ServerPlayerplayer,Tagattachment){player.setData(PlayerSkillAttachments.type(),readUnboundComponent(player,attachment));}'
+    require_exact_java_method "${PLAYER_GAME_TESTS}" \
+        '    private static PlayerSkillAttachmentState readUnboundComponent(ServerPlayer player,' \
+        'privatestaticPlayerSkillAttachmentStatereadUnboundComponent(ServerPlayerplayer,Tagattachment){if(player.getServer().getPlayerList().getPlayer(player.getUUID())==player||player.isAddedToLevel()||player.hasData(PlayerSkillAttachments.type())){thrownewAssertionError("componentinputrequiresanunplacedfreshholder");}returnPlayerSkillAttachmentSerializer.INSTANCE.read(player,attachment.copy(),player.registryAccess());}'
 }
 
 is_approved_p4e3_changed_path() {
@@ -1630,12 +1665,7 @@ forbid_fixed "${STORE_ROOT}/P4E2OnlineReconciliationDependency.java" 'RecoverySt
     'the public dependency must not expose the coordinator recovery status'
 forbid_fixed "${RECOVERY_SERVICE}" 'recoveryStatus(' \
     'the recovery service must not retain a dead RecoveryStatus projection helper'
-require_fixed_count "${PLAYER_SERVICE}" '.setData(' 1 \
-    'player-skill Attachment publication must retain one service write'
-require_fixed_count "${MANA_ATTACHMENTS}" '.setData(' 1 \
-    'mana Attachment access must retain one package-private write'
-[[ "$(count_fixed_in_file_list "${PRODUCTION_SOURCE_LIST}" '.setData(')" -eq 2 ]] \
-    || fail 'live Attachment setData escaped the exact two reviewed access owners'
+verify_attachment_write_owners
 require_only_owner '.invalidateForReconciliation(' "${COORDINATOR}" 1 \
     'E2 index invalidation must have at most one exact coordinator callsite'
 require_fixed_count "${COORDINATOR}" \

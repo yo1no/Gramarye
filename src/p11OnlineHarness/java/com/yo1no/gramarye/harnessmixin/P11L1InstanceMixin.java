@@ -16,6 +16,7 @@ abstract class P11L1InstanceMixin {
     private void p11$l1Instance(@Coerce Object id, @Coerce Object sequence, @Coerce Object attribution,
             @Coerce Object lease, ServerPlayer actor, CallbackInfo callback) {
 com.yo1no.gramarye.P11L1HostStopProbe.instance(actor, this);
+com.yo1no.gramarye.P11CooldownHostProbe.instance(actor, this);
 P11L1ServerHarness.instanceCreated(actor, this);
     }
 }

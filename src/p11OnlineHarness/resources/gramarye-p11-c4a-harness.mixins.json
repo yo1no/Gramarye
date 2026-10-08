@@ -34,7 +34,7 @@
     "P11C4aHeldBoundaryMixin", "P11C4aHeldControlMixin", "P11C4aHeldReserveMixin", "P11C4aHeldManagedMixin",
     "P11C4aTerminalHandoffMixin", "P11C4aConfigParkingPotionMixin", "P11C4aConfigParkingCloudMixin", "P11C4aCompleteBLoadMixin", "P11C4aCompleteBRemoveMixin", "P11C4aCompleteBConnectionMixin", "P11C4aCompleteBAttachmentCopyMixin",
     "P11C4aBossProducerSwitchMixin", "P11C4aBossProducerSendMixin",
-    "P11L1RuntimeMixin", "P11L1InstanceMixin", "P11L1DamageMixin", "P11L1FoundationMixin", "P11L1HostStopBoundaryMixin"],
+    "P11L1RuntimeMixin", "P11L1InstanceMixin", "P11L1DamageMixin", "P11L1FoundationMixin", "P11L1HostStopBoundaryMixin", "P11CooldownHostCompositionMixin"],
   "client": ["P11C4aClientStateObservationMixin", "P11C4aClientPacketObservationMixin", "P11C4aMouseInputMixin", "P11C4aRewardContinuityClientMixin",
     "P11C4aReloadClientObservationMixin", "P11C4aClientConfigurationObservationMixin",
     "P11C4aFirstTryClientMixin", "P11C4aMetadataHClientMixin",

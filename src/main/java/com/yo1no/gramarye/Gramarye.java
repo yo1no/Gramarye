@@ -37,6 +37,7 @@ public final class Gramarye {
     private final SkillSubmissionRecoveryService skillSubmissionRecoveryService;
     private final P5ServerRuntimeConfig p5ServerRuntimeConfig;
     private final P11FoundationService p11FoundationService;
+    private final P11CastCooldownService p11CastCooldownService;
     private final SkillRuntimeService skillRuntimeService;
     private final P8ServerPresentationService p8ServerPresentationService;
     private final P9StarterCommand p9StarterCommand;
@@ -83,6 +84,10 @@ public final class Gramarye {
         skillSubmissionRecoveryService.registerOn(NeoForge.EVENT_BUS);
         p5ServerRuntimeConfig = new P5ServerRuntimeConfig(modBus, exactContainer);
         p11FoundationService = new P11FoundationService(p11SourceProvenance, playerSkillAttachmentService);
+        var cooldownPolicyProjection = new P11CooldownPolicyProjection(playerSkillAttachmentService,
+                skillDefinitionStoreService, skillSubmissionPolicyProvider, profileAvailability);
+        p11CastCooldownService = new P11CastCooldownService(p11FoundationService, cooldownPolicyProjection::observe);
+        p11FoundationService.bindCooldowns(p11CastCooldownService);
         modBus.addListener(P11TransitionPayloadRegistrar::register);
         modBus.addListener(P11ConfigurationBoundary::registerTasks);
         NeoForge.EVENT_BUS.addListener(p11FoundationService::tick);
@@ -93,7 +98,8 @@ public final class Gramarye {
                 profileAvailability,
                 runtimeCapability,
                 p8ServerPresentationService,
-                p11FoundationService);
+                p11FoundationService,
+                p11CastCooldownService);
         p11FoundationService.bindRuntime(skillRuntimeService);
         p8ServerPresentationService.registerAfterP5(NeoForge.EVENT_BUS);
         var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(
@@ -102,7 +108,8 @@ public final class Gramarye {
                 skillDefinitionStoreService);
         P7ServerAuthorizationBoundary.install(
                 runtimeCapability,
-                p7AuthenticatedPlayerCastIngress);
+                p7AuthenticatedPlayerCastIngress,
+                p11CastCooldownService);
         var p10TemplateValidation = new P10TemplateValidation(
                 skillSubmissionPolicyProvider, p8ServerPresentationService);
         p10TemplateService = new P10TemplateService(p10TemplateValidation);

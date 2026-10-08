@@ -46,7 +46,9 @@ public final class P11L1ServerHarness {
     private P11L1ServerHarness() {}
 
     public static boolean enabled() {
-        return java.util.List.of("l1-pre-spawn", "l1-open", "l1-claimed", "l1-impact-close-custody", "l1-two-work-reload", "l1-two-work-stop",
+        return java.util.List.of("l1-pre-spawn", "l1-open", "l1-claimed",
+                        "cooldown-l1-pre-spawn", "cooldown-l1-open", "cooldown-l1-claimed",
+                        "l1-impact-close-custody", "l1-two-work-reload", "l1-two-work-stop",
                         "l1-revision", "l1-p8-send-fault", "l1-ack-fault", "l1-work-death", "l1-work-dimension", "l1-work-config",
                         "l1-partial-reward-function", "l1-work-multi-uuid-qctx", "l1-stats-write-fault-memory",
                         "l1-work-deadline", "l1-spawn-callback-remove", "l1-logout-cleanup-fault", "l1-tracking-retirement", "l1-work-capacity",
@@ -117,6 +119,7 @@ public final class P11L1ServerHarness {
                     run.selfBefore = player.getHealth();
                     run.selfPlaced = true;
                 }
+                P11CooldownL1Probe.reconnected(player);
             } else {
                 require(peer == null && logins == 1, "EXTRA_OR_EARLY_PEER"); peer = player;
             }
@@ -149,6 +152,7 @@ public final class P11L1ServerHarness {
         try {
             stage = Stage.SERVER_POST;
             require(server.isSameThread() && !authFault && ++ticks <= 30_000, "SERVER_DEADLINE_OR_AUTH_OBSERVER");
+            P11CooldownL1Probe.check();
             P11L1ContextRefusalProbe.checkTaskHold();
             if (Boolean.parseBoolean(System.getProperty("gramarye.p11.online.readyOnly", "false"))) {
                 if (ticks >= 20) { terminal = true; server.halt(false); } return;
@@ -195,6 +199,7 @@ public final class P11L1ServerHarness {
                 var facts = P11NativeStorageBoundary.diagnostics(server, account);
                 if (facts.equippedSlot0().equals("ABSENT") || facts.equippedSlot0().equals("UNAVAILABLE")) { return; }
                 episode = 1; run = new Run(current, ticks);
+                P11CooldownL1Probe.prepareEpisode(server, current, output, episode);
                 if (workReward()) {
                     if (multiWorkReward()) {
                         require(!peer.getTags().contains("p11_l1_qctx_peer") && peer.addTag("p11_l1_qctx_peer"), "FRESH_QCTX_PEER_TAG");
@@ -207,6 +212,13 @@ public final class P11L1ServerHarness {
                 P11C4aEvidence.cue(output, "a-cast-1.ready"); return;
             }
             require(ticks - run.started <= 2400, "EPISODE_DEADLINE");
+            if (run.cooldownEpisodeSealed) {
+                if (!P11CooldownL1Probe.nextEpisodeReady(current)) { return; }
+                P11CooldownL1Probe.restoreArenaForNextEpisode();
+                episode++; prepareArena(); run = new Run(current, ticks);
+                P11CooldownL1Probe.prepareEpisode(server, current, output, episode);
+                P11C4aEvidence.cue(output, "a-cast-" + episode + ".ready"); return;
+            }
             if (workReward() && !run.localRewardSealed && P11L1WorkRewardProbe.readyToFinish()) {
                 P11C4aEvidence.write(output, "work-reward-local.json", P11L1WorkRewardProbe.finish());
                 run.localRewardSealed = true;
@@ -231,7 +243,7 @@ public final class P11L1ServerHarness {
                         "LATE_NATIVE_CREDIT_AFTER_WORK_TERMINAL");
                 run.hazard = true;
                 // Ordinary world hazard: native LivingEntity ticks consume existing kill credit.
-                run.actor.serverLevel().setBlock(run.victim.blockPosition(), Blocks.LAVA.defaultBlockState(), 3);
+                P11CooldownL1Probe.placeArenaBlock(run.actor.serverLevel(), run.victim.blockPosition(), Blocks.LAVA.defaultBlockState());
             }
             if (episode == 3 || run.damageReturns != 1 || !run.reconnected || run.victim.isAlive() || workRoots() != 0 || nativeRoots() != 0) { return; }
             require(run.logoutComplete && run.claims == 1 && run.transfers == 1 && run.p5DamageApplied
@@ -258,6 +270,7 @@ public final class P11L1ServerHarness {
                 restartSecond = true; prepareArena();
                 P11C4aEvidence.cue(output, "a-cast-2.ready"); return;
             }
+            if (P11CooldownL1Probe.selected()) { run.cooldownEpisodeSealed = true; return; }
             episode++; prepareArena(); run = new Run(current, ticks);
             P11C4aEvidence.cue(output, "a-cast-" + episode + ".ready");
         } catch (Exception | LinkageError failure) { fail(code(failure), failure); }
@@ -521,6 +534,7 @@ public final class P11L1ServerHarness {
             run.accepted = true; run.instance = admitted.eventToken().skillInstanceId().value();
             require(run.instanceState != null && run.instanceState.id.value().equals(run.instance)
                     && run.instanceState.work != null && !run.instanceState.lease.pin.isClosed(), "ACTUAL_INSTANCE_WORK_AND_PIN");
+            P11CooldownL1Probe.accepted(actor, run.instanceState, result);
             if (workReward()) { P11L1WorkRewardProbe.accepted(actor, run.instanceState, result); }
             if (statsMemory()) { P11L1StatsMemoryProbe.accepted(actor, run.instanceState, result); }
             run.acceptedAt = ticks; run.initialNative = nativeRoots();
@@ -533,7 +547,7 @@ public final class P11L1ServerHarness {
             var floor = BlockPos.containing(position.x, position.y - 1, position.z);
             for (int x = -2; x <= 2; x++) for (int z = -2; z <= 2; z++) {
                 require(actor.serverLevel().isLoaded(floor.offset(x, 0, z)), "NATURAL_TARGET_CHUNK_NOT_LOADED");
-                actor.serverLevel().setBlock(floor.offset(x, 0, z), Blocks.STONE.defaultBlockState(), 3);
+                P11CooldownL1Probe.placeArenaBlock(actor.serverLevel(), floor.offset(x, 0, z), Blocks.STONE.defaultBlockState());
             }
             var victim = episode == 1 ? EntityType.CHICKEN.create(actor.serverLevel()) : EntityType.COW.create(actor.serverLevel());
             require(victim != null, "TARGET_NATIVE_CONSTRUCTOR");
@@ -656,6 +670,7 @@ public final class P11L1ServerHarness {
         if (disposition != RuntimePermitTransferDisposition.TRANSFERRED) { return; }
         require(run.projectile == null && exact.getOwner() == run.actor, "SPAWN_OWNER_OR_DUPLICATE");
         run.projectile = exact; run.transfers++;
+        P11CooldownL1Probe.transferred(projectile, disposition);
         if (workReward()) { P11L1WorkRewardProbe.transferred(projectile); }
     }
 
@@ -742,6 +757,7 @@ public final class P11L1ServerHarness {
                     && run.actor.isRemoved() && run.instanceState.logoutState == SkillRuntimeService.LogoutState.COMPLETE,
                     "ORIGINAL_LOGOUT_DID_NOT_COMPLETE");
             run.logoutComplete = true; run.closing = false; run.logoutAt = ticks;
+            P11CooldownL1Probe.logoutReturned(run.actor);
             if (statsMemory()) {
                 P11C4aEvidence.write(output, "stats-memory-logout.json", P11L1StatsMemoryProbe.normalLogoutReturned());
             } else {
@@ -754,7 +770,13 @@ public final class P11L1ServerHarness {
     private static boolean observes(ServerPlayer actor) { return enabled() && run != null && !terminal && actor == run.actor && server.isSameThread(); }
     private static String selected() { return P11C4aEvidence.property("case"); }
     private static String window() { return P11L1ImpactCustodyProbe.selected() ? "l1-impact-close-custody"
-            : episode == 3 ? "l1-open" : singleNatural() || P11L1RestartProbe.writeSelected() ? "l1-pre-spawn" : selected(); }
+            : episode == 3 ? "l1-open" : singleNatural() || P11L1RestartProbe.writeSelected() ? "l1-pre-spawn"
+            : switch (selected()) {
+                case "cooldown-l1-pre-spawn" -> "l1-pre-spawn";
+                case "cooldown-l1-open" -> "l1-open";
+                case "cooldown-l1-claimed" -> "l1-claimed";
+                default -> selected();
+            }; }
     private static long roots(String kind) { return P11NativeStorageBoundary.diagnostics(server, account).nativeResponsibilities().roots()
             .stream().filter(value -> value.kind().equals(kind)).mapToLong(value -> value.count()).sum(); }
     private static long workRoots() { return roots("WORK"); }
@@ -766,6 +788,7 @@ public final class P11L1ServerHarness {
     private static String code(Throwable failure) { return P11C4aEvidence.failureCode(failure); }
 
     private static void writeEpisode() throws IOException {
+        P11CooldownL1Probe.finishEpisode(episode, current);
         var facts = new LinkedHashMap<String, Object>();
         facts.put("status", "NATIVE_L1_NAMED_EPISODE_OBSERVED_NOT_FULL_MATRIX"); facts.put("episode", episode);
         facts.put("logoutWindow", window()); facts.put("actualP7Acceptance", run.accepted); facts.put("instance", run.instance.toString());
@@ -898,6 +921,7 @@ public final class P11L1ServerHarness {
         if (run.victim != null) { f.put("victimAlive", run.victim.isAlive()); f.put("victimKillCreditIsOldA", run.victim.getKillCredit() == run.actor); }
         f.put("workRoots", workRoots()); f.put("nativeCreditRoots", nativeRoots());
         f.put("operationRoots", roots("OPERATION")); f.put("commandContextRoots", roots("COMMAND_CONTEXT"));
+        if (P11CooldownL1Probe.selected()) { f.put("ownedArena", P11CooldownL1Probe.arenaFacts()); }
         return f;
     }
 
@@ -981,6 +1005,7 @@ public final class P11L1ServerHarness {
         P11L1OnlinePeerProbe.release();
         P11L1CapacityWorkProbe.release();
         P11L1ImpactCustodyProbe.release();
+        P11CooldownL1Probe.release();
     }
 
     private static final class Run {
@@ -995,7 +1020,7 @@ public final class P11L1ServerHarness {
         boolean playerDataReadback, advancementsReadback, statisticsReadback;
         boolean scoreActive, scoreEntered;
         boolean fatalSourceHasEntity, fatalSourceOriginalProjectile, fatalSourceNativeHazard;
-        boolean localRewardSealed, statsWorkSealed;
+        boolean localRewardSealed, statsWorkSealed, cooldownEpisodeSealed;
         Run(ServerPlayer actor, int tick) {
             this.actor = actor; this.connection = actor.connection.getConnection(); this.started = tick;
             initialBody = P11NativeStorageBoundary.nativeSourceOwner(actor).nativeRecipient(actor);

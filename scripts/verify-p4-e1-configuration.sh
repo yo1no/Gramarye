@@ -918,11 +918,14 @@ verify_changed_paths() {
                     ;;
                 scripts/fixtures/p11-c4a-c6-startup.toml | \
                 scripts/fixtures/p11-c4a-handoff-startup.toml | \
+                src/p11GameTestHarness/fixtures/startup.toml | \
                 scripts/fixtures/p11-c4a-c6-rate-startup.toml)
                     [ ! -x "$candidate" ] \
                         || fail "allowed P11 startup fixture is executable: $path"
                     ;;
                 src/p11OnlineHarness/resources/gramarye-p11-l1-harness.mixins.json | \
+                src/p11GameTestHarness/resources/gramarye-p11-gametest-harness.mixins.json | \
+                src/p11OnlineHarness/resources/gramarye-p11-cooldown-harness.mixins.json | \
                 src/p11OnlineHarness/fixtures/l1/advancement/l1_first_kill.json | \
                 src/p11OnlineHarness/fixtures/l1/advancement/l1_late_kill.json | \
                 src/p11OnlineHarness/fixtures/l1/advancement/l1_partial_kill.json | \
@@ -1026,6 +1029,9 @@ self_regression() {
     done
     printf '%s\n' 'Verified exact P11 Mixin resource; schema, side, inventory and protected-path negatives rejected.'
     for resource in \
+        'src/p11GameTestHarness/fixtures/startup.toml' \
+        'src/p11GameTestHarness/resources/gramarye-p11-gametest-harness.mixins.json' \
+        'src/p11OnlineHarness/resources/gramarye-p11-cooldown-harness.mixins.json' \
         'src/p11OnlineHarness/resources/gramarye-p11-l1-harness.mixins.json' \
         'src/p11OnlineHarness/fixtures/l1/advancement/l1_first_kill.json' \
         'src/p11OnlineHarness/fixtures/l1/advancement/l1_late_kill.json' \

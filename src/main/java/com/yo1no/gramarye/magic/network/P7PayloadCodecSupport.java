@@ -2,7 +2,14 @@ package com.yo1no.gramarye.magic.network;
 
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
+import com.yo1no.gramarye.magic.api.id.SkillId;
+import com.yo1no.gramarye.magic.api.id.SkillRevision;
+import com.yo1no.gramarye.magic.definition.document.SkillReference;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary.SyncEntryState;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary.SyncSourceState;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary.SyncReason;
 import java.util.ArrayList;
+import java.util.UUID;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.VarInt;
 
@@ -10,7 +17,6 @@ final class P7PayloadCodecSupport {
     private static final int CAST_FIXED_BODY_BYTES = 11;
     private static final int ACK_MINIMUM_BODY_BYTES = 10;
     private static final int MANA_BODY_BYTES = 17;
-    private static final int MAX_COOLDOWN_BODY_BYTES = 393;
 
     private P7PayloadCodecSupport() {
         throw new AssertionError("no instances");
@@ -194,15 +200,27 @@ final class P7PayloadCodecSupport {
         var snapshot = payload.snapshot();
         requireEncodedSize(
                 snapshot.encodedBodySize(),
-                MAX_COOLDOWN_BODY_BYTES,
+                P7NetworkBounds.ACTUAL_MAX_COOLDOWN_BODY_BYTES,
                 P7NetworkBounds.MAX_S2C_SYNC_BYTES,
                 "skill cooldown snapshot");
         try {
             buffer.writeLong(snapshot.syncSequence());
+            buffer.writeLong(snapshot.sourceEpoch());
+            buffer.writeLong(snapshot.sourceVersion());
+            buffer.writeByte(snapshot.sourceState().wireCode());
+            buffer.writeByte(snapshot.sourceReason().wireCode());
             buffer.writeVarInt(snapshot.entries().size());
             for (var entry : snapshot.entries()) {
                 buffer.writeByte(entry.slot());
-                buffer.writeVarInt(entry.remainingTicks());
+                var id = entry.reference().skillId().value();
+                buffer.writeLong(id.getMostSignificantBits());
+                buffer.writeLong(id.getLeastSignificantBits());
+                buffer.writeInt(entry.reference().revision().value());
+                buffer.writeByte(entry.state().wireCode());
+                buffer.writeByte(entry.reason().wireCode());
+                if (entry.state() == SyncEntryState.ACTIVE) {
+                    buffer.writeVarInt(entry.remainingTicks());
+                }
             }
         } catch (EncoderException failure) {
             throw failure;
@@ -215,11 +233,15 @@ final class P7PayloadCodecSupport {
             RegistryFriendlyByteBuf buffer) {
         requireDecodeSize(
                 buffer.readableBytes(),
-                Long.BYTES + 1,
-                P7NetworkBounds.MAX_S2C_SYNC_BYTES,
+                27,
+                P7NetworkBounds.ACTUAL_MAX_COOLDOWN_BODY_BYTES,
                 "skill cooldown snapshot");
         try {
             var syncSequence = buffer.readLong();
+            var sourceEpoch = buffer.readLong();
+            var sourceVersion = buffer.readLong();
+            var sourceState = SyncSourceState.fromWireCode(buffer.readUnsignedByte());
+            var sourceReason = SyncReason.fromWireCode(buffer.readUnsignedByte());
             var count = readCanonicalVarInt(buffer, "cooldown entry count");
             if (count < 0 || count > P7NetworkBounds.MAX_SYNC_ENTRIES_PER_PACKET) {
                 throw malformed("cooldown entry count exceeds its bound");
@@ -228,17 +250,21 @@ final class P7PayloadCodecSupport {
             var previousSlot = -1;
             for (var index = 0; index < count; index++) {
                 var slot = buffer.readUnsignedByte();
-                var remainingTicks = readPositiveCanonicalVarInt(
-                        buffer, "cooldown remaining ticks");
+                var reference = new SkillReference(new SkillId(new UUID(buffer.readLong(), buffer.readLong())),
+                        new SkillRevision(buffer.readInt()));
+                var state = SyncEntryState.fromWireCode(buffer.readUnsignedByte());
+                var reason = SyncReason.fromWireCode(buffer.readUnsignedByte());
+                var remainingTicks = state == SyncEntryState.ACTIVE
+                        ? readPositiveCanonicalVarInt(buffer, "cooldown remaining ticks") : 0;
                 if (slot <= previousSlot) {
                     throw malformed("cooldown entries are not strictly ordered");
                 }
-                entries.add(new CooldownSnapshotEntry(slot, remainingTicks));
+                entries.add(new CooldownSnapshotEntry(slot, reference, state, reason, remainingTicks));
                 previousSlot = slot;
             }
             requireFullyConsumed(buffer, "skill cooldown snapshot");
             return new SkillCooldownSyncPayload(
-                    new SkillCooldownSnapshot(syncSequence, entries));
+                    new SkillCooldownSnapshot(syncSequence, sourceEpoch, sourceVersion, sourceState, sourceReason, entries));
         } catch (DecoderException failure) {
             throw failure;
         } catch (RuntimeException failure) {

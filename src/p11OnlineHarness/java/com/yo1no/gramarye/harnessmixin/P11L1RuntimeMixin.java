@@ -28,6 +28,7 @@ abstract class P11L1RuntimeMixin {
     private void p11$l1Accepted(MinecraftServer server, ServerPlayer actor, SkillReference reference,
             @Coerce Object geometry, CallbackInfoReturnable<Object> callback) {
 com.yo1no.gramarye.P11L1HostStopProbe.accepted(server, actor, geometry, callback.getReturnValue());
+com.yo1no.gramarye.P11CooldownHostProbe.accepted(server, actor, reference, callback.getReturnValue());
 P11L1ServerHarness.accepted(this, server, actor, geometry, callback.getReturnValue());
     }
 
@@ -36,6 +37,7 @@ P11L1ServerHarness.accepted(this, server, actor, geometry, callback.getReturnVal
     private void p11$l1Transferred(MinecraftServer server, @Coerce Object permit, UUID planned,
             @Coerce Object projectile, CallbackInfoReturnable<Object> callback) {
 com.yo1no.gramarye.P11L1HostStopProbe.transferred(projectile, callback.getReturnValue());
+com.yo1no.gramarye.P11CooldownHostProbe.transferred(projectile, callback.getReturnValue());
 P11L1ServerHarness.transferred(projectile, callback.getReturnValue());
     }
 
@@ -44,5 +46,6 @@ P11L1ServerHarness.transferred(projectile, callback.getReturnValue());
     private static void p11$l1Claim(@Coerce Object slot, @Coerce Object instance,
             @Coerce Object permit, @Coerce Object hit, @Coerce Object disposition, CallbackInfo callback) {
         P11L1ServerHarness.claimed(disposition);
+        com.yo1no.gramarye.P11CooldownHostProbe.claimed(disposition);
     }
 }

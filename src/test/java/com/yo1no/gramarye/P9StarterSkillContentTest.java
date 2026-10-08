@@ -101,8 +101,8 @@ final class P9StarterSkillContentTest {
     void payloadCodecsRoundTripOnlyTheExactCanonicalMaps() {
         assertCodec(
                 P9ActiveCastTriggerType.INSTANCE.payloadCodec(),
-                P9ActiveCastTriggerPayloadV0.INSTANCE,
-                "{}");
+                new P9ActiveCastTriggerPayloadV1(0),
+                "{\"cooldown_ticks\":0}");
         assertCodec(
                 P9SpawnProjectileActionType.INSTANCE.payloadCodec(),
                 new P9SpawnProjectileActionPayloadV0(0, 0L),
@@ -141,7 +141,6 @@ final class P9StarterSkillContentTest {
     @Test
     void schemaZeroUsesOnlyTheInheritedEmptyMigrationPlan() {
         for (var descriptor : List.of(
-                P9ActiveCastTriggerType.INSTANCE,
                 P9EffectHitTriggerType.INSTANCE,
                 P9SpawnProjectileActionType.INSTANCE)) {
             assertEquals(0, schemaVersion(descriptor));
@@ -149,6 +148,9 @@ final class P9StarterSkillContentTest {
             assertTrue(migrationPlan(descriptor).verifyCoverage(0).isSuccess());
         }
         assertEquals(1, P9DamageActionType.INSTANCE.currentPayloadSchemaVersion());
+        assertEquals(1, P9ActiveCastTriggerType.INSTANCE.currentPayloadSchemaVersion());
+        assertEquals(1, P9ActiveCastTriggerType.INSTANCE.payloadMigrationPlan().steps().size());
+        assertTrue(P9ActiveCastTriggerType.INSTANCE.payloadMigrationPlan().verifyCoverage(1).isSuccess());
         assertEquals(1, P9DamageActionType.INSTANCE.payloadMigrationPlan().steps().size());
         assertTrue(P9DamageActionType.INSTANCE.payloadMigrationPlan().verifyCoverage(1).isSuccess());
     }
@@ -281,7 +283,7 @@ final class P9StarterSkillContentTest {
 
         assertAll(
                 () -> assertTrue(P9ActiveCastTriggerType.INSTANCE
-                        .validate(P9ActiveCastTriggerPayloadV0.INSTANCE, CONTEXT)
+                        .validate(new P9ActiveCastTriggerPayloadV1(0), CONTEXT)
                         .isValid()),
                 () -> assertEquals(Set.of("profile_code", "mana_cost"), errorPaths(spawn)),
                 () -> assertEquals(
@@ -328,7 +330,7 @@ final class P9StarterSkillContentTest {
     void descriptorInspectorsProjectTheExactSourceTargetReferenceAndOutputShape() {
         var activeCast = triggerProjection(
                 P9ActiveCastTriggerType.INSTANCE,
-                P9ActiveCastTriggerPayloadV0.INSTANCE);
+                new P9ActiveCastTriggerPayloadV1(0));
         var spawn = actionProjection(
                 P9SpawnProjectileActionType.INSTANCE,
                 new P9SpawnProjectileActionPayloadV0(0, 0L));
@@ -432,6 +434,8 @@ final class P9StarterSkillContentTest {
                 new StarterGameplayFingerprintV0(
                         0,
                         id("active_cast"),
+                        1,
+                        0,
                         id("spawn_projectile"),
                         0,
                         0L,
@@ -717,14 +721,19 @@ final class P9StarterSkillContentTest {
         }
     }
 
-    private static final class AlternateTriggerType implements TriggerType<P9ActiveCastTriggerPayloadV0> {
+    private static final class AlternateTriggerType implements TriggerType<P9ActiveCastTriggerPayloadV1> {
         @Override
         public int currentPayloadSchemaVersion() {
-            return 0;
+            return 1;
         }
 
         @Override
-        public MapCodec<P9ActiveCastTriggerPayloadV0> payloadCodec() {
+        public PayloadMigrationPlan payloadMigrationPlan() {
+            return P9ActiveCastTriggerType.INSTANCE.payloadMigrationPlan();
+        }
+
+        @Override
+        public MapCodec<P9ActiveCastTriggerPayloadV1> payloadCodec() {
             return P9ActiveCastTriggerType.INSTANCE.payloadCodec();
         }
 
@@ -735,7 +744,7 @@ final class P9StarterSkillContentTest {
 
         @Override
         public com.yo1no.gramarye.magic.validation.ValidationResult validate(
-                P9ActiveCastTriggerPayloadV0 payload, ValidationContext context) {
+                P9ActiveCastTriggerPayloadV1 payload, ValidationContext context) {
             return P9ActiveCastTriggerType.INSTANCE.validate(payload, context);
         }
     }

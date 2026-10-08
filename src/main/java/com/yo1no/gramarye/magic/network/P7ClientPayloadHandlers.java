@@ -15,8 +15,11 @@ final class P7ClientPayloadHandlers {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(composition, "composition");
-        context.enqueueWork(new P7IntentAckDispatchTask(
-                payload.acknowledgement(), composition.clientMirrorDispatchPort()));
+        var port = composition.clientMirrorDispatchPort();
+        long generation = port.captureDispatchGeneration(context.connection(), context.listener());
+        if (generation > 0) {
+            context.enqueueWork(new P7IntentAckDispatchTask(payload.acknowledgement(), port, generation));
+        }
     }
 
     static void handlePlayerManaSnapshot(
@@ -26,8 +29,11 @@ final class P7ClientPayloadHandlers {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(composition, "composition");
-        context.enqueueWork(new P7ManaDispatchTask(
-                payload.snapshot(), composition.clientMirrorDispatchPort()));
+        var port = composition.clientMirrorDispatchPort();
+        long generation = port.captureDispatchGeneration(context.connection(), context.listener());
+        if (generation > 0) {
+            context.enqueueWork(new P7ManaDispatchTask(payload.snapshot(), port, generation));
+        }
     }
 
     static void handleSkillCooldownSnapshot(
@@ -37,7 +43,10 @@ final class P7ClientPayloadHandlers {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(composition, "composition");
-        context.enqueueWork(new P7CooldownDispatchTask(
-                payload.snapshot(), composition.clientMirrorDispatchPort()));
+        var port = composition.clientMirrorDispatchPort();
+        long generation = port.captureDispatchGeneration(context.connection(), context.listener());
+        if (generation > 0) {
+            context.enqueueWork(new P7CooldownDispatchTask(payload.snapshot(), port, generation));
+        }
     }
 }

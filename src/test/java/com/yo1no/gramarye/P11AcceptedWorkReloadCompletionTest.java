@@ -140,6 +140,8 @@ final class P11AcceptedWorkReloadCompletionTest {
           static boolean isP9ExecutionData(Object d){return d instanceof CastGeometryExecutionDataV0||d instanceof ProjectileHitExecutionDataV0;}
           static final class Pin {boolean closed;boolean isClosed(){return closed;}}
           static final class Lease {Object reference;Pin pin=new Pin();int releases;boolean release(){check(!pin.closed,"lease once");releases++;pin.closed=true;return true;}}
+          // Scalar spy for the new receipt call; actual receipt monotonicity has its own component test.
+          static final class Receipt {int revocations;void revoke(){revocations++;}}
           static final class ServerSlot {
             enum State { RUNNING, STOPPING, FAULTED, REMOVED }
             State state=State.RUNNING;boolean dispatching=true,p9BatchContinuationCloseInProgress,p9ActiveIndexInvalidatedAfterError;
@@ -154,6 +156,7 @@ final class P11AcceptedWorkReloadCompletionTest {
               SkillInstanceId id;RuntimeBudgetAttribution attribution;Lease lease=new Lease();boolean inFlight,terminal,cancellationRequested;
               int committedPending,reservedPending,workReleases,terminalObservations;Object witness=new Object(),p9SuspendedEventId;
               RuntimeProjectileContinuationPermit activeProjectileContinuation;ProjectileClosureReason p9InFlightClosureReason;Throwable diagnosticFailure;
+              Receipt cooldownReceipt=new Receipt();
               void clearP9AuthenticatedActorWitness(){witness=null;}void releaseWork(){check(workReleases==0,"work once");workReleases++;}
             }
           }
@@ -241,7 +244,8 @@ final class P11AcceptedWorkReloadCompletionTest {
               check(!lease.pin.closed&&m.current.workReleases==0&&m.slot.reservedPending==0&&m.account.reservedPending==0&&m.slot.currentReservationCount==0,"lease/W retained remainder released");
               check(m.slot.activeProjectileContinuations.isEmpty()&&m.current.activeProjectileContinuation==null&&!m.slot.p9BatchContinuationCloseInProgress,"permits synchronously closed");
               check(m.slot.queue.size()==1&&m.slot.deferredCount==1&&m.slot.committedPending==3&&m.account.committedPending==3&&m.slot.instances.size()==2,"non-P9 queue/deferred intact");
-              if(mode!=0)check(m.currentPermit.closes==1&&m.currentPermit.projectile.discards==1&&m.currentPermit.state==(mode==1?RuntimeProjectileContinuationPermit.State.CLOSED_NO_HIT:RuntimeProjectileContinuationPermit.State.CLOSED_AFTER_HIT),"native close/discard once");
+              if(mode!=0)check(m.currentPermit.closes==1&&m.currentPermit.projectile.discards==1&&m.currentPermit.state==(mode==1?RuntimeProjectileContinuationPermit.State.CLOSED_NO_HIT:RuntimeProjectileContinuationPermit.State.CLOSED_AFTER_HIT)
+                &&m.current.cooldownReceipt.revocations==1,"native close/discard once and exact receipt revocation");
               prepareP9ReloadInFlight(m.slot);check(m.current.workReleases==0&&m.slot.reservedPending==0,"repeated prepare pair only is idempotent");
               terminalizeCurrent(m.slot,m.current,original);
               check(m.slot.currentEvent==null&&!m.current.inFlight&&m.current.p9InFlightClosureReason==null&&lease.pin.closed&&lease.releases==1&&m.current.workReleases==1,"original terminal once");

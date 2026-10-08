@@ -118,8 +118,10 @@ final class P11FoundationBoundaryTest {
         assertEquals(List.of(
                 "private final P11FoundationService p11FoundationService;",
                 "p11FoundationService = new P11FoundationService(p11SourceProvenance, playerSkillAttachmentService);",
+                "p11CastCooldownService = new P11CastCooldownService(p11FoundationService, cooldownPolicyProjection::observe);",
+                "p11FoundationService.bindCooldowns(p11CastCooldownService);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::tick);",
-                "p11FoundationService);",
+                "p11FoundationService,",
                 "p11FoundationService.bindRuntime(skillRuntimeService);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::stopping);",
                 "NeoForge.EVENT_BUS.addListener(p11FoundationService::stopped);",

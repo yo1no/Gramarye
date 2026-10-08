@@ -233,7 +233,7 @@ static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
                 && event.getEntity() instanceof ServerPlayer actor) {
             P11C4aHostExpiryProbe.logout(actor); return;
         }
-        if (P11C4aScenario.MODE == P11C4aScenario.Mode.HOST_LEAVE && hostLeaveStarted
+        if ((P11C4aScenario.MODE == P11C4aScenario.Mode.HOST_LEAVE || P11CooldownHostProbe.selected()) && hostLeaveStarted
                 && event.getEntity() instanceof ServerPlayer actor) {
             P11C4aHostLeaveProbe.logout(actor); return;
         }
@@ -298,6 +298,23 @@ static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
                 return;
             }
 if (ACTORS.size() != 2) { return; }
+if (P11CooldownHostProbe.selected()) {
+    require(integrated, "COOLDOWN_HOST_TOPOLOGY");
+    var hostActor = ACTORS.get("host"); var peerActor = ACTORS.get("b");
+    if (!P11CooldownHostProbe.started()) {
+        if (!materialReady(hostActor.current) || !materialReady(peerActor.current)) { return; }
+        require(hostActor.logins == 1 && peerActor.logins == 1 && hostActor.respawns == 0
+                && peerActor.respawns == 0, "COOLDOWN_HOST_INITIAL_ACTORS");
+        P11CooldownHostProbe.start(server, hostActor.current, peerActor.current, output);
+    }
+    if (!hostLeaveStarted) {
+        if (!P11CooldownHostProbe.prefix() || !P11C4aHostLeaveProbe.ready(hostActor.current, peerActor.current)) { return; }
+        P11C4aHostLeaveProbe.start(server, hostActor.current, peerActor.current, output);
+        hostLeaveStarted = true;
+    }
+    if (!P11C4aHostLeaveProbe.terminalIntent()) { P11CooldownHostProbe.refusalCurrent(); }
+    P11C4aHostLeaveProbe.tick(); return;
+}
 if (P11L1HostStopProbe.selected()) {
     require(integrated, "L1_HOST_STOP_TOPOLOGY");
     var hostActor = ACTORS.get("host"); var peerActor = ACTORS.get("b");
@@ -440,7 +457,10 @@ if (P11L1HostStopProbe.selected()) {
                 // The normal subset is sealed before the separate real reload probes.
                 // Those probes never retroactively rewrite this subset's observations.
             }
-        } catch (Exception | LinkageError failure) { fail("NATIVE_SCENE_" + P11C4aEvidence.failureCode(failure)); }
+        } catch (Exception | LinkageError failure) {
+            P11CooldownHostProbe.sceneFailure(failure);
+            fail("NATIVE_SCENE_" + P11C4aEvidence.failureCode(failure));
+        }
     }
 
     private static boolean preplayChatStarted, preplayChatParkingComplete, preplayChatFinished;
@@ -1012,6 +1032,7 @@ if (P11L1HostStopProbe.selected()) {
             if (departureStarted) { P11C4aConfigDepartureProbe.stopped(event.getServer()); }
 if (P11L1HostStopProbe.selected()) { P11L1HostStopProbe.stopped(event.getServer()); }
 if (hostLeaveStarted) { P11C4aHostLeaveProbe.stopped(event.getServer()); }
+if (P11CooldownHostProbe.selected()) { P11CooldownHostProbe.stopped(event.getServer()); }
             if (hostExpiryStarted) { P11C4aHostExpiryProbe.stopped(event.getServer()); }
             if (output != null) { P11C4aEvidence.write(output, "stopped.json", Map.of("status", "ORIGINAL_SERVER_STOPPED", "normalReports", normalReports)); }
         }

@@ -49,6 +49,7 @@ final class P9S1BoundaryTest {
     private static final Path SERVICE_SOURCE = ROOT_MAIN.resolve("SkillRuntimeService.java");
 
     private static final Set<String> P9_CONTENT_SOURCE_FILES = Set.of(
+            "P9ActiveCastTriggerPayloadV1.java",
             "P9ActiveCastTriggerPayloadV0.java",
             "P9ActiveCastTriggerType.java",
             "P9DamageActionPayloadV0.java",
@@ -59,6 +60,7 @@ final class P9S1BoundaryTest {
             "P9SpawnProjectileActionType.java",
             "P9StarterSkillContent.java");
     private static final Set<String> P9_CURRENT_SOURCE_FILES = Set.of(
+            "P9ActiveCastTriggerPayloadV1.java",
             "P9ActiveCastTriggerPayloadV0.java",
             "P9ActiveCastTriggerType.java",
             "P9DamageActionPayloadV0.java",
@@ -77,6 +79,7 @@ final class P9S1BoundaryTest {
             "P9StarterSkillIdentityV0.java",
             "P9WorldEffectHandoff.java");
     private static final Map<String, Set<String>> TOP_LEVEL_TYPES = Map.ofEntries(
+            Map.entry("P9ActiveCastTriggerPayloadV1.java", Set.of("P9ActiveCastTriggerPayloadV1")),
             Map.entry(
                     "P9ActiveCastTriggerPayloadV0.java",
                     Set.of("P9ActiveCastTriggerPayloadV0")),
@@ -130,6 +133,8 @@ final class P9S1BoundaryTest {
             "\\bP9StarterSkillContent\\s*\\.\\s*registerDefinitionTypes\\s*"
                     + "\\(\\s*\\)\\s*;");
     private static final Set<String> P9_CURRENT_CLASS_AFTER_SET = Set.of(
+            "P9ActiveCastTriggerPayloadV1.class",
+            "P9ActiveCastTriggerType$LegacyActiveCastMigration.class",
             "P9ActiveCastTriggerPayloadV0.class",
             "P9ActiveCastTriggerType.class",
             "P9DamageActionPayloadV0.class",
@@ -503,7 +508,7 @@ final class P9S1BoundaryTest {
                 P9ActiveCastTriggerType.class,
                 P9ActiveCastTriggerType.INSTANCE,
                 TriggerType.class,
-                P9ActiveCastTriggerPayloadV0.class);
+                P9ActiveCastTriggerPayloadV1.class);
         assertDescriptor(
                 P9EffectHitTriggerType.class,
                 P9EffectHitTriggerType.INSTANCE,
@@ -524,6 +529,8 @@ final class P9S1BoundaryTest {
     @Test
     void payloadAndFingerprintAfterSetsHaveTheExactClosedPackagePrivateShape() {
         assertAll(
+                () -> assertRecord(P9ActiveCastTriggerPayloadV1.class,
+                        TriggerPayload.class, List.of("cooldownTicks:int")),
                 () -> assertFalse(Modifier.isPublic(
                         P9ActiveCastTriggerPayloadV0.class.getModifiers())),
                 () -> assertTrue(P9ActiveCastTriggerPayloadV0.class.isEnum()),
@@ -555,6 +562,8 @@ final class P9S1BoundaryTest {
                         List.of(
                                 "firstNodeIndex:int",
                                 "activeCastTypeId:" + ResourceLocation.class.getName(),
+                                "activeCastSchemaVersion:int",
+                                "cooldownTicks:int",
                                 "spawnProjectileTypeId:" + ResourceLocation.class.getName(),
                                 "profileCode:int",
                                 "spawnManaCost:long",
@@ -743,13 +752,14 @@ final class P9S1BoundaryTest {
                 () -> assertTrue(Modifier.isFinal(instanceField.getModifiers())),
                 () -> assertFalse(Modifier.isPublic(instanceField.getModifiers())),
                 () -> assertSame(instance, instanceField.get(null)),
-                () -> assertEquals(type == P9DamageActionType.class ? 6 : 5,
+                () -> assertEquals(type == P9DamageActionType.class
+                                || type == P9ActiveCastTriggerType.class ? 6 : 5,
                         exposedOperations.size()),
                 () -> assertTrue(exposedOperations.stream()
                         .allMatch(method -> Modifier.isPublic(method.getModifiers())
                                 && !Modifier.isStatic(method.getModifiers()))),
                 () -> assertEquals(
-                        type == P9DamageActionType.class ? Set.of(
+                        type == P9DamageActionType.class || type == P9ActiveCastTriggerType.class ? Set.of(
                                 "currentPayloadSchemaVersion", "payloadInspector", "payloadCodec",
                                 "capabilities", "validate", "payloadMigrationPlan") : Set.of(
                                 "currentPayloadSchemaVersion",
@@ -759,7 +769,7 @@ final class P9S1BoundaryTest {
                                 "validate"),
                         publicOperationNames),
                 () -> assertEquals(
-                        type == P9DamageActionType.class ? 1 : 0,
+                        type == P9DamageActionType.class || type == P9ActiveCastTriggerType.class ? 1 : 0,
                         Arrays.stream(type.getDeclaredMethods())
                                 .filter(method -> method.getName().equals("payloadMigrationPlan"))
                                 .count()));

@@ -30,7 +30,7 @@ final class P7S2DedicatedRegistrationTest {
             "PresentationEventPayload.java",
             "ProfileCatalogPayload.java");
     private static final Set<String> CLIENT_ONLY_NETWORK_SOURCES = Set.of(
-            "P7ClientLifecycleEvents.java",
+            "P7ClientLifecycleEvents.java", "P7CooldownHud.java",
             "P9ClientCastInput.java",
             "P9ClientKeyMappings.java");
 

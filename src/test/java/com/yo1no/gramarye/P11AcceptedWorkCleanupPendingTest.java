@@ -20,7 +20,7 @@ final class P11AcceptedWorkCleanupPendingTest {
         Path java = temporary.resolve("CleanupModel.java");
         Files.writeString(java, model);
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null,
-                "--release", "21", "-d", temporary.toString(), java.toString()));
+                "--release", "21", "-proc:none", "-d", temporary.toString(), java.toString()));
         try (var loader = new URLClassLoader(new java.net.URL[] {temporary.toUri().toURL()}, null)) {
             loader.loadClass("CleanupModel").getMethod("verify").invoke(null);
         }
@@ -130,7 +130,7 @@ final class P11AcceptedWorkCleanupPendingTest {
         Path java = temporary.resolve("SchedulerModel.java");
         Files.writeString(java, generated);
         assertEquals(0, ToolProvider.getSystemJavaCompiler().run(null, null, null,
-                "--release", "21", "-d", temporary.toString(), java.toString()));
+                "--release", "21", "-proc:none", "-d", temporary.toString(), java.toString()));
         try (var loader = new URLClassLoader(new java.net.URL[] {temporary.toUri().toURL()}, null)) {
             loader.loadClass("SchedulerModel").getMethod("verify").invoke(null);
         }

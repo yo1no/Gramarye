@@ -98,6 +98,20 @@ final class P10TemplateValidationTest {
     }
 
     @Test
+    void currentCooldownZeroIsStarterButPositiveRuntimePoliciesAreNotCatalogContent() throws IOException {
+        for (int duration : new int[] {0, 1, 120, 600}) {
+            var json = builtIn();
+            var trigger = json.getAsJsonArray("nodes").get(0).getAsJsonObject().getAsJsonObject("trigger");
+            trigger.addProperty("schema_version", 1);
+            trigger.getAsJsonObject("payload").addProperty("cooldown_ticks", duration);
+            var result = validation().validate(body(json), CONTEXT, ValidationResult.valid());
+            assertEquals(duration == 0, result.ready());
+            assertEquals(duration == 0 ? P10TemplateValidation.Classification.ACCEPTED
+                    : P10TemplateValidation.Classification.SEMANTIC_INVALID, result.classification());
+        }
+    }
+
+    @Test
     void actualEarlyDescriptorWarningsFillThePipelineBeforeEveryLateProductionFatal() throws IOException {
         for (var classification : List.of(P10TemplateValidation.Classification.UNKNOWN_TYPE,
                 P10TemplateValidation.Classification.MIGRATION_FAILED,
@@ -132,7 +146,7 @@ final class P10TemplateValidationTest {
         assertEquals(P10TemplateValidation.Classification.UNKNOWN_TYPE,
                 validation().validate(body(json), CONTEXT, warningPrefix(1024)).classification());
         first.getAsJsonObject("trigger").addProperty("type", "gramarye:active_cast");
-        first.getAsJsonObject("trigger").addProperty("schema_version", 1);
+        first.getAsJsonObject("trigger").addProperty("schema_version", 2);
         assertEquals(P10TemplateValidation.Classification.FUTURE_SCHEMA,
                 validation().validate(body(json), CONTEXT, warningPrefix(1024)).classification());
     }
@@ -140,7 +154,7 @@ final class P10TemplateValidationTest {
     @Test
     void nodeZeroSemanticRunsBeforeNextEnvelopeLookup() throws IOException {
         var calls = new ArrayList<String>();
-        var descriptor = new TriggerType<P9ActiveCastTriggerPayloadV0>() {
+        var descriptor = new TriggerType<P9ActiveCastTriggerPayloadV1>() {
             private final P9ActiveCastTriggerType delegate = P9ActiveCastTriggerType.INSTANCE;
 
             @Override
@@ -154,12 +168,12 @@ final class P10TemplateValidationTest {
             }
 
             @Override
-            public Optional<TriggerPayloadInspector<P9ActiveCastTriggerPayloadV0>> payloadInspector() {
+            public Optional<TriggerPayloadInspector<P9ActiveCastTriggerPayloadV1>> payloadInspector() {
                 return delegate.payloadInspector();
             }
 
             @Override
-            public MapCodec<P9ActiveCastTriggerPayloadV0> payloadCodec() {
+            public MapCodec<P9ActiveCastTriggerPayloadV1> payloadCodec() {
                 return delegate.payloadCodec();
             }
 
@@ -169,7 +183,7 @@ final class P10TemplateValidationTest {
             }
 
             @Override
-            public ValidationResult validate(P9ActiveCastTriggerPayloadV0 payload, ValidationContext context) {
+            public ValidationResult validate(P9ActiveCastTriggerPayloadV1 payload, ValidationContext context) {
                 calls.add("node0.trigger.semantic");
                 return delegate.validate(payload, context);
             }
@@ -384,7 +398,7 @@ final class P10TemplateValidationTest {
         }
         var descriptorReport = new ValidationResult(warnings, false, false);
         var semanticCalls = new int[1];
-        var descriptor = new TriggerType<P9ActiveCastTriggerPayloadV0>() {
+        var descriptor = new TriggerType<P9ActiveCastTriggerPayloadV1>() {
             private final P9ActiveCastTriggerType delegate = P9ActiveCastTriggerType.INSTANCE;
 
             @Override
@@ -392,15 +406,15 @@ final class P10TemplateValidationTest {
             @Override
             public PayloadMigrationPlan payloadMigrationPlan() { return delegate.payloadMigrationPlan(); }
             @Override
-            public Optional<TriggerPayloadInspector<P9ActiveCastTriggerPayloadV0>> payloadInspector() {
+            public Optional<TriggerPayloadInspector<P9ActiveCastTriggerPayloadV1>> payloadInspector() {
                 return delegate.payloadInspector();
             }
             @Override
-            public MapCodec<P9ActiveCastTriggerPayloadV0> payloadCodec() { return delegate.payloadCodec(); }
+            public MapCodec<P9ActiveCastTriggerPayloadV1> payloadCodec() { return delegate.payloadCodec(); }
             @Override
             public TriggerCapabilities capabilities() { return delegate.capabilities(); }
             @Override
-            public ValidationResult validate(P9ActiveCastTriggerPayloadV0 payload, ValidationContext context) {
+            public ValidationResult validate(P9ActiveCastTriggerPayloadV1 payload, ValidationContext context) {
                 semanticCalls[0]++;
                 assertEquals(ValidationResult.valid(), delegate.validate(payload, context));
                 return descriptorReport;

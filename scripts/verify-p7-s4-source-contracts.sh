@@ -34,9 +34,110 @@ is_p10_path() {
     esac
 }
 
+# Exact §11 cooldown after-set; no general package or future-source admission.
+# Includes exact source-equivalent test-fixture lifetime corrections.
+is_p11_cooldown_slice_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/P11CastCooldownAttachments.java | \
+        src/main/java/com/yo1no/gramarye/P11CastCooldownCodec.java | \
+        src/main/java/com/yo1no/gramarye/P11CastCooldownData.java | \
+        src/main/java/com/yo1no/gramarye/P11CastCooldownDefinitionBridge.java | \
+        src/main/java/com/yo1no/gramarye/P11CastCooldownMaterial.java | \
+        src/main/java/com/yo1no/gramarye/P11CastCooldownNbtSize.java | \
+        src/main/java/com/yo1no/gramarye/P11CastCooldownService.java | \
+        src/main/java/com/yo1no/gramarye/P11CooldownPolicyProjection.java | \
+        src/main/java/com/yo1no/gramarye/P7AuthenticatedPlayerCastIngress.java | \
+        src/main/java/com/yo1no/gramarye/P9ActiveCastTriggerPayloadV1.java | \
+        src/main/java/com/yo1no/gramarye/P9ActiveCastTriggerType.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java | \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachments.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/CooldownSnapshotEntry.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ClientMirrorDispatchPort.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ClientPayloadHandlers.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7CooldownDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7IntentAckDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ManaDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7NetworkBounds.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PayloadCodecSupport.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerSessionService.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSnapshot.java | \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java | \
+        src/p11GameTestHarness/fixtures/startup.toml | \
+        src/p11GameTestHarness/java/com/yo1no/gramarye/P11CooldownGameTestHarness.java | \
+        src/p11GameTestHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownGameTestFixtureMixin.java | \
+        src/p11GameTestHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownGameTestCompositionMixin.java | \
+        src/p11GameTestHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownGameTestRuntimeMixin.java | \
+        src/p11GameTestHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownGameTestOwnerMixin.java | \
+        src/p11GameTestHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownGameTestCapacityMixin.java | \
+        src/p11GameTestHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownP8GameTestScheduleMixin.java | \
+        src/p11GameTestHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownP9GameTestScheduleMixin.java | \
+        src/p11GameTestHarness/resources/gramarye-p11-gametest-harness.mixins.json | \
+        src/p4E0Research/java/com/yo1no/gramarye/magic/definition/store/P4E0R2QStoreJournalFixtures.java | \
+        src/test/java/com/yo1no/gramarye/P11CooldownNbtBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P11CooldownPolicyTest.java | \
+        src/test/java/com/yo1no/gramarye/P11CooldownProjectionTest.java | \
+        src/test/java/com/yo1no/gramarye/P11CooldownRuntimeBoundaryTest.java | \
+        src/test/java/com/yo1no/gramarye/P11CooldownServiceTest.java | \
+        src/test/java/com/yo1no/gramarye/P7P5AdmissionMapperTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4A2StoreNbtFramingTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/definition/store/P4C2PhaseTypes.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandlerTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ClientPayloadHandlersTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7NetworkBoundsTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7QueuedTaskRetentionTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7RecordingPayloadContext.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7S2CodecTestSupport.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayloadCodecTest.java)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Exact P11 native lifecycle/reward, accepted-work L1 and direct companions, never prefix admission.
 is_p11_native_slice_path() {
     case "$1" in
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownClientHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownServerHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownRestartProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownL1Probe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownFaultProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownCostProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownDurabilityProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownDualProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownHostProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownHostClientProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownHostCompositionMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownFaultOperationMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownFaultSourceMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownDurabilityClientProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownDurabilityAddMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownDurabilityWriterMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownCostPacketMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownCloneProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownCloneClientProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownFaultAddMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownFaultProjectileMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownFaultRuntimeMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownFaultArmMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownFaultServerMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownCostCellMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownCostMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownCloneCopyMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownCloneSerializerMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownCloneClientMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownL1MaterialMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/magic/network/P11CooldownInputObservation.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownClientInputMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownClientMirrorMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownCompositionMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownFoundationMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownHudMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownInstanceMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownLoginMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownOwnerMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11CooldownRuntimeMixin.java | \
+        src/p11OnlineHarness/resources/gramarye-p11-cooldown-harness.mixins.json | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/P11C4aAckRejectionClientProbe.java | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/P11C4aAckRejectionProbe.java | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/P11C4aC6ClientFlow.java | \
@@ -533,6 +634,7 @@ is_s4_path() {
         src/main/java/com/yo1no/gramarye/magic/network/P7ClientMirror.java | \
         src/main/java/com/yo1no/gramarye/magic/network/P7ClientMirrorDispatchFactory.java | \
         src/main/java/com/yo1no/gramarye/magic/network/P7ClientLifecycleEvents.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7CooldownHud.java | \
         src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java)
             return 0 ;;
         *) return 1 ;;
@@ -762,8 +864,7 @@ reject_game_test_liveness_receiver() {
     return 1
 }
 
-# The sole production-packaged GameTest liveness use is the P9-S3 age-boundary
-# assertion. Bind the exception to its enclosing method, local factory call, and
+# The P9-S3 age-boundary liveness assertion is bound to its enclosing method, local factory call, and
 # the factory's concrete Breeze return type. Any extra, moved, shadowed, or
 # otherwise unresolved receiver remains fail-closed.
 verify_p9_s3_entity_liveness() {
@@ -1066,6 +1167,67 @@ verify_p9_s3_compiled_liveness() {
     fi
 }
 
+# The other exact use is the managed mock respawn precondition. It must remain
+# the single ServerPlayer parameter read in the named guard, not a holder-wide
+# exception. The compiled owner and aload_0 also reject same-name shadow types.
+verify_p7_cooldown_player_liveness() {
+    local source="$1"
+    local logical_source="$2"
+    local classes_root="$3"
+    local class_file bytecode
+    if ! LC_ALL=C awk '
+        function count(text, pattern, result) {
+            result = 0
+            while (match(text, pattern)) { result++; text = substr(text, RSTART + RLENGTH) }
+            return result
+        }
+        {
+            all_alive += count($0, "(^|[^[:alnum:]_$])isAlive([^[:alnum:]_$]|$)")
+            if ($0 ~ /^[[:space:]]*import net[.]minecraft[.]server[.]level[.]ServerPlayer;[[:space:]]*$/) imports++
+            if ($0 ~ /^[[:space:]]*static ServerPlayer respawnCooldownMockPlayer[(]ServerPlayer before[)] [{][[:space:]]*$/) {
+                methods++; inside = 1; depth = 0
+            }
+            if (inside) {
+                if ($0 ~ /(^|[^[:alnum:]_$])before[[:space:]]*=[^=]/) reassigned++
+                method_alive += count($0, "(^|[^[:alnum:]_$])isAlive([^[:alnum:]_$]|$)")
+                if ($0 ~ /^[[:space:]]*[|][|] observer == null [|][|] !before[.]isAlive[(][)][)] [{][[:space:]]*$/ && depth == 1) guards++
+                depth += count($0, "[{]") - count($0, "[}]")
+                if (depth == 0) inside = 0
+            }
+        }
+        END { exit(!(imports == 1 && methods == 1 && all_alive == 1 && method_alive == 1 && guards == 1 && !reassigned)) }
+    ' "${source}"; then
+        reject_game_test_liveness_receiver "${logical_source}"
+        return 1
+    fi
+    class_file="${classes_root}/com/yo1no/gramarye/P7S4LoginManaGameTests.class"
+    if [[ ! -d "${classes_root}" || -L "${classes_root}" \
+            || ! -f "${class_file}" || -L "${class_file}" \
+            || "${source}" -nt "${class_file}" ]] \
+            || ! command -v javap >/dev/null 2>&1 \
+            || ! bytecode="$(javap -classpath "${classes_root}" -c -p \
+                com.yo1no.gramarye.P7S4LoginManaGameTests 2>/dev/null)"; then
+        reject_game_test_liveness_receiver "${logical_source}"
+        return 1
+    fi
+    if ! printf '%s\n' "${bytecode}" | LC_ALL=C awk '
+        /^  [^ ]/ { inside = 0 }
+        /^  static net[.]minecraft[.]server[.]level[.]ServerPlayer respawnCooldownMockPlayer[(]net[.]minecraft[.]server[.]level[.]ServerPlayer[)];$/ {
+            methods++; inside = 1
+        }
+        /invoke(virtual|interface|special|static).*\/\/ (InterfaceMethod|Method) .*isAlive:/ {
+            all_alive++
+            if (inside && $0 ~ /invokevirtual.*\/\/ Method net\/minecraft\/server\/level\/ServerPlayer[.]isAlive:[(][)]Z$/ \
+                    && previous ~ /^[[:space:]]*[0-9]+: aload_0[[:space:]]*$/) exact_alive++
+        }
+        { previous = $0 }
+        END { exit(!(methods == 1 && all_alive == 1 && exact_alive == 1)) }
+    '; then
+        reject_game_test_liveness_receiver "${logical_source}"
+        return 1
+    fi
+}
+
 verify_game_test_worker_source() {
     local source="$1"
     local logical_source="$2"
@@ -1103,14 +1265,14 @@ verify_game_test_worker_source() {
         "${source}" || status=$?
     case "${status}" in
         0)
-            if [[ "${logical_source}" != \
-                    'src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java' ]]; then
-                reject_game_test_liveness_receiver "${logical_source}"
-                return 1
-            fi
-            verify_p9_s3_entity_liveness "${source}" "${logical_source}" \
-                && verify_p9_s3_compiled_liveness \
-                    "${source}" "${logical_source}" "${classes_root}"
+            case "${logical_source}" in
+                src/main/java/com/yo1no/gramarye/P9S3ProjectileGameTests.java)
+                    verify_p9_s3_entity_liveness "${source}" "${logical_source}" \
+                        && verify_p9_s3_compiled_liveness "${source}" "${logical_source}" "${classes_root}" ;;
+                src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java)
+                    verify_p7_cooldown_player_liveness "${source}" "${logical_source}" "${classes_root}" ;;
+                *) reject_game_test_liveness_receiver "${logical_source}"; return 1 ;;
+            esac
             ;;
         1) return 0 ;;
         *) return "${status}" ;;
@@ -1263,7 +1425,7 @@ case "${1:-}" in
             && { is_s4_path "$2" || is_p9_s3_path "$2" \
                 || is_p9_s3_dc1_path "$2" || is_p9_s4_path "$2" \
                 || is_p9_s4_wc1_path "$2" || is_p9_s5_path "$2" || is_p10_path "$2" \
-                || is_p11_native_slice_path "$2"; } ;;
+                || is_p11_native_slice_path "$2" || is_p11_cooldown_slice_path "$2"; } ;;
     --is-p9-s5-path)
         [[ "$#" -eq 2 ]] && is_p9_s5_path "$2" ;;
     --check-game-test-worker-source)

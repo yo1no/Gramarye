@@ -23,19 +23,30 @@ final class P7ClientLifecycleEvents {
     }
 
     @SubscribeEvent
-    static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn ignored) {
-        MIRROR.onConnected();
+    static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
+        var minecraft = Minecraft.getInstance();
+        if (minecraft.player != event.getPlayer() || minecraft.getConnection() != event.getPlayer().connection
+                || event.getConnection() != event.getPlayer().connection.getConnection()) { return; }
+        MIRROR.onConnected(event.getConnection(), event.getPlayer().connection);
         P9ClientCastInput.onConnectionOpened();
     }
 
     @SubscribeEvent
-    static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut ignored) {
+    static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        if (event.getConnection() != null && event.getPlayer() != null
+                && MIRROR.captureDispatchGeneration(event.getConnection(), event.getPlayer().connection) == 0
+                && Minecraft.getInstance().getConnection() != event.getPlayer().connection) { return; }
         MIRROR.onDisconnected();
         P9ClientCastInput.onConnectionClosed();
     }
 
     @SubscribeEvent
-    static void onClientPlayerClone(ClientPlayerNetworkEvent.Clone ignored) {
+    static void onClientPlayerClone(ClientPlayerNetworkEvent.Clone event) {
+        var minecraft = Minecraft.getInstance();
+        if (minecraft.player != event.getNewPlayer() || minecraft.level != event.getNewPlayer().level()
+                || minecraft.getConnection() != event.getNewPlayer().connection
+                || event.getConnection() != event.getNewPlayer().connection.getConnection()) { return; }
+        MIRROR.onPlayerContextReplaced(event.getConnection(), event.getNewPlayer().connection);
         P9ClientCastInput.onPlayerContextReplaced();
     }
 
@@ -48,9 +59,11 @@ final class P7ClientLifecycleEvents {
 
     @SubscribeEvent
     static void onClientLevelUnload(LevelEvent.Unload event) {
-        if (event.getLevel() instanceof ClientLevel) {
+        if (event.getLevel() instanceof ClientLevel && event.getLevel() == Minecraft.getInstance().level) {
             MIRROR.onClientWorldUnload();
             P9ClientCastInput.onClientWorldUnloaded();
         }
     }
+
+    static P7ClientMirror mirror() { return MIRROR; }
 }

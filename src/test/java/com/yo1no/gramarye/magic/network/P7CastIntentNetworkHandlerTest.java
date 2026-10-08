@@ -765,7 +765,8 @@ final class P7CastIntentNetworkHandlerTest {
 
     private static final class NoOpClientDispatchPort implements P7ClientMirrorDispatchPort {
         @Override
-        public long captureDispatchGeneration() {
+        public long captureDispatchGeneration(net.minecraft.network.Connection connection,
+                net.neoforged.neoforge.common.extensions.ICommonPacketListener listener) {
             return 0L;
         }
 

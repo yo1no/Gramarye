@@ -516,7 +516,8 @@ verify_p11_native_helper_error_catches() {
                 expect("finishLogout", 1, "catch(RuntimeException|Errorsecondary){secondaryFailure();returnLogoutOutcome.UNKNOWN;}")
             } else if (kind == "sync") {
                 samePrimary = "catch(RuntimeException|Errorprimary){lifecycle.submissionFailed(server,actor,identity,primary);throwprimary;}"
-                expect("fullSync", 1, samePrimary)
+                expect("fullSync", 1, "catch(RuntimeException|Errorfailure){primary=failure;lifecycle.submissionFailed(server,actor,identity,failure);throwfailure;}")
+                expect("finishAttempt", 1, "catch(RuntimeException|ErrorcleanupFailure){lifecycle.submissionFailed(server,actor,identity,primary==null?cleanupFailure:primary);if(primary==null){throwcleanupFailure;}}")
                 expect("submitInitialFamily", 1, "catch(RuntimeException|Errorprimary){if(initial){P11NativeStorageBoundary.metadataInitialSync(actor,identity.connectionEpoch(),mana?MetadataInitialStage.MANA_FAILED:MetadataInitialStage.COOLDOWN_FAILED);}throwprimary;}")
                 expect("commitFamily", 1, samePrimary)
                 expect("submit", 1, samePrimary)
@@ -554,7 +555,7 @@ verify_p11_native_helper_error_catches() {
                 expect("submitProjectileHit", 1, preserved)
                 expect("beginNormalLogout", 1, "catch(RuntimeException|Errorprimary){scope.active=false;revokeLogoutScope(scope);throwprimary;}")
                 expect("endNormalLogout", 1, "catch(RuntimeException|Errorprimary){revokeLogoutScope(scope);throwprimary;}")
-                expect("acquireAndPublishRoot", 1, "catch(RuntimeException|Errorprimary){if(prospectiveInstance!=null){try{prospectiveInstance.releaseWork();}catch(RuntimeException|ErrorignoredCleanupFailure){}}closeProvisionalAfterRootFault(leaseAcquisition);throwprimary;}")
+                expect("acquireAndPublishRoot", 1, "catch(RuntimeException|Errorprimary){if(prospectiveInstance!=null){try{if(primaryinstanceofError){prospectiveInstance.releaseWorkAfterError();}else{prospectiveInstance.releaseWork();}}catch(RuntimeException|ErrorignoredCleanupFailure){}}closeProvisionalAfterRootFault(leaseAcquisition);throwprimary;}")
                 expect("acquireAndPublishRoot", 2, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
                 expect("P9InstanceErrorCleanup.accept", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
             } else if (kind == "p9_l1") {
@@ -571,6 +572,14 @@ verify_p11_native_helper_error_catches() {
                 expect("moved", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
                 expect("moved", 2, "catch(RuntimeException|Errorfailure){cleanup=failure;}")
                 expect("leave", 1, "catch(RuntimeException|Errorfailure){if(cleanup==null){cleanup=failure;}}")
+            } else if (kind == "mana_fixture") {
+                expect("queueConnected", 1, "catch(RuntimeException|Errorfailure){cleanupConnected(connected,failure);throwfailure;}")
+                expect("cleanupConnected", 1, "catch(RuntimeException|Errorcleanup){if(cleanup!=primary){primary.addSuppressed(cleanup);}}")
+            } else if (kind == "attachment_fixture") {
+                expect("runCopyVariant", 1, "catch(RuntimeException|Errorfailure){try{deletePlayerdata(server,playerId);}catch(RuntimeException|Errorcleanup){if(cleanup!=failure){failure.addSuppressed(cleanup);}}throwfailure;}")
+                expect("runCopyVariant", 2, "catch(RuntimeException|Errorcleanup){if(cleanup!=failure){failure.addSuppressed(cleanup);}}")
+                expect("runCopyVariant", 3, "catch(RuntimeException|Errorfailure){cleanupCopyVariant(server,playerId,connected,failure);throwfailure;}")
+                expect("cleanupCopyVariant", 1, "catch(RuntimeException|Errorcleanup){if(cleanup!=primary){primary.addSuppressed(cleanup);}}")
             } else reject("unknown helper kind")
         }
         {
@@ -621,6 +630,16 @@ verify_p11_native_helper_error_catches() {
             for (key in expected) if (seen[key] != 1) reject("missing exact catch")
         }
     ' "$1" || fail 'P11 native helper Error catches escaped their exact contracts'
+}
+
+cooldown_fixture_error_kind() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java)
+            printf '%s\n' mana_fixture ;;
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java)
+            printf '%s\n' attachment_fixture ;;
+        *) return 1 ;;
+    esac
 }
 
 require_regular_file() {
@@ -911,7 +930,7 @@ verify_search_helpers() {
     done
     local native_source=''
     local native_kind=''
-    for native_kind in operation cleanup sync source_stop live_transition keep_alive p5_l1 p9_l1 p9_tracking; do
+    for native_kind in operation cleanup sync source_stop live_transition keep_alive p5_l1 p9_l1 p9_tracking mana_fixture attachment_fixture; do
         if [[ "${native_kind}" == operation ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
         elif [[ "${native_kind}" == cleanup ]]; then
@@ -928,6 +947,10 @@ verify_search_helpers() {
             native_source='src/main/java/com/yo1no/gramarye/P9StarterProjectile.java'
         elif [[ "${native_kind}" == p9_tracking ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11P9TrackingCleanup.java'
+        elif [[ "${native_kind}" == mana_fixture ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java'
+        elif [[ "${native_kind}" == attachment_fixture ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java'
         else
             native_source='src/main/java/com/yo1no/gramarye/P11QualifiedSourceOwner.java'
         fi
@@ -939,6 +962,13 @@ verify_search_helpers() {
             's/observerFailed();/observerFailed(); unsafe();/g' \
             's/secondaryFailure();/secondaryFailure(); unsafe();/g' \
             's/throw primary;/throw new Error();/g' \
+            's/Error cleanup/Error unreviewed/g' \
+            's/primary.addSuppressed(cleanup);/unsafe();/g' \
+            's/failure.addSuppressed(cleanup);/unsafe();/g' \
+            's/void queueConnected(/void unreviewedQueueConnected(/g' \
+            's/void cleanupConnected(/void unreviewedCleanupConnected(/g' \
+            's/void runCopyVariant(/void unreviewedRunCopyVariant(/g' \
+            's/void cleanupCopyVariant(/void unreviewedCleanupCopyVariant(/g' \
             's/void releaseCredit(/void unreviewedCredit(/g' \
             's/begin(ServerPlayer actor, Context context)/begin(ServerPlayer actor, Object context)/g' \
             's/OperationScope beginAcceptedWork(/OperationScope unreviewedAcceptedWork(/g' \
@@ -971,6 +1001,9 @@ verify_search_helpers() {
             's/recordTerminalFailure(null, secondary);/recordTerminalFailure(null, secondary); unsafe();/g' \
             's/wakeup.retire();/wakeup.retire(); unsafe();/g' \
             's/P7ServerSyncState commitFamily(/P7ServerSyncState unreviewedFamily(/g' \
+            's/void finishAttempt(/void unreviewedSyncCleanup(/g' \
+            's/primary == null ? cleanupFailure : primary/cleanupFailure/g' \
+            's/if (primary == null) { throw cleanupFailure; }/throw cleanupFailure;/g' \
             's/LogoutOutcome finishLogout(/LogoutOutcome unreviewedLogout(/g' \
             's/void chunkStatus(/void unreviewedChunkStatus(/g' \
             's/void moved(/void unreviewedMoved(/g' \
@@ -988,6 +1021,18 @@ verify_search_helpers() {
             fi
         done
     done
+    for native_source in \
+        src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java \
+        src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java; do
+        cooldown_fixture_error_kind "${native_source}" >/dev/null \
+            || fail 'exact cooldown fixture owner was rejected'
+        for mutation in "${native_source}.extra" "${native_source%.java}Foreign.java" \
+                "src/p11OnlineHarness/${native_source#src/main/}"; do
+            if cooldown_fixture_error_kind "${mutation}" >/dev/null; then
+                fail 'cooldown fixture owner accepted a near or foreign path'
+            fi
+        done
+    done
     native_source='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
     for mutation in \
         's/NormalLogoutScope beginNormalLogout(/NormalLogoutScope unreviewedNormalLogout(/g' \
@@ -995,6 +1040,7 @@ verify_search_helpers() {
         's/scope.active = false;/scope.active = true;/g' \
         's/revokeLogoutScope(scope);/unsafe();/g' \
         's/prospectiveInstance.releaseWork();/unsafe();/g' \
+        's/prospectiveInstance.releaseWorkAfterError();/unsafe();/g' \
         's/void handleRuntimePost(/void unreviewedRuntimePost(/g' \
         's/submitProjectileHit(/unreviewedSubmitProjectileHit(/g' \
         's/slot.p9ErrorCleanup.prepare(server);/unsafe();/g' \
@@ -1812,6 +1858,7 @@ verify_b2_sources_and_outputs() {
                 'src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
+                && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
                 && "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]]; then
             forbid_fixed "${source}" 'PlayerEvent' \
@@ -1831,6 +1878,11 @@ verify_b2_sources_and_outputs() {
             "P4-B2-R production code must not catch dependency linkage failure (${literal})"
     done
     while IFS= read -r -d '' source; do
+        local fixture_kind=''
+        if fixture_kind="$(cooldown_fixture_error_kind "${source}")"; then
+            verify_p11_native_helper_error_catches "${source}" "${fixture_kind}"
+            continue
+        fi
         if [[ "${source}" == "${store_service}" \
                 || "${source}" == "${runtime_service}" \
                 || "${source}" == "${p7_network_handler}" \
@@ -1996,11 +2048,11 @@ verify_b2_sources_and_outputs() {
     forbid_fixed "${p7_network_handler}" 'permit.release();' \
         'P7 enqueue failure must not use non-lifecycle-safe explicit release'
     require_ere_count "${p7_sync}" \
-        'catch[[:space:]]*\(RuntimeException \| Error primary\)' 4 \
-        'P7 sender must have exactly four observed-primary stage catches'
+        'catch[[:space:]]*\(RuntimeException \| Error primary\)' 3 \
+        'P7 sender must retain exactly three original observed-primary stage catches'
     require_ere_count "${p7_sync}" \
-        'catch[[:space:]]*\([^)]*Error' 4 \
-        'P7 sender Error catches escaped the four exact stage operations'
+        'catch[[:space:]]*\([^)]*Error' 5 \
+        'P7 sender Error catches escaped the five exact stage and finalization operations'
     verify_p11_native_helper_error_catches "${p7_sync}" sync
     require_fixed "${p7_sync}" \
         'lifecycle.submissionFailed(server, actor, identity, primary);' \

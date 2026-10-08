@@ -598,7 +598,26 @@ record ProjectileHitExecutionDataV0(
                         "        Objects.requireNonNull(executionGuard, \"executionGuard\");\n"
                                 + "        Objects.requireNonNull(projectileContinuationOpener, "
                                 + "\"projectileContinuationOpener\");\n");
+        // H6 §69 / approved cooldown slice: only this closed server admission result
+        // extends the earlier exact vocabulary. No C2S/ACK disposition is introduced.
+        var cooldownVocabulary = s2Vocabulary
+                .replace("sealed interface RuntimeAdmissionResult\n",
+                        "enum CooldownRejectionReason { ACTIVE, PENDING, RECOVERY, CLOCK, UNAVAILABLE }\n\n"
+                                + "sealed interface RuntimeAdmissionResult\n")
+                .replace("                RuntimeAdmissionResult.OwnerInstanceUnavailable,\n",
+                        "                RuntimeAdmissionResult.OwnerInstanceUnavailable,\n"
+                                + "                RuntimeAdmissionResult.CooldownRejected,\n")
+                .replace("    record OwnerInstanceUnavailable() implements RuntimeAdmissionResult {}\n",
+                        "    record OwnerInstanceUnavailable() implements RuntimeAdmissionResult {}\n\n"
+                                + "    record CooldownRejected(CooldownRejectionReason reason) implements RuntimeAdmissionResult {\n"
+                                + "        public CooldownRejected {\n"
+                                + "            Objects.requireNonNull(reason, \"reason\");\n"
+                                + "        }\n    }\n");
         assertAll(
+                () -> assertEquals(List.of("ACTIVE", "PENDING", "RECOVERY", "CLOCK", "UNAVAILABLE"),
+                        Arrays.stream(CooldownRejectionReason.values()).map(Enum::name).toList()),
+                () -> assertEquals(1, occurrences(cooldownVocabulary, "enum CooldownRejectionReason")),
+                () -> assertEquals(1, occurrences(cooldownVocabulary, "record CooldownRejected(")),
                 () -> assertEquals(1, occurrences(s4Vocabulary, guardDeclaration)),
                 () -> assertEquals(1, occurrences(
                         s4Vocabulary, "RuntimeExecutionGuard executionGuard")),
@@ -607,7 +626,7 @@ record ProjectileHitExecutionDataV0(
                                 + "projectileContinuationOpener")),
                 () -> assertEquals(1, occurrences(
                         s2Vocabulary, s2ExecutionDataDeclaration)),
-                () -> assertEquals(s2Vocabulary.replace(
+                () -> assertEquals(cooldownVocabulary.replace(
                         "    RuntimeReferenceResolutionOutcome resolve(MinecraftServer server, RuntimeEvent event);\n}",
                         "    RuntimeReferenceResolutionOutcome resolve(MinecraftServer server, RuntimeEvent event);\n"
                                 + "\n    default RuntimeReferenceResolutionOutcome resolve(\n"
@@ -799,6 +818,8 @@ record ProjectileHitExecutionDataV0(
                                 "com.yo1no.gramarye.RuntimeProjectileContinuationPermit "
                                         + "permit()",
                                 "java.util.UUID plannedProjectileId()",
+                                "boolean prepareBeforeNativeAdd(net.minecraft.server.MinecraftServer,"
+                                        + "com.yo1no.gramarye.P9StarterProjectile)",
                                 "com.yo1no.gramarye.RuntimePermitTransferDisposition "
                                         + "transferAfterAppliedSpawn("
                                         + "net.minecraft.server.MinecraftServer,"
@@ -870,6 +891,7 @@ record ProjectileHitExecutionDataV0(
                                 "java.util.UUID permitId",
                                 "java.util.UUID plannedProjectileId",
                                 "boolean suspendedBeforeSpawn",
+                                "boolean nativeSpawnPrepared",
                                 "com.yo1no.gramarye.RuntimeProjectileContinuationPermit$State "
                                         + "state"),
                         declaredFieldSignatures(permit)),
@@ -877,7 +899,8 @@ record ProjectileHitExecutionDataV0(
                         permit.getDeclaredField("owner").getModifiers())),
                 () -> assertTrue(Arrays.stream(permit.getDeclaredFields())
                         .filter(field -> !field.getName().equals("state")
-                                && !field.getName().equals("suspendedBeforeSpawn"))
+                                && !field.getName().equals("suspendedBeforeSpawn")
+                                && !field.getName().equals("nativeSpawnPrepared"))
                         .allMatch(field -> Modifier.isFinal(field.getModifiers()))),
                 () -> assertFalse(Modifier.isFinal(
                         permit.getDeclaredField("state").getModifiers())),
@@ -890,6 +913,7 @@ record ProjectileHitExecutionDataV0(
                 () -> assertTrue(isPackagePrivate(permitConstructor.getModifiers())),
                 () -> assertEquals(
                         Set.of(
+                                "boolean isPreparedSpawn()",
                                 "com.yo1no.gramarye.RuntimePermitClaimDisposition "
                                         + "claimLoadedEntityHit("
                                         + "net.minecraft.server.MinecraftServer,"
@@ -1590,7 +1614,7 @@ record ProjectileHitExecutionDataV0(
                         .count()),
                 () -> assertTrue(actorAdmission.contains("p9AuthenticatedActorWitness")),
                 () -> assertTrue(actorAdmission.contains("resolvedP9Actor")),
-                () -> assertEquals(7, occurrences(
+                () -> assertEquals(8, occurrences(
                         serviceSource, "isCurrentP9AuthenticatedActor(")),
                 () -> assertInOrder(predicateSource,
                         "candidate != null", "instanceActor(server, instance) == candidate",
@@ -2501,7 +2525,8 @@ record ProjectileHitExecutionDataV0(
                 "!foundation.observedInactiveForRuntime(server)",
                 "instance.work = foundation.acquireWork(p9AuthenticatedActorWitness)",
                 "if (instance.work == null)", "new RuntimeAdmissionResult.OwnerInstanceUnavailable()",
-                "isCurrentP9AuthenticatedActor(server, instance, resolvedP9Actor,", "publishRoot(");
+                "isCurrentP9AuthenticatedActor(server, instance, resolvedP9Actor,",
+                "cooldowns.prepareAdmission(", "prepared.publish(slot)");
         assertInOrder(admission, "catch (RuntimeException | Error primary)",
                 "prospectiveInstance.releaseWork()", "closeProvisionalAfterRootFault(leaseAcquisition)",
                 "throw primary");
@@ -2578,7 +2603,7 @@ record ProjectileHitExecutionDataV0(
     void logoutHoldDoesNotExtendDeadlinesAndEveryTerminalOwnerReleasesWork() throws Exception {
         var source = Files.readString(SERVICE_SOURCE);
         var drain = methodSource(source, "private void drain(");
-        var release = methodSource(source, "void releaseWork()");
+        var release = methodSource(source, "private void releaseWork(boolean reconcile)");
         var normal = methodSource(source, "private static void terminalizeRemainingP9(");
         var error = section(source, "static final class P9InstanceErrorCleanup", "/** Existing call-scoped P5 guard");
         assertAll(
@@ -2587,7 +2612,7 @@ record ProjectileHitExecutionDataV0(
                         "slot.deferred[slot.deferredCount++] = event", "claim(slot, event, instance, attribution)"),
                 () -> assertInOrder(release, "LogoutState.INVALID", "retained.release()", "work = null"),
                 () -> assertTrue(normal.contains("instance.releaseWork()")),
-                () -> assertInOrder(error, "instance.clearP9AuthenticatedActorWitness()", "instance.releaseWork()",
+                () -> assertInOrder(error, "instance.clearP9AuthenticatedActorWitness()", "instance.releaseWorkAfterError()",
                         "catch (RuntimeException | Error ignoredCleanupFailure)"),
                 () -> assertTrue(methodSource(source, "private static void maybeRemoveInstance(")
                         .contains("instance.releaseWork()")),
@@ -2599,7 +2624,8 @@ record ProjectileHitExecutionDataV0(
         return source.contains("!foundation.observedInactiveForRuntime(server)")
                 && source.contains("instance.work = foundation.acquireWork(p9AuthenticatedActorWitness)")
                 && source.contains("if (instance.work == null)")
-                && source.indexOf("foundation.acquireWork(") < source.indexOf("publishRoot(");
+                && source.indexOf("foundation.acquireWork(") < source.indexOf("prepared.publish(slot)")
+                && source.contains("cooldowns == null || duration.isEmpty()");
     }
 
     private static boolean hasL1LogoutProof(String source) {

@@ -724,6 +724,8 @@ record RuntimeExecutionBudget(
     }
 }
 
+enum CooldownRejectionReason { ACTIVE, PENDING, RECOVERY, CLOCK, UNAVAILABLE }
+
 sealed interface RuntimeAdmissionResult
         permits RuntimeAdmissionResult.AcceptedMemoryOnly,
                 RuntimeAdmissionResult.PersistentScheduleUnsupported,
@@ -736,6 +738,7 @@ sealed interface RuntimeAdmissionResult
                 RuntimeAdmissionResult.SkillRevisionUnavailable,
                 RuntimeAdmissionResult.InvalidEvent,
                 RuntimeAdmissionResult.OwnerInstanceUnavailable,
+                RuntimeAdmissionResult.CooldownRejected,
                 RuntimeAdmissionResult.ActiveLineageCapacityExceeded,
                 RuntimeAdmissionResult.ActiveBudgetAttributionCapacityExceeded,
                 RuntimeAdmissionResult.RootAdmissionBudgetExceeded,
@@ -820,6 +823,12 @@ sealed interface RuntimeAdmissionResult
     }
 
     record OwnerInstanceUnavailable() implements RuntimeAdmissionResult {}
+
+    record CooldownRejected(CooldownRejectionReason reason) implements RuntimeAdmissionResult {
+        public CooldownRejected {
+            Objects.requireNonNull(reason, "reason");
+        }
+    }
 
     record ActiveLineageCapacityExceeded(int current, int maximum)
             implements RuntimeAdmissionResult {

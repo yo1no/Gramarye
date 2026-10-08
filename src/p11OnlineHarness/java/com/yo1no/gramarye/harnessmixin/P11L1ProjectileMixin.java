@@ -5,6 +5,7 @@ import com.yo1no.gramarye.P11L1TerminalBoundaryProbe;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.BlockHitResult;
 import org.spongepowered.asm.mixin.Mixin;
 
 @Mixin(targets = "com.yo1no.gramarye.P9StarterProjectile")
@@ -21,5 +22,12 @@ abstract class P11L1ProjectileMixin {
     private void p11$l1NaturalCollision(EntityHitResult hit, Operation<Void> original) {
         original.call(hit);
         P11L1ServerHarness.hitReturned(this, hit.getEntity());
+    }
+    @WrapMethod(method = "onHitBlock(Lnet/minecraft/world/phys/BlockHitResult;)V", require = 1, expect = 1, allow = 1)
+    private void p11$l1NaturalBlockCollision(BlockHitResult hit, Operation<Void> original) {
+        com.yo1no.gramarye.P11CooldownL1Probe.blockImpactEntering(this, hit);
+        boolean normal = false;
+        try { original.call(hit); normal = true; }
+        finally { com.yo1no.gramarye.P11CooldownL1Probe.blockImpactReturned(this, normal); }
     }
 }

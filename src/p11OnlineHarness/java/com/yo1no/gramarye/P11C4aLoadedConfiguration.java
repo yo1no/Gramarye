@@ -18,7 +18,8 @@ public final class P11C4aLoadedConfiguration {
 
     @SubscribeEvent
     static void loading(ModConfigEvent.Loading event) {
-        if (!P11C4aEvidence.enabled() && !P11L1ServerHarness.enabled()) { return; }
+        if (!P11C4aEvidence.enabled() && !P11L1ServerHarness.enabled()
+                && !P11CooldownServerHarness.selected()) { return; }
         var config = event.getConfig();
         if (config.getType() == ModConfig.Type.SERVER && Gramarye.MOD_ID.equals(config.getModId())
                 && P5ServerRuntimeConfig.CONFIG_FILE_NAME.equals(config.getFileName())) {
@@ -39,7 +40,8 @@ public final class P11C4aLoadedConfiguration {
         var game = FMLPaths.GAMEDIR.get().toRealPath();
         var realFile = file.toRealPath();
         String inheritedHash = P11L1RestartProbe.readSelected()
-                ? P11L1RestartProbe.expectedConfigurationHash(realFile) : null;
+                ? P11L1RestartProbe.expectedConfigurationHash(realFile)
+                : P11CooldownRestartProbe.readSelected() ? P11CooldownRestartProbe.expectedConfigurationHash(realFile) : null;
         P11C4aEvidence.require((file.startsWith(game) && realFile.startsWith(game) || inheritedHash != null)
                 && (inheritedHash == null || file.equals(realFile))
                 && file.getFileName().toString().equals(P5ServerRuntimeConfig.CONFIG_FILE_NAME)

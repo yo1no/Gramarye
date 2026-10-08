@@ -1,6 +1,8 @@
 package com.yo1no.gramarye.magic.network;
 
 import java.util.Objects;
+import net.minecraft.network.Connection;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 
 final class P7ClientMirrorDispatchFactory {
     private static final P7ClientMirrorDispatchPort DISCONNECTED =
@@ -35,8 +37,8 @@ final class P7ClientMirrorDispatchFactory {
         }
 
         @Override
-        public synchronized long captureDispatchGeneration() {
-            return delegate.captureDispatchGeneration();
+        public synchronized long captureDispatchGeneration(Connection connection, ICommonPacketListener listener) {
+            return delegate.captureDispatchGeneration(connection, listener);
         }
 
         @Override
@@ -60,7 +62,7 @@ final class P7ClientMirrorDispatchFactory {
 
     private static final class DisconnectedPort implements P7ClientMirrorDispatchPort {
         @Override
-        public long captureDispatchGeneration() {
+        public long captureDispatchGeneration(Connection connection, ICommonPacketListener listener) {
             return 0L;
         }
 

@@ -48,7 +48,7 @@ final class P7NetworkBoundsTest {
             Map.entry("RATE_STRIKE_DISCONNECT_THRESHOLD", 8),
             Map.entry("RATE_STRIKE_WINDOW_TICKS", 100),
             Map.entry("MIN_RESYNC_INTERVAL_TICKS", 20),
-            Map.entry("PROTOCOL_VERSION", "gramarye-p7-v0"),
+            Map.entry("PROTOCOL_VERSION", "gramarye-p7-v1"),
             Map.entry("SEQUENCE_EXHAUSTION_BOUNDARY", Long.MAX_VALUE),
             Map.entry("MAX_CUMULATIVE_P7_WORK_PER_TICK", 64),
             Map.entry("RATE_BUCKET_INITIAL_TOKENS", 8),
@@ -66,7 +66,8 @@ final class P7NetworkBoundsTest {
             Map.entry("ENTITY_HINT_MIN", 1),
             Map.entry("ENTITY_HINT_MAX", Integer.MAX_VALUE),
             Map.entry("ACTUAL_MAX_CAST_INTENT_BODY_BYTES", 22),
-            Map.entry("ACTUAL_MAX_ACK_BODY_BYTES", 18));
+            Map.entry("ACTUAL_MAX_ACK_BODY_BYTES", 18),
+            Map.entry("ACTUAL_MAX_COOLDOWN_BODY_BYTES", 1627));
 
     @Test
     void exactTwentyEightRowsAndNestedStructuralConstantsMatchAuthority()
@@ -74,7 +75,7 @@ final class P7NetworkBoundsTest {
         var fieldsByName = Arrays.stream(P7NetworkBounds.class.getDeclaredFields())
                 .collect(Collectors.toMap(field -> field.getName(), field -> field));
 
-        assertEquals(48, EXACT_CONSTANTS.size());
+        assertEquals(49, EXACT_CONSTANTS.size());
         assertEquals(EXACT_CONSTANTS.keySet(), fieldsByName.keySet());
         for (var entry : EXACT_CONSTANTS.entrySet()) {
             var field = fieldsByName.get(entry.getKey());

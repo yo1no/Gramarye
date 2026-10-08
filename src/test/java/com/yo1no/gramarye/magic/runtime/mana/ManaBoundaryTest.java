@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.Gramarye;
@@ -134,6 +135,8 @@ final class ManaBoundaryTest {
         var playerRegistration = code(PLAYER_MAIN.resolve("PlayerSkillAttachments.java"));
         var manaDefinition = code(MANA_MAIN.resolve("ManaAttachments.java"));
         var bridge = code(MANA_MAIN.resolve("ManaAttachmentDefinitionBridge.java"));
+        var cooldownBridge = code(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/P11CastCooldownDefinitionBridge.java"));
         var attachmentRegistryOwners = javaSources(MAIN_JAVA).stream()
                 .filter(path -> code(path).contains(
                         "NeoForgeRegistries.Keys.ATTACHMENT_TYPES"))
@@ -185,9 +188,7 @@ final class ManaBoundaryTest {
                                 "com/yo1no/gramarye/magic/runtime/mana/"
                                         + "ManaAttachmentDefinitionBridge.java"),
                         bridgeConsumers),
-                () -> assertEquals(
-                        3, occurrences(playerRegistration, "ATTACHMENT_TYPES.register(")),
-                () -> assertEquals(2, occurrences(playerRegistration, "DeferredHolder<")),
+                () -> assertPermanentRegistration(playerRegistration, cooldownBridge),
                 () -> assertTrue(playerRegistration.contains(
                         "ManaAttachmentDefinitionBridge.attachmentId().getPath()")),
                 () -> assertTrue(playerRegistration.contains(
@@ -225,6 +226,14 @@ final class ManaBoundaryTest {
                 () -> assertEquals(12, baselineGameTests),
                 () -> assertEquals(7, manaGameTestCount),
                 () -> assertEquals(com.yo1no.gramarye.P7GameTestInventory.totalCount(), totalGameTests));
+        assertThrows(AssertionError.class, () -> assertPermanentRegistration(
+                playerRegistration + " ATTACHMENT_TYPES.register(extra);", cooldownBridge));
+        assertThrows(AssertionError.class, () -> assertPermanentRegistration(
+                playerRegistration + " DeferredHolder<Object, Object> extra;", cooldownBridge));
+        assertThrows(AssertionError.class, () -> assertPermanentRegistration(
+                playerRegistration.replace("CAST_COOLDOWNS", "OTHER_COOLDOWNS"), cooldownBridge));
+        assertThrows(AssertionError.class, () -> assertPermanentRegistration(
+                playerRegistration, cooldownBridge + " actor.setData(TYPE, state);"));
     }
 
     @Test
@@ -246,7 +255,7 @@ final class ManaBoundaryTest {
         var playerStateSource = javaSources(PLAYER_MAIN).stream()
                 .filter(path -> !path.getFileName().toString()
                         .equals("PlayerSkillAttachments.java"))
-                .map(ManaBoundaryTest::code)
+                .map(path -> withoutExactNativeFixtureCalls(path, code(path)))
                 .collect(Collectors.joining("\n"));
         var manaDefinition = code(MANA_MAIN.resolve("ManaAttachments.java"));
         var playerRegistration = code(PLAYER_MAIN.resolve("PlayerSkillAttachments.java"));
@@ -278,6 +287,20 @@ final class ManaBoundaryTest {
                         .contains("balance")),
                 () -> assertFalse(playerStateSource.toLowerCase(java.util.Locale.ROOT)
                         .contains("mana")));
+        var fixturePath = PLAYER_MAIN.resolve("PlayerSkillAttachmentGameTests.java");
+        var fixtureSource = code(fixturePath);
+        assertPlayerStateManaIsolation(fixturePath, fixtureSource);
+        assertThrows(AssertionError.class, () -> assertPlayerStateManaIsolation(
+                fixturePath, fixtureSource.replace("P7S4LoginManaGameTests", "P7S4LoginManaGameTestsExtra")));
+        assertThrows(AssertionError.class, () -> assertPlayerStateManaIsolation(
+                fixturePath, fixtureSource.replace(".requireCooldownLoginComplete(", ".foreignManaCall(")));
+        assertThrows(AssertionError.class, () -> assertPlayerStateManaIsolation(
+                PLAYER_MAIN.resolve("ForeignGameTests.java"), fixtureSource));
+        assertThrows(AssertionError.class, () -> assertPlayerStateManaIsolation(
+                fixturePath, fixtureSource + " ManaState additionalTruth;"));
+        assertThrows(AssertionError.class, () -> assertPlayerStateManaIsolation(
+                fixturePath, fixtureSource
+                        + " com.yo1no.gramarye.P7S4LoginManaGameTests.nativeGameTestAttachments(server);"));
     }
 
     @Test
@@ -539,6 +562,51 @@ final class ManaBoundaryTest {
                 () -> assertTrue(relocatedTests.stream().allMatch(
                         ManaBoundaryTest::usesManaPackage)),
                 () -> assertEquals(100, relocatedTestCoordinates.size()));
+    }
+
+    private static void assertPermanentRegistration(String registration, String cooldownBridge) {
+        assertEquals(4, occurrences(registration, "ATTACHMENT_TYPES.register("));
+        assertEquals(3, occurrences(registration, "DeferredHolder<"));
+        assertTrue(registration.replaceAll("\\s+", "").contains(
+                "private static final DeferredHolder<AttachmentType<?>, AttachmentType<?>> CAST_COOLDOWNS ="
+                        .replaceAll("\\s+", "")
+                        + "ATTACHMENT_TYPES.register(P11CastCooldownDefinitionBridge.attachmentId().getPath(),"
+                        + "P11CastCooldownDefinitionBridge::attachmentType);"));
+        assertEquals("""
+                package com.yo1no.gramarye;
+                import net.minecraft.resources.ResourceLocation;
+                import net.neoforged.neoforge.attachment.AttachmentType;
+                public final class P11CastCooldownDefinitionBridge {
+                    private P11CastCooldownDefinitionBridge() { }
+                    public static ResourceLocation attachmentId() { return P11CastCooldownAttachments.ID; }
+                    public static AttachmentType<?> attachmentType() { return P11CastCooldownAttachments.TYPE; }
+                }
+                """.replaceAll("\\s+", ""), cooldownBridge.replaceAll("\\s+", ""));
+    }
+
+    private static String withoutExactNativeFixtureCalls(Path path, String source) {
+        if (!path.equals(PLAYER_MAIN.resolve("PlayerSkillAttachmentGameTests.java"))) {
+            return source;
+        }
+        var calls = Map.of(
+                "nativeGameTestAttachments", 2,
+                "runCooldownFixtureAfterTick", 1,
+                "assertNativeQuarantineBlocksRespawn", 1,
+                "requireCooldownLoginComplete", 1,
+                "respawnNativeGameTestPlayer", 1,
+                "completeEndGameTestPlayer", 1,
+                "connectNativeGameTestPlayer", 1);
+        for (var call : calls.entrySet()) {
+            var prefix = "com.yo1no.gramarye.P7S4LoginManaGameTests." + call.getKey() + "(";
+            assertEquals(call.getValue().intValue(), occurrences(source, prefix));
+            source = source.replace(prefix, "(");
+        }
+        return source;
+    }
+
+    private static void assertPlayerStateManaIsolation(Path path, String source) {
+        assertFalse(withoutExactNativeFixtureCalls(path, source)
+                .toLowerCase(java.util.Locale.ROOT).contains("mana"));
     }
 
     private static void assertGuardPrecedes(String section, String... accesses) {

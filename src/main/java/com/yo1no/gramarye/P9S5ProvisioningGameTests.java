@@ -40,6 +40,7 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
@@ -47,6 +48,7 @@ import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -121,7 +123,7 @@ public final class P9S5ProvisioningGameTests {
                 "P9-S5 provisioning GameTest requires the actual server thread");
         assertRegisteredCommand(helper, server);
 
-        var attachments = PlayerSkillAttachmentGameTests.newServiceForSubmissionGameTests();
+        var attachments = P7S4LoginManaGameTests.nativeGameTestAttachments(server);
         try (var store = installIsolatedStore(server, helper, attachments);
                 var players = new OwnedPlayers(server)) {
             var primary = players.placeOwned(PRIMARY_PLAYER_ID, "p9s5-primary");
@@ -177,7 +179,7 @@ public final class P9S5ProvisioningGameTests {
                     helper,
                     server,
                     attachments,
-                    players.place(UNAVAILABLE_PLAYER_ID, "p9s5-badatt"));
+                    players.placeMalformed(UNAVAILABLE_PLAYER_ID, "p9s5-badatt"));
         }
         helper.succeed();
     }
@@ -1059,8 +1061,9 @@ public final class P9S5ProvisioningGameTests {
             MinecraftServer server,
             PlayerSkillAttachmentService attachments,
             ServerPlayer player) {
-        loadAttachmentFixture(player, ByteTag.valueOf((byte) 19));
         var before = attachmentPayload(player);
+        helper.assertTrue(before.equals(ByteTag.valueOf((byte) 19)),
+                "unavailable input must originate in the original pre-login playerdata load");
         var observed = attachments.equippedAt(player, EQUIPPED_SLOT);
         helper.assertTrue(
                 observed instanceof PlayerSkillAttachmentService.Unavailable<?> unavailable
@@ -1355,14 +1358,6 @@ public final class P9S5ProvisioningGameTests {
         };
     }
 
-    private static void loadAttachmentFixture(ServerPlayer player, Tag payload) {
-        var root = player.saveWithoutId(new CompoundTag());
-        var attachments = root.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY);
-        attachments.put(SERIALIZED_ATTACHMENT_KEY, payload.copy());
-        root.put(AttachmentHolder.ATTACHMENTS_NBT_KEY, attachments);
-        player.load(root);
-    }
-
     private static Tag attachmentPayload(ServerPlayer player) {
         return Objects.requireNonNull(player.saveWithoutId(new CompoundTag())
                         .getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY)
@@ -1477,6 +1472,12 @@ public final class P9S5ProvisioningGameTests {
             return placeOwned(playerId, name).current();
         }
 
+        private ServerPlayer placeMalformed(UUID playerId, String name) {
+            var player = OwnedPlayer.place(server, playerId, name, ByteTag.valueOf((byte) 19));
+            players.add(player);
+            return player.current();
+        }
+
         private OwnedPlayer placeOwned(UUID playerId, String name) {
             var player = OwnedPlayer.place(server, playerId, name);
             players.add(player);
@@ -1529,21 +1530,39 @@ public final class P9S5ProvisioningGameTests {
 
         private static OwnedPlayer place(
                 MinecraftServer server, UUID playerId, String name) {
+            return place(server, playerId, name, null);
+        }
+
+        private static OwnedPlayer place(
+                MinecraftServer server, UUID playerId, String name, Tag preLoginSkills) {
             var playerdata = PlayerdataClaim.claim(server, playerId);
-            var cookie = CommonListenerCookie.createInitial(
-                    new GameProfile(playerId, name), false);
-            var player = new ServerPlayer(
-                    server,
-                    server.overworld(),
-                    cookie.gameProfile(),
-                    cookie.clientInformation());
-            var connection = new Connection(PacketFlow.SERVERBOUND);
-            var channel = new EmbeddedChannel(connection);
+            final ServerPlayer player;
+            try {
+                if (preLoginSkills != null) {
+                    var holder = new ServerPlayer(server, server.overworld(),
+                            new GameProfile(playerId, name), ClientInformation.createDefault());
+                    var root = holder.saveWithoutId(new CompoundTag());
+                    var attachments = root.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY);
+                    attachments.put("gramarye:player_skills", preLoginSkills.copy());
+                    root.put(AttachmentHolder.ATTACHMENTS_NBT_KEY, attachments);
+                    try {
+                        NbtIo.writeCompressed(root, playerdata.playerdataDirectory.resolve(playerId + ".dat"));
+                    } catch (IOException failure) {
+                        throw new AssertionError("owned pre-login unavailable input write failed", failure);
+                    }
+                }
+                player = P7S4LoginManaGameTests.connectNativeGameTestPlayer(server, playerId, name);
+            } catch (RuntimeException | Error failure) {
+                try { playerdata.release(); }
+                catch (RuntimeException | Error cleanup) {
+                    if (cleanup != failure) { failure.addSuppressed(cleanup); }
+                }
+                throw failure;
+            }
+            var channel = (EmbeddedChannel) player.connection.getConnection().channel();
             var fixture = new OwnedPlayer(server, playerId, name, channel, playerdata);
             try {
-                NetworkRegistry.configureMockConnection(connection);
                 channel.pipeline().addLast(fixture);
-                server.getPlayerList().placeNewPlayer(connection, player, cookie);
                 if (server.getPlayerList().getPlayer(playerId) != player) {
                     throw new AssertionError(
                             "actual placement did not install the exact owned player");
@@ -1615,20 +1634,11 @@ public final class P9S5ProvisioningGameTests {
             channel.finishAndReleaseAll();
             systemChats.clear();
 
-            var cookie = CommonListenerCookie.createInitial(
-                    new GameProfile(playerId, name), false);
-            var replacement = new ServerPlayer(
-                    server,
-                    server.overworld(),
-                    cookie.gameProfile(),
-                    cookie.clientInformation());
-            var connection = new Connection(PacketFlow.SERVERBOUND);
-            var replacementChannel = new EmbeddedChannel(connection);
-            channel = replacementChannel;
             try {
-                NetworkRegistry.configureMockConnection(connection);
+                var replacement = P7S4LoginManaGameTests.connectNativeGameTestPlayer(server, playerId, name);
+                var replacementChannel = (EmbeddedChannel) replacement.connection.getConnection().channel();
+                channel = replacementChannel;
                 replacementChannel.pipeline().addLast(this);
-                server.getPlayerList().placeNewPlayer(connection, replacement, cookie);
                 if (server.getPlayerList().getPlayer(playerId) != replacement) {
                     throw new AssertionError(
                             "actual reconnect did not install the exact owned player");

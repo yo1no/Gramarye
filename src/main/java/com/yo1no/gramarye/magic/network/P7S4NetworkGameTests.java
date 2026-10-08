@@ -3,6 +3,9 @@ package com.yo1no.gramarye.magic.network;
 import com.mojang.authlib.GameProfile;
 import com.yo1no.gramarye.Gramarye;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.util.ReferenceCountUtil;
 import java.util.ArrayList;
 import java.util.List;
@@ -61,11 +64,11 @@ public final class P7S4NetworkGameTests {
         var fixture = place(server, 2, "p7s4-live-life");
         runGuarded(fixture, () -> {
             var initialEpoch = requireEpoch(fixture.playerId());
-            helper.runAfterDelay(2, () -> runGuarded(fixture, () -> {
+            helper.runAfterDelay(2, () -> com.yo1no.gramarye.P7S4LoginManaGameTests.runCooldownFixtureAfterTick(
+                    helper, () -> runGuarded(fixture, () -> {
             assertFullSet(helper, drainP7(fixture.channel()), 1);
             var before = fixture.current();
-            var replacement = server.getPlayerList().respawn(before, false, Entity.RemovalReason.KILLED);
-            replacement.connection.player = replacement;
+            var replacement = com.yo1no.gramarye.P7S4LoginManaGameTests.respawnNativeGameTestPlayer(before);
             helper.assertTrue(replacement != before && fixture.current() == replacement,
                     "actual respawn must replace the player object while keeping current UUID");
             helper.assertTrue(requireEpoch(fixture.playerId()) == initialEpoch,
@@ -98,7 +101,7 @@ public final class P7S4NetworkGameTests {
                     }));
                 });
             }));
-            }));
+            }), () -> {}, primary -> cleanupFailure(fixture, primary)));
         });
     }
 
@@ -120,21 +123,37 @@ public final class P7S4NetworkGameTests {
 
     private static List<CustomPacketPayload> drainP7(EmbeddedChannel channel) {
         channel.runPendingTasks();
-        var payloads = new ArrayList<CustomPacketPayload>();
+        var observation = (OriginalP7Writes) channel.pipeline().get("p7-stock-original-writes");
+        if (observation == null) { throw new AssertionError("exact original P7 write observer missing"); }
+        var payloads = List.copyOf(observation.payloads);
+        observation.payloads.clear();
         Object packet;
         while ((packet = channel.readOutbound()) != null) {
-            try {
-                if (packet instanceof ClientboundCustomPayloadPacket custom
-                        && (custom.payload() instanceof PlayerManaSyncPayload
-                                || custom.payload() instanceof SkillCooldownSyncPayload
-                                || custom.payload() instanceof IntentAckPayload)) {
-                    payloads.add(custom.payload());
-                }
-            } finally {
-                ReferenceCountUtil.release(packet);
+            ReferenceCountUtil.release(packet);
+        }
+        return payloads;
+    }
+
+    /** Typed observation before the genuine memory-channel encoder, never a substitute sender. */
+    private static final class OriginalP7Writes extends ChannelOutboundHandlerAdapter {
+        private final List<CustomPacketPayload> payloads = new ArrayList<>();
+
+        @Override
+        public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) throws Exception {
+            context.write(message, promise);
+            if (message instanceof ClientboundCustomPayloadPacket custom
+                    && (custom.payload() instanceof PlayerManaSyncPayload
+                            || custom.payload() instanceof SkillCooldownSyncPayload
+                            || custom.payload() instanceof IntentAckPayload)) {
+                if (payloads.size() >= 64) { throw new AssertionError("bounded original P7 write observation exceeded"); }
+                payloads.add(custom.payload());
             }
         }
-        return List.copyOf(payloads);
+    }
+
+    /** Read-only stock-fixture check; no session opening, delivery or source permission. */
+    public static boolean hasNativeSession(UUID playerId) {
+        return P7NetworkComposition.production().connectionEpochSource().currentEpoch(playerId).isPresent();
     }
 
     private static long requireEpoch(UUID playerId) {
@@ -144,19 +163,11 @@ public final class P7S4NetworkGameTests {
 
     private static ConnectedPlayer place(MinecraftServer server, int suffix, String name) {
         var id = new UUID(0x7440000000004000L, 0x8000000000000000L + suffix);
-        var cookie = CommonListenerCookie.createInitial(new GameProfile(id, name), false);
-        var actor = new ServerPlayer(server, server.overworld(), cookie.gameProfile(), cookie.clientInformation());
-        var connection = new Connection(PacketFlow.SERVERBOUND);
-        var channel = new EmbeddedChannel(connection);
+        var actor = com.yo1no.gramarye.P7S4LoginManaGameTests.connectNativeGameTestPlayer(server, id, name);
+        var channel = (EmbeddedChannel) actor.connection.getConnection().channel();
+        channel.pipeline().addLast("p7-stock-original-writes", new OriginalP7Writes());
         var fixture = new ConnectedPlayer(server, id, channel);
-        try {
-            NetworkRegistry.configureMockConnection(connection);
-            server.getPlayerList().placeNewPlayer(connection, actor, cookie);
-            return fixture;
-        } catch (RuntimeException | Error failure) {
-            cleanupFailure(fixture, failure);
-            throw failure;
-        }
+        return fixture;
     }
 
     private static void runGuarded(ConnectedPlayer fixture, Runnable body) {

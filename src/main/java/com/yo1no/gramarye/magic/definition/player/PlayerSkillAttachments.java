@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.definition.player;
 
 import com.yo1no.gramarye.Gramarye;
+import com.yo1no.gramarye.P11CastCooldownDefinitionBridge;
 import com.yo1no.gramarye.magic.runtime.mana.ManaAttachmentDefinitionBridge;
 import java.util.Objects;
 import net.neoforged.bus.api.IEventBus;
@@ -29,6 +30,11 @@ final class PlayerSkillAttachments {
             ATTACHMENT_TYPES.register(
                     ManaAttachmentDefinitionBridge.attachmentId().getPath(),
                     ManaAttachmentDefinitionBridge::attachmentType);
+
+    private static final DeferredHolder<AttachmentType<?>, AttachmentType<?>> CAST_COOLDOWNS =
+            ATTACHMENT_TYPES.register(
+                    P11CastCooldownDefinitionBridge.attachmentId().getPath(),
+                    P11CastCooldownDefinitionBridge::attachmentType);
 
     private PlayerSkillAttachments() {
     }

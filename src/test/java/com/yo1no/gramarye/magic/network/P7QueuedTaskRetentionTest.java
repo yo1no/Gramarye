@@ -165,13 +165,13 @@ final class P7QueuedTaskRetentionTest {
                 null);
         var mana = new PlayerManaSnapshot(
                 87L, PlayerManaSnapshot.Availability.AVAILABLE, 50L);
-        var cooldown = new SkillCooldownSnapshot(
-                88L, List.of(new CooldownSnapshotEntry(1, 5)));
+        var cooldown = P7S2CodecTestSupport.cooldown(
+                88L, List.of(P7S2CodecTestSupport.active(1, 5)));
         var port = new RecordingClientDispatchPort();
 
-        new P7IntentAckDispatchTask(acknowledgement, port).run();
-        new P7ManaDispatchTask(mana, port).run();
-        new P7CooldownDispatchTask(cooldown, port).run();
+        new P7IntentAckDispatchTask(acknowledgement, port, 1L).run();
+        new P7ManaDispatchTask(mana, port, 1L).run();
+        new P7CooldownDispatchTask(cooldown, port, 1L).run();
 
         assertEquals(1, port.acknowledgementCalls);
         assertEquals(1, port.manaCalls);
@@ -189,7 +189,7 @@ final class P7QueuedTaskRetentionTest {
                 IntentAcknowledgement.SEQUENCE_CONSUMED,
                 null);
         assertClientTaskPropagatesBothFailureKinds(
-                port -> new P7IntentAckDispatchTask(acknowledgement, port));
+                port -> new P7IntentAckDispatchTask(acknowledgement, port, 1L));
     }
 
     @Test
@@ -197,15 +197,15 @@ final class P7QueuedTaskRetentionTest {
         var mana = new PlayerManaSnapshot(
                 90L, PlayerManaSnapshot.Availability.UNAVAILABLE, 0L);
         assertClientTaskPropagatesBothFailureKinds(
-                port -> new P7ManaDispatchTask(mana, port));
+                port -> new P7ManaDispatchTask(mana, port, 1L));
     }
 
     @Test
     void cooldownTaskPropagatesRuntimeExceptionAndErrorWithoutRetry() {
-        var cooldown = new SkillCooldownSnapshot(
-                91L, List.of(new CooldownSnapshotEntry(2, Integer.MAX_VALUE)));
+        var cooldown = P7S2CodecTestSupport.cooldown(
+                91L, List.of(P7S2CodecTestSupport.active(2, 600)));
         assertClientTaskPropagatesBothFailureKinds(
-                port -> new P7CooldownDispatchTask(cooldown, port));
+                port -> new P7CooldownDispatchTask(cooldown, port, 1L));
     }
 
     private static void assertClientTaskPropagatesBothFailureKinds(
@@ -254,7 +254,8 @@ final class P7QueuedTaskRetentionTest {
         private SkillCooldownSnapshot lastCooldownSnapshot;
 
         @Override
-        public long captureDispatchGeneration() {
+        public long captureDispatchGeneration(net.minecraft.network.Connection connection,
+                net.neoforged.neoforge.common.extensions.ICommonPacketListener listener) {
             return 1L;
         }
 
@@ -293,7 +294,8 @@ final class P7QueuedTaskRetentionTest {
         }
 
         @Override
-        public long captureDispatchGeneration() {
+        public long captureDispatchGeneration(net.minecraft.network.Connection connection,
+                net.neoforged.neoforge.common.extensions.ICommonPacketListener listener) {
             return 1L;
         }
 

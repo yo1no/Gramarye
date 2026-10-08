@@ -18,6 +18,7 @@ final class P11AcceptedWorkObservedHitTest {
         String model = MODEL.replace("/* CLAIM */", method(runtime,
                 "private Optional<RuntimePermitClaimDisposition> claimProjectileHitInSlot("))
                 .replace("/* OWNER_ENTRY */", method(runtime, "Optional<RuntimePermitClaimDisposition> claimObservedProjectileHit("))
+                .replace("/* PREPARED */", method(runtime, "boolean isPreparedSpawn()"))
                 .replace("/* HAS_HIT */", method(projectile, "boolean hasObservedHit("))
                 .replace("/* HAS_TARGET */", method(projectile, "boolean hasObservedTarget("))
                 .replace("/* OBSERVE */", method(projectile, "void observeHitTick("))
@@ -180,8 +181,10 @@ final class P11AcceptedWorkObservedHitTest {
           }
           static final class RuntimeProjectileContinuationPermit {
             ObservedHitModel owner;
-            enum Mode {REAL} enum State {OPEN,CLAIMED_PENDING_DAMAGE,CLOSED_NO_HIT}
+            enum Mode {REAL} enum State {RESERVED,OPEN,CLAIMED_PENDING_DAMAGE,CLOSED_NO_HIT}
             Mode mode=Mode.REAL;State state=State.OPEN;Object serverSlotToken="token",exactReference="ref",budgetAttribution,dimension="dimension";
+            boolean nativeSpawnPrepared;
+            /* PREPARED */
             int skillInstanceId=1,sourceDerivationDepth;long deadlineRuntimeTick=100;
             UUID permitId=UUID.randomUUID(),plannedProjectileId=UUID.randomUUID();Id heldChildEventId=new Id(5);
             SourceFamilyKey sourceFamily=new SourceFamilyKey(1,0,0,new Id(1));
@@ -228,6 +231,11 @@ final class P11AcceptedWorkObservedHitTest {
           Optional<RuntimePermitClaimDisposition> call(){return claimObservedProjectileHit(server,permit,projectile,candidate);}
           static void check(boolean good,String name){if(!good)throw new AssertionError(name);}
           public static void verify(){
+            var prepared=new ObservedHitModel();prepared.permit.state=RuntimeProjectileContinuationPermit.State.RESERVED;prepared.permit.nativeSpawnPrepared=true;
+            check(prepared.call().orElseThrow()==RuntimePermitClaimDisposition.REJECTED&&prepared.queued==0&&prepared.rejected==0
+              &&prepared.permit.state==RuntimeProjectileContinuationPermit.State.RESERVED,"prepared native claim is inert, not a terminal");
+            prepared.projectile.clearObservedHit();prepared.projectile.onHitEntity(new EntityHitResult(prepared.target));prepared.projectile.onHitBlock(new BlockHitResult());
+            check(prepared.projectile.observedHit==null&&!prepared.projectile.locallyClaimedOrTerminal&&prepared.queued==0,"prepared native callbacks neither capture nor close");
             var same=new ObservedHitModel();var original=same.candidate;
             check(same.call().isEmpty(),"hold");check(same.projectile.observedHit==original&&same.projectile.observedHitRuntimeTick==20,"original custody");
             check(same.queued==0&&same.rejected==0&&same.slot.reservedPending==1&&same.instance.lifetimeEvents==0&&same.slot.eventIndex.isEmpty(),"hold no publication/account change");

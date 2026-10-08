@@ -209,6 +209,13 @@ def p4E0ResearchSourceSet = sourceSets.create('p4E0Research')
 def p4E0ResearchGameTestSourceSet = sourceSets.create('p4E0ResearchGameTest')
 // P8-S2's global-reload negative control is process-isolated and never packaged.
 def p8S2GameTestSourceSet = sourceSets.create('p8S2GameTest')
+// Exact native source admission for the existing stock GameTests; never packaged.
+def p11GameTestHarnessSourceSet = sourceSets.create('p11GameTestHarness')
+def p11StockGameDirectory = layout.buildDirectory.dir('p11-stock-gametest')
+def prepareP11StockGameTest = tasks.register('prepareP11StockGameTest', Copy) {
+    from('src/p11GameTestHarness/fixtures/startup.toml') { rename { 'gramarye-server.toml' } }
+    into(p11StockGameDirectory.map { it.dir('defaultconfigs') })
+}
 // P8-S5's actual-client qualification harness is process-isolated and never packaged.
 def p8S5ClientHarnessSourceSet = sourceSets.create('p8S5ClientHarness')
 // P9-S3's tracked-projectile client harness is process-isolated and never packaged.
@@ -726,6 +733,7 @@ neoForge {
     addModdingDependenciesTo(p4E0ResearchSourceSet)
     addModdingDependenciesTo(p4E0ResearchGameTestSourceSet)
     addModdingDependenciesTo(p8S2GameTestSourceSet)
+    addModdingDependenciesTo(p11GameTestHarnessSourceSet)
     addModdingDependenciesTo(p8S5ClientHarnessSourceSet)
     addModdingDependenciesTo(p9S3ClientHarnessSourceSet)
     addModdingDependenciesTo(p9S5ClientHarnessSourceSet)
@@ -798,6 +806,11 @@ neoForge {
             sourceSet(p8S2GameTestSourceSet)
         }
 
+        p11StockGameTestHarness {
+            sourceSet(sourceSets.main)
+            sourceSet(p11GameTestHarnessSourceSet)
+        }
+
         // One finite actual-client runtime cohort. It shares the production mod identity while
         // retaining its observer/controller class outside main and the production JAR.
         p8S5ClientRuntimeHarness {
@@ -831,6 +844,7 @@ neoForge {
     def p4E3GameTestMod = mods.named('p4E3GameTestHarness').get()
     def p4E0ResearchMod = mods.named('p4E0ResearchHarness').get()
     def p8S2GameTestMod = mods.named('p8S2ReloadHarness').get()
+    def p11GameTestMod = mods.named('p11StockGameTestHarness').get()
     def p8S5ClientHarnessMod = mods.named('p8S5ClientRuntimeHarness').get()
     def p9S3ClientHarnessMod = mods.named('p9S3ClientRuntimeHarness').get()
     def p9S5ClientHarnessMod = mods.named('p9S5ClientRuntimeHarness').get()
@@ -861,9 +875,13 @@ neoForge {
         // The gametest system is also enabled by default for other run configs under the /test command.
         gameTestServer {
             type = "gameTestServer"
-            gameDirectory = project.file('run/gametest')
+            sourceSet = p11GameTestHarnessSourceSet
+            gameDirectory = p11StockGameDirectory.get().asFile
             // The P0 smoke test uses Minecraft's built-in one-block air structure.
             systemProperty 'neoforge.enabledGameTestNamespaces', "${project.mod_id},minecraft"
+            programArguments.addAll '--mixin.config', 'gramarye-p11-gametest-harness.mixins.json'
+            taskBefore(tasks.named(p11GameTestHarnessSourceSet.classesTaskName))
+            taskBefore(prepareP11StockGameTest)
         }
 
         p4A3HeapProbeServer {
@@ -1398,16 +1416,17 @@ neoForge {
                 gameDirectory = file(p11OnlineRuntimeText.isBlank()
                         ? 'build/p11-online-explicit-runtime-required/' + role
                         : p11OnlineRuntimeText + '/' + role)
-                if (dedicated && p11OnlineCase == 'l1-restart-read') {
+                if (dedicated && p11OnlineCase in ['l1-restart-read', 'cooldown-restart-read']) {
                     if (p11OnlineRestartUniverse.isBlank() || !java.nio.file.Path.of(p11OnlineRestartUniverse).isAbsolute()) {
                         throw new GradleException('P11 restart read requires the frozen helper-owned original universe')
                     }
                     programArguments.addAll '--universe', p11OnlineRestartUniverse, '--world', 'p11-online-world'
-                } else if (!p11OnlineRestartUniverse.isBlank() && p11OnlineCase != 'l1-restart-read') {
+                } else if (!p11OnlineRestartUniverse.isBlank() && !(p11OnlineCase in ['l1-restart-read', 'cooldown-restart-read'])) {
                     throw new GradleException('P11 restart universe is only valid for the exact read case')
                 }
                 programArguments.addAll '--mixin.config',
-                        p11OnlineCase in ['l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read']
+                        p11OnlineCase in ['cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual']
+                                ? 'gramarye-p11-cooldown-harness.mixins.json' : p11OnlineCase in ['l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'cooldown-l1-pre-spawn', 'cooldown-l1-open', 'cooldown-l1-claimed']
                                 ? 'gramarye-p11-l1-harness.mixins.json' : p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']
                                 ? 'gramarye-p11-c4a-harness.mixins.json' : 'gramarye-p11-online-harness.mixins.json'
                 if (p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']) {
@@ -1541,7 +1560,7 @@ neoForge {
 
         // applies to all the run configs above
         configureEach {
-            loadedMods.set([name == 'p4A3HeapProbeServer'
+            loadedMods.set([name == 'gameTestServer' ? p11GameTestMod : name == 'p4A3HeapProbeServer'
                     ? p4A3ProbeMod
                     : name.startsWith('p4B2') ? p4B2ProbeMod
                     : name.startsWith('p4C2') ? p4C2ProbeMod
@@ -1612,12 +1631,12 @@ tasks.named('runServer', JavaExec).configure {
             if (name == 'runP11OnlineClientA' || name == 'runP11OnlineClientB') {
                 throw new GradleException('P11 authenticated clients require frozen helper private-terminal launch')
             }
-            if (p11OnlineCase == 'l1-restart-read') {
+            if (p11OnlineCase in ['l1-restart-read', 'cooldown-restart-read']) {
                 throw new GradleException('P11 restart read requires the frozen helper stopped-world binding')
             }
             def paths = [p11OnlineRuntimeText, p11OnlineOutputText, p11OnlinePrivateText]
             if (paths.any { it.isBlank() || !java.nio.file.Path.of(it).isAbsolute() }
-                    || !p11OnlineJar.isFile() || !(p11OnlineCase in ['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward', 'l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'l1-qctx', 'l1-capacity'])
+                    || !p11OnlineJar.isFile() || !(p11OnlineCase in ['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward', 'l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'l1-qctx', 'l1-capacity', 'cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual', 'cooldown-l1-pre-spawn', 'cooldown-l1-open', 'cooldown-l1-claimed'])
                     || p11OnlineCase == 'c4a-host-lan'
                     || !(p11OnlineRunId ==~ /[a-zA-Z0-9_-]{8,64}/)
                     || !(p11OnlinePort ==~ /[0-9]{4,5}/)
@@ -2126,6 +2145,7 @@ dependencies {
     add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, p4E0ResearchSourceSet.output)
     add(p4E0ResearchGameTestSourceSet.implementationConfigurationName, commonsCompressCoordinate)
     add(p8S2GameTestSourceSet.implementationConfigurationName, sourceSets.main.output)
+    add(p11GameTestHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p8S5ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p9S5ClientHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)
@@ -4192,6 +4212,9 @@ tasks.named(p4E0ResearchSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p8S2GameTestSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(p11GameTestHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p8S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {

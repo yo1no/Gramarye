@@ -3,6 +3,7 @@ package com.yo1no.gramarye.magic.definition.store;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.Gramarye;
@@ -389,6 +390,9 @@ final class P4D3AApiGateTest {
 
     @Test
     void mutationOwnersRemainClosedAndD3BTestSurfacesStayIsolated() throws Exception {
+        var attachmentOwners = relativeSourcesInvoking(SET_DATA_METHOD);
+        assertAttachmentWriteOwners(attachmentOwners);
+        rejectForeignAttachmentOwners(attachmentOwners);
         assertAll(
                 () -> assertEquals(Set.of("SkillDefinitionStoreSubmissionPort.java"),
                         relativeSourcesInvoking(STORE_COMMIT_METHOD)),
@@ -396,9 +400,6 @@ final class P4D3AApiGateTest {
                                 "GramaryeSkillSavedData.java",
                                 "SkillDefinitionStoreService.java"),
                         relativeSourcesInvoking(STORE_RECLAIM_METHOD)),
-                () -> assertEquals(Set.of(
-                                "PlayerSkillAttachmentService.java", "ManaAttachments.java"),
-                        relativeSourcesInvoking(SET_DATA_METHOD)),
                 () -> assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
                         relativeSourcesInvoking(PREPARE_CLEAR_METHOD)),
                 () -> assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
@@ -585,6 +586,23 @@ final class P4D3AApiGateTest {
                 .filter(path -> read(path).contains(fragment))
                 .map(path -> path.getFileName().toString())
                 .collect(Collectors.toSet());
+    }
+
+    private static void assertAttachmentWriteOwners(Set<String> owners) {
+        assertEquals(Set.of("PlayerSkillAttachmentService.java", "ManaAttachments.java",
+                "P11CastCooldownAttachments.java", "PlayerSkillAttachmentGameTests.java"), owners);
+    }
+
+    private static void rejectForeignAttachmentOwners(Set<String> owners) {
+        for (var foreign : List.of("P11CastCooldownAttachmentsExtra.java", "ForeignOwner.java")) {
+            var changed = new java.util.HashSet<>(owners);
+            assertTrue(changed.remove("P11CastCooldownAttachments.java"));
+            assertTrue(changed.add(foreign));
+            assertThrows(AssertionError.class, () -> assertAttachmentWriteOwners(changed));
+        }
+        var missing = new java.util.HashSet<>(owners);
+        assertTrue(missing.remove("PlayerSkillAttachmentGameTests.java"));
+        assertThrows(AssertionError.class, () -> assertAttachmentWriteOwners(missing));
     }
 
     private static Set<String> relativeProductionPathsContaining(String fragment)

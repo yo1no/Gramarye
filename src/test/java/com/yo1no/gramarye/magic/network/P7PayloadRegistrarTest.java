@@ -62,7 +62,7 @@ final class P7PayloadRegistrarTest {
         var mana = new PlayerManaSyncPayload(new PlayerManaSnapshot(
                 1, PlayerManaSnapshot.Availability.UNAVAILABLE, 0));
         var cooldown = new SkillCooldownSyncPayload(
-                new SkillCooldownSnapshot(1, List.of()));
+                P7S2CodecTestSupport.cooldown(1, List.of()));
 
         assertSame(CastIntentPayload.TYPE, cast.type());
         assertSame(IntentAckPayload.TYPE, acknowledgement.type());
@@ -105,7 +105,7 @@ final class P7PayloadRegistrarTest {
         var source = read(REGISTRAR_SOURCE);
         var normalized = source.replaceAll("\\s+", " ");
 
-        assertEquals("gramarye-p7-v0", P7NetworkBounds.PROTOCOL_VERSION);
+        assertEquals("gramarye-p7-v1", P7NetworkBounds.PROTOCOL_VERSION);
         assertEquals(1, occurrences(source, ".playToServer("));
         assertEquals(3, occurrences(source, ".playToClient("));
         assertEquals(1, occurrences(
@@ -146,7 +146,7 @@ final class P7PayloadRegistrarTest {
             throws IOException {
         var source = javaSources(NETWORK_MAIN).stream()
                 .filter(path -> !Set.of(
-                                "P7ClientLifecycleEvents.java",
+                                "P7ClientLifecycleEvents.java", "P7CooldownHud.java",
                                 "P9ClientCastInput.java",
                                 "P9ClientKeyMappings.java")
                         .contains(path.getFileName().toString()))

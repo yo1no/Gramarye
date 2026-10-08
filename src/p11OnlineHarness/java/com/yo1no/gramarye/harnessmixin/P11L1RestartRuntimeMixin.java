@@ -20,5 +20,6 @@ abstract class P11L1RestartRuntimeMixin {
             at = @At("RETURN"), require = 1, expect = 1, allow = 1)
     private void p11$l1ActualStarted(ServerStartedEvent event, @Coerce Object limits, CallbackInfo callback) {
         P11L1RestartProbe.runtimeStarted(this, event.getServer(), slots.get(event.getServer()));
+        com.yo1no.gramarye.P11CooldownL1Probe.runtimeStarted(event.getServer(), slots.get(event.getServer()));
     }
 }

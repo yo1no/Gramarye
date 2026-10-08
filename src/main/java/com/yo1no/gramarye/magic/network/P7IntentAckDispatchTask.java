@@ -9,11 +9,11 @@ final class P7IntentAckDispatchTask implements Runnable {
 
     P7IntentAckDispatchTask(
             IntentAcknowledgement acknowledgement,
-            P7ClientMirrorDispatchPort dispatchPort) {
+            P7ClientMirrorDispatchPort dispatchPort, long dispatchGeneration) {
         this.acknowledgement = Objects.requireNonNull(
                 acknowledgement, "acknowledgement");
         this.dispatchPort = Objects.requireNonNull(dispatchPort, "dispatchPort");
-        this.dispatchGeneration = dispatchPort.captureDispatchGeneration();
+        this.dispatchGeneration = dispatchGeneration;
     }
 
     @Override

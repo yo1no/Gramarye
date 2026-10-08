@@ -2,7 +2,6 @@ package com.yo1no.gramarye.magic.network;
 
 import com.yo1no.gramarye.P11NativeStorageBoundary;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataInitialStage;
-import java.util.List;
 import java.util.Objects;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.MinecraftServer;
@@ -27,6 +26,7 @@ final class P7AuthoritativeSyncService {
     private final P7ServerLifecycleCoordinator lifecycle;
     private final ManaObservation manaObservation;
     private final Transport transport;
+    private final P7ServerAuthorizationBoundary.SyncProjectionPort projections;
 
     P7AuthoritativeSyncService(P7ServerSessionService sessions, P7ServerAccess access,
             P7ServerLifecycleCoordinator lifecycle, ManaObservation manaObservation) {
@@ -36,11 +36,18 @@ final class P7AuthoritativeSyncService {
 
     P7AuthoritativeSyncService(P7ServerSessionService sessions, P7ServerAccess access,
             P7ServerLifecycleCoordinator lifecycle, ManaObservation manaObservation, Transport transport) {
+        this(sessions, access, lifecycle, manaObservation, transport, P7ServerAuthorizationBoundary::prepareSync);
+    }
+
+    P7AuthoritativeSyncService(P7ServerSessionService sessions, P7ServerAccess access,
+            P7ServerLifecycleCoordinator lifecycle, ManaObservation manaObservation, Transport transport,
+            P7ServerAuthorizationBoundary.SyncProjectionPort projections) {
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.access = Objects.requireNonNull(access, "access");
         this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
         this.manaObservation = Objects.requireNonNull(manaObservation, "manaObservation");
         this.transport = Objects.requireNonNull(transport, "transport");
+        this.projections = Objects.requireNonNull(projections, "projections");
     }
 
     void accept(P7ServerIntentResult result) {
@@ -65,53 +72,90 @@ final class P7AuthoritativeSyncService {
     boolean fullSync(MinecraftServer server, P7SessionIdentity identity, long tick) {
         requireServerThread(server);
         var actor = currentActor(server, identity);
-        if (actor == null) {
-            return true;
-        }
+        if (actor == null) { return true; }
         var state = sessions.currentSession(identity).orElseThrow().syncState();
-        if (state.mana().exhausted() || state.cooldown().exhausted()) {
+        if (state.sending()) { return false; }
+        if ((state.mana().exhausted() && !state.manaSubmittedInCycle()) || state.cooldown().exhausted()) {
             lifecycle.terminate(server, actor, identity);
             return true;
         }
-        if (!state.due(tick) || !sessions.consumeSyncWork(server, tick)) {
-            return false;
-        }
-        // Both immutable full values are validated before either submission.
-        boolean needsMana = !state.initialPending() || !state.initialManaSubmitted();
-        PlayerManaSyncPayload mana = null;
-        if (needsMana) {
-            var observation = state.initialPending()
-                    ? P11NativeStorageBoundary.beginMetadataManaObservation(actor, identity.connectionEpoch()) : null;
-            boolean normal = false;
-            try {
-                var balance = manaObservation.observe(actor);
-                if (balance < -1 || balance > 1_000_000_000L) {
-                    throw new P7SemanticInvariantException("invalid mana observation");
+        if (!state.due(tick) || !sessions.consumeSyncWork(server, tick)) { return false; }
+        var entered = state.sending(true);
+        sessions.updateSync(server, identity, state, entered);
+        var connection = actor.connection;
+        Throwable primary = null;
+        try {
+            state = entered;
+            boolean needsMana = !state.manaSubmittedInCycle();
+            PlayerManaSyncPayload mana = null;
+            if (needsMana) {
+                var observation = state.initialPending()
+                        ? P11NativeStorageBoundary.beginMetadataManaObservation(actor, identity.connectionEpoch()) : null;
+                boolean normal = false;
+                try {
+                    var balance = manaObservation.observe(actor);
+                    if (balance < -1 || balance > 1_000_000_000L) {
+                        throw new P7SemanticInvariantException("invalid mana observation");
+                    }
+                    mana = new PlayerManaSyncPayload(new PlayerManaSnapshot(state.mana().value(),
+                            balance == -1 ? PlayerManaSnapshot.Availability.UNAVAILABLE : PlayerManaSnapshot.Availability.AVAILABLE,
+                            balance == -1 ? 0 : balance));
+                    normal = true;
+                } finally {
+                    P11NativeStorageBoundary.endMetadataManaObservation(observation, normal);
                 }
-                mana = new PlayerManaSyncPayload(new PlayerManaSnapshot(state.mana().value(),
-                        balance == -1 ? PlayerManaSnapshot.Availability.UNAVAILABLE : PlayerManaSnapshot.Availability.AVAILABLE,
-                        balance == -1 ? 0 : balance));
-                normal = true;
-            } catch (RuntimeException | Error primary) {
-                // Observation can install the mana default. Unknown publication cannot be
-                // retried by the ordinary queued sender on the next tick.
-                lifecycle.submissionFailed(server, actor, identity, primary);
-                throw primary;
-            } finally {
-                P11NativeStorageBoundary.endMetadataManaObservation(observation, normal);
             }
+            // Preparation may initialize/prune. Its final immutable capture includes the
+            // original mana publication; neither projection getters nor validation invoke native callbacks.
+            if (currentActor(server, identity) != actor || actor.connection != connection) { return false; }
+            var capture = Objects.requireNonNull(projections.prepareAndCapture(server, actor), "sync capture");
+            var cooldown = new SkillCooldownSyncPayload(
+                    Objects.requireNonNull(capture.projection(), "sync projection").snapshot(state.cooldown().value()));
+            // Both complete immutable payloads are validated before either family is submitted.
+            if (!captureCurrent(server, actor, identity, state, connection, capture)) { return false; }
+            if (needsMana) {
+                submitInitialFamily(server, actor, identity, mana, state.initialPending(), true);
+                state = commitFamily(server, actor, identity, state, true, tick);
+            }
+            if (!captureCurrent(server, actor, identity, state, connection, capture)) { return false; }
+            submitInitialFamily(server, actor, identity, cooldown, state.initialPending(), false);
+            state = commitFamily(server, actor, identity, state, false, tick);
+            if (state.mana().exhausted() || state.cooldown().exhausted()) {
+                lifecycle.terminate(server, actor, identity);
+                return true;
+            }
+            return captureCurrent(server, actor, identity, state, connection, capture);
+        } catch (RuntimeException | Error failure) {
+            primary = failure;
+            // Unknown preparation/observation/submission never becomes a retryable fresh capture.
+            lifecycle.submissionFailed(server, actor, identity, failure);
+            throw failure;
+        } finally {
+            finishAttempt(server, actor, identity, primary);
         }
-        var cooldown = new SkillCooldownSyncPayload(new SkillCooldownSnapshot(state.cooldown().value(), List.of()));
-        if (needsMana) {
-            submitInitialFamily(server, actor, identity, mana, state.initialPending(), true);
-            state = commitFamily(server, actor, identity, state, true, tick);
+    }
+
+    private boolean captureCurrent(MinecraftServer server, ServerPlayer actor, P7SessionIdentity identity,
+            P7ServerSyncState state, Object connection, P7ServerAuthorizationBoundary.SyncCapture capture) {
+        return currentActor(server, identity) == actor && actor.connection == connection
+                && sessions.currentSession(identity).orElseThrow().syncState() == state
+                && capture.isCurrent()
+                && currentActor(server, identity) == actor && actor.connection == connection
+                && sessions.currentSession(identity).orElseThrow().syncState() == state;
+    }
+
+    private void finishAttempt(MinecraftServer server, ServerPlayer actor,
+            P7SessionIdentity identity, Throwable primary) {
+        try {
+            var current = sessions.currentSession(identity);
+            if (current.isPresent() && current.orElseThrow().syncState().sending()) {
+                var state = current.orElseThrow().syncState();
+                sessions.updateSync(server, identity, state, state.sending(false));
+            }
+        } catch (RuntimeException | Error cleanupFailure) {
+            lifecycle.submissionFailed(server, actor, identity, primary == null ? cleanupFailure : primary);
+            if (primary == null) { throw cleanupFailure; }
         }
-        submitInitialFamily(server, actor, identity, cooldown, state.initialPending(), false);
-        state = commitFamily(server, actor, identity, state, false, tick);
-        if (state.mana().exhausted() || state.cooldown().exhausted()) {
-            lifecycle.terminate(server, actor, identity);
-        }
-        return true;
     }
 
     private void submitInitialFamily(MinecraftServer server, ServerPlayer actor,
@@ -139,7 +183,7 @@ final class P7AuthoritativeSyncService {
             P7SessionIdentity identity, P7ServerSyncState state, boolean mana, long tick) {
         try {
             var next = mana ? state.manaSubmitted() : state.cooldownSubmitted(tick);
-            sessions.updateSync(server, identity, next);
+            sessions.updateSync(server, identity, state, next);
             return next;
         } catch (RuntimeException | Error primary) {
             // A submitted packet cannot be replayed because bookkeeping threw afterwards.

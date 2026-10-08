@@ -91,7 +91,7 @@ public final class PlayerSkillAttachmentGameTests {
             GameTestHelper helper) {
         var server = helper.getLevel().getServer();
         var playerList = server.getPlayerList();
-        var service = new PlayerSkillAttachmentService();
+        var service = com.yo1no.gramarye.P7S4LoginManaGameTests.nativeGameTestAttachments(server);
         ConnectedPlayer connected = null;
         try {
             helper.assertTrue(server.isSameThread(),
@@ -314,6 +314,8 @@ public final class PlayerSkillAttachmentGameTests {
             var sameUuidQuarantined = unplacedPlayer(
                     server, player.getUUID(), "p4c2-same-uuid-quarantine");
             loadAttachmentFixture(sameUuidQuarantined, ByteTag.valueOf((byte) 19));
+            helper.assertTrue(readySource.isCurrent(player),
+                    "unbound same-UUID component input must not change the actual managed source");
             assertCurrentness(
                     service.checkPreparedTransitionCurrent(
                             sameUuidQuarantined, presentToMissing),
@@ -505,28 +507,56 @@ public final class PlayerSkillAttachmentGameTests {
     }
 
     @GameTest(
+            batch = "p4_c2_native_copy",
             templateNamespace = "minecraft",
             template = "bastion/blocks/air",
             timeoutTicks = 300)
     public static void registeredQuarantineAndCopyLifecycleRemainTotal(
             GameTestHelper helper) {
+        runCopyVariant(helper, com.yo1no.gramarye.P7S4LoginManaGameTests.nativeGameTestAttachments(
+                helper.getLevel().getServer()), 0);
+    }
+
+    private static void runCopyVariant(
+            GameTestHelper helper, PlayerSkillAttachmentService service, int index) {
         var server = helper.getLevel().getServer();
-        var service = new PlayerSkillAttachmentService();
+        var variants = LifecycleVariant.values();
+        if (index == variants.length) { helper.succeed(); return; }
+        var variant = variants[index];
+        var playerId = new UUID(0xC2A0000000000000L, 0x8000000000000100L + index);
+        removeOnlinePlayer(server, playerId);
+        deletePlayerdata(server, playerId);
+        writePlayerdataFixture(server, playerId, fixtureTag(variant));
+        final ConnectedPlayer connected;
+        try { connected = placePlayer(server, playerId, "p4c2-q" + index); }
+        catch (RuntimeException | Error failure) {
+            try { deletePlayerdata(server, playerId); }
+            catch (RuntimeException | Error cleanup) {
+                if (cleanup != failure) { failure.addSuppressed(cleanup); }
+            }
+            throw failure;
+        }
+        try {
+            com.yo1no.gramarye.P7S4LoginManaGameTests.runCooldownFixtureAfterTick(helper,
+                    () -> copyVariantAfterLogin(helper, service, index, connected),
+                    () -> runCopyVariant(helper, service, index + 1),
+                    primary -> cleanupCopyVariant(server, playerId, connected, primary));
+        } catch (RuntimeException | Error failure) {
+            cleanupCopyVariant(server, playerId, connected, failure);
+            throw failure;
+        }
+    }
+
+    private static void copyVariantAfterLogin(GameTestHelper helper,
+            PlayerSkillAttachmentService service, int index, ConnectedPlayer connected) {
+        var server = helper.getLevel().getServer();
+        var variant = LifecycleVariant.values()[index];
+        var playerId = connected.player().getUUID();
+        var fixture = fixtureTag(variant);
         var keepInventory = server.overworld().getGameRules()
                 .getRule(GameRules.RULE_KEEPINVENTORY);
         var originalKeepInventory = keepInventory.get();
         try {
-            var variants = LifecycleVariant.values();
-            for (var index = 0; index < variants.length; index++) {
-                var variant = variants[index];
-                var playerId = new UUID(
-                        0xC2A0000000000000L,
-                        0x8000000000000100L + index);
-                removeOnlinePlayer(server, playerId);
-                deletePlayerdata(server, playerId);
-                var fixture = fixtureTag(variant);
-                writePlayerdataFixture(server, playerId, fixture);
-                var connected = placePlayer(server, playerId, "p4c2-q" + index);
                 try {
                     var current = connected.player();
                     helper.assertTrue(current.hasData(PlayerSkillAttachments.type()),
@@ -537,6 +567,26 @@ public final class PlayerSkillAttachmentGameTests {
                         fixture = ready.carrier().copyTag();
                     }
                     assertVariant(helper, service, current, loadedState, fixture, variant);
+                    if (variant == LifecycleVariant.PRESERVED_BYTE || variant == LifecycleVariant.PRESERVED_LIST
+                            || variant == LifecycleVariant.MARKER) {
+                        com.yo1no.gramarye.P7S4LoginManaGameTests.assertNativeQuarantineBlocksRespawn(current);
+                        // A managed successful transition is forbidden by the real H gate.
+                        // Exercise the unchanged native serialized-copy callback separately;
+                        // these unplaced holders never become source bodies or online actors.
+                        var deathCopy = componentCopy(server, current, true);
+                        var deathState = deathCopy.getData(PlayerSkillAttachments.type());
+                        helper.assertTrue(deathState != loadedState,
+                                "copyOnDeath must rebuild a fresh Attachment state");
+                        assertCopiedComponent(helper, service, deathCopy, deathState, fixture, loadedState);
+                        var nonDeathCopy = componentCopy(server, deathCopy, false);
+                        var nonDeathState = nonDeathCopy.getData(PlayerSkillAttachments.type());
+                        helper.assertTrue(nonDeathState != deathState,
+                                "native non-death copy component must rebuild a fresh state");
+                        assertCopiedComponent(helper, service, nonDeathCopy, nonDeathState, fixture, deathState);
+                        assertVariant(helper, service, current, loadedState, fixture, variant);
+                        return;
+                    }
+                    com.yo1no.gramarye.P7S4LoginManaGameTests.requireCooldownLoginComplete(current);
                     if (variant == LifecycleVariant.READY_GENERATION_BOUNDARY) {
                         fixture = advanceToGenerationMaximum(service, current);
                         loadedState = current.getData(PlayerSkillAttachments.type());
@@ -545,17 +595,13 @@ public final class PlayerSkillAttachmentGameTests {
                     }
 
                     keepInventory.set((index & 1) != 0, server);
-                    var afterDeath = server.getPlayerList().respawn(
-                            current, false, Entity.RemovalReason.KILLED);
-                    afterDeath.connection.player = afterDeath;
+                    var afterDeath = com.yo1no.gramarye.P7S4LoginManaGameTests.respawnNativeGameTestPlayer(current);
                     var deathState = afterDeath.getData(PlayerSkillAttachments.type());
                     helper.assertTrue(deathState != loadedState,
                             "copyOnDeath must rebuild a fresh Attachment state");
                     assertVariant(helper, service, afterDeath, deathState, fixture, variant);
 
-                    var afterEnd = server.getPlayerList().respawn(
-                            afterDeath, true, Entity.RemovalReason.CHANGED_DIMENSION);
-                    afterEnd.connection.player = afterEnd;
+                    var afterEnd = com.yo1no.gramarye.P7S4LoginManaGameTests.completeEndGameTestPlayer(afterDeath);
                     var endState = afterEnd.getData(PlayerSkillAttachments.type());
                     helper.assertTrue(endState != deathState,
                             "End-equivalent non-death clone must rebuild a fresh state");
@@ -565,10 +611,39 @@ public final class PlayerSkillAttachmentGameTests {
                     connected.channel().finishAndReleaseAll();
                     deletePlayerdata(server, playerId);
                 }
-            }
-            helper.succeed();
         } finally {
             keepInventory.set(originalKeepInventory, server);
+        }
+    }
+
+    private static ServerPlayer componentCopy(MinecraftServer server, ServerPlayer original, boolean death) {
+        var target = unplacedPlayer(server, original.getUUID(), "p4c2-copy-component");
+        net.neoforged.neoforge.attachment.AttachmentInternals.onPlayerClone(
+                new net.neoforged.neoforge.event.entity.player.PlayerEvent.Clone(target, original, death));
+        return target;
+    }
+
+    private static void assertCopiedComponent(GameTestHelper helper, PlayerSkillAttachmentService service,
+            ServerPlayer holder, PlayerSkillAttachmentState state, Tag expected, PlayerSkillAttachmentState original) {
+        helper.assertTrue(state != original && state.getClass() == original.getClass()
+                        && expected.equals(PlayerSkillAttachmentSerializer.INSTANCE.write(state, holder.registryAccess())),
+                "original copy component must preserve exact quarantine kind and lossless serialized value");
+        helper.assertTrue(service.draftCount(holder) instanceof PlayerSkillAttachmentService.Unavailable<?>,
+                "copy component must not turn quarantine into a Ready datum");
+        helper.assertTrue(holder.getServer().getPlayerList().getPlayer(holder.getUUID()) != holder,
+                "component holder is not a native managed transition or online-source witness");
+    }
+
+    private static void cleanupCopyVariant(MinecraftServer server, UUID playerId,
+            ConnectedPlayer connected, Throwable primary) {
+        try {
+            try { removeOnlinePlayer(server, playerId); }
+            finally {
+                try { connected.channel().finishAndReleaseAll(); }
+                finally { deletePlayerdata(server, playerId); }
+            }
+        } catch (RuntimeException | Error cleanup) {
+            if (cleanup != primary) { primary.addSuppressed(cleanup); }
         }
     }
 
@@ -839,16 +914,12 @@ public final class PlayerSkillAttachmentGameTests {
 
     private static ConnectedPlayer placePlayer(
             MinecraftServer server, UUID playerId, String name) {
-        var cookie = CommonListenerCookie.createInitial(
-                new GameProfile(playerId, name), false);
-        var player = new ServerPlayer(
-                server,
-                server.overworld(),
-                cookie.gameProfile(),
-                cookie.clientInformation());
-        var connection = new Connection(PacketFlow.SERVERBOUND);
-        var channel = new EmbeddedChannel(connection);
-        server.getPlayerList().placeNewPlayer(connection, player, cookie);
+        var player = com.yo1no.gramarye.P7S4LoginManaGameTests.connectNativeGameTestPlayer(
+                server, playerId, name);
+        var channel = (EmbeddedChannel) player.connection.getConnection().channel();
+        // Initial native login packets are not Attachment mutation packets.
+        Object packet;
+        while ((packet = channel.readOutbound()) != null) { ReferenceCountUtil.release(packet); }
         return new ConnectedPlayer(player, channel);
     }
 
@@ -878,9 +949,27 @@ public final class PlayerSkillAttachmentGameTests {
     }
 
     private static void loadAttachmentFixture(ServerPlayer player, Tag attachment) {
-        var root = player.saveWithoutId(new CompoundTag());
-        putAttachmentFixture(root, attachment);
-        player.load(root);
+        // Component-only negative. Never request whole-player serialization/load or
+        // a source-body grant for this unplaced same-UUID shadow.
+        player.setData(PlayerSkillAttachments.type(), readUnboundComponent(player, attachment));
+    }
+
+    private static PlayerSkillAttachmentState readUnboundComponent(ServerPlayer player, Tag attachment) {
+        if (player.getServer().getPlayerList().getPlayer(player.getUUID()) == player
+                || player.isAddedToLevel() || player.hasData(PlayerSkillAttachments.type())) {
+            throw new AssertionError("component input requires an unplaced fresh holder");
+        }
+        return PlayerSkillAttachmentSerializer.INSTANCE.read(player, attachment.copy(), player.registryAccess());
+    }
+
+    /** Pre-login input from the registered material codec, not a native managed-player save. */
+    public static CompoundTag isolatedPlayerSkillsInput(ServerPlayer holder, Tag attachment) {
+        var state = readUnboundComponent(holder, attachment);
+        var encoded = PlayerSkillAttachmentSerializer.INSTANCE.write(state, holder.registryAccess());
+        var input = new CompoundTag();
+        input.putUUID("UUID", holder.getUUID());
+        putAttachmentFixture(input, encoded);
+        return input;
     }
 
     private static void putAttachmentFixture(CompoundTag root, Tag attachment) {

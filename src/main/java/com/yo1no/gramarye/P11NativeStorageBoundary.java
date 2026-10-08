@@ -66,6 +66,7 @@ public final class P11NativeStorageBoundary {
     private static final ThreadLocal<NormalLogoutProof> NORMAL_LOGOUT = new ThreadLocal<>();
     private static final ResourceLocation SKILLS = ResourceLocation.fromNamespaceAndPath("gramarye", "player_skills");
     private static final ResourceLocation MANA = ResourceLocation.fromNamespaceAndPath("gramarye", "player_mana");
+    private static final ResourceLocation COOLDOWNS = P11CastCooldownAttachments.ID;
     private static long observerFailures;
 
     private P11NativeStorageBoundary() {}
@@ -182,6 +183,17 @@ public final class P11NativeStorageBoundary {
         }
         token.publications++;
         token.expected = body.source;
+    }
+
+    /** Only the sole cooldown owner can reach this exact typed publication completion. */
+    static void metadataCooldownPublished(P11QualifiedSourceOwner owner, P11QualifiedSourceOwner.Body body,
+            P11ReceiptLedger.Source before) {
+        var lease = body.account.metadata;
+        if (lease == null || lease.closed || lease.owner != owner || lease.body != body
+                || lease.version != before || body.source.epoch() != before.epoch()
+                || before.version() == Long.MAX_VALUE || body.source.version() != before.version() + 1
+                || !owner.metadataUnchangedExceptCooldown(body, lease.witness)) { return; }
+        refreshMetadata(lease);
     }
 
     public static void endMetadataManaObservation(MetadataManaObservation token, boolean normal) {
@@ -449,6 +461,7 @@ public final class P11NativeStorageBoundary {
         try {
             if (!source.canSerialize(previous)) { throw unavailable(); }
             source.flushIndependentBeforeLogin(previous);
+            source.reconcileCooldown(previous);
             selection.version = previous.source;
             selection.lineage = source.lineage(previous).orElseThrow(P11NativeStorageBoundary::unavailable);
             selection.memory = source.seal(previous, selectedMaterial(previous));
@@ -641,6 +654,7 @@ public final class P11NativeStorageBoundary {
     private static PrimaryReadRequest synchronousPrimary(P11QualifiedSourceOwner source,
             P11QualifiedSourceOwner.Body previous) {
         if (PRIMARY_READ.get() != null || WRITE.get() != null || CACHE.get() != null) { throw unavailable(); }
+        source.reconcileCooldown(previous);
         var request = new PrimaryReadRequest(source, previous);
         PRIMARY_READ.set(request);
         boolean complete = false;
@@ -831,6 +845,7 @@ public final class P11NativeStorageBoundary {
         scope.bodyLoaded = true;
         scope.expectedSkills = input.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY).contains(SKILLS.toString());
         scope.expectedMana = input.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY).contains(MANA.toString());
+        scope.expectedCooldown = input.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY).contains(COOLDOWNS.toString());
         if (input.contains(AttachmentHolder.ATTACHMENTS_NBT_KEY)
                 && !input.contains(AttachmentHolder.ATTACHMENTS_NBT_KEY, Tag.TAG_COMPOUND)) { throw unavailable(); }
         scope.owner.beginInput(scope.body, scope.input);
@@ -845,7 +860,8 @@ public final class P11NativeStorageBoundary {
         } finally {
             if (normal) {
                 boolean complete = (!scope.expectedSkills || scope.skillsRead)
-                        && (!scope.expectedMana || scope.manaRead);
+                        && (!scope.expectedMana || scope.manaRead)
+                        && (!scope.expectedCooldown || scope.cooldownRead);
                 scope.owner.loadReturned(scope.body, complete);
             } else { failWithoutReplacingPrimary(scope.owner, scope.body, P11QualifiedSourceOwner.Fault.MATERIAL); }
         }
@@ -899,6 +915,34 @@ public final class P11NativeStorageBoundary {
         if (body != null) { source.manaPublication(body, publication); }
     }
 
+    static void cooldownReadCompleted(IAttachmentHolder holder, P11CastCooldownMaterial.State result) {
+        var scope = LOAD.get();
+        if (scope != null && holder == scope.body.actor) {
+            scope.cooldownRead = !scope.cooldownReadObserved && scope.owner.cooldownRead(scope.body, result);
+            scope.cooldownReadObserved = true;
+        }
+        var copy = COPY.get();
+        if (copy != null && copy.next != null && holder == copy.next.actor) {
+            copy.cooldownRead = !copy.cooldownReadObserved && copy.owner.cooldownRead(copy.next, result);
+            copy.cooldownReadObserved = true;
+        }
+    }
+
+    static void cooldownPublished(P11CastCooldownMaterial.State before, P11CastCooldownMaterial.State after) {
+        if (before == null || after == null || before.actor != after.actor) { throw unavailable(); }
+        var source = owner(after.actor);
+        var body = source == null ? null : source.body(after.actor);
+        if (body == null) { throw unavailable(); }
+        source.cooldownPublication(body, before, after);
+    }
+
+    static void cooldownWritten(P11CastCooldownMaterial.Write result) {
+        var scope = SERIALIZE.get();
+        if (scope != null && scope.attachments != null && scope.attachments.holder == scope.body.actor) {
+            scope.attachments.cooldown = result;
+        }
+    }
+
     public static void playerSkillsWritten(
             PlayerSkillAttachmentService.P11AttachmentWriteResult result) {
         var scope = SERIALIZE.get();
@@ -927,12 +971,15 @@ public final class P11NativeStorageBoundary {
             boolean exactHolder = holder == scope.body.actor;
             boolean skills = exactHolder && holder.hasData(NeoForgeRegistries.ATTACHMENT_TYPES.get(SKILLS));
             boolean mana = exactHolder && holder.hasData(NeoForgeRegistries.ATTACHMENT_TYPES.get(MANA));
+            boolean cooldown = exactHolder && holder.hasData(P11CastCooldownAttachments.TYPE);
             var result = original.call(provider);
             if (exactHolder) {
                 scope.requiredComplete &= (!skills || (result != null && observed.skills != null
                         && observed.skills.matches(scope.body.actor, result.get(SKILLS.toString()))))
                         && (!mana || (result != null && observed.mana != null
-                        && observed.mana.matches(scope.body.actor, result.get(MANA.toString()))));
+                        && observed.mana.matches(scope.body.actor, result.get(MANA.toString()))))
+                        && (!cooldown || (result != null && observed.cooldown != null
+                        && observed.cooldown.matches(scope.body.actor, result.get(COOLDOWNS.toString()))));
             }
             return result;
         } finally { scope.attachments = previous; }
@@ -956,6 +1003,7 @@ public final class P11NativeStorageBoundary {
         }
         boolean selectedComparison = SELECTED_SERIALIZE.get() == body
                 && source.canInspectConstructedPredecessor(body);
+        if (!selectedComparison) { source.reconcileCooldown(body); }
         if ((!source.canSerialize(body) && !selectedComparison) || SERIALIZE.get() != null) { throw unavailable(); }
         var scope = new SerializeScope(source, body);
         SERIALIZE.set(scope);
@@ -1100,6 +1148,7 @@ public final class P11NativeStorageBoundary {
         var body = source == null ? null : source.body(old);
         if (body == null) { return original.call(old, keepEverything, reason); }
         if (COPY.get() != null || !source.canCopy(body)) { throw unavailable(); }
+        source.reconcileCooldown(body);
         var lineage = source.lineage(body).orElseThrow(P11NativeStorageBoundary::unavailable);
         var scope = new CopyScope(source, old, lineage);
         if (!source.retainNativeRoot(body, P11ControlBudgets.Root.TRANSITION)) { throw unavailable(); }
@@ -1151,10 +1200,12 @@ public final class P11NativeStorageBoundary {
         scope.owner.beginInput(scope.next, input);
         boolean skills = old.hasData(NeoForgeRegistries.ATTACHMENT_TYPES.get(SKILLS));
         boolean mana = old.hasData(NeoForgeRegistries.ATTACHMENT_TYPES.get(MANA));
+        boolean cooldown = old.hasData(P11CastCooldownAttachments.TYPE);
         if (!skills) { scope.readResult = scope.owner.missingInput(scope.next); }
         original.call(old, keepEverything);
         scope.owner.loaded(scope.next, input, scope.readResult);
-        scope.owner.loadReturned(scope.next, (!skills || scope.skillsRead) && (!mana || scope.manaRead));
+        scope.owner.loadReturned(scope.next, (!skills || scope.skillsRead) && (!mana || scope.manaRead)
+                && (!cooldown || scope.cooldownRead));
     }
 
     private static P11QualifiedSourceOwner.SourceUnavailable unavailable() {
@@ -1601,6 +1652,7 @@ public final class P11NativeStorageBoundary {
                 || DETACHED_STOP_SAVE.get() != null || WRITE.get() != null || CACHE.get() != null
                 || PRIMARY_READ.get() != null || SERIALIZE.get() != null
                 || !source.detachedStopCurrent(body, body.source)) { throw unavailable(); }
+        source.reconcileCooldown(body);
         var request = new DetachedStopSaveRequest(source, body);
         DETACHED_STOP_SAVE.set(request);
         try {
@@ -1749,7 +1801,7 @@ public final class P11NativeStorageBoundary {
         ReadState primary = ReadState.UNOBSERVED;
         ReadState backup = ReadState.UNOBSERVED;
         boolean loadStarted, bodyLoaded, diskLoadActive, expectedSkills, expectedMana,
-                skillsRead, manaRead, manaReadObserved;
+                expectedCooldown, skillsRead, manaRead, manaReadObserved, cooldownRead, cooldownReadObserved;
         LoadScope(P11QualifiedSourceOwner owner, P11QualifiedSourceOwner.Body body,
                 P11QualifiedSourceOwner.Sealed memory, P11QualifiedSourceOwner.Sealed bodyMemory,
                 PrimaryReadRequest preparedPrimary, P11SourceProvenance.Lineage lineage) {
@@ -1774,6 +1826,7 @@ public final class P11NativeStorageBoundary {
         final AttachmentHolder holder;
         PlayerSkillAttachmentService.P11AttachmentWriteResult skills;
         P11ManaMaterial.Write mana;
+        P11CastCooldownMaterial.Write cooldown;
         AttachmentWriteScope(AttachmentHolder holder) { this.holder = holder; }
     }
 
@@ -1786,7 +1839,7 @@ public final class P11NativeStorageBoundary {
         P11SourceProvenance.Lineage lineage;
         P11QualifiedSourceOwner.Body next;
         PlayerSkillAttachmentService.P11AttachmentReadResult readResult;
-        boolean skillsRead, manaRead, manaReadObserved;
+        boolean skillsRead, manaRead, manaReadObserved, cooldownRead, cooldownReadObserved;
         boolean cleanupLegal;
         CopyScope(P11QualifiedSourceOwner owner, ServerPlayer old, P11SourceProvenance.Lineage lineage) {
             this.owner = owner; this.old = old; this.lineage = lineage;

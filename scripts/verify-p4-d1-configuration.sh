@@ -274,6 +274,7 @@ verify_phase_boundary() {
         if [[ "${source}" != "${RECOVERY_SERVICE}" ]] \
                 && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleEvents.java' ]] \
                 && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]] \
+                && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java' ]] \
                 && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' ]] \
                 && [[ "${source}" != 'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' ]] \
                 && grep -Fq -- 'PlayerEvent' "${source}"; then

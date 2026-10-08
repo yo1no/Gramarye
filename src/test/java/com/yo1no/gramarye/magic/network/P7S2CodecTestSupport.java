@@ -17,6 +17,23 @@ import net.minecraft.network.codec.StreamCodec;
 import net.neoforged.neoforge.network.connection.ConnectionType;
 
 final class P7S2CodecTestSupport {
+    static com.yo1no.gramarye.magic.definition.document.SkillReference reference(int slot) {
+        return new com.yo1no.gramarye.magic.definition.document.SkillReference(
+                new com.yo1no.gramarye.magic.api.id.SkillId(new java.util.UUID(Long.MIN_VALUE, slot + 1L)),
+                new com.yo1no.gramarye.magic.api.id.SkillRevision(0));
+    }
+
+    static CooldownSnapshotEntry active(int slot, int ticks) {
+        return new CooldownSnapshotEntry(slot, reference(slot),
+                P7ServerAuthorizationBoundary.SyncEntryState.ACTIVE,
+                P7ServerAuthorizationBoundary.SyncReason.NONE, ticks);
+    }
+
+    static SkillCooldownSnapshot cooldown(long sequence, java.util.List<CooldownSnapshotEntry> entries) {
+        return new SkillCooldownSnapshot(sequence, 1, 0,
+                P7ServerAuthorizationBoundary.SyncSourceState.AVAILABLE,
+                P7ServerAuthorizationBoundary.SyncReason.NONE, entries);
+    }
     private P7S2CodecTestSupport() {
         throw new AssertionError("no instances");
     }

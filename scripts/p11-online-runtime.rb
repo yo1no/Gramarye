@@ -31,6 +31,10 @@ module P11OnlineRuntime
   L1_CASES = %w[l1-pre-spawn l1-open l1-claimed l1-impact-close-custody l1-two-work-reload l1-two-work-stop l1-revision l1-p8-send-fault l1-ack-fault l1-work-death l1-work-dimension l1-work-config l1-partial-reward-function l1-work-multi-uuid-qctx l1-stats-write-fault-memory l1-work-deadline l1-spawn-callback-remove l1-logout-cleanup-fault l1-tracking-retirement l1-work-capacity l1-natural-unload l1-online-peer l1-work-context-refusal l1-restart-write l1-restart-read].freeze
   L1_CONTEXT_CASES = %w[l1-qctx l1-capacity].freeze
   L1_JAR_SHA = 'fc15bf045905285c4b8dfe661b41d34e890f628c3399c5824070194ae395aeb8'.freeze
+  COOLDOWN_CASES = %w[cooldown-d1 cooldown-d120 cooldown-d600 cooldown-restart-write cooldown-restart-read cooldown-prepared-reentry cooldown-add-false cooldown-add-remove cooldown-clone cooldown-before-arm-throw cooldown-after-arm-throw cooldown-unarmed-stop cooldown-save-active cooldown-save-clear cooldown-dual].freeze
+  COOLDOWN_L1_CASES = %w[cooldown-l1-pre-spawn cooldown-l1-open cooldown-l1-claimed].freeze
+  # No launch is authorized by an old phase's pin. Filled only after this product build.
+  COOLDOWN_JAR_SHA = 'ec5158a5051c8913d30f765bbb8ecee2f5c98a6bde4d1c13ae17a6a5719be030'.freeze
   L1_STATS_MEMORY_FIXTURE_SHA = '04c94e6c2913d0ad20a200e03c55787c740275c9a70fcc94af5de2286d4c52a3'.freeze
   L1_FIXTURE_HASHES = {
     'advancement/l1_first_kill.json' => '61e2889dade9569ed5f7a4b0862e0e69c209a205841d13c4b483e43a0949119b',
@@ -54,7 +58,7 @@ module P11OnlineRuntime
     'function/delivery_tail.mcfunction' => '063b29f7caed0f928290c56bd4c67be669f80ea75a3aae821c0e84e2fe9dde3f'
   }.freeze
   CURRENT_CONTEXT_CASES = %w[c4a-qctx c4a-capacity].freeze
-  CASES = (%w[single qctx capacity] + C4A_CASES + CURRENT_CONTEXT_CASES + L1_CASES + L1_CONTEXT_CASES).freeze
+  CASES = (%w[single qctx capacity] + C4A_CASES + CURRENT_CONTEXT_CASES + L1_CASES + L1_CONTEXT_CASES + COOLDOWN_CASES + COOLDOWN_L1_CASES).freeze
   CLIENT_FILES = %w[bootstrap.json onboarding-continued.json inputs.json login-1.json login-2.json first-play.json
                     first-disconnected.json second-play.json capacity-respawn.json result.json].freeze
   SERVER_FILES = %w[ready.json readiness-result.json native-context-result.json result.json
@@ -69,7 +73,8 @@ module P11OnlineRuntime
   L1_HOST_RESOURCES = %w[advancement/l1_first_kill.json loot_table/l1_loot.json function/l1_reward.mcfunction]
                       .to_h { |leaf| ['data/gramarye_p11_engineering/' + leaf, L1_FIXTURE_HASHES.fetch(leaf)] }.freeze
   COMPANION_RESOURCES = [CONSOLE_XML, 'gramarye-p11-online-harness.mixins.json',
-                         'gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-l1-harness.mixins.json', C6_MIXIN_CONFIG,
+                         'gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-l1-harness.mixins.json',
+                         'gramarye-p11-cooldown-harness.mixins.json', C6_MIXIN_CONFIG,
                          *L1_HOST_RESOURCES.keys].sort.freeze
   DIAGNOSTIC_CLASS = 'com/yo1no/gramarye/P11OnlineLaunchDiagnostic'.freeze
   MAX_FROZEN_BUNDLE_FILES = 1024
@@ -144,9 +149,20 @@ module P11OnlineRuntime
     selected
   end
 
-  def product_pin(case_name, l1_host_stop: false)
-    check(CASES.include?(case_name), 'INVALID_CASE')
+  def cooldown_host_selection!(case_name, selected, l1_host_stop: false)
     host_selection!(case_name, l1_host_stop)
+    check([true, false].include?(selected) && (!selected || case_name == 'c4a-host-lan'), 'INVALID_COOLDOWN_HOST_SELECTION')
+    check(!selected || !l1_host_stop, 'CONFLICTING_HOST_SELECTION')
+    selected
+  end
+
+  def product_pin(case_name, l1_host_stop: false, cooldown_host: false)
+    check(CASES.include?(case_name), 'INVALID_CASE')
+    cooldown_host_selection!(case_name, cooldown_host, l1_host_stop: l1_host_stop)
+    if COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || cooldown_host
+      check(COOLDOWN_JAR_SHA.is_a?(String) && COOLDOWN_JAR_SHA.match?(/\A[0-9a-f]{64}\z/), 'COOLDOWN_PRODUCT_PIN_PENDING')
+      return COOLDOWN_JAR_SHA
+    end
     if L1_CASES.include?(case_name) || L1_CONTEXT_CASES.include?(case_name) || l1_host_stop
       check(L1_JAR_SHA.is_a?(String) && L1_JAR_SHA.match?(/\A[0-9a-f]{64}\z/), 'L1_PRODUCT_PIN_PENDING')
       return L1_JAR_SHA
@@ -157,7 +173,7 @@ module P11OnlineRuntime
   end
 
   def current_product_case?(case_name)
-    C4A_CASES.include?(case_name) || CURRENT_CONTEXT_CASES.include?(case_name) || L1_CASES.include?(case_name) || L1_CONTEXT_CASES.include?(case_name)
+    C4A_CASES.include?(case_name) || CURRENT_CONTEXT_CASES.include?(case_name) || L1_CASES.include?(case_name) || L1_CONTEXT_CASES.include?(case_name) || COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name)
   end
 
   def roles_for(case_name)
@@ -167,7 +183,8 @@ module P11OnlineRuntime
 
   def mixin_config(case_name)
     check(CASES.include?(case_name), 'INVALID_CASE')
-    return 'gramarye-p11-l1-harness.mixins.json' if L1_CASES.include?(case_name)
+    return 'gramarye-p11-cooldown-harness.mixins.json' if COOLDOWN_CASES.include?(case_name)
+    return 'gramarye-p11-l1-harness.mixins.json' if L1_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name)
     C4A_CASES.include?(case_name) ? 'gramarye-p11-c4a-harness.mixins.json' : 'gramarye-p11-online-harness.mixins.json'
   end
 
@@ -177,15 +194,16 @@ module P11OnlineRuntime
     configs
   end
 
-  def frozen_jar_path(runtime_root, case_name, l1_host_stop: false)
-    pin = product_pin(case_name, l1_host_stop: l1_host_stop)
+  def frozen_jar_path(runtime_root, case_name, l1_host_stop: false, cooldown_host: false)
+    pin = product_pin(case_name, l1_host_stop: l1_host_stop, cooldown_host: cooldown_host)
+    return File.join(runtime_root, 'frozen-cooldown', pin, 'gramarye-1.0.0.jar') if COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || cooldown_host
     return File.join(runtime_root, 'frozen-l1', pin, 'gramarye-1.0.0.jar') if L1_CASES.include?(case_name) || L1_CONTEXT_CASES.include?(case_name) || l1_host_stop
     return File.join(runtime_root, 'frozen', 'gramarye-1.0.0.jar') unless current_product_case?(case_name)
     File.join(runtime_root, 'frozen-c4a', product_pin(case_name), 'gramarye-1.0.0.jar')
   end
 
-  def verify_jar!(file, case_name = 'single', l1_host_stop: false)
-    expected = product_pin(case_name, l1_host_stop: l1_host_stop)
+  def verify_jar!(file, case_name = 'single', l1_host_stop: false, cooldown_host: false)
+    expected = product_pin(case_name, l1_host_stop: l1_host_stop, cooldown_host: cooldown_host)
     check(File.file?(file) && Digest::SHA256.file(file).hexdigest == expected, 'FROZEN_JAR_MISMATCH')
   end
 
@@ -197,10 +215,10 @@ module P11OnlineRuntime
     home
   end
 
-  def freeze_jar!(source, runtime, private_root, case_name = 'single', l1_host_stop: false)
+  def freeze_jar!(source, runtime, private_root, case_name = 'single', l1_host_stop: false, cooldown_host: false)
     source = nonsecret_path!(source, private_root)
-    verify_jar!(source, case_name, l1_host_stop: l1_host_stop)
-    target = frozen_jar_path(runtime, case_name, l1_host_stop: l1_host_stop)
+    verify_jar!(source, case_name, l1_host_stop: l1_host_stop, cooldown_host: cooldown_host)
+    target = frozen_jar_path(runtime, case_name, l1_host_stop: l1_host_stop, cooldown_host: cooldown_host)
     directory = File.dirname(target)
     directories = current_product_case?(case_name) ? [File.dirname(directory), directory] : [directory]
     directories.each do |candidate|
@@ -217,22 +235,22 @@ module P11OnlineRuntime
         File.open(source, 'rb') { |input| IO.copy_stream(input, output) }
       end
     end
-    verify_jar!(target, case_name, l1_host_stop: l1_host_stop)
+    verify_jar!(target, case_name, l1_host_stop: l1_host_stop, cooldown_host: cooldown_host)
     target
   end
 
-  def startup_fixture!(file, private_root, case_name, with_source_hash: false, l1_host_stop: false)
-    host_selection!(case_name, l1_host_stop)
+  def startup_fixture!(file, private_root, case_name, with_source_hash: false, l1_host_stop: false, cooldown_host: false)
+    cooldown_host_selection!(case_name, cooldown_host, l1_host_stop: l1_host_stop)
     file = nonsecret_path!(file, private_root)
     raw = File.binread(file)
     source_hash = Digest::SHA256.hexdigest(raw)
-    check(!l1_host_stop || source_hash == FIXTURE_SHA, 'STARTUP_FIXTURE_MISMATCH')
+    check(!(l1_host_stop || cooldown_host) || source_hash == FIXTURE_SHA, 'STARTUP_FIXTURE_MISMATCH')
     check(source_hash == FIXTURE_SHA || case_name == 'l1-stats-write-fault-memory' && source_hash == L1_STATS_MEMORY_FIXTURE_SHA || %w[c4a-dedicated c4a-host-lan].include?(case_name) &&
           [C4A_C6_FIXTURE_SHA, C4A_C6_RATE_FIXTURE_SHA, C4A_HANDOFF_FIXTURE_SHA].include?(source_hash),
           'STARTUP_FIXTURE_MISMATCH')
     # Natural L1 positives use the original four-UUID fixture. The old two-UUID
     # context cohort is a separate stress configuration, not its admission setup.
-    limit = %w[capacity c4a-capacity l1-capacity l1-work-capacity].include?(case_name) ? 1 : (L1_CASES.include?(case_name) || l1_host_stop) ? 4 : 2
+    limit = %w[capacity c4a-capacity l1-capacity l1-work-capacity].include?(case_name) ? 1 : (L1_CASES.include?(case_name) || COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || l1_host_stop || cooldown_host) ? 4 : 2
     %w[p11.retention.maxUuids p11.save.dirtyUuidAdmissionWatermark].each do |key|
       pattern = /^#{Regexp.escape(key)} = 4$/
       check(raw.scan(pattern).length == 1, 'STARTUP_FIXTURE_KEY_MISMATCH')
@@ -276,8 +294,8 @@ module P11OnlineRuntime
 
   # Closed seven-file historical fixture; no caller-chosen file list or datapack attachment API.
   def reward_fixture_sources!(repo, private_root, case_name)
-    return {} unless case_name == 'c4a-reward' || L1_CASES.include?(case_name)
-    base = L1_CASES.include?(case_name) ? 'src/p11OnlineHarness/fixtures/l1' : 'src/p9S5ClientHarness/resources/data/gramarye_p11_engineering'
+    return {} unless case_name == 'c4a-reward' || L1_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name)
+    base = L1_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) ? 'src/p11OnlineHarness/fixtures/l1' : 'src/p9S5ClientHarness/resources/data/gramarye_p11_engineering'
     reward_fixture_hashes(case_name).to_h do |leaf, expected|
       file = nonsecret_path!(File.join(repo, base, leaf), private_root)
       check(File.file?(file) && File.size(file).between?(1, 16_384), 'REWARD_FIXTURE_SOURCE_MISSING')
@@ -288,11 +306,11 @@ module P11OnlineRuntime
   end
 
   def reward_fixture_hashes(case_name)
-    L1_CASES.include?(case_name) ? L1_FIXTURE_HASHES : REWARD_FIXTURE_HASHES
+    L1_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) ? L1_FIXTURE_HASHES : REWARD_FIXTURE_HASHES
   end
 
   def verify_reward_fixture!(manifest)
-    unless manifest.fetch('case') == 'c4a-reward' || L1_CASES.include?(manifest.fetch('case'))
+    unless manifest.fetch('case') == 'c4a-reward' || L1_CASES.include?(manifest.fetch('case')) || COOLDOWN_L1_CASES.include?(manifest.fetch('case'))
       check(!manifest.key?('rewardFixtureHashes'), 'UNEXPECTED_REWARD_FIXTURE')
       return
     end
@@ -316,7 +334,7 @@ module P11OnlineRuntime
       'Case' => manifest.fetch('case'), 'Port' => manifest.fetch('port').to_s,
       'RunId' => manifest.fetch('runId'), 'ReadyOnly' => manifest.fetch('readyOnly').to_s
     }
-    if manifest.fetch('case') == 'l1-restart-read'
+    if %w[l1-restart-read cooldown-restart-read].include?(manifest.fetch('case'))
       properties['RestartUniverse'] = manifest.fetch('restartSource').fetch('universe')
     end
     [File.join(manifest.fetch('repo'), 'gradlew'), '--no-daemon', '--console=plain'] +
@@ -455,7 +473,7 @@ module P11OnlineRuntime
     end
     expected_program += %w[--gameDir . --fml.fmlVersion 4.0.43 --fml.mcVersion 1.21.1 --fml.neoForgeVersion 21.1.241 --fml.neoFormVersion 20240808.144430]
     expected_program << '--nogui' if stem == 'p11OnlineServer'
-    if stem == 'p11OnlineServer' && manifest.fetch('case') == 'l1-restart-read'
+    if stem == 'p11OnlineServer' && %w[l1-restart-read cooldown-restart-read].include?(manifest.fetch('case'))
       expected_program += ['--universe', manifest.fetch('restartSource').fetch('universe'), '--world', 'p11-online-world']
     end
     expected_program += mixin_configs(manifest.fetch('case')).flat_map { |config| ['--mixin.config', config] }
@@ -483,16 +501,18 @@ module P11OnlineRuntime
 
   def verify_host_mode!(manifest, source_root)
     selected = host_selection!(manifest.fetch('case'), manifest.fetch('l1HostStop', false))
+    cooldown = cooldown_host_selection!(manifest.fetch('case'), manifest.fetch('cooldownHost', false), l1_host_stop: selected)
     file = nonsecret_path!(File.join(source_root, 'com/yo1no/gramarye/P11C4aScenario.java'), manifest.fetch('privateRoot'))
     check(File.file?(file) && File.size(file).between?(1, 16_384), 'L1_HOST_MODE_SOURCE_MISSING')
     matches = File.binread(file).scan(/^\s*static final Mode MODE = Mode\.([A-Z0-9_]+);\s*$/).flatten
     check(matches.length == 1 && (matches.first == 'L1_HOST_STOP') == selected, 'L1_HOST_MODE_MISMATCH')
+    check((matches.first == 'COOLDOWN_HOST') == cooldown, 'COOLDOWN_HOST_MODE_MISMATCH')
     true
   end
 
   def freeze_launchers(manifest)
     check(manifest['launchMode'] == 'PREPARATION_ONLY_MDG_SNAPSHOT_REQUIRED', 'ALREADY_FROZEN')
-    verify_jar!(manifest.fetch('jar'), manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false))
+    verify_jar!(manifest.fetch('jar'), manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false), cooldown_host: manifest.fetch('cooldownHost', false))
     java_home!(manifest.fetch('javaHome'), manifest.fetch('privateRoot'))
     repo = manifest.fetch('repo')
     base = File.join(repo, 'build/moddev')
@@ -604,7 +624,7 @@ module P11OnlineRuntime
     directories.reverse_each { |entry| File.chmod(0o500, entry) }
     report = { 'status' => 'FROZEN_NOT_LAUNCHED_NOT_ACCEPTANCE', 'bundleFiles' => hashes.length,
                'companionClasses' => class_files.length, 'companionResources' => resource_files.length,
-               'externalDistributionCount' => external.length, 'productSha256' => product_pin(manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false)),
+               'externalDistributionCount' => external.length, 'productSha256' => product_pin(manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false), cooldown_host: manifest.fetch('cooldownHost', false)),
                'consoleSha256' => frozen['consoleTransform']['sha256'],
                'launchDiagnostic' => manifest['diagnoseClient'] ? 'FIXED_STAGE_ONLY_NOT_AUTH_PROOF' : 'DISABLED' }
     write_new(File.join(manifest.fetch('evidence'), 'launcher-export.json'), JSON.pretty_generate(report) + "\n")
@@ -627,7 +647,7 @@ module P11OnlineRuntime
       distribution_path!(file, manifest, [], actual)
       check(actual[file] == hash, 'DISTRIBUTION_CONTENT_CHANGED')
     end
-    verify_jar!(manifest.fetch('jar'), manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false))
+    verify_jar!(manifest.fetch('jar'), manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false), cooldown_host: manifest.fetch('cooldownHost', false))
     java_home!(manifest.fetch('javaHome'), manifest.fetch('privateRoot'))
     verify_restart_input!(manifest)
     true
@@ -658,7 +678,7 @@ module P11OnlineRuntime
      [File.join(old.fetch('evidence'), 'client-a-process-exit.json'), 'OWNED_CLIENT_PROCESS_EXIT_NOT_ACCEPTANCE'],
      [File.join(old.fetch('evidence'), 'client-b-process-exit.json'), 'OWNED_CLIENT_PROCESS_EXIT_NOT_ACCEPTANCE']].each do |receipt, status|
       value, = restart_json!(receipt, private_root, 4096)
-      check(value['status'] == status && value['exitCode'] == 0 && value['signal'].nil? &&
+      check(value['status'] == status && value['exitCode'] == 0 && value['signal'].nil? && value['ownedWallDeadlineExceeded'] != true &&
             value.key?('signal') && value['elapsedSeconds'].is_a?(Numeric) && value['elapsedSeconds'] >= 0 &&
             value['endedAtUtc'].is_a?(String), 'RESTART_ORIGINAL_PROCESS_NOT_NORMAL_TERMINAL')
     end
@@ -705,19 +725,102 @@ module P11OnlineRuntime
   end
 
   def verify_restart_input!(manifest)
-    unless manifest.fetch('case') == 'l1-restart-read'
+    unless %w[l1-restart-read cooldown-restart-read].include?(manifest.fetch('case'))
       check(!manifest.key?('restartSource'), 'UNEXPECTED_RESTART_SOURCE')
       return true
     end
     source = manifest.fetch('restartSource')
     check(source.is_a?(Hash), 'RESTART_SOURCE_REQUIRED')
-    actual, bytes = restart_source!(source.fetch('manifest'), manifest.fetch('repo'), manifest.fetch('runtimeRoot'),
-                                   manifest.fetch('evidenceRoot'), manifest.fetch('privateRoot'), manifest.fetch('runId'))
+    reader = manifest.fetch('case') == 'cooldown-restart-read' ? :cooldown_restart_source! : :restart_source!
+    actual, bytes = public_send(reader, source.fetch('manifest'), manifest.fetch('repo'), manifest.fetch('runtimeRoot'),
+                               manifest.fetch('evidenceRoot'), manifest.fetch('privateRoot'), manifest.fetch('runId'))
     check(actual == source, 'RESTART_SOURCE_IDENTITY_CHANGED')
-    input = nonsecret_path!(File.join(manifest.fetch('evidence'), 'l1-restart-input.json'), manifest.fetch('privateRoot'))
+    leaf = manifest.fetch('case') == 'cooldown-restart-read' ? 'cooldown-restart-input.json' : 'l1-restart-input.json'
+    input = nonsecret_path!(File.join(manifest.fetch('evidence'), leaf), manifest.fetch('privateRoot'))
     check(File.file?(input) && File.size(input) == bytes.bytesize && File.binread(input) == bytes,
           'RESTART_FIXED_INPUT_CHANGED')
     true
+  end
+
+  # A distinct current-product stopped-world binding. Historical L1 acceptance is unchanged.
+  # Only fixed public receipts are read; native storage is read by the new server's own probe.
+  def cooldown_restart_source!(file, repo, runtime_root, evidence_root, private_root, next_run_id)
+    check(File.basename(path(file)) == 'frozen-manifest.json', 'RESTART_FROZEN_MANIFEST_REQUIRED')
+    old = load_manifest(file, runtime_root: runtime_root, private_root: private_root,
+                        restart_source: 'cooldown-restart-write')
+    check(old.fetch('case') == 'cooldown-restart-write' && old.fetch('repo') == repo &&
+          old.fetch('evidenceRoot') == evidence_root && old.fetch('runId') != next_run_id &&
+          old.fetch('readyOnly') == false && old.fetch('eulaAccepted') == true &&
+          !old.fetch('l1HostStop', false) && old.fetch('fixtureSha256') == FIXTURE_SHA &&
+          old.fetch('sourceFixtureSha256') == FIXTURE_SHA, 'RESTART_SOURCE_COHORT_MISMATCH')
+    verify_frozen!(old)
+    [[File.join(old.fetch('runtime'), 'server.exit.json'), 'PROCESS_EXIT_NOT_ACCEPTANCE'],
+     [File.join(old.fetch('evidence'), 'client-a-process-exit.json'), 'OWNED_CLIENT_PROCESS_EXIT_NOT_ACCEPTANCE'],
+     [File.join(old.fetch('evidence'), 'client-b-process-exit.json'), 'OWNED_CLIENT_PROCESS_EXIT_NOT_ACCEPTANCE']].each do |receipt, status|
+      value, = restart_json!(receipt, private_root, 4096)
+      check(value['status'] == status && value['exitCode'] == 0 && value['signal'].nil? && value['ownedWallDeadlineExceeded'] != true &&
+            value.key?('signal') && value['elapsedSeconds'].is_a?(Numeric) && value['elapsedSeconds'] >= 0 &&
+            value['endedAtUtc'].is_a?(String), 'RESTART_ORIGINAL_PROCESS_NOT_NORMAL_TERMINAL')
+    end
+    { 'a' => 1, 'b' => 0 }.each do |role, sends|
+      value, = restart_json!(File.join(old.fetch('evidence'), "client-#{role}/result.json"), private_root)
+      check(value['status'] == 'ORIGINAL_SERVER_STOP_CLIENT_TERMINAL' && value['logins'] == 1 &&
+            value['originalP9Sends'] == sends && value['originalKeyCallbackClicks'] == sends &&
+            value['closed'] == true && value['playerAbsent'] == true && value['levelAbsent'] == true &&
+            value['currentListenerAbsent'] == true, 'RESTART_ORIGINAL_CLIENT_FLOW_NOT_TERMINAL')
+    end
+    terminal, = restart_json!(File.join(old.fetch('evidence'), 'server/data-terminal.json'), private_root)
+    roots = terminal['allRootCounts']
+    check(terminal['status'] == 'NORMAL_NATIVE_STOP_AND_ROOTS_ZERO' && terminal['nativeStopNormal'] == true &&
+          terminal['sourceFailures'] == 0 && terminal['dirtyUuids'] == 0 && roots.is_a?(Array) && roots.length == 5 &&
+          roots.all? { |entry| entry.is_a?(Hash) && entry['count'] == 0 } &&
+          roots.map { |entry| entry['kind'] }.sort == %w[COMMAND_CONTEXT NATIVE_CREDIT OPERATION TRANSITION WORK],
+          'RESTART_ORIGINAL_DATA_NOT_CLEAN_TERMINAL')
+    receipt = File.join(old.fetch('evidence'), 'server/cooldown-restart-expected.json')
+    expected, bytes = restart_json!(receipt, private_root)
+    universe = nonsecret_path!(File.join(old.fetch('runtime'), 'server'), private_root)
+    world = nonsecret_path!(File.join(universe, 'p11-online-world'), private_root)
+    keys = %w[schema status case writeRunId productionJarSha256 world publicMinecraftUuid skillId revision
+              cooldownTicks obligation definitionSha256 fileSha256 loadedConfiguration stoppedGameTime
+              originalStopNormal openWorkClosedByStop].sort
+    check(expected.keys.sort == keys && expected['schema'] == 1 &&
+          expected['status'] == 'ORIGINAL_COOLDOWN_STOPPED_WORLD_NOT_RESTART_PROOF' &&
+          expected['case'] == 'cooldown-restart-write' && expected['writeRunId'] == old.fetch('runId') &&
+          expected['productionJarSha256'] == old.fetch('jarSha256') &&
+          File.directory?(world) && File.realpath(world) == world && expected['world'] == world &&
+          expected['originalStopNormal'] == true && expected['openWorkClosedByStop'] == true,
+          'RESTART_EXACT_STOPPED_WORLD_MISMATCH')
+    uuid = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
+    sha = /\A[0-9a-f]{64}\z/
+    obligation = expected['obligation']
+    check(%w[publicMinecraftUuid skillId].all? { |key| expected[key].is_a?(String) && expected[key].match?(uuid) } &&
+          expected['revision'].is_a?(Integer) && expected['revision'].between?(0, 2_147_483_647) &&
+          expected['cooldownTicks'] == 600 && expected['definitionSha256'].is_a?(String) && expected['definitionSha256'].match?(sha) &&
+          obligation.is_a?(Hash) && obligation.keys.sort == %w[acceptedAt attemptId expiresAt releaseNotAfter releasedAt] &&
+          obligation['attemptId'].is_a?(String) && obligation['attemptId'].match?(uuid) &&
+          %w[acceptedAt releaseNotAfter releasedAt expiresAt].all? { |key| obligation[key].is_a?(Integer) && obligation[key].between?(0, 9_223_372_036_854_775_807) } &&
+          obligation['releaseNotAfter'] == obligation['acceptedAt'] + 101 &&
+          obligation['releasedAt'].between?(obligation['acceptedAt'], obligation['releaseNotAfter']) &&
+          obligation['expiresAt'] == obligation['releasedAt'] + 600 &&
+          expected['stoppedGameTime'].is_a?(Integer) && expected['stoppedGameTime'].between?(obligation['releasedAt'], obligation['expiresAt'] - 1),
+          'COOLDOWN_RESTART_OBLIGATION_MISMATCH')
+    files = expected['fileSha256']
+    check(files.is_a?(Hash) && files.keys.sort == ["data/gramarye_skill_definitions.dat", "playerdata/#{expected['publicMinecraftUuid']}.dat"].sort &&
+          files.values.all? { |hash| hash.is_a?(String) && hash.match?(sha) }, 'COOLDOWN_RESTART_STORAGE_IDENTITY_MISMATCH')
+    config = expected['loadedConfiguration']
+    config_path = nonsecret_path!(File.join(world, 'serverconfig/gramarye-server.toml'), private_root)
+    check(config.is_a?(Hash) && config.keys.sort == %w[path sha256] && config['path'] == config_path &&
+          config['sha256'] == FIXTURE_SHA && File.file?(config_path) && File.realpath(config_path) == config_path &&
+          File.size(config_path).between?(1, 65_536) && Digest::SHA256.file(config_path).hexdigest == FIXTURE_SHA,
+          'RESTART_ACTUAL_OLD_CONFIG_MISMATCH')
+    %w[failure.json cooldown-restart-stop-failure.json].each do |leaf|
+      check(!File.exist?(nonsecret_path!(File.join(old.fetch('evidence'), 'server', leaf), private_root)),
+            'RESTART_SOURCE_RECORDED_FAILURE')
+    end
+    [{ 'manifest' => file, 'manifestSha256' => Digest::SHA256.file(file).hexdigest,
+       'writeRunId' => old.fetch('runId'), 'universe' => universe, 'world' => world,
+       'receipt' => receipt, 'receiptSha256' => Digest::SHA256.hexdigest(bytes),
+       'loadedConfiguration' => config }, bytes]
   end
 
   def prepare(options)
@@ -725,19 +828,22 @@ module P11OnlineRuntime
     case_name = options.fetch(:case)
     check(CASES.include?(case_name), 'INVALID_CASE')
     host_stop = host_selection!(case_name, options.fetch(:l1_host_stop, false))
-    pin = product_pin(case_name, l1_host_stop: host_stop)
+    cooldown_host = cooldown_host_selection!(case_name, options.fetch(:cooldown_host, false), l1_host_stop: host_stop)
+    pin = product_pin(case_name, l1_host_stop: host_stop, cooldown_host: cooldown_host)
     run_id = options.fetch(:run_id)
     check(run_id.is_a?(String) && run_id.match?(/\A[A-Za-z0-9_-]{8,64}\z/), 'INVALID_RUN_ID')
-    check((case_name == 'l1-restart-read') == !options[:restart_from].nil?, 'RESTART_SOURCE_ONLY_EXACT_READ_CASE')
+    check(%w[l1-restart-read cooldown-restart-read].include?(case_name) == !options[:restart_from].nil?, 'RESTART_SOURCE_ONLY_EXACT_READ_CASE')
     restart, restart_bytes = if case_name == 'l1-restart-read'
                               restart_source!(options.fetch(:restart_from), repo, runtime_root, evidence_root, private_root, run_id)
+                            elsif case_name == 'cooldown-restart-read'
+                              cooldown_restart_source!(options.fetch(:restart_from), repo, runtime_root, evidence_root, private_root, run_id)
                             end
     check([true, false].include?(options.fetch(:ready_only)), 'INVALID_READY_ONLY')
     check([true, false].include?(options.fetch(:diagnose_client, false)), 'INVALID_DIAGNOSTIC_MODE')
     port = checked_port(options.fetch(:port))
     java_home = java_home!(options.fetch(:java_home), private_root)
-    fixture, source_fixture_sha = startup_fixture!(options.fetch(:fixture), private_root, case_name, with_source_hash: true, l1_host_stop: host_stop)
-    jar = freeze_jar!(options.fetch(:jar), runtime_root, private_root, case_name, l1_host_stop: host_stop)
+    fixture, source_fixture_sha = startup_fixture!(options.fetch(:fixture), private_root, case_name, with_source_hash: true, l1_host_stop: host_stop, cooldown_host: cooldown_host)
+    jar = freeze_jar!(options.fetch(:jar), runtime_root, private_root, case_name, l1_host_stop: host_stop, cooldown_host: cooldown_host)
     reward_sources = reward_fixture_sources!(repo, private_root, case_name)
     runtime = File.join(runtime_root, run_id)
     evidence = File.join(evidence_root, run_id)
@@ -795,6 +901,7 @@ module P11OnlineRuntime
       'readyOnly' => options.fetch(:ready_only), 'eulaAccepted' => options.fetch(:accept_eula),
       'diagnoseClient' => options.fetch(:diagnose_client, false),
       'l1HostStop' => host_stop,
+      'cooldownHost' => cooldown_host,
       'javaHome' => java_home, 'launchMode' => 'PREPARATION_ONLY_MDG_SNAPSHOT_REQUIRED',
       'jar' => jar, 'jarSha256' => pin, 'fixtureSha256' => Digest::SHA256.hexdigest(fixture),
       'sourceFixtureSha256' => source_fixture_sha, 'toolSha256' => Digest::SHA256.file(__FILE__).hexdigest,
@@ -805,7 +912,8 @@ module P11OnlineRuntime
     manifest['rewardFixtureHashes'] = reward_fixture_hashes(case_name) unless reward_sources.empty?
     if restart
       manifest['restartSource'] = restart
-      write_new(File.join(evidence, 'l1-restart-input.json'), restart_bytes, 0o400)
+      leaf = case_name == 'cooldown-restart-read' ? 'cooldown-restart-input.json' : 'l1-restart-input.json'
+      write_new(File.join(evidence, leaf), restart_bytes, 0o400)
     end
     verify_restart_input!(manifest)
     verify_reward_fixture!(manifest)
@@ -842,7 +950,9 @@ module P11OnlineRuntime
     check(File.size(file) <= 262_144, 'MANIFEST_TOO_LARGE')
     manifest = JSON.parse(File.binread(file))
     check(manifest.is_a?(Hash) && manifest['schema'] == 1, 'INVALID_MANIFEST')
-    check(!restart_source || manifest['case'] == 'l1-restart-write', 'RESTART_SOURCE_COHORT_MISMATCH')
+    expected_write = restart_source == true ? 'l1-restart-write' : restart_source
+    check(!restart_source || %w[l1-restart-write cooldown-restart-write].include?(expected_write) && manifest['case'] == expected_write,
+          'RESTART_SOURCE_COHORT_MISMATCH')
     check(manifest['runtimeRoot'] == runtime_root && manifest['privateRoot'] == private_root, 'MANIFEST_ROOT_MISMATCH')
     roots!(repo: manifest.fetch('repo'), runtime_root: manifest.fetch('runtimeRoot'),
            evidence_root: manifest.fetch('evidenceRoot'), private_root: manifest.fetch('privateRoot'))
@@ -853,13 +963,13 @@ module P11OnlineRuntime
     check(manifest['launchMode'] == (leaf == 'manifest.json' ? 'PREPARATION_ONLY_MDG_SNAPSHOT_REQUIRED' : 'FROZEN_MDG'), 'MANIFEST_MODE_MISMATCH')
     check([true, false].include?(manifest['readyOnly']) && [true, false].include?(manifest['eulaAccepted']), 'INVALID_MANIFEST')
     check([true, false, nil].include?(manifest['diagnoseClient']), 'INVALID_DIAGNOSTIC_MODE')
-    host_selection!(manifest.fetch('case'), manifest.fetch('l1HostStop', false))
+    cooldown_host_selection!(manifest.fetch('case'), manifest.fetch('cooldownHost', false), l1_host_stop: manifest.fetch('l1HostStop', false))
     check(manifest['roles'] == roles_for(manifest['case']) &&
           manifest['port'].is_a?(Integer) && (1024..65_535).cover?(manifest['port']), 'INVALID_MANIFEST')
     nonsecret_path!(manifest['runtime'], manifest['privateRoot'])
     nonsecret_path!(manifest['evidence'], manifest['privateRoot'])
-    check(manifest['jar'] == frozen_jar_path(manifest['runtimeRoot'], manifest['case'], l1_host_stop: manifest.fetch('l1HostStop', false)) &&
-          manifest['jarSha256'] == product_pin(manifest['case'], l1_host_stop: manifest.fetch('l1HostStop', false)), 'MANIFEST_JAR_MISMATCH')
+    check(manifest['jar'] == frozen_jar_path(manifest['runtimeRoot'], manifest['case'], l1_host_stop: manifest.fetch('l1HostStop', false), cooldown_host: manifest.fetch('cooldownHost', false)) &&
+          manifest['jarSha256'] == product_pin(manifest['case'], l1_host_stop: manifest.fetch('l1HostStop', false), cooldown_host: manifest.fetch('cooldownHost', false)), 'MANIFEST_JAR_MISMATCH')
     verify_restart_input!(manifest)
     verify_reward_fixture!(manifest)
     manifest
@@ -872,11 +982,45 @@ module P11OnlineRuntime
     fifo
   end
 
+  # This launcher is the child's actual parent. Until waitpid reaps that exact child,
+  # its PID cannot be reused. No process scan, credentials, or guessed external PID.
+  def wait_owned_process(pid, case_name, cooldown_host: false)
+    cooldown_host_selection!(case_name, cooldown_host)
+    unless COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || cooldown_host
+      return [Process.waitpid2(pid).last, false]
+    end
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 900
+    loop do
+      terminal = Process.waitpid2(pid, Process::WNOHANG)
+      return [terminal.last, false] if terminal
+      break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+      sleep 0.25
+    end
+    begin
+      Process.kill('TERM', pid)
+    rescue Errno::ESRCH
+      return [Process.waitpid2(pid).last, true]
+    end
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 20
+    loop do
+      terminal = Process.waitpid2(pid, Process::WNOHANG)
+      return [terminal.last, true] if terminal
+      break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+      sleep 0.25
+    end
+    begin
+      Process.kill('KILL', pid)
+    rescue Errno::ESRCH
+      return [Process.waitpid2(pid).last, true]
+    end
+    [Process.waitpid2(pid).last, true]
+  end
+
   def launch_server(manifest)
     check(manifest.fetch('case') != 'c4a-host-lan', 'INTEGRATED_HOST_REQUIRES_CLIENT_A')
     verify_frozen!(manifest)
     check(manifest.fetch('eulaAccepted'), 'EULA_ACK_REQUIRED')
-    verify_jar!(nonsecret_path!(manifest.fetch('jar'), manifest.fetch('privateRoot')), manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false))
+    verify_jar!(nonsecret_path!(manifest.fetch('jar'), manifest.fetch('privateRoot')), manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false), cooldown_host: manifest.fetch('cooldownHost', false))
     checked_port(manifest.fetch('port'))
     runtime = manifest.fetch('runtime')
     write_new(File.join(runtime, 'server.launch-reserved'), "OWNED_SERVER_LAUNCH\n")
@@ -892,9 +1036,10 @@ module P11OnlineRuntime
                         in: fifo, out: log, err: log, umask: 0o077)
     write_new(File.join(runtime, 'server.started.json'), JSON.generate('pid' => pid, 'status' => 'PROCESS_STARTED_NOT_AUTH_PROOF',
                                                                      'startedAtUtc' => started) + "\n")
-    Process.wait(pid)
-    result = { 'status' => 'PROCESS_EXIT_NOT_ACCEPTANCE', 'exitCode' => $?.exitstatus,
-               'signal' => $?.termsig, 'authenticationAcceptance' => 'HARNESS_EVIDENCE_REQUIRED' }
+    terminal, timed_out = wait_owned_process(pid, manifest.fetch('case'), cooldown_host: manifest.fetch('cooldownHost', false))
+    result = { 'status' => 'PROCESS_EXIT_NOT_ACCEPTANCE', 'exitCode' => terminal.exitstatus,
+               'signal' => terminal.termsig, 'authenticationAcceptance' => 'HARNESS_EVIDENCE_REQUIRED' }
+    result['ownedWallDeadlineExceeded'] = true if timed_out
     result.merge!('startedAtUtc' => started, 'endedAtUtc' => Time.now.utc.iso8601(6),
                   'elapsedSeconds' => Process.clock_gettime(Process::CLOCK_MONOTONIC) - clock)
     write_new(File.join(runtime, 'server.exit.json'), JSON.generate(result) + "\n")
@@ -950,8 +1095,9 @@ module P11OnlineRuntime
     pid = Process.spawn(environment, *argv, chdir: File.join(runtime, launch_role(manifest, stem)), umask: 0o077)
     write_new(File.join(runtime, "client-#{client}.started.json"), JSON.generate('pid' => pid, 'status' => 'PROCESS_STARTED_NOT_AUTH_PROOF',
                                                                                'startedAtUtc' => started) + "\n")
-    Process.wait(pid)
-    result = { 'status' => 'OWNED_CLIENT_PROCESS_EXIT_NOT_ACCEPTANCE', 'exitCode' => $?.exitstatus, 'signal' => $?.termsig }
+    terminal, timed_out = wait_owned_process(pid, manifest.fetch('case'), cooldown_host: manifest.fetch('cooldownHost', false))
+    result = { 'status' => 'OWNED_CLIENT_PROCESS_EXIT_NOT_ACCEPTANCE', 'exitCode' => terminal.exitstatus, 'signal' => terminal.termsig }
+    result['ownedWallDeadlineExceeded'] = true if timed_out
     result.merge!('startedAtUtc' => started, 'endedAtUtc' => Time.now.utc.iso8601(6),
                   'elapsedSeconds' => Process.clock_gettime(Process::CLOCK_MONOTONIC) - clock)
     write_new(File.join(manifest.fetch('evidence'), "client-#{client}-process-exit.json"), JSON.generate(result) + "\n")
@@ -960,7 +1106,7 @@ module P11OnlineRuntime
 
   def prepare_launchers(manifest)
     check(manifest['launchMode'] == 'PREPARATION_ONLY_MDG_SNAPSHOT_REQUIRED', 'ALREADY_FROZEN')
-    verify_jar!(nonsecret_path!(manifest.fetch('jar'), manifest.fetch('privateRoot')), manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false))
+    verify_jar!(nonsecret_path!(manifest.fetch('jar'), manifest.fetch('privateRoot')), manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false), cooldown_host: manifest.fetch('cooldownHost', false))
     environment = { 'JAVA_TOOL_OPTIONS' => nil, 'JDK_JAVA_OPTIONS' => nil, '_JAVA_OPTIONS' => nil,
                     'JAVA_HOME' => java_home!(manifest.fetch('javaHome'), manifest.fetch('privateRoot')) }
     tasks = %w[createP11OnlineServerLaunchScript createP11OnlineClientALaunchScript createP11OnlineClientBLaunchScript]
@@ -991,7 +1137,44 @@ module P11OnlineRuntime
         %W[#{role}-auth-1.json #{role}-auth-2.json #{role}-first-native.json #{role}-reconnect-native.json]
           .map { |name| "server/#{name}" }
     end
-    if L1_CASES.include?(manifest.fetch('case'))
+    if COOLDOWN_CASES.include?(manifest.fetch('case'))
+      files += %w[cooldown-result.json data-terminal.json formal-submission.json arm-1.json arm-2.json
+                  saved-active.json active-refusal.json reconnect-active.json cooldown-restart-before-stop.json
+                  cooldown-restart-expected.json cooldown-restart-before-login.json cooldown-restart-loaded.json
+                  cooldown-restart-stop-failure.json cooldown-fault-local.json cooldown-fault-result.json cooldown-cost.json
+                  cooldown-clone-before-death.json cooldown-clone-before-end.json cooldown-clone-death.json
+                  cooldown-clone-end.json cooldown-clone-result.json cooldown-durability-pending.json
+                  cooldown-durability-failed.json cooldown-durability-restored.json cooldown-durability-result.json
+                  cooldown-durability-cleanup-failure.json]
+        .map { |name| "server/#{name}" }
+      files += %w[a b].flat_map { |role| %w[hud-ready.json hud-active.json hud-result.json cast-1.json cast-2.json cast-3.json
+          cooldown-mirror-1.json cooldown-mirror-2.json cooldown-mirror-3.json close.json focus-request.json].map { |name| "client-#{role}/#{name}" } }
+      files << 'cooldown-restart-input.json' if manifest.fetch('case') == 'cooldown-restart-read'
+      if manifest.fetch('case') == 'cooldown-clone'
+        files += %w[cooldown-clone-death-client.json cooldown-clone-end-client.json].map { |name| "client-a/#{name}" }
+      end
+      if %w[cooldown-save-active cooldown-save-clear].include?(manifest.fetch('case'))
+        files += %w[cooldown-durability-mirror.json cooldown-durability-hud.json].map { |name| "client-a/#{name}" }
+      end
+      files += %w[client-a/cooldown-cost.json client-b/cooldown-cost.json]
+      files += %w[input-focus-1.json input-focus-2.json input-focus-3.json
+                  input-stall-1.json input-stall-2.json input-stall-3.json].map { |name| "client-a/#{name}" }
+      if manifest.fetch('case') == 'cooldown-dual'
+        files += %w[formal-submission-a.json formal-submission-b.json cooldown-dual-a.json
+                    cooldown-dual-b.json cooldown-dual-result.json].map { |name| "server/#{name}" }
+        files += %w[input-focus-1.json input-focus-2.json input-stall-1.json input-stall-2.json]
+          .map { |name| "client-b/#{name}" }
+      end
+    end
+    if COOLDOWN_L1_CASES.include?(manifest.fetch('case'))
+      files += %w[cooldown-l1-formal-submission.json cooldown-l1-episode-1.json
+                  cooldown-l1-episode-2.json cooldown-l1-episode-3.json
+                  cooldown-l1-arena-restore-1.json cooldown-l1-arena-restore-2.json].map { |name| "server/#{name}" }
+      files += %w[cooldown-l1-input-1.json cooldown-l1-input-2.json cooldown-l1-input-3.json
+                  cooldown-l1-input-stall-1.json cooldown-l1-input-stall-2.json cooldown-l1-input-stall-3.json]
+        .map { |name| "client-a/#{name}" }
+    end
+    if L1_CASES.include?(manifest.fetch('case')) || COOLDOWN_L1_CASES.include?(manifest.fetch('case'))
       files += %w[episode-1.json episode-2.json episode-3.json failure.json stopped.json data-terminal.json a-auth-3.json a-auth-4.json
                   impact-custody-result.json two-work-armed.json two-work-before-boundary.json two-work-result.json two-work-failure.json supplemental-result.json
                   lifecycle-armed.json lifecycle-before-native.json lifecycle-work-terminal.json lifecycle-result.json a-config-return.json
@@ -1022,6 +1205,11 @@ module P11OnlineRuntime
           .map { |name| "server/#{name}" }
         files += %w[client-host/host-l1-terminal.json client-b/host-l1-terminal.json]
       end
+      if manifest.fetch('cooldownHost', false)
+        files += %w[cooldown-host-formal.json cooldown-host-arm.json cooldown-host-saved.json
+                    cooldown-host-stopped.json cooldown-host-failure.json cooldown-host-diagnostic.json].map { |name| "server/#{name}" }
+        files << 'client-host/cooldown-host-input.json'
+      end
       if manifest.fetch('case') == 'c4a-reward'
         files += %w[reward-end-armed.json reward-end-complete.json reward-detached-logical.json
                     reward-continuity-server.json].map { |name| "server/#{name}" }
@@ -1045,7 +1233,7 @@ module P11OnlineRuntime
     command = args.shift
     options = { repo: REPO, runtime_root: RUNTIME_ROOT, evidence_root: EVIDENCE_ROOT,
                 private_root: PRIVATE_ROOT, fixture: FIXTURE, jar: File.join(REPO, 'build/libs/gramarye-1.0.0.jar'),
-                case: 'single', port: 0, java_home: JAVA_HOME, ready_only: false, accept_eula: false, diagnose_client: false, l1_host_stop: false }
+                case: 'single', port: 0, java_home: JAVA_HOME, ready_only: false, accept_eula: false, diagnose_client: false, l1_host_stop: false, cooldown_host: false }
     parser = OptionParser.new do |opt|
       opt.banner = 'Usage: p11-online-runtime.rb prepare|prepare-launchers|freeze-launchers|launch-server|launch-client|stop|status [options]'
       opt.on('--case NAME') { |v| options[:case] = v }
@@ -1062,6 +1250,7 @@ module P11OnlineRuntime
       opt.on('--ready-only') { options[:ready_only] = true }
       opt.on('--diagnose-client') { options[:diagnose_client] = true }
       opt.on('--l1-host-stop') { options[:l1_host_stop] = true }
+      opt.on('--cooldown-host') { options[:cooldown_host] = true }
       opt.on('--restart-from PATH') { |value| options[:restart_from] = value }
       opt.on('--accept-eula') { options[:accept_eula] = true }
     end
@@ -1073,7 +1262,7 @@ module P11OnlineRuntime
                { 'status' => 'PREPARED_NOT_LAUNCHED', 'runtime' => manifest['runtime'],
                  'evidence' => manifest['evidence'], 'port' => manifest['port'] }
              else
-               check(!options[:l1_host_stop] && options[:restart_from].nil?, 'PREPARE_ONLY_OPTION')
+               check(!options[:l1_host_stop] && !options[:cooldown_host] && options[:restart_from].nil?, 'PREPARE_ONLY_OPTION')
                check(%w[prepare-launchers freeze-launchers launch-server launch-client stop status].include?(command), 'INVALID_COMMAND')
                manifest = load_manifest(options.fetch(:manifest), runtime_root: options[:runtime_root],
                                         private_root: options[:private_root])

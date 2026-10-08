@@ -8,10 +8,10 @@ final class P7CooldownDispatchTask implements Runnable {
     private final long dispatchGeneration;
 
     P7CooldownDispatchTask(
-            SkillCooldownSnapshot snapshot, P7ClientMirrorDispatchPort dispatchPort) {
+            SkillCooldownSnapshot snapshot, P7ClientMirrorDispatchPort dispatchPort, long dispatchGeneration) {
         this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
         this.dispatchPort = Objects.requireNonNull(dispatchPort, "dispatchPort");
-        this.dispatchGeneration = dispatchPort.captureDispatchGeneration();
+        this.dispatchGeneration = dispatchGeneration;
     }
 
     @Override

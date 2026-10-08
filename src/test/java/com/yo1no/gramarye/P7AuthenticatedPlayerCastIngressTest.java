@@ -161,6 +161,10 @@ final class P7AuthenticatedPlayerCastIngressTest {
                 "private static int encodeQ15(",
                 "static P7ServerAuthorizationBoundary.AdmissionDisposition mapAdmission(");
         var runtimeCreation = source.indexOf("skillRuntimeService = SkillRuntimeService.create(");
+        var cooldownCreation = source.indexOf(
+                "p11CastCooldownService = new P11CastCooldownService(");
+        var cooldownBinding = source.indexOf(
+                "p11FoundationService.bindCooldowns(p11CastCooldownService);");
         var ingressCreation = source.indexOf(
                 "var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(");
         var installation = source.indexOf("P7ServerAuthorizationBoundary.install(");
@@ -185,6 +189,14 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         1, occurrences(source, "new P7AuthenticatedPlayerCastIngress(")),
                 () -> assertEquals(
                         1, occurrences(source, "P7ServerAuthorizationBoundary.install(")),
+                () -> assertEquals(
+                        1, occurrences(source, "new P11CastCooldownService(")),
+                () -> assertEquals(
+                        1, occurrences(source,
+                                "p11FoundationService.bindCooldowns(p11CastCooldownService);")),
+                () -> assertTrue(cooldownCreation >= 0),
+                () -> assertTrue(cooldownBinding > cooldownCreation),
+                () -> assertTrue(runtimeCreation > cooldownBinding),
                 () -> assertTrue(runtimeCreation >= 0),
                 () -> assertTrue(ingressCreation > runtimeCreation),
                 () -> assertTrue(installation > ingressCreation),
@@ -194,7 +206,15 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         + "                skillDefinitionStoreService);")),
                 () -> assertTrue(source.contains("P7ServerAuthorizationBoundary.install(\n"
                         + "                runtimeCapability,\n"
-                        + "                p7AuthenticatedPlayerCastIngress);")),
+                        + "                p7AuthenticatedPlayerCastIngress,\n"
+                        + "                p11CastCooldownService);")),
+                () -> assertTrue(source.contains("new P11CastCooldownService("
+                        + "p11FoundationService, cooldownPolicyProjection::observe)")),
+                () -> assertTrue(section(source,
+                        "skillRuntimeService = SkillRuntimeService.create(",
+                        "p11FoundationService.bindRuntime(skillRuntimeService);")
+                        .contains("                p11FoundationService,\n"
+                                + "                p11CastCooldownService);")),
                 () -> assertOrdered(
                         ingressSource,
                         "Objects.requireNonNull(server, \"server\")",
@@ -810,6 +830,7 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         verifyAttachmentAndOwnerBranches();
                         verifyExactRevisionBranches();
                         verifyTargetBranchesAndP5Identity();
+                        verifyCooldownRejectionMappings();
                         verifyServerGeometrySnapshotAndInvalidPaths();
                         return "PASS";
                     }
@@ -1042,6 +1063,24 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         errorFailure.expectTerminalCounts(1, 1);
                     }
 
+                    private static void verifyCooldownRejectionMappings() {
+                        for (var reason : CooldownRejectionReason.values()) {
+                            var fixture = new Fixture();
+                            fixture.runtime.result = new RuntimeAdmissionResult.CooldownRejected(reason);
+                            var expected = switch (reason) {
+                                case ACTIVE, PENDING, RECOVERY -> admission("P5_ADMISSION_REJECTED");
+                                case CLOCK, UNAVAILABLE -> admission("P5_UNAVAILABLE");
+                            };
+                            check(fixture.invoke() == expected, "cooldown mapping " + reason);
+                            fixture.expectCallsThrough("p5");
+                            fixture.expectTerminalCounts(1, 1);
+                            check(fixture.runtime.server == fixture.server
+                                            && fixture.runtime.actor == fixture.actor
+                                            && fixture.runtime.reference == fixture.reference,
+                                    "cooldown preserves exact admitted identities " + reason);
+                        }
+                    }
+
                     private static void verifyServerGeometrySnapshotAndInvalidPaths() {
                         var valid = new Fixture();
                         check(valid.invoke(target("VALID")) == admission("ACCEPTED"),
@@ -1268,6 +1307,7 @@ final class P7AuthenticatedPlayerCastIngressTest {
                     SkillReference reference;
                     CastGeometryExecutionDataV0 geometry;
                     Throwable failure;
+                    RuntimeAdmissionResult result = new RuntimeAdmissionResult.AcceptedMemoryOnly();
 
                     SkillRuntimeService(List<String> callsLog) {
                         this.callsLog = callsLog;
@@ -1290,9 +1330,11 @@ final class P7AuthenticatedPlayerCastIngressTest {
                         if (failure instanceof Error errorFailure) {
                             throw errorFailure;
                         }
-                        return new RuntimeAdmissionResult.AcceptedMemoryOnly();
+                        return result;
                     }
                 }
+
+                enum CooldownRejectionReason { ACTIVE, PENDING, RECOVERY, CLOCK, UNAVAILABLE }
 
                 sealed interface RuntimeAdmissionResult
                         permits RuntimeAdmissionResult.AcceptedMemoryOnly,
@@ -1306,6 +1348,7 @@ final class P7AuthenticatedPlayerCastIngressTest {
                                 RuntimeAdmissionResult.SkillRevisionUnavailable,
                                 RuntimeAdmissionResult.InvalidEvent,
                                 RuntimeAdmissionResult.OwnerInstanceUnavailable,
+                                RuntimeAdmissionResult.CooldownRejected,
                                 RuntimeAdmissionResult.ActiveLineageCapacityExceeded,
                                 RuntimeAdmissionResult.ActiveBudgetAttributionCapacityExceeded,
                                 RuntimeAdmissionResult.RootAdmissionBudgetExceeded,
@@ -1347,6 +1390,10 @@ final class P7AuthenticatedPlayerCastIngressTest {
                     }
 
                     record OwnerInstanceUnavailable() implements RuntimeAdmissionResult {
+                    }
+
+                    record CooldownRejected(CooldownRejectionReason reason)
+                            implements RuntimeAdmissionResult {
                     }
 
                     record ActiveLineageCapacityExceeded() implements RuntimeAdmissionResult {

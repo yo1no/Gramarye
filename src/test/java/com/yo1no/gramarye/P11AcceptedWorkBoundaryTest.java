@@ -161,7 +161,11 @@ final class P11AcceptedWorkBoundaryTest {
         assertTrue(foundation.contains("if (runtime != null) { throw new IllegalStateException(\"P11_RUNTIME_ALREADY_BOUND\"); }"));
         String root = read("Gramarye.java");
         before(root, "p11FoundationService = new P11FoundationService", "skillRuntimeService = SkillRuntimeService.create(");
-        before(root, "p11FoundationService);", "p11FoundationService.bindRuntime(skillRuntimeService);");
+        String runtimeComposition = section(root, "skillRuntimeService = SkillRuntimeService.create(",
+                "p11FoundationService.bindRuntime(skillRuntimeService);");
+        before(runtimeComposition, "p11FoundationService,", "p11CastCooldownService);");
+        before(root, "p11FoundationService.bindCooldowns(p11CastCooldownService);",
+                "skillRuntimeService = SkillRuntimeService.create(");
         before(root, "p11FoundationService.bindRuntime(skillRuntimeService);", "p8ServerPresentationService.registerAfterP5");
     }
 

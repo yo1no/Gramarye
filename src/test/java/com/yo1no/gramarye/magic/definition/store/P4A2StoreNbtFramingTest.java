@@ -654,6 +654,20 @@ class P4A2StoreNbtFramingTest {
     }
 
     private static void assertLegalExactStoreRoundTrip() {
+        var encoded = legalExactStoreBlob();
+        var decoded = StoreNbtFraming.decodeStore(encoded).successValue().orElseThrow();
+
+        assertEquals(MagicSafetyCeilings.MAX_SKILL_STORE_ENCODED_BYTES,
+                encoded.byteCount());
+        for (var historyBlob : decoded.historyEntries()) {
+            var history = StoreNbtFraming.decodeHistory(historyBlob).successValue().orElseThrow();
+            for (var revision : history.revisionEntries()) {
+                assertTrue(StoreNbtFraming.decodeRevision(revision).successValue().isPresent());
+            }
+        }
+    }
+
+    private static ImmutableStoreBlob legalExactStoreBlob() {
         var maximumNested = validHistoryAtSize(
                 MagicSafetyCeilings.MAX_SKILL_HISTORY_ENCODED_BYTES, 72);
         var entries = new java.util.ArrayList<ImmutableHistoryBlob>();
@@ -666,18 +680,8 @@ class P4A2StoreNbtFramingTest {
                 - Integer.BYTES;
         entries.add(validHistoryAtSize(remainderLength, 73));
 
-        var encoded = StoreNbtFraming.encodeStore(new StorePersistentEnvelopeV0(0, entries))
+        return StoreNbtFraming.encodeStore(new StorePersistentEnvelopeV0(0, entries))
                 .successValue().orElseThrow();
-        var decoded = StoreNbtFraming.decodeStore(encoded).successValue().orElseThrow();
-
-        assertEquals(MagicSafetyCeilings.MAX_SKILL_STORE_ENCODED_BYTES,
-                encoded.byteCount());
-        for (var historyBlob : decoded.historyEntries()) {
-            var history = StoreNbtFraming.decodeHistory(historyBlob).successValue().orElseThrow();
-            for (var revision : history.revisionEntries()) {
-                assertTrue(StoreNbtFraming.decodeRevision(revision).successValue().isPresent());
-            }
-        }
     }
 
     private static ImmutableHistoryBlob validHistoryAtSize(int encodedLength, long identity) {

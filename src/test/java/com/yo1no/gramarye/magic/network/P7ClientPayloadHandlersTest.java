@@ -72,8 +72,8 @@ final class P7ClientPayloadHandlersTest {
         var dispatchPort = new RecordingClientDispatchPort();
         var composition = composition(dispatchPort);
         var context = clientContext();
-        var snapshot = new SkillCooldownSnapshot(
-                13L, List.of(new CooldownSnapshotEntry(4, 20)));
+        var snapshot = P7S2CodecTestSupport.cooldown(
+                13L, List.of(P7S2CodecTestSupport.active(4, 20)));
 
         P7ClientPayloadHandlers.handleSkillCooldownSnapshot(
                 new SkillCooldownSyncPayload(snapshot), context, composition);
@@ -113,8 +113,8 @@ final class P7ClientPayloadHandlersTest {
                 P7ClientPayloadHandlers.handlePlayerManaSnapshot(
                         new PlayerManaSyncPayload(mana), context,
                         composition(dispatchPort)));
-        var cooldown = new SkillCooldownSnapshot(
-                16L, List.of(new CooldownSnapshotEntry(3, 9)));
+        var cooldown = P7S2CodecTestSupport.cooldown(
+                16L, List.of(P7S2CodecTestSupport.active(3, 9)));
         assertSameEnqueueFailure(failure, dispatchPort, context ->
                 P7ClientPayloadHandlers.handleSkillCooldownSnapshot(
                         new SkillCooldownSyncPayload(cooldown), context,
@@ -140,8 +140,8 @@ final class P7ClientPayloadHandlersTest {
                 P7ClientPayloadHandlers.handlePlayerManaSnapshot(
                         new PlayerManaSyncPayload(mana), context,
                         composition(dispatchPort)));
-        var cooldown = new SkillCooldownSnapshot(
-                19L, List.of(new CooldownSnapshotEntry(4, 10)));
+        var cooldown = P7S2CodecTestSupport.cooldown(
+                19L, List.of(P7S2CodecTestSupport.active(4, 10)));
         assertSameEnqueueFailure(failure, dispatchPort, context ->
                 P7ClientPayloadHandlers.handleSkillCooldownSnapshot(
                         new SkillCooldownSyncPayload(cooldown), context,
@@ -162,9 +162,50 @@ final class P7ClientPayloadHandlersTest {
                 context,
                 P7NetworkComposition.production());
 
-        var queuedTask = context.takeOnlyTask();
-        queuedTask.run();
-        assertTrue(queuedTask instanceof P7IntentAckDispatchTask);
+        assertEquals(0, context.queuedTaskCount());
+        assertEquals(0, context.enqueueCalls());
+    }
+
+    @Test
+    void everyFamilyCapturesTheActualContextBeforeEnqueueAndCannotRelabelAnOldContext() {
+        for (int family = 0; family < 3; family++) {
+            var mirror = new P7ClientMirror(() -> true, (connection, listener) -> true);
+            var fresh = clientContext();
+            var old = new P7RecordingPayloadContext(null, null, null, PacketFlow.CLIENTBOUND, () -> {
+                mirror.onDisconnected();
+                mirror.onConnected(fresh.connection(), fresh.listener());
+            });
+            mirror.onConnected(old.connection(), old.listener());
+            var composition = composition(mirror);
+            dispatchFamily(family, old, composition);
+            assertEquals(1, old.enqueueCalls());
+            old.takeOnlyTask().run();
+            assertTrue(mirror.lastAcknowledgement().isEmpty());
+            assertEquals(0, mirror.lastAppliedManaSequence());
+            assertTrue(mirror.cooldownSnapshot().isEmpty());
+            dispatchFamily(family, old, composition);
+            assertEquals(1, old.enqueueCalls(), "old context captured the replacement generation");
+            dispatchFamily(family, fresh, composition);
+            assertEquals(1, fresh.enqueueCalls());
+            fresh.takeOnlyTask().run();
+            assertEquals(family == 0, mirror.lastAcknowledgement().isPresent());
+            assertEquals(family == 1 ? 1 : 0, mirror.lastAppliedManaSequence());
+            assertEquals(family == 2, mirror.cooldownSnapshot().isPresent());
+        }
+    }
+
+    private static void dispatchFamily(int family, P7RecordingPayloadContext context,
+            P7NetworkComposition composition) {
+        switch (family) {
+            case 0 -> P7ClientPayloadHandlers.handleIntentAcknowledgement(new IntentAckPayload(
+                    new IntentAcknowledgement(1, IntentAcknowledgement.Disposition.ACCEPTED,
+                            IntentAcknowledgement.SEQUENCE_CONSUMED, null)), context, composition);
+            case 1 -> P7ClientPayloadHandlers.handlePlayerManaSnapshot(new PlayerManaSyncPayload(
+                    new PlayerManaSnapshot(1, PlayerManaSnapshot.Availability.AVAILABLE, 10)), context, composition);
+            case 2 -> P7ClientPayloadHandlers.handleSkillCooldownSnapshot(new SkillCooldownSyncPayload(
+                    P7S2CodecTestSupport.cooldown(1, List.of())), context, composition);
+            default -> throw new AssertionError("unknown test family");
+        }
     }
 
     private static P7NetworkComposition composition(P7ClientMirrorDispatchPort dispatchPort) {
@@ -208,7 +249,8 @@ final class P7ClientPayloadHandlersTest {
         private SkillCooldownSnapshot lastCooldownSnapshot;
 
         @Override
-        public long captureDispatchGeneration() {
+        public long captureDispatchGeneration(net.minecraft.network.Connection connection,
+                net.neoforged.neoforge.common.extensions.ICommonPacketListener listener) {
             return 1L;
         }
 

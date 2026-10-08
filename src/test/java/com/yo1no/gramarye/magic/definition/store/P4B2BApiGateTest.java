@@ -521,7 +521,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(173, dependencyErrorCatchCount(production)),
+                () -> assertEquals(180, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -811,6 +811,11 @@ class P4B2BApiGateTest {
                 + exactNativeHelperCatches("P11KeepAliveBoundary.java", keepAliveErrorContracts())
                 + exactNativeHelperCatches("P11LiveTransitionService.java", liveTransitionErrorContracts())
                 + exactNativeHelperCatches("P11P9TrackingCleanup.java", trackingErrorContracts());
+        var fixtureCatches = exactNativeHelperCatches(
+                "magic/runtime/mana/ManaLifecycleGameTests.java", manaFixtureErrorContracts())
+                + exactNativeHelperCatches("magic/definition/player/PlayerSkillAttachmentGameTests.java",
+                        attachmentFixtureErrorContracts());
+        assertEquals(6, fixtureCatches);
         var p9OwnedCatches = List.of(
                         p6AdapterCatches, p9ProjectileCatches, p9WorldHandoffCatches)
                 .stream()
@@ -846,7 +851,7 @@ class P4B2BApiGateTest {
         assertAll(
                 () -> assertEquals(24, p5Catches.size()),
                 () -> assertEquals(11, p5Primary.size()),
-                () -> assertEquals(25, primary.size()),
+                () -> assertEquals(26, primary.size()),
                 () -> assertEquals(8, secondary.size()),
                 () -> assertEquals(2, diagnosticIsolation.size()),
                 () -> assertEquals(3, p9ErrorPrimitiveIsolation.size()),
@@ -877,7 +882,7 @@ class P4B2BApiGateTest {
                 () -> assertEquals(0, catchTypeCount(p11Boundary, "Throwable")),
                 () -> assertEquals(1, storeCatches.size()),
                 () -> assertEquals(1, networkCatches.size()),
-                () -> assertEquals(4, syncCatches.size()),
+                () -> assertEquals(5, syncCatches.size()),
                 () -> assertEquals(15, p8ClientCatches.size()),
                 () -> assertEquals(1, p8ClientPrimary.size()),
                 () -> assertEquals(1, p8ServerCatches.size()),
@@ -1012,9 +1017,10 @@ class P4B2BApiGateTest {
                                 + lifecycleCatches.size()
                                 + reviewedP8S5Catches
                                 + p11ObservationIsolation.size()
-                                + p11NativeHelpers,
+                                + p11NativeHelpers
+                                + fixtureCatches,
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(173, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(180, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
                 "permit.releaseAfterEnqueueFailure();", "throw failure;");
         assertOrdered(
@@ -1086,6 +1092,31 @@ class P4B2BApiGateTest {
 
     @Test
     void nativeErrorContractsRejectChangedBindingBodyPrimaryAndForeignMethod() throws Exception {
+        for (var fixture : Map.of(
+                "magic/runtime/mana/ManaLifecycleGameTests.java", manaFixtureErrorContracts(),
+                "magic/definition/player/PlayerSkillAttachmentGameTests.java", attachmentFixtureErrorContracts())
+                .entrySet()) {
+            var source = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                    "com/yo1no/gramarye/" + fixture.getKey())));
+            assertNativeHelperCatches(source, fixture.getValue());
+            for (var replacement : List.of(
+                    List.of("void queueConnected(", "void foreignQueue("),
+                    List.of("void cleanupConnected(", "void foreignCleanup("),
+                    List.of("void runCopyVariant(", "void foreignVariant("),
+                    List.of("void cleanupCopyVariant(", "void foreignVariantCleanup("),
+                    List.of("Error failure", "Error foreign"),
+                    List.of("Error cleanup", "Error foreign"),
+                    List.of("throw failure;", "throw new Error();"),
+                    List.of("primary.addSuppressed(cleanup);", "unsafe();"),
+                    List.of("failure.addSuppressed(cleanup);", "unsafe();"))) {
+                if (!source.contains(replacement.getFirst())) { continue; }
+                var mutant = source.replace(replacement.getFirst(), replacement.getLast());
+                assertThrows(AssertionError.class, () -> assertNativeHelperCatches(mutant, fixture.getValue()));
+            }
+            assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
+                    source + "void foreign(){try{}catch(RuntimeException|Error failure){throw failure;}}",
+                    fixture.getValue()));
+        }
         var operation = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/P11NativeOperationBoundary.java")));
         var cleanup = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
@@ -1140,6 +1171,7 @@ class P4B2BApiGateTest {
                 List.of("scope.active = false;", "scope.active = true;"),
                 List.of("revokeLogoutScope(scope);", "unsafe();"),
                 List.of("prospectiveInstance.releaseWork();", "unsafe();"),
+                List.of("prospectiveInstance.releaseWorkAfterError();", "unsafe();"),
                 List.of("void handleRuntimePost(", "void unreviewedRuntimePost("),
                 List.of("submitProjectileHit(", "unreviewedSubmitProjectileHit("),
                 List.of("slot.p9ErrorCleanup.prepare(server);", "unsafe();"),
@@ -1240,6 +1272,15 @@ class P4B2BApiGateTest {
                 sync.replace("MetadataInitialStage.MANA_FAILED", "MetadataInitialStage.MANA_SUBMITTED"), syncErrorContracts()));
         assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
                 sync.replace("P7ServerSyncState commitFamily(", "P7ServerSyncState unreviewedFamily("), syncErrorContracts()));
+        for (var replacement : List.of(
+                List.of("void finishAttempt(", "void unreviewedSyncCleanup("),
+                List.of("primary == null ? cleanupFailure : primary", "cleanupFailure"),
+                List.of("if (primary == null) { throw cleanupFailure; }", "throw cleanupFailure;"),
+                List.of("primary = failure;", "primary = null;"))) {
+            var mutant = sync.replace(replacement.getFirst(), replacement.getLast());
+            assertFalse(mutant.equals(sync), "sync cleanup mutation must change source");
+            assertThrows(AssertionError.class, () -> assertNativeHelperCatches(mutant, syncErrorContracts()));
+        }
         assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
                 stopOwner.replace("Error failure", "Error unreviewed"), stopWriterErrorContracts()));
         assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
@@ -1281,7 +1322,7 @@ class P4B2BApiGateTest {
                 "void endNormalLogout(", List.of(new ErrorCatchBlock("primary",
                         "revokeLogoutScope(scope);throwprimary;")),
                 "RuntimeAdmissionResult acquireAndPublishRoot(", List.of(
-                        new ErrorCatchBlock("primary", "if(prospectiveInstance!=null){try{prospectiveInstance.releaseWork();}"
+                        new ErrorCatchBlock("primary", "if(prospectiveInstance!=null){try{if(primaryinstanceofError){prospectiveInstance.releaseWorkAfterError();}else{prospectiveInstance.releaseWork();}}"
                                 + "catch(RuntimeException|ErrorignoredCleanupFailure){}}closeProvisionalAfterRootFault(leaseAcquisition);throwprimary;"),
                         new ErrorCatchBlock("ignoredCleanupFailure", "")))));
         var cleanup = bodyFollowing(source, "static final class P9InstanceErrorCleanup");
@@ -1377,11 +1418,34 @@ class P4B2BApiGateTest {
                         "body.account.fault=Fault.WRITE;failures=increment(failures);")));
     }
 
+    private static Map<String, List<ErrorCatchBlock>> manaFixtureErrorContracts() {
+        return Map.of(
+                "void queueConnected(", List.of(new ErrorCatchBlock("failure",
+                        "cleanupConnected(connected,failure);throwfailure;")),
+                "void cleanupConnected(", List.of(new ErrorCatchBlock("cleanup",
+                        "if(cleanup!=primary){primary.addSuppressed(cleanup);}")));
+    }
+
+    private static Map<String, List<ErrorCatchBlock>> attachmentFixtureErrorContracts() {
+        return Map.of(
+                "void runCopyVariant(", List.of(
+                        new ErrorCatchBlock("failure", "try{deletePlayerdata(server,playerId);}"
+                                + "catch(RuntimeException|Errorcleanup){if(cleanup!=failure){failure.addSuppressed(cleanup);}}throwfailure;"),
+                        new ErrorCatchBlock("cleanup", "if(cleanup!=failure){failure.addSuppressed(cleanup);}"),
+                        new ErrorCatchBlock("failure", "cleanupCopyVariant(server,playerId,connected,failure);throwfailure;")),
+                "void cleanupCopyVariant(", List.of(new ErrorCatchBlock("cleanup",
+                        "if(cleanup!=primary){primary.addSuppressed(cleanup);}")));
+    }
+
     private static Map<String, List<ErrorCatchBlock>> syncErrorContracts() {
         var samePrimary = List.of(new ErrorCatchBlock("primary",
                 "lifecycle.submissionFailed(server,actor,identity,primary);throwprimary;"));
         return Map.of(
-                "boolean fullSync(", samePrimary,
+                "boolean fullSync(", List.of(new ErrorCatchBlock("failure",
+                        "primary=failure;lifecycle.submissionFailed(server,actor,identity,failure);throwfailure;")),
+                "void finishAttempt(", List.of(new ErrorCatchBlock("cleanupFailure",
+                        "lifecycle.submissionFailed(server,actor,identity,primary==null?cleanupFailure:primary);"
+                                + "if(primary==null){throwcleanupFailure;}")),
                 "void submitInitialFamily(", List.of(new ErrorCatchBlock("primary",
                         "if(initial){P11NativeStorageBoundary.metadataInitialSync(actor,identity.connectionEpoch(),"
                                 + "mana?MetadataInitialStage.MANA_FAILED:MetadataInitialStage.COOLDOWN_FAILED);}throwprimary;")),

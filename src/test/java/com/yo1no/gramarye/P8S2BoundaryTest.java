@@ -720,7 +720,8 @@ final class P8S2BoundaryTest {
                 ProfileAvailabilityView.class,
                 P6RuntimeExecutionCapability.class,
                 P8ServerPresentationService.class,
-                P11FoundationService.class);
+                P11FoundationService.class,
+                P11CastCooldownService.class);
         var projector = P5RuntimeProjector.class.getDeclaredConstructor(
                 ProfileAvailabilityView.class);
         var root = read(GRAMARYE_SOURCE);
@@ -741,11 +742,16 @@ final class P8S2BoundaryTest {
                 "skillRuntimeService\\s*=\\s*SkillRuntimeService\\.create\\(\\s*"
                         + "NeoForge\\.EVENT_BUS,\\s*skillDefinitionStoreService,\\s*"
                         + "skillSubmissionPolicyProvider,\\s*profileAvailability,\\s*"
-                        + "runtimeCapability,\\s*p8ServerPresentationService,\\s*p11FoundationService\\s*\\);",
+                        + "runtimeCapability,\\s*p8ServerPresentationService,\\s*p11FoundationService,\\s*p11CastCooldownService\\s*\\);",
                 Pattern.DOTALL);
         var capabilityWiring = Pattern.compile(
                 "var\\s+runtimeCapability\\s*=\\s*"
                         + "P6RuntimeExecutionCapability\\.forRuntimeAdapter\\(\\);",
+                Pattern.DOTALL);
+        var cooldownPolicyWiring = Pattern.compile(
+                "var\\s+cooldownPolicyProjection\\s*=\\s*new\\s+P11CooldownPolicyProjection\\(\\s*"
+                        + "playerSkillAttachmentService,\\s*skillDefinitionStoreService,\\s*"
+                        + "skillSubmissionPolicyProvider,\\s*profileAvailability\\s*\\);",
                 Pattern.DOTALL);
 
         assertAll(
@@ -774,7 +780,8 @@ final class P8S2BoundaryTest {
                         root,
                         "P7ServerAuthorizationBoundary.install(\n"
                                 + "                runtimeCapability,")),
-                () -> assertEquals(3, matches(Pattern.compile("\\bprofileAvailability\\b"), root)),
+                () -> assertEquals(1, matches(cooldownPolicyWiring, root)),
+                () -> assertEquals(4, matches(Pattern.compile("\\bprofileAvailability\\b"), root)),
                 () -> assertEquals(4, matches(Pattern.compile("\\bruntimeCapability\\b"), root)),
                 () -> assertFalse(read(PROJECTOR_SOURCE).contains(
                         "ProfileAvailabilityView.unknown()")),
@@ -888,9 +895,10 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
-                () -> assertEquals(120_436L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
+                // P11 §11: native CONFIG/STATE→TRY fixture migration; authority prefixes stay unchanged.
+                () -> assertEquals(150_523L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
                 () -> assertEquals(
-                        "cebe78c6e92df3656d4e85644ac085e752211c9cb240f7e9397540bf5eb76587",
+                        "d5a5e26880dcf06ce23905abc33fa8c5e3437b1b7d502fc727d176ce41b67676",
                         sha256(P7_LOGIN_ISOLATION_SOURCE)));
     }
 

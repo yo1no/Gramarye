@@ -30,7 +30,7 @@ final class P7NetworkBounds {
     static final int RATE_STRIKE_DISCONNECT_THRESHOLD = 8;
     static final int RATE_STRIKE_WINDOW_TICKS = 100;
     static final int MIN_RESYNC_INTERVAL_TICKS = 20;
-    static final String PROTOCOL_VERSION = "gramarye-p7-v0";
+    static final String PROTOCOL_VERSION = "gramarye-p7-v1";
     static final long SEQUENCE_EXHAUSTION_BOUNDARY = Long.MAX_VALUE;
     static final int MAX_CUMULATIVE_P7_WORK_PER_TICK = 64;
 
@@ -50,6 +50,7 @@ final class P7NetworkBounds {
     static final int ENTITY_HINT_MAX = Integer.MAX_VALUE;
     static final int ACTUAL_MAX_CAST_INTENT_BODY_BYTES = 22;
     static final int ACTUAL_MAX_ACK_BODY_BYTES = 18;
+    static final int ACTUAL_MAX_COOLDOWN_BODY_BYTES = 1627;
 
     private P7NetworkBounds() {
         throw new AssertionError("no instances");

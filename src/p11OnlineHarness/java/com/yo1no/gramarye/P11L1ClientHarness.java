@@ -30,6 +30,7 @@ public final class P11L1ClientHarness {
     private static Connection connection;
     private static boolean onboarding, nativeCall, starter, ready, armedInput, resourceReload, lifecycleArmed, terminalCloseReturned, capacitySwing, capacityFocusRequested;
     private static int ticks, phaseTicks, logins, casts, sends;
+    private static int cooldownInputObservedCast, cooldownInputObservedAt, cooldownInputStallObserved;
     private static final Delivery[] delivery = {new Delivery(), new Delivery(), new Delivery(), new Delivery()};
     private P11L1ClientHarness() {}
 
@@ -38,6 +39,9 @@ public final class P11L1ClientHarness {
         if (!P11L1ServerHarness.enabled() || nativeCall || phase == Phase.TERMINAL) { return; }
         var minecraft = Minecraft.getInstance();
         try {
+            if (P11CooldownL1Probe.selected() && serverOutput != null && cue("abort.ready")) {
+                fail(minecraft, "OWNED_SUPERVISOR_ABORT"); return;
+            }
             require(minecraft.isSameThread() && ++ticks <= 30_000 && ++phaseTicks <=
                     (phase == Phase.BOOTSTRAP || phase == Phase.WAIT_CONNECT ? 24_000 : 2400), "CLIENT_DEADLINE_OR_THREAD");
             switch (phase) {
@@ -116,6 +120,7 @@ public final class P11L1ClientHarness {
 
     private static void play(Minecraft minecraft) throws IOException {
         P11L1ContextRefusalClientProbe.tick(minecraft);
+        if (prepareCooldownInput(minecraft)) { return; }
         if (lifecycleArmed && !P11L1LifecycleClientProbe.tick(minecraft)) { return; }
         if (P11L1ServerHarness.naturalUnload() && role.equals("a") && !terminalCloseReturned
                 && connection.isConnected() && cue("a-unload-close.ready")) {
@@ -272,6 +277,33 @@ public final class P11L1ClientHarness {
             minecraft.keyboardHandler.keyPress(window, GLFW.GLFW_KEY_R, scan, GLFW.GLFW_PRESS, 0);
             minecraft.keyboardHandler.keyPress(window, GLFW.GLFW_KEY_R, scan, GLFW.GLFW_RELEASE, 0);
         }
+    }
+
+    /** Current positive-D cases only; native focus request is not permission to bypass any P9 gate. */
+    private static boolean prepareCooldownInput(Minecraft minecraft) throws IOException {
+        if (!P11CooldownL1Probe.selected() || !"a".equals(role) || casts >= 3) { return false; }
+        if (cooldownInputObservedCast < casts + 1 && cue("a-cast-" + (casts + 1) + ".ready")) {
+            cooldownInputObservedCast = casts + 1; cooldownInputObservedAt = ticks;
+            P11C4aEvidence.write(output, "cooldown-l1-input-" + cooldownInputObservedCast + ".json",
+                    cooldownInputFacts(minecraft, "ACTUAL_INPUT_GATES_BEFORE_OWNED_FOCUS_REQUEST"));
+            GLFW.glfwFocusWindow(minecraft.getWindow().getWindow());
+            return true;
+        }
+        if (casts < cooldownInputObservedCast && ticks - cooldownInputObservedAt >= 100
+                && cooldownInputStallObserved < cooldownInputObservedCast) {
+            cooldownInputStallObserved = cooldownInputObservedCast;
+            P11C4aEvidence.write(output, "cooldown-l1-input-stall-" + cooldownInputObservedCast + ".json",
+                    cooldownInputFacts(minecraft, "ACTUAL_INPUT_GATES_STILL_WAITING_NOT_CAUSAL_ATTRIBUTION"));
+        }
+        return false;
+    }
+    private static Map<String, Object> cooldownInputFacts(Minecraft minecraft, String status) {
+        return Map.ofEntries(Map.entry("status", status), Map.entry("castCue", cooldownInputObservedCast),
+                Map.entry("logins", logins), Map.entry("casts", casts), Map.entry("sends", sends),
+                Map.entry("originalInputReady", ready), Map.entry("initialDelivered", initialDelivered()),
+                Map.entry("windowActive", minecraft.isWindowActive()), Map.entry("screenAbsent", minecraft.screen == null),
+                Map.entry("overlayAbsent", minecraft.getOverlay() == null), Map.entry("playerPresent", minecraft.player != null),
+                Map.entry("worldPresent", minecraft.level != null), Map.entry("phaseTicks", phaseTicks));
     }
 
     private static boolean twoWork() { return P11C4aEvidence.property("case").equals("l1-two-work-reload") || twoWorkStop(); }

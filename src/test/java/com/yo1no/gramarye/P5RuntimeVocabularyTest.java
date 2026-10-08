@@ -53,6 +53,7 @@ final class P5RuntimeVocabularyTest {
                         "SkillRevisionUnavailable",
                         "InvalidEvent",
                         "OwnerInstanceUnavailable",
+                        "CooldownRejected",
                         "ActiveLineageCapacityExceeded",
                         "ActiveBudgetAttributionCapacityExceeded",
                         "RootAdmissionBudgetExceeded",
@@ -64,6 +65,12 @@ final class P5RuntimeVocabularyTest {
                         "TickExhausted",
                         "KernelFaulted"),
                 permittedSimpleNames(RuntimeAdmissionResult.class));
+        assertEnum(CooldownRejectionReason.class,
+                "ACTIVE", "PENDING", "RECOVERY", "CLOCK", "UNAVAILABLE");
+        assertRecordComponents(RuntimeAdmissionResult.CooldownRejected.class,
+                List.of("reason"), List.of(CooldownRejectionReason.class));
+        assertThrows(NullPointerException.class,
+                () -> new RuntimeAdmissionResult.CooldownRejected(null));
         assertEquals(
                 Set.of(
                         "CancelledEvent",

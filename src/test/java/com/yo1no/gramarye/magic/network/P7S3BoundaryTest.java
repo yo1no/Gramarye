@@ -55,7 +55,7 @@ final class P7S3BoundaryTest {
 
         assertEquals(S3_NETWORK_PATHS, actual);
         assertEquals(Set.of("P7ServerAuthorizationBoundary", "P7ManaSnapshotBridge"), names);
-        assertEquals(5, Arrays.stream(P7ServerAuthorizationBoundary.class.getDeclaredClasses())
+        assertEquals(12, Arrays.stream(P7ServerAuthorizationBoundary.class.getDeclaredClasses())
                 .filter(type -> Modifier.isPublic(type.getModifiers()))
                 .count());
     }

@@ -25,6 +25,8 @@ final class P7RecordingPayloadContext implements IPayloadContext {
     private int disconnectCalls;
     private CustomPacketPayload replyPayload;
     private Component disconnectReason;
+    private final net.minecraft.network.Connection clientConnection;
+    private final ICommonPacketListener clientListener;
 
     P7RecordingPayloadContext(Player player) {
         this(player, null, null, PacketFlow.SERVERBOUND);
@@ -60,11 +62,23 @@ final class P7RecordingPayloadContext implements IPayloadContext {
         this.replyFailure = replyFailure;
         this.packetFlow = Objects.requireNonNull(packetFlow, "packetFlow");
         this.beforeEnqueue = Objects.requireNonNull(beforeEnqueue, "beforeEnqueue");
+        clientConnection = packetFlow == PacketFlow.CLIENTBOUND ? new net.minecraft.network.Connection(packetFlow) : null;
+        clientListener = clientConnection == null ? null : (ICommonPacketListener) java.lang.reflect.Proxy.newProxyInstance(
+                ICommonPacketListener.class.getClassLoader(), new Class<?>[] {ICommonPacketListener.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getConnection" -> clientConnection;
+                    case "flow" -> PacketFlow.CLIENTBOUND;
+                    case "protocol" -> net.minecraft.network.ConnectionProtocol.PLAY;
+                    case "equals" -> proxy == args[0];
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    default -> throw new AssertionError("unexpected client listener operation " + method.getName());
+                });
     }
 
     @Override
     public ICommonPacketListener listener() {
-        throw new AssertionError("listener access was not expected");
+        if (packetFlow != PacketFlow.CLIENTBOUND) { throw new AssertionError("C2S listener access was not expected"); }
+        return clientListener;
     }
 
     @Override

@@ -162,6 +162,18 @@ final class P7ServerSessionService {
         }
     }
 
+    void updateSync(MinecraftServer server, P7SessionIdentity identity,
+            P7ServerSyncState expected, P7ServerSyncState next) {
+        requireServerThread(server);
+        synchronized (stateLock) {
+            var current = sessions.get(identity.authenticatedPlayerId());
+            if (current == null || !current.identity().equals(identity) || current.syncState() != expected) {
+                throw new P7SemanticInvariantException("sync observation is no longer current");
+            }
+            sessions.put(identity.authenticatedPlayerId(), current.withSyncState(next));
+        }
+    }
+
     List<UUID> activePlayerIds(MinecraftServer server) {
         requireServerThread(server);
         synchronized (stateLock) {

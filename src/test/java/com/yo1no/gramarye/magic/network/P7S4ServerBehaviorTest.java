@@ -85,11 +85,40 @@ final class P7S4ServerBehaviorTest {
                     }
                 }
                 """));
+        var boundarySource = Files.readString(production.resolve("P7ServerAuthorizationBoundary.java"));
+        var projectionTypes = boundarySource.substring(
+                boundarySource.indexOf("    /** Root-injected projection only:"),
+                boundarySource.indexOf("    @FunctionalInterface\n    public interface RootIngressPort"));
+        for (var type : List.of("SkillId", "SkillRevision", "SkillReference")) {
+            var components = switch (type) {
+                case "SkillId" -> "java.util.UUID value";
+                case "SkillRevision" -> "int value";
+                default -> "SkillId skillId, SkillRevision revision";
+            };
+            var packageName = type.equals("SkillReference")
+                    ? "com.yo1no.gramarye.magic.definition.document" : "com.yo1no.gramarye.magic.api.id";
+            units.add(write(sourceRoot, packageName.replace('.', '/') + "/" + type + ".java",
+                    "package " + packageName + "; import com.yo1no.gramarye.magic.api.id.*; public record " + type
+                            + "(" + components + ") {}\n"));
+        }
         units.add(write(sourceRoot, "com/yo1no/gramarye/magic/network/P7ServerAuthorizationBoundary.java", """
                 package com.yo1no.gramarye.magic.network;
+                import java.util.List;
+                import java.util.Objects;
+                import com.yo1no.gramarye.magic.definition.document.SkillReference;
                 import net.minecraft.server.MinecraftServer;
                 import net.minecraft.server.level.ServerPlayer;
                 public final class P7ServerAuthorizationBoundary {
+                    %s
+                    static SyncCapture prepareSync(MinecraftServer server, ServerPlayer actor) {
+                        return new SyncCapture() {
+                            public SyncProjection projection() {
+                                return new SyncProjection(1, 0, SyncSourceState.AVAILABLE,
+                                        SyncReason.NONE, List.of());
+                            }
+                            public boolean isCurrent() { return true; }
+                        };
+                    }
                     public interface LoginReadyPort {}
                     enum AdmissionDisposition {
                         ACCEPTED, UNKNOWN_SKILL, UNAUTHORIZED_INTENT, INVALID_TARGET,
@@ -104,7 +133,7 @@ final class P7S4ServerBehaviorTest {
                         return AdmissionDisposition.UNKNOWN_SKILL;
                     }
                 }
-                """));
+                """.formatted(projectionTypes)));
         units.add(write(sourceRoot, "com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java", """
                 package com.yo1no.gramarye.magic.definition.submission;
                 import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary.LoginReadyPort;
@@ -259,6 +288,11 @@ final class P7S4ServerBehaviorTest {
     }
 
     @Test
+    void coherentProjectionRejectsReentryAndNeverReplaysAKnownManaSubmission() throws Exception {
+        run("projection-reentry");
+    }
+
+    @Test
     void initialManaObservationIsScopedAndUnknownPublicationCannotBeRetriedByTheQueue() throws Exception {
         run("mana-observation");
     }
@@ -335,6 +369,7 @@ final class P7S4ServerBehaviorTest {
                             case "sync" -> sync();
                             case "partial" -> partial();
                             case "missing-stage" -> missingStage();
+                            case "projection-reentry" -> projectionReentry();
                             case "mana-observation" -> manaObservation();
                             case "exhaustion" -> exhaustion();
                             case "budget" -> budget();
@@ -523,6 +558,85 @@ final class P7S4ServerBehaviorTest {
                         } catch (P7SemanticInvariantException expected) {}
                         check(receipt.starts == 0 && f.identity(actor).equals(id),
                                 "rejected continuation mutated session identity");
+                    }
+
+                    private static void projectionReentry() {
+                        for (int staleAt = 0; staleAt <= 2; staleAt++) {
+                            var f = new Fixture();
+                            var actor = f.player(1);
+                            var id = f.open(actor);
+                            var sent = new ArrayList<CustomPacketPayload>();
+                            var version = new long[] {1};
+                            var observations = new int[1];
+                            var invalidFirst = new boolean[] {staleAt == 0};
+                            int boundary = staleAt;
+                            var holder = new P7AuthoritativeSyncService[1];
+                            holder[0] = new P7AuthoritativeSyncService(f.sessions, f.access, f.life,
+                                    a -> { observations[0]++; return 731; }, (a, payload) -> {
+                                        check(!holder[0].fullSync(f.server, id, f.server.tick),
+                                                "recursive fullSync escaped the same-owner sending guard");
+                                        sent.add(payload);
+                                        if (sent.size() == boundary) { version[0]++; }
+                                    }, (server, a) -> {
+                                        long captured = version[0];
+                                        check(observations[0] >= 1,
+                                                "projection preceded the original mana observation");
+                                        return new P7ServerAuthorizationBoundary.SyncCapture() {
+                                            public P7ServerAuthorizationBoundary.SyncProjection projection() {
+                                                return new P7ServerAuthorizationBoundary.SyncProjection(1, captured,
+                                                        P7ServerAuthorizationBoundary.SyncSourceState.AVAILABLE,
+                                                        P7ServerAuthorizationBoundary.SyncReason.NONE, List.of());
+                                            }
+                                            public boolean isCurrent() {
+                                                return !invalidFirst[0] && version[0] == captured;
+                                            }
+                                        };
+                                    });
+                            check(!holder[0].fullSync(f.server, id, 0), "stale capture was reported reconciled");
+                            check(sent.size() == staleAt && !f.state(id).sending(),
+                                    "stale capture sent a later family or retained the call-local guard");
+                            check(f.state(id).mana().value() == (staleAt == 0 ? 1 : 2)
+                                            && f.state(id).cooldown().value() == (staleAt == 2 ? 2 : 1),
+                                    "stale capture changed an unsubmitted family sequence");
+                            if (staleAt == 0) {
+                                invalidFirst[0] = false;
+                            }
+                            if (staleAt == 2) { f.server.tick = 20; }
+                            check(holder[0].fullSync(f.server, id, f.server.tick), "fresh bounded reconciliation failed");
+                            check(sent.size() == (staleAt == 2 ? 4 : 2), "known family was replayed");
+                            check(observations[0] == (staleAt == 1 ? 1 : 2), "known mana was observed again");
+                            check(!f.state(id).manaSubmittedInCycle() && !f.state(id).sending(),
+                                    "completed cycle retained its partial receipt or sending guard");
+                            var cooldown = ((SkillCooldownSyncPayload) sent.getLast()).snapshot();
+                            check(cooldown.sourceVersion() == version[0]
+                                            && cooldown.syncSequence() == (staleAt == 2 ? 2 : 1),
+                                    "cooldown mixed the discarded projection with the new capture");
+                        }
+                        for (boolean error : new boolean[] {false, true}) {
+                            var f = new Fixture();
+                            var actor = f.player(1);
+                            var id = f.open(actor);
+                            var sent = new int[1];
+                            Throwable primary = error ? new AssertionError("projection") : new IllegalStateException("projection");
+                            var sync = new P7AuthoritativeSyncService(f.sessions, f.access, f.life, a -> 731,
+                                    (a, payload) -> sent[0]++, (server, a) -> new P7ServerAuthorizationBoundary.SyncCapture() {
+                                        public P7ServerAuthorizationBoundary.SyncProjection projection() {
+                                            return new P7ServerAuthorizationBoundary.SyncProjection(1, 0,
+                                                    P7ServerAuthorizationBoundary.SyncSourceState.AVAILABLE,
+                                                    P7ServerAuthorizationBoundary.SyncReason.NONE, List.of());
+                                        }
+                                        public boolean isCurrent() {
+                                            if (sent[0] != 0) { throwExact(primary); }
+                                            return true;
+                                        }
+                                    });
+                            try {
+                                sync.fullSync(f.server, id, 0);
+                                throw new AssertionError("projection primary was swallowed");
+                            } catch (RuntimeException | Error observed) { check(observed == primary, "projection primary replaced"); }
+                            check(sent[0] == 1 && actor.disconnects == 1 && f.sessions.currentSession(id).isEmpty(),
+                                    "unknown validation outcome was retried or left resumable");
+                        }
                     }
 
                     private static void manaObservation() {

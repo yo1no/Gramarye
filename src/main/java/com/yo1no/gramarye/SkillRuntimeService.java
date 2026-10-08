@@ -53,6 +53,7 @@ final class SkillRuntimeService {
     private final RuntimeReferenceResolver referenceResolver;
     private final RuntimeExecutionPort executionPort;
     private final P11FoundationService foundation;
+    private final P11CastCooldownService cooldowns;
     private final AtomicBoolean p9ReloadCloseRequested = new AtomicBoolean();
     private final IdentityHashMap<MinecraftServer, ServerSlot> slots = new IdentityHashMap<>(1);
     private long serverTokenHighWater;
@@ -63,22 +64,26 @@ final class SkillRuntimeService {
             P5RuntimeProjector projector,
             RuntimeReferenceResolver referenceResolver,
             RuntimeExecutionPort executionPort) {
-        this(storeService, policyProvider, projector, referenceResolver, executionPort, null);
+        // Isolated non-P9 kernel fixtures have no formal cooldown provider.
+        // Their P9 admissions fail closed; production uses create's required owner.
+        this(storeService, policyProvider, projector, referenceResolver, executionPort, null, null);
     }
 
-    private SkillRuntimeService(
+    SkillRuntimeService(
             SkillDefinitionStoreService storeService,
             SkillSubmissionPolicyProvider policyProvider,
             P5RuntimeProjector projector,
             RuntimeReferenceResolver referenceResolver,
             RuntimeExecutionPort executionPort,
-            P11FoundationService foundation) {
+            P11FoundationService foundation,
+            P11CastCooldownService cooldowns) {
         this.storeService = Objects.requireNonNull(storeService, "storeService");
         this.policyProvider = Objects.requireNonNull(policyProvider, "policyProvider");
         this.projector = Objects.requireNonNull(projector, "projector");
         this.referenceResolver = Objects.requireNonNull(referenceResolver, "referenceResolver");
         this.executionPort = Objects.requireNonNull(executionPort, "executionPort");
         this.foundation = foundation;
+        this.cooldowns = cooldowns;
     }
 
     static SkillRuntimeService create(
@@ -88,18 +93,20 @@ final class SkillRuntimeService {
             ProfileAvailabilityView profiles,
             P6RuntimeExecutionCapability capability,
             P8ServerPresentationService presentationService,
-            P11FoundationService foundation) {
+            P11FoundationService foundation,
+            P11CastCooldownService cooldowns) {
         Objects.requireNonNull(gameBus, "gameBus");
         Objects.requireNonNull(profiles, "profiles");
         Objects.requireNonNull(capability, "capability");
         Objects.requireNonNull(presentationService, "presentationService");
         Objects.requireNonNull(foundation, "foundation");
+        Objects.requireNonNull(cooldowns, "cooldowns");
         var service = new SkillRuntimeService(
                 storeService,
                 policyProvider,
                 new P5RuntimeProjector(profiles),
                 new P5LoadedReferenceResolver(),
-                new P6RuntimeExecutionPortAdapter(capability, presentationService), foundation);
+                new P6RuntimeExecutionPortAdapter(capability, presentationService), foundation, cooldowns);
         gameBus.addListener(EventPriority.LOWEST, service::handleRuntimePost);
         gameBus.addListener(service::handleRuntimeStopping);
         gameBus.addListener(service::handleRuntimeStopped);
@@ -335,7 +342,7 @@ final class SkillRuntimeService {
                 || sourceEvent.depth() != 0
                 || sourceEvent.childSequence() != 0
                 || !(sourceEvent.executionData() instanceof CastGeometryExecutionDataV0 geometry)
-                || !P9StarterSkillContent.hasSupportedStarterGameplay(
+                || !P9StarterSkillContent.hasSupportedRuntimeGameplay(
                         instance.lease.definition)) {
             return continuationRejected(
                     RuntimeProjectileContinuationOpenRejectionReason.INVARIANT_REJECTED);
@@ -447,6 +454,25 @@ final class SkillRuntimeService {
                 permit, plannedProjectileId, this);
     }
 
+    boolean prepareNativeSpawn(MinecraftServer server,
+            RuntimeProjectileContinuationPermit permit, P9StarterProjectile projectile) {
+        if (!server.isSameThread() || permit.nativeSpawnPrepared
+                || permit.state != RuntimeProjectileContinuationPermit.State.RESERVED
+                || projectile.isAddedToLevel()
+                || projectileQualification(server, permit, projectile) != WorkQualification.EXECUTABLE) {
+            return false;
+        }
+        var slot = slots.get(server);
+        var instance = slot == null ? null : slot.instances.get(permit.skillInstanceId);
+        if (instance == null || slot.currentEvent == null
+                || slot.currentEvent.nodeIndex() != 0
+                || instance.cooldownReceipt != null && !instance.cooldownReceipt.mayArm()) {
+            return false;
+        }
+        permit.nativeSpawnPrepared = true;
+        return true;
+    }
+
     RuntimePermitTransferDisposition transferSpawnedProjectile(
             MinecraftServer server,
             RuntimeProjectileContinuationPermit permit,
@@ -488,6 +514,7 @@ final class SkillRuntimeService {
                 || !slot.dispatching
                 || slot.currentEvent == null
                 || permit.state != RuntimeProjectileContinuationPermit.State.RESERVED
+                || !permit.nativeSpawnPrepared
                 || attribution == null
                 || instance.terminal
                 || instance.cancellationRequested
@@ -521,10 +548,24 @@ final class SkillRuntimeService {
             return RuntimePermitTransferDisposition.REJECTED;
         }
 
-        // The entity already owns the exact actor witness.  Publish OPEN before
-        // clearing P5 so there is never a stable zero-custodian interval.
+        P11CastCooldownService.ArmPreparation arm = null;
+        if (instance.cooldownPreparation != null) {
+            if (instance.cooldownReceipt == null || !instance.cooldownReceipt.mayArm()) {
+                return RuntimePermitTransferDisposition.REJECTED;
+            }
+            arm = cooldowns.prepareArm(instance.cooldownPreparation, instance.work, actor, slot.runtimeTick);
+            if (arm == null || !instance.cooldownReceipt.mayArm()
+                    || projectileQualification(server, permit, projectile) != WorkQualification.EXECUTABLE
+                    || permit.state != RuntimeProjectileContinuationPermit.State.RESERVED) {
+                return RuntimePermitTransferDisposition.REJECTED;
+            }
+        }
+        // The entity already owns A. All replacement/clock work is prepared.
+        // This short segment contains only exact owner's scalar/reference stores.
         permit.state = RuntimeProjectileContinuationPermit.State.OPEN;
         instance.clearP9AuthenticatedActorWitness();
+        if (arm != null) { instance.cooldownReceipt.armed(arm.releasedAt()); }
+        if (arm != null) { cooldowns.completeArm(arm); }
         recordP9SpawnResult(
                 slot, instance, RuntimePermitTransferDisposition.TRANSFERRED);
         return RuntimePermitTransferDisposition.TRANSFERRED;
@@ -576,6 +617,11 @@ final class SkillRuntimeService {
             ServerSlot slot,
             RuntimeProjectileContinuationPermit permit,
             ProjectileHitCandidateV0 candidate, P9StarterProjectile observedProjectile) {
+        if (permit.isPreparedSpawn()) {
+            // Native add callbacks cannot consume/revoke the held child or cause
+            // gameplay before the owner has performed the actual ARM transfer.
+            return Optional.of(RuntimePermitClaimDisposition.REJECTED);
+        }
         var instance = slot.instances.get(permit.skillInstanceId);
         if (slot.state != ServerSlot.State.RUNNING
                 || !server.isRunning()
@@ -856,6 +902,7 @@ final class SkillRuntimeService {
                         || !errorDeindexedRecovery && slot.reservedPending <= 0)) {
             throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
         }
+        if (instance.cooldownReceipt != null) { instance.cooldownReceipt.revoke(); }
         if (!claimed
                 && permit.state == RuntimeProjectileContinuationPermit.State.RESERVED
                 && reason == ProjectileClosureReason.SPAWN_NOT_APPLIED) {
@@ -1702,31 +1749,140 @@ final class SkillRuntimeService {
                     releaseProvisionalLease(slot, leaseAcquisition);
                     return new RuntimeAdmissionResult.OwnerInstanceUnavailable();
                 }
-                if (!isCurrentP9AuthenticatedActor(server, instance, resolvedP9Actor,
+                if (slots.get(server) != slot || slot.state != ServerSlot.State.RUNNING
+                        || !isCurrentP9AuthenticatedActor(server, instance, resolvedP9Actor,
                         ((CastGeometryExecutionDataV0) prospectiveEvent.executionData()).dimension())) {
                     instance.releaseWork();
                     releaseProvisionalLease(slot, leaseAcquisition);
                     return new RuntimeAdmissionResult.OwnerInstanceUnavailable();
                 }
             }
-            publishRoot(
-                    slot,
-                    prospectiveEvent,
-                    lease,
-                    leaseAcquisition,
-                    attribution,
-                    instance);
+            var prepared = new PreparedRoot(
+                    prospectiveEvent, lease, leaseAcquisition, attribution, instance);
+            if (p9AuthenticatedActorWitness != null) {
+                var duration = P9StarterSkillContent.runtimeCooldownTicks(lease.definition);
+                if (cooldowns == null || duration.isEmpty()) {
+                    instance.releaseWork();
+                    releaseProvisionalLease(slot, leaseAcquisition);
+                    return new RuntimeAdmissionResult.CooldownRejected(CooldownRejectionReason.UNAVAILABLE);
+                }
+                var receipt = new CooldownReleaseReceipt(slot.token.value(), prospectiveEventId.value());
+                var admission = cooldowns.prepareAdmission(server, p9AuthenticatedActorWitness,
+                        spec.skillReference(), duration.orElseThrow(), slot.runtimeTick, deadlineTick, receipt, instance.work);
+                if (admission instanceof P11CastCooldownService.Rejected rejected) {
+                    instance.releaseWork();
+                    releaseProvisionalLease(slot, leaseAcquisition);
+                    return new RuntimeAdmissionResult.CooldownRejected(rejected.reason());
+                }
+                if (admission instanceof P11CastCooldownService.Prepared pending) {
+                    instance.cooldownReceipt = receipt;
+                    instance.cooldownPreparation = pending;
+                    if (!cooldowns.installPending(pending)) {
+                        instance.releaseWork();
+                        releaseProvisionalLease(slot, leaseAcquisition);
+                        return new RuntimeAdmissionResult.CooldownRejected(CooldownRejectionReason.UNAVAILABLE);
+                    }
+                } else if (!(admission instanceof P11CastCooldownService.Zero)) {
+                    throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+                }
+                if (slots.get(server) != slot || slot.state != ServerSlot.State.RUNNING
+                        || !isCurrentP9AuthenticatedActor(server, instance, resolvedP9Actor,
+                        ((CastGeometryExecutionDataV0) prospectiveEvent.executionData()).dimension())
+                        || p9ReloadCloseRequested.get() || slot.runtimeTick != prospectiveEvent.createdRuntimeTick()) {
+                    instance.releaseWork();
+                    releaseProvisionalLease(slot, leaseAcquisition);
+                    return new RuntimeAdmissionResult.OwnerInstanceUnavailable();
+                }
+            }
+            prepared.publish(slot);
             return accepted;
         } catch (RuntimeException | Error primary) {
             if (prospectiveInstance != null) {
                 try {
-                    prospectiveInstance.releaseWork();
+                    if (primary instanceof Error) {
+                        prospectiveInstance.releaseWorkAfterError();
+                    } else {
+                        prospectiveInstance.releaseWork();
+                    }
                 } catch (RuntimeException | Error ignoredCleanupFailure) {
                     // Publication failure remains the primary; slot cleanup retries its own custody.
                 }
             }
             closeProvisionalAfterRootFault(leaseAcquisition);
             throw primary;
+        }
+    }
+
+    /** Same-call only: it has no queue/index presence and exposes no execution capability. */
+    private static final class PreparedRoot {
+        private final RuntimeEvent event;
+        private final RuntimeRevisionLease lease;
+        private final LeaseAcquisition acquisition;
+        private final ServerSlot.AttributionState attribution;
+        private final ServerSlot.InstanceState instance;
+
+        private PreparedRoot(RuntimeEvent event, RuntimeRevisionLease lease,
+                LeaseAcquisition acquisition, ServerSlot.AttributionState attribution,
+                ServerSlot.InstanceState instance) {
+            this.event = event;
+            this.lease = lease;
+            this.acquisition = acquisition;
+            this.attribution = attribution;
+            this.instance = instance;
+        }
+
+        private void publish(ServerSlot slot) {
+            if (instance.cooldownReceipt != null) { instance.cooldownReceipt.beginPublication(); }
+            publishRoot(slot, event, lease, acquisition, attribution, instance);
+        }
+    }
+
+    /** Exact attempt facts, not cooldown truth; never retains an actor, body, world, or runtime owner. */
+    static final class CooldownReleaseReceipt implements P11CastCooldownService.ReleaseReceipt {
+        private final UUID attemptId;
+        private P11CastCooldownService.ReleaseFact fact = P11CastCooldownService.ReleaseFact.UNPUBLISHED;
+        private long releasedAt = -1;
+        private boolean revoked;
+
+        private CooldownReleaseReceipt(long runtimeServerToken, long preparedRootEventId) {
+            if (runtimeServerToken <= 0 || preparedRootEventId <= 0) {
+                throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+            }
+            attemptId = new UUID(runtimeServerToken, preparedRootEventId);
+        }
+
+        @Override public UUID attemptId() { return attemptId; }
+        @Override public P11CastCooldownService.ReleaseFact fact() { return fact; }
+        @Override public long releasedAt() { return releasedAt; }
+
+        private void beginPublication() {
+            if (revoked || fact != P11CastCooldownService.ReleaseFact.UNPUBLISHED) {
+                throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+            }
+            fact = P11CastCooldownService.ReleaseFact.UNKNOWN;
+        }
+
+        private void published() {
+            if (revoked || fact != P11CastCooldownService.ReleaseFact.UNKNOWN) {
+                throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
+            }
+            fact = P11CastCooldownService.ReleaseFact.PENDING;
+        }
+
+        private boolean mayArm() {
+            return !revoked && fact == P11CastCooldownService.ReleaseFact.PENDING;
+        }
+
+        private void armed(long gameTime) {
+            releasedAt = gameTime;
+            fact = P11CastCooldownService.ReleaseFact.ARM;
+        }
+
+        void revoke() {
+            revoked = true;
+            if (fact != P11CastCooldownService.ReleaseFact.ARM) {
+                fact = P11CastCooldownService.ReleaseFact.NO_RELEASE;
+            }
         }
     }
 
@@ -2265,7 +2421,7 @@ final class SkillRuntimeService {
         } else {
             if (event.executionData() instanceof CastGeometryExecutionDataV0
                     && event.nodeIndex() == 0
-                    && P9StarterSkillContent.hasSupportedStarterGameplay(
+                    && P9StarterSkillContent.hasSupportedRuntimeGameplay(
                             lease.definition)
                     && !resumingRecordedP9Stage(slot, instance, event,
                             P9RuntimeDiagnosticStage.NODE0_MATCHED)) {
@@ -3021,6 +3177,7 @@ final class SkillRuntimeService {
             slot.eventSequenceHighWater = event.eventId().value();
             addCommittedEvent(slot, instance, attribution, event);
             instance.lifetimeEvents = 1;
+            if (instance.cooldownReceipt != null) { instance.cooldownReceipt.published(); }
             if (event.executionData() instanceof CastGeometryExecutionDataV0 geometry) {
                 instance.p9Diagnostic = new ServerSlot.P9ActiveDiagnostic(event, geometry);
                 recordP9Stage(slot, instance, P9RuntimeDiagnosticStage.CAST_ACCEPTED);
@@ -3587,7 +3744,7 @@ final class SkillRuntimeService {
                 || instance.terminal
                 || instance.lease.pin.isClosed()
                 || !instance.lease.reference.equals(event.skillReference())
-                || !P9StarterSkillContent.hasSupportedStarterGameplay(
+                || !P9StarterSkillContent.hasSupportedRuntimeGameplay(
                         instance.lease.definition)) {
             throw kernel(RuntimeKernelException.Code.RESERVATION_ACCOUNTING_INVARIANT);
         }
@@ -3879,7 +4036,7 @@ final class SkillRuntimeService {
         }
         var capabilities = definition.nodes().get(spec.nodeIndex())
                 .trigger().descriptor().capabilities();
-        var canonicalP9 = P9StarterSkillContent.hasSupportedStarterGameplay(definition);
+        var canonicalP9 = P9StarterSkillContent.hasSupportedRuntimeGameplay(definition);
         if (spec.executionData() instanceof CastGeometryExecutionDataV0) {
             if (spec.nodeIndex() != 0 || !canonicalP9) {
                 return Optional.of(InvalidEventReason.INVALID_EXECUTION_DATA);
@@ -3927,7 +4084,7 @@ final class SkillRuntimeService {
         if (p9Hit) {
             var hit = (ProjectileHitExecutionDataV0) child.executionData();
             if (child.nodeIndex() != 1
-                    || !P9StarterSkillContent.hasSupportedStarterGameplay(definition)
+                    || !P9StarterSkillContent.hasSupportedRuntimeGameplay(definition)
                     || !(child.origin() instanceof PlayerOrigin playerOrigin)
                     || !(child.target().orElse(null) instanceof EntityTarget entityTarget)
                     || entityTarget.expectedKind() != RuntimeEntityKind.LIVING_ENTITY
@@ -4459,7 +4616,7 @@ final class SkillRuntimeService {
             if (instance != null) {
                 instance.clearP9AuthenticatedActorWitness();
                 try {
-                    instance.releaseWork();
+                    instance.releaseWorkAfterError();
                 } catch (RuntimeException | Error ignoredCleanupFailure) {
                     // Preserve the original Error; Stopped retains this exact cleanup owner.
                 }
@@ -4795,6 +4952,12 @@ sealed abstract class RuntimeProjectileContinuationOpenResult
             return owner.transferSpawnedProjectile(
                     server, permit, plannedProjectileId, projectile);
         }
+
+        boolean prepareBeforeNativeAdd(MinecraftServer server, P9StarterProjectile projectile) {
+            Objects.requireNonNull(server, "server");
+            Objects.requireNonNull(projectile, "projectile");
+            return !transferConsumed && owner.prepareNativeSpawn(server, permit, projectile);
+        }
     }
 
     static final class Rejected extends RuntimeProjectileContinuationOpenResult {
@@ -4833,6 +4996,11 @@ final class RuntimeProjectileContinuationPermit {
     final UUID plannedProjectileId;
     State state;
     boolean suspendedBeforeSpawn;
+    boolean nativeSpawnPrepared;
+
+    boolean isPreparedSpawn() {
+        return mode == Mode.REAL && state == State.RESERVED && nativeSpawnPrepared;
+    }
 
     RuntimeProjectileContinuationPermit() {
         owner = null;
@@ -5090,6 +5258,8 @@ final class ServerSlot {
         final RuntimeRevisionLease lease;
         private ServerPlayer p9AuthenticatedActorWitness;
         P11QualifiedSourceOwner.WorkReservation work;
+        SkillRuntimeService.CooldownReleaseReceipt cooldownReceipt;
+        P11CastCooldownService.Prepared cooldownPreparation;
         SkillRuntimeService.LogoutState logoutState = SkillRuntimeService.LogoutState.ONLINE;
         SkillRuntimeService.NormalLogoutScope logoutScope;
         EventId p9SuspendedEventId;
@@ -5127,13 +5297,28 @@ final class ServerSlot {
         }
 
         void releaseWork() {
+            releaseWork(true);
+        }
+
+        void releaseWorkAfterError() {
+            releaseWork(false);
+        }
+
+        private void releaseWork(boolean reconcile) {
             p9SuspendedEventId = null;
             logoutScope = null;
             logoutState = SkillRuntimeService.LogoutState.INVALID;
-            var retained = work;
-            if (retained != null) {
-                retained.release();
-                work = null;
+            if (cooldownReceipt != null) { cooldownReceipt.revoke(); }
+            try {
+                // On Error the cell keeps the exact primitive receipt for its
+                // next legal reconciliation; do not allocate recovery here.
+                if (reconcile && cooldownPreparation != null) { cooldownPreparation.settle(); }
+            } finally {
+                var retained = work;
+                if (retained != null) {
+                    retained.release();
+                    work = null;
+                }
             }
         }
 

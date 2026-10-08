@@ -423,6 +423,13 @@ final class P9S5BoundaryTest {
                 "commands.gramarye.starter.already_current",
                 "commands.gramarye.starter.equipped_target",
                 "key.gramarye.cast", "key.categories.gramarye",
+                "hud.gramarye.cooldown.syncing",
+                "hud.gramarye.cooldown.unequipped",
+                "hud.gramarye.cooldown.ready",
+                "hud.gramarye.cooldown.active",
+                "hud.gramarye.cooldown.pending",
+                "hud.gramarye.cooldown.recovery",
+                "hud.gramarye.cooldown.unavailable",
                 "screen.gramarye.transition.title",
                 "screen.gramarye.transition.retry",
                 "screen.gramarye.transition.leave",
@@ -475,6 +482,7 @@ final class P9S5BoundaryTest {
                         chinese.get("commands.gramarye.starter.slot_occupied").getAsString()));
         for (var language : List.of(english, chinese)) {
             for (var key : keys) assertTrue(language.get(key).getAsString().length() <= 1_024);
+            assertTrue(language.get("hud.gramarye.cooldown.active").getAsString().contains("%s"));
             for (var success : List.of("already_current", "equipped_target")) {
                 assertTrue(language.get("commands.gramarye.starter." + success).getAsString().contains("%s"));
             }

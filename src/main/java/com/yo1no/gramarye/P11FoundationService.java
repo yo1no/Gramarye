@@ -33,6 +33,7 @@ final class P11FoundationService {
     private volatile PlayerStorageBinding playerStorageBinding;
     private volatile P11LiveTransitionService transitions;
     private SkillRuntimeService runtime;
+    private P11CastCooldownService cooldowns;
 
     P11FoundationService(P11SourceProvenance provenance, PlayerSkillAttachmentService attachments) {
         this.provenance = Objects.requireNonNull(provenance, "provenance");
@@ -61,6 +62,9 @@ final class P11FoundationService {
         terminalSummary = null;
         startupState = snapshot;
         if (snapshot instanceof P11StartupLoadState.Ready ready) {
+            if (cooldowns == null) {
+                throw new IllegalStateException("P11_COOLDOWN_OWNER_NOT_BOUND");
+            }
             if (!(exact instanceof P11NativeWorldAccess.ServerStorage)
                     || !(exact.getPlayerList() instanceof P11NativeWorldAccess.PlayerStorage)) {
                 throw new IllegalStateException("P11_REQUIRED_NATIVE_HOOK_UNAVAILABLE");
@@ -71,6 +75,8 @@ final class P11FoundationService {
             provenance.started(exact);
             slot.sources = new P11QualifiedSourceOwner(exact, slot.identities, slot.receipts,
                     slot.resources, ready.limits(), provenance, attachments);
+            slot.sources.bindCooldowns(cooldowns);
+            cooldowns.started(exact);
             transitions = new P11LiveTransitionService(exact, ready.limits(), slot.identities, slot.sources);
             playerStorageBinding = new PlayerStorageBinding(exact,
                     (P11NativeWorldAccess.PlayerStorage) exact.getPlayerList(),
@@ -84,7 +90,7 @@ final class P11FoundationService {
         } else {
             provenance.inactiveBoundary();
         }
-        // Invalid/missing P11 configuration is visible but does not break existing P5 gameplay.
+        // Invalid/missing configuration cannot authorize even a zero-policy cast.
         // Foundation existence is not a qualified source, writer, live control or RUNNING grant.
     }
 
@@ -95,6 +101,13 @@ final class P11FoundationService {
     void bindRuntime(SkillRuntimeService exact) {
         if (runtime != null) { throw new IllegalStateException("P11_RUNTIME_ALREADY_BOUND"); }
         runtime = Objects.requireNonNull(exact, "runtime");
+    }
+
+    void bindCooldowns(P11CastCooldownService exact) {
+        if (cooldowns != null || server != null) {
+            throw new IllegalStateException("P11_COOLDOWN_OWNER_ALREADY_BOUND");
+        }
+        cooldowns = Objects.requireNonNull(exact, "cooldowns");
     }
 
     boolean observedInactiveForRuntime(MinecraftServer exact) {
@@ -361,6 +374,7 @@ final class P11FoundationService {
                 provenance.stopped(exact);
             }
             slot.retire();
+            cooldowns.stopped(exact);
         } else {
             provenance.inactiveBoundary();
         }

@@ -48,6 +48,8 @@ final class P4C2PhaseTypes {
             "P11AttachmentReadResult",
             "P11AttachmentSnapshot",
             "P11AttachmentWriteResult",
+            "P11EquippedEntry",
+            "P11EquipmentSnapshot",
             "PlayerSkillRootProjection",
             "Prepared",
             "PreparedOnlineReconciliation",
@@ -75,6 +77,7 @@ final class P4C2PhaseTypes {
 
     static final Set<String> SERVICE_PUBLIC_METHOD_NAMES = Set.of(
             "admitForRootAudit",
+            "captureP11Equipment",
             "captureP11Source",
             "captureP11MissingRead",
             "discardRootProjection",

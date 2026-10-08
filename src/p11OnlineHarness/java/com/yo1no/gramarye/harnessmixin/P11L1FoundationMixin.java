@@ -11,8 +11,10 @@ abstract class P11L1FoundationMixin {
     @WrapMethod(method = "stopExact(Lnet/minecraft/server/MinecraftServer;)V", require = 1, expect = 1, allow = 1)
     private void p11$l1Retired(MinecraftServer server, Operation<Void> original) {
 com.yo1no.gramarye.P11L1HostStopProbe.beforeRoot(server);
+com.yo1no.gramarye.P11CooldownHostProbe.beforeRoot(server);
 original.call(server);
 com.yo1no.gramarye.P11L1HostStopProbe.rootRetired(server);
+com.yo1no.gramarye.P11CooldownHostProbe.rootRetired(server);
 P11L1ServerHarness.rootRetired(server);
     }
 }

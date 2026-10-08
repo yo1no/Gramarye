@@ -247,6 +247,30 @@ public final class PlayerSkillAttachmentService {
         };
     }
 
+    /** One non-installing immutable equipment observation for a coherent P7 projection. */
+    public P11EquipmentSnapshot captureP11Equipment(ServerPlayer player) {
+        requireServerThread(player);
+        return new P11EquipmentSnapshot(captureP11Source(player));
+    }
+
+    public record P11EquippedEntry(int slot, SkillReference reference) { }
+
+    public static final class P11EquipmentSnapshot {
+        private final P11AttachmentSnapshot material;
+        private final List<P11EquippedEntry> entries;
+        private final boolean available;
+        private P11EquipmentSnapshot(P11AttachmentSnapshot material) {
+            this.material = material;
+            available = material.state == null || material.state instanceof PlayerSkillAttachmentReady;
+            entries = material.state instanceof PlayerSkillAttachmentReady ready
+                    ? ready.equipped().stream().map(entry -> new P11EquippedEntry(entry.slot(), entry.reference())).toList()
+                    : List.of();
+        }
+        public boolean available() { return available; }
+        public List<P11EquippedEntry> entries() { return entries; }
+        public boolean isCurrent(ServerPlayer actor) { return material.isCurrent(actor); }
+    }
+
     public Result<EditorStateView> editorState(ServerPlayer player) {
         requireServerThread(player);
         return switch (observeChecked(player)) {

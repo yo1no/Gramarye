@@ -107,6 +107,236 @@ class P11OnlineRuntimeTest < Minitest::Test
     end
   end
 
+  def test_cooldown_pin_is_matching_and_distinct_or_pending_fail_closed
+    java = File.read(File.join(P11OnlineRuntime::REPO, 'src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineInputs.java'))
+    pattern = /private static final String COOLDOWN_PRODUCT_PIN = (null|"[0-9a-f]{64}");/
+    pin = P11OnlineRuntime::COOLDOWN_JAR_SHA
+    expected = pin.nil? ? 'null' : '"' + pin + '"'
+    assert_equal [expected], java.scan(pattern).flatten
+    refute_equal [expected], java.sub(pattern, '').scan(pattern).flatten
+    refute_equal [expected], (java + "\n" + java.match(pattern)[0]).scan(pattern).flatten
+    replacement = pin.nil? ? ('"' + ('0' * 64) + '"') : 'null'
+    refute_equal [expected], java.sub(pattern, 'private static final String COOLDOWN_PRODUCT_PIN = ' + replacement + ';').scan(pattern).flatten
+    (P11OnlineRuntime::COOLDOWN_CASES + P11OnlineRuntime::COOLDOWN_L1_CASES).each do |name|
+      if pin.nil?
+        failure('COOLDOWN_PRODUCT_PIN_PENDING') { P11OnlineRuntime.product_pin(name) }
+        failure('COOLDOWN_PRODUCT_PIN_PENDING') { prepare(case: name, run_id: name) }
+        refute File.exist?(File.join(@options[:runtime_root], name))
+        refute File.exist?(File.join(@options[:evidence_root], name))
+      else
+        assert_match(/\A[0-9a-f]{64}\z/, pin)
+        refute_includes [P11OnlineRuntime::JAR_SHA, P11OnlineRuntime::C4A_JAR_SHA, P11OnlineRuntime::L1_JAR_SHA], pin
+        assert_equal pin, P11OnlineRuntime.product_pin(name)
+        failure('FROZEN_JAR_MISMATCH') { P11OnlineRuntime.verify_jar!(@jar, name) }
+      end
+    end
+    assert_includes java, 'COOLDOWN_PRODUCT_PIN != null && COOLDOWN_PRODUCT_PIN.matches("[0-9a-f]{64}")'
+    assert_equal P11OnlineRuntime::JAR_SHA, P11OnlineRuntime.product_pin('single')
+    assert_equal P11OnlineRuntime::C4A_JAR_SHA, P11OnlineRuntime.product_pin('c4a-dedicated')
+    assert_equal P11OnlineRuntime::L1_JAR_SHA, P11OnlineRuntime.product_pin('l1-open')
+  end
+
+  # Pending-pin tests above use the real guard. Preparation below uses only our fake tree;
+  # no constant, historical family, product artifact, or native launch is substituted.
+  def with_cooldown_preparation_pin
+    original = P11OnlineRuntime.method(:product_pin)
+    pin = P11OnlineRuntime::COOLDOWN_JAR_SHA || Digest::SHA256.hexdigest('SYNTHETIC_COOLDOWN_PREPARATION_ONLY')
+    selected = lambda do |name, l1_host_stop: false, cooldown_host: false|
+      if P11OnlineRuntime::COOLDOWN_JAR_SHA.nil? && ((P11OnlineRuntime::COOLDOWN_CASES + P11OnlineRuntime::COOLDOWN_L1_CASES).include?(name) || cooldown_host)
+        P11OnlineRuntime.cooldown_host_selection!(name, cooldown_host, l1_host_stop: l1_host_stop)
+        pin
+      else
+        original.call(name, l1_host_stop: l1_host_stop, cooldown_host: cooldown_host)
+      end
+    end
+    P11OnlineRuntime.stub(:product_pin, selected) { yield pin }
+  end
+
+  def test_cooldown_cases_mixins_and_startup_fixture_are_exact
+    assert_equal %w[cooldown-d1 cooldown-d120 cooldown-d600 cooldown-restart-write cooldown-restart-read cooldown-prepared-reentry cooldown-add-false cooldown-add-remove cooldown-clone cooldown-before-arm-throw cooldown-after-arm-throw cooldown-unarmed-stop cooldown-save-active cooldown-save-clear cooldown-dual], P11OnlineRuntime::COOLDOWN_CASES
+    P11OnlineRuntime::COOLDOWN_CASES.each do |name|
+      assert_equal 1, P11OnlineRuntime::CASES.count(name)
+      assert_equal %w[server a b], P11OnlineRuntime.roles_for(name)
+      assert_equal ['gramarye-p11-cooldown-harness.mixins.json'], P11OnlineRuntime.mixin_configs(name)
+      assert_equal({}, P11OnlineRuntime.reward_fixture_sources!(@options[:repo], @private, name))
+      assert_equal FIXTURE, P11OnlineRuntime.startup_fixture!(@fixture, @private, name)
+      failure('INVALID_L1_HOST_SELECTION') { P11OnlineRuntime.product_pin(name, l1_host_stop: true) }
+    end
+    %w[cooldown cooldown-d0 cooldown-d2 cooldown-d601 cooldown-d01 cooldown-d120.extra COOLDOWN-D1 cooldown-d1/../single].each do |name|
+      failure('INVALID_CASE') { P11OnlineRuntime.product_pin(name) }
+      failure('INVALID_CASE') { P11OnlineRuntime.mixin_config(name) }
+    end
+    [FIXTURE.sub('maximumDepth = 32', 'maximumDepth = 31'),
+     FIXTURE.sub('maxSealedSnapshots = 1', 'maxSealedSnapshots = 4')
+            .sub('maxSealedBytes = 1', 'maxSealedBytes = 67108864'),
+     FIXTURE + "extra = 1\n"].each do |changed|
+      File.write(@fixture, changed)
+      P11OnlineRuntime::COOLDOWN_CASES.each do |name|
+        failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, name) }
+      end
+    end
+    config = JSON.parse(File.read(File.join(P11OnlineRuntime::REPO,
+      'src/p11OnlineHarness/resources/gramarye-p11-cooldown-harness.mixins.json')))
+    assert_equal true, config['required']
+    assert_equal 'com.yo1no.gramarye.harnessmixin', config['package']
+    assert_equal 'JAVA_21', config['compatibilityLevel']
+    assert_equal %w[P11OnlineAuthenticatorMixin P11CooldownLoginMixin P11CooldownCompositionMixin
+                    P11CooldownOwnerMixin P11CooldownRuntimeMixin P11CooldownInstanceMixin P11CooldownFoundationMixin
+                    P11CooldownFaultAddMixin P11CooldownFaultProjectileMixin P11CooldownFaultRuntimeMixin
+                    P11CooldownFaultServerMixin P11CooldownCostCellMixin P11CooldownCostMixin P11CooldownFaultArmMixin
+                    P11CooldownCloneCopyMixin P11CooldownCloneSerializerMixin P11CooldownCostPacketMixin
+                    P11CooldownDurabilityAddMixin P11CooldownDurabilityWriterMixin
+                    P11CooldownFaultOperationMixin P11CooldownFaultSourceMixin], config['mixins']
+    assert_equal %w[P11CooldownClientInputMixin P11CooldownClientMirrorMixin P11CooldownHudMixin
+                    P11CooldownCloneClientMixin P11C4aMouseInputMixin], config['client']
+    assert_equal({ 'defaultRequire' => 1 }, config['injectors'])
+  end
+
+  def test_cooldown_preparation_is_fresh_non_authenticating_and_never_reads_private_inputs
+    reads = []
+    original_read = File.method(:binread)
+    original_symlink = File.method(:symlink?)
+    guarded_read = lambda do |file, *args|
+      reads << file
+      flunk 'private contents must not be read' if P11OnlineRuntime.within?(file, @private) || P11OnlineRuntime.within?(file, P11OnlineRuntime::PRIVATE_ROOT)
+      original_read.call(file, *args)
+    end
+    guarded_symlink = lambda do |file|
+      flunk 'real private root must not be inspected' if P11OnlineRuntime.within?(file, P11OnlineRuntime::PRIVATE_ROOT)
+      original_symlink.call(file)
+    end
+    with_cooldown_preparation_pin do |pin|
+      File.stub(:binread, guarded_read) do
+        File.stub(:symlink?, guarded_symlink) do
+          (P11OnlineRuntime::COOLDOWN_CASES - ['cooldown-restart-read']).each do |name|
+            manifest = prepare(case: name, run_id: name)
+            assert_equal name, manifest['case']
+            assert_equal %w[server a b], manifest['roles']
+            assert_equal pin, manifest['jarSha256']
+            assert_equal File.join(@options[:runtime_root], 'frozen-cooldown', pin, 'gramarye-1.0.0.jar'), manifest['jar']
+            assert_equal 'NOT_RUN_NOT_PROVEN', manifest['authenticationAcceptance']
+            refute manifest.key?('rewardFixtureHashes')
+            refute File.exist?(File.join(manifest['evidence'], 'server'))
+            refute File.exist?(File.join(manifest['evidence'], 'client-a'))
+            refute File.exist?(File.join(manifest['evidence'], 'client-b'))
+            %w[a b].each do |role|
+              assert_includes File.read(File.join(manifest['runtime'], "launch-client-#{role}.command")), 'FROZEN_LAUNCHERS_REQUIRED'
+            end
+            assert_equal manifest, P11OnlineRuntime.load_manifest(File.join(manifest['runtime'], 'manifest.json'),
+              runtime_root: @options[:runtime_root], private_root: @private)
+          end
+          failure('PRIVATE_PATH_FORBIDDEN') { prepare(case: 'cooldown-d1', fixture: File.join(@private, 'accounts.json')) }
+          failure('PRIVATE_PATH_FORBIDDEN') { prepare(case: 'cooldown-d1', jar: File.join(@private, 'accounts.json')) }
+          failure('PRIVATE_PATH_FORBIDDEN') do
+            P11OnlineRuntime.load_manifest(File.join(@private, 'manifest.json'), runtime_root: @options[:runtime_root], private_root: @private)
+          end
+        end
+      end
+    end
+    refute reads.any? { |file| P11OnlineRuntime.within?(file, @private) }
+    assert_equal ['accounts.json'], Dir.children(@private)
+    assert_equal 'FAKE_SECRET_SENTINEL_NOT_REAL_CREDENTIALS', File.binread(File.join(@private, 'accounts.json'))
+  end
+
+  def test_cooldown_export_rejects_missing_duplicate_foreign_or_historical_mixin
+    with_cooldown_preparation_pin do
+      (P11OnlineRuntime::COOLDOWN_CASES - ['cooldown-restart-read']).each do |name|
+        manifest = prepare(case: name, run_id: name)
+        base = generated_fixture(manifest)
+        file = File.join(base, 'p11OnlineClientARunProgramArgs.txt')
+        original = File.read(file)
+        suffix = "\n--mixin.config\ngramarye-p11-cooldown-harness.mixins.json"
+        assert original.end_with?(suffix)
+        [original.delete_suffix(suffix), original + suffix,
+         original.sub('gramarye-p11-cooldown-harness.mixins.json', 'gramarye-p11-cooldown-harness.mixins.json.extra'),
+         original.sub('gramarye-p11-cooldown-harness.mixins.json', 'gramarye-p11-online-harness.mixins.json'),
+         original + "\n--mixin.config\ngramarye-p11-c6-observers.mixins.json"].each do |raw|
+          refute_equal original, raw
+          File.write(file, raw)
+          failure('GENERATED_PROGRAM_ARGUMENTS_MISMATCH') { export(manifest) }
+          refute File.exist?(File.join(manifest['runtime'], 'launch-bundle'))
+        end
+        File.write(file, original)
+        frozen = export(manifest)
+        assert P11OnlineRuntime.stub(:verify_jar!, true) { P11OnlineRuntime.verify_frozen!(frozen) }
+        assert_equal 9, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
+      end
+    end
+  end
+
+  def test_cooldown_status_is_only_named_receipts_without_content_or_auth_inference
+    names = %w[cooldown-result.json data-terminal.json formal-submission.json arm-1.json arm-2.json
+               saved-active.json active-refusal.json reconnect-active.json]
+    with_cooldown_preparation_pin do
+      (P11OnlineRuntime::COOLDOWN_CASES - ['cooldown-restart-read']).each do |name|
+        manifest = prepare(case: name, run_id: name)
+        server = File.join(manifest['evidence'], 'server')
+        Dir.mkdir(server)
+        (names + names.map { |leaf| leaf + '.extra' } + %w[arm-3.json cooldown-result.ready accounts.json native-console.txt]).each do |leaf|
+          File.write(File.join(server, leaf), 'SYNTHETIC_CONTENT_MUST_NOT_BE_READ')
+        end
+        File.stub(:binread, ->(*) { flunk 'status must not read receipt contents' }) do
+          report = P11OnlineRuntime.status(manifest)
+          assert_equal ['prepare.json', 'launch-cues.txt'] + names.map { |leaf| 'server/' + leaf }, report['present']
+          assert_equal 'STRUCTURED_FILE_PRESENCE_ONLY', report['status']
+          assert_equal 'NOT_INFERRED_FROM_FILE_PRESENCE', report['authenticationAcceptance']
+        end
+      end
+    end
+  end
+
+  def test_cooldown_restart_new_r_waits_for_actual_ready_draw_without_changing_original_sender
+    base = File.join(P11OnlineRuntime::REPO, 'src/p11OnlineHarness/java/com/yo1no/gramarye')
+    server = File.read(File.join(base, 'P11CooldownServerHarness.java'))
+    client = File.read(File.join(base, 'P11CooldownClientHarness.java'))
+    valid = lambda do |source|
+      branch = source[/case RESTART_EXPIRY -> \{(.*?)case RESTART_NEW_ARM/m, 1]
+      branch && branch.include?('gameTime() < P11CooldownRestartProbe.expiresAt()') &&
+        branch.include?('!receipt("client-a", "hud-ready.json")') &&
+        branch.index('return;') < branch.index('cue("a-cast-2.ready")') &&
+        source.scan('!receipt("client-a", "hud-ready.json")').size == 1
+    end
+    assert valid.call(server), 'READ starts ACTIVE; natural expiry alone does not prove actual READY delivery/draw'
+    refute valid.call(server.sub('!receipt("client-a", "hud-ready.json")', 'false'))
+    refute valid.call(server.gsub('gameTime() < P11CooldownRestartProbe.expiresAt()', 'false'))
+    refute valid.call(server + '\n!receipt("client-a", "hud-ready.json")')
+    assert_includes client, '&& readyApplied && readyDrawn && (P11CooldownServerHarness.duration() == 1'
+    assert_includes client, 'P11C4aEvidence.write(output, "hud-ready.json"'
+    refute_match(/setGameTime\(|Thread\.sleep\(|setSyncSequence\(/, server)
+  end
+
+  def test_cooldown_each_named_cast_may_request_focus_but_never_bypass_original_input_gates
+    source = File.read(File.join(P11OnlineRuntime::REPO,
+      'src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownClientHarness.java'))
+    valid = lambda do |text|
+      branch = text[/if \(starter && expectedReference != null && casts < expectedCasts\(\)(.*?)if \(starter && inputReady/m, 1]
+      branch && branch.include?('focusedCast < casts + 1 && cue(castRole() + "-cast-" + (casts + 1) + ".ready")') &&
+        branch.include?('focusedCast = casts + 1; focusAt = phaseTicks;') &&
+        branch.include?('GLFW.glfwFocusWindow(minecraft.getWindow().getWindow()); return;') &&
+        branch.include?('phaseTicks - focusAt >= 100 && stalledCast < focusedCast') &&
+        !branch.match?(/inputReady\s*=|inputArmed\s*=|casts\+\+|sends\+\+|sendCastIntent|keyPress\(/)
+    end
+    assert valid.call(source)
+    refute valid.call(source.sub('casts < expectedCasts()', 'true'))
+    refute valid.call(source.sub('focusedCast < casts + 1', 'true'))
+    refute valid.call(source.sub('phaseTicks - focusAt >= 100', 'true'))
+    refute valid.call(source.sub('focusedCast = casts + 1;', 'inputReady = true; focusedCast = casts + 1;'))
+    assert_includes source, 'if (starter && inputReady && minecraft.isWindowActive() && expectedReference != null'
+    assert_includes source, 'expectedReference.equals(mirroredReference) && cue(castRole() + "-cast-" + (casts + 1) + ".ready")'
+    assert_includes source, 'if (minecraft.getOverlay() != null || minecraft.screen != null) return;'
+    with_cooldown_preparation_pin do
+      manifest = prepare(case: 'cooldown-clone', run_id: 'cooldown-clone-input')
+      dir = File.join(manifest['evidence'], 'client-a'); Dir.mkdir(dir)
+      names = %w[input-focus-1.json input-focus-2.json input-focus-3.json input-stall-1.json input-stall-2.json input-stall-3.json]
+      (names + %w[input-focus-4.json input-stall-4.json input-focus-1.json.extra accounts.json]).each do |leaf|
+        File.write(File.join(dir, leaf), 'SYNTHETIC_CONTENT_NOT_READ')
+      end
+      File.stub(:binread, ->(*) { flunk 'presence reader must not read content' }) do
+        assert_equal ['prepare.json', 'launch-cues.txt'] + names.map { |name| "client-a/#{name}" }, P11OnlineRuntime.status(manifest)['present']
+      end
+    end
+  end
+
   def test_l1_cases_are_closed_and_do_not_reuse_an_old_product_pin
     assert_equal %w[l1-pre-spawn l1-open l1-claimed l1-impact-close-custody l1-two-work-reload l1-two-work-stop l1-revision l1-p8-send-fault l1-ack-fault l1-work-death l1-work-dimension l1-work-config l1-partial-reward-function l1-work-multi-uuid-qctx l1-stats-write-fault-memory l1-work-deadline l1-spawn-callback-remove l1-logout-cleanup-fault l1-tracking-retirement l1-work-capacity l1-natural-unload l1-online-peer l1-work-context-refusal l1-restart-write l1-restart-read], P11OnlineRuntime::L1_CASES
     P11OnlineRuntime::L1_CASES.each do |name|
@@ -120,6 +350,205 @@ class P11OnlineRuntimeTest < Minitest::Test
     %w[l1-open.extra l1 l1-open/../single L1-OPEN].each do |name|
       failure('INVALID_CASE') { P11OnlineRuntime.product_pin(name) }
       failure('INVALID_CASE') { P11OnlineRuntime.mixin_config(name) }
+    end
+  end
+
+  def test_current_cooldown_l1_aliases_keep_original_semantics_with_exact_new_pin
+    assert_equal %w[cooldown-l1-pre-spawn cooldown-l1-open cooldown-l1-claimed], P11OnlineRuntime::COOLDOWN_L1_CASES
+    with_cooldown_preparation_pin do |pin|
+      P11OnlineRuntime::COOLDOWN_L1_CASES.each do |name|
+        assert_equal pin, P11OnlineRuntime.product_pin(name)
+        assert_equal ['gramarye-p11-l1-harness.mixins.json'], P11OnlineRuntime.mixin_configs(name)
+        assert_equal FIXTURE, P11OnlineRuntime.startup_fixture!(@fixture, @private, name)
+        assert_equal P11OnlineRuntime::L1_FIXTURE_HASHES,
+          P11OnlineRuntime.reward_fixture_sources!(@options[:repo], @private, name).transform_values { |raw| Digest::SHA256.hexdigest(raw) }
+        manifest = prepare(case: name, run_id: name)
+        assert_equal pin, manifest.fetch('jarSha256')
+        assert_equal P11OnlineRuntime::L1_FIXTURE_HASHES, manifest.fetch('rewardFixtureHashes')
+        generated_fixture(manifest)
+        frozen = export(manifest)
+        assert P11OnlineRuntime.stub(:verify_jar!, true) { P11OnlineRuntime.verify_frozen!(frozen) }
+        failure('INVALID_CASE') { P11OnlineRuntime.product_pin(name + '.extra') }
+      end
+      assert_equal P11OnlineRuntime::L1_JAR_SHA, P11OnlineRuntime.product_pin('l1-open')
+      refute_equal pin, P11OnlineRuntime.product_pin('l1-open')
+    end
+  end
+
+  def test_positive_l1_receipts_and_abort_remain_exact_current_case_only
+    names = %w[cooldown-l1-formal-submission.json cooldown-l1-episode-1.json
+               cooldown-l1-episode-2.json cooldown-l1-episode-3.json]
+    with_cooldown_preparation_pin do
+      P11OnlineRuntime::COOLDOWN_L1_CASES.each do |name|
+        manifest = prepare(case: name, run_id: name)
+        server = File.join(manifest['evidence'], 'server')
+        Dir.mkdir(server)
+        (names + names.map { |leaf| leaf + '.extra' } + %w[cooldown-l1-episode-4.json native-console.txt accounts.json]).each do |leaf|
+          File.write(File.join(server, leaf), 'SYNTHETIC_CONTENT_MUST_NOT_BE_READ')
+        end
+        File.stub(:binread, ->(*) { flunk 'status must not read receipt contents' }) do
+          report = P11OnlineRuntime.status(manifest)
+          assert_equal ['prepare.json', 'launch-cues.txt', 'reward-fixture.json'] + names.map { |leaf| 'server/' + leaf }, report['present']
+          assert_equal 'NOT_INFERRED_FROM_FILE_PRESENCE', report['authenticationAcceptance']
+          historical = manifest.merge('case' => 'l1-open')
+          refute P11OnlineRuntime.status(historical)['present'].any? { |leaf| leaf.include?('cooldown-l1-') }
+        end
+      end
+    end
+    client = File.read(File.join(P11OnlineRuntime::REPO,
+      'src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ClientHarness.java'))
+    guarded = lambda do |source|
+      source.include?('if (P11CooldownL1Probe.selected() && serverOutput != null && cue("abort.ready")) {') &&
+        source.include?('fail(minecraft, "OWNED_SUPERVISOR_ABORT"); return;')
+    end
+    assert guarded.call(client)
+    refute guarded.call(client.sub('P11CooldownL1Probe.selected() && ', ''))
+    refute guarded.call(client.sub('serverOutput != null && ', ''))
+    refute guarded.call(client.sub('fail(minecraft, "OWNED_SUPERVISOR_ABORT"); return;', 'return;'))
+  end
+
+  def test_positive_l1_focus_request_does_not_bypass_original_input_gates
+    file = File.join(P11OnlineRuntime::REPO, 'src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ClientHarness.java')
+    source = File.read(file)
+    branch = source[/private static boolean prepareCooldownInput.*?private static boolean twoWork/m]
+    guarded = lambda do |value|
+      value.include?('!P11CooldownL1Probe.selected() || !"a".equals(role) || casts >= 3') &&
+        value.include?('cooldownInputObservedCast < casts + 1 && cue("a-cast-" + (casts + 1) + ".ready")') &&
+        value.include?('cooldownInputObservedCast = casts + 1; cooldownInputObservedAt = ticks;') &&
+        value.scan('GLFW.glfwFocusWindow(').size == 1
+    end
+    assert branch && guarded.call(branch)
+    refute guarded.call(branch.sub('!P11CooldownL1Probe.selected() || ', ''))
+    refute guarded.call(branch.sub('casts >= 3', 'false'))
+    refute guarded.call(branch.sub('cooldownInputObservedCast < casts + 1 && ', ''))
+    refute_match(/keyPress|sendCommand|sendPayload|resetMapping|releaseAll|ready =|casts\+\+/, branch)
+    assert_includes source, 'starter && casts < castLimit() && ready && initialDelivered() && minecraft.isWindowActive() && cue(role + "-cast-" + (casts + 1) + ".ready")'
+    assert_includes branch, 'ACTUAL_INPUT_GATES_STILL_WAITING_NOT_CAUSAL_ATTRIBUTION'
+  end
+
+  def cooldown_restart_write_fixture
+    manifest = prepare(case: 'cooldown-restart-write', accept_eula: true, run_id: 'cooldown-write-001')
+    generated_fixture(manifest)
+    frozen = export(manifest)
+    server = File.join(frozen.fetch('evidence'), 'server')
+    FileUtils.mkdir_p(server)
+    terminal = { 'exitCode' => 0, 'signal' => nil, 'elapsedSeconds' => 1.0,
+                 'endedAtUtc' => '2026-10-08T00:00:00.000000Z' }
+    File.write(File.join(frozen.fetch('runtime'), 'server.exit.json'), JSON.generate(terminal.merge('status' => 'PROCESS_EXIT_NOT_ACCEPTANCE')))
+    { 'a' => 1, 'b' => 0 }.each do |role, sends|
+      File.write(File.join(frozen.fetch('evidence'), "client-#{role}-process-exit.json"),
+        JSON.generate(terminal.merge('status' => 'OWNED_CLIENT_PROCESS_EXIT_NOT_ACCEPTANCE')))
+      client = File.join(frozen.fetch('evidence'), "client-#{role}")
+      FileUtils.mkdir_p(client)
+      File.write(File.join(client, 'result.json'), JSON.generate(
+        'status' => 'ORIGINAL_SERVER_STOP_CLIENT_TERMINAL', 'logins' => 1,
+        'originalP9Sends' => sends, 'originalKeyCallbackClicks' => sends,
+        'closed' => true, 'playerAbsent' => true, 'levelAbsent' => true, 'currentListenerAbsent' => true))
+    end
+    File.write(File.join(server, 'data-terminal.json'), JSON.generate(
+      'status' => 'NORMAL_NATIVE_STOP_AND_ROOTS_ZERO', 'nativeStopNormal' => true, 'sourceFailures' => 0, 'dirtyUuids' => 0,
+      'allRootCounts' => %w[WORK NATIVE_CREDIT OPERATION COMMAND_CONTEXT TRANSITION].map { |kind| { 'kind' => kind, 'count' => 0 } }))
+    world = File.join(frozen.fetch('runtime'), 'server/p11-online-world')
+    public_uuid = '00000000-0000-0000-0000-000000000001'
+    File.write(File.join(server, 'cooldown-restart-expected.json'), JSON.generate(
+      'schema' => 1, 'status' => 'ORIGINAL_COOLDOWN_STOPPED_WORLD_NOT_RESTART_PROOF',
+      'case' => 'cooldown-restart-write', 'writeRunId' => frozen.fetch('runId'),
+      'productionJarSha256' => frozen.fetch('jarSha256'), 'world' => world,
+      'publicMinecraftUuid' => public_uuid, 'skillId' => '00000000-0000-0000-0000-000000000002',
+      'revision' => 1, 'cooldownTicks' => 600,
+      'obligation' => { 'acceptedAt' => 1000, 'releaseNotAfter' => 1101, 'releasedAt' => 1001,
+        'expiresAt' => 1601, 'attemptId' => '00000000-0000-0000-0000-000000000003' },
+      'definitionSha256' => '1' * 64,
+      'fileSha256' => { 'data/gramarye_skill_definitions.dat' => '2' * 64, "playerdata/#{public_uuid}.dat" => '3' * 64 },
+      'loadedConfiguration' => { 'path' => File.join(world, 'serverconfig/gramarye-server.toml'),
+        'sha256' => P11OnlineRuntime::FIXTURE_SHA }, 'stoppedGameTime' => 1002,
+      'originalStopNormal' => true, 'openWorkClosedByStop' => true))
+    frozen
+  end
+
+  def cooldown_restart_source_for(frozen)
+    P11OnlineRuntime.stub(:verify_jar!, true) do
+      P11OnlineRuntime.cooldown_restart_source!(File.join(frozen.fetch('runtime'), 'frozen-manifest.json'),
+        @options[:repo], @options[:runtime_root], @options[:evidence_root], @private, 'cooldown-read-002')
+    end
+  end
+
+  def test_cooldown_restart_exact_stopped_world_binding_and_frozen_universe
+    with_cooldown_preparation_pin do
+      old = cooldown_restart_write_fixture
+      source, bytes = cooldown_restart_source_for(old)
+      before = Dir.glob(File.join(source.fetch('world'), '**/*')).select { |file| File.file?(file) }
+        .to_h { |file| [file, Digest::SHA256.file(file).hexdigest] }
+      read = prepare(case: 'cooldown-restart-read', accept_eula: true, run_id: 'cooldown-read-002',
+        restart_from: File.join(old.fetch('runtime'), 'frozen-manifest.json'))
+      assert_equal source, read.fetch('restartSource')
+      assert_equal bytes, File.binread(File.join(read.fetch('evidence'), 'cooldown-restart-input.json'))
+      refute File.exist?(File.join(read.fetch('runtime'), 'server/p11-online-world'))
+      assert_equal before, before.keys.to_h { |file| [file, Digest::SHA256.file(file).hexdigest] }
+      assert_includes P11OnlineRuntime.gradle_argv(read, 'createP11OnlineServerLaunchScript'),
+        "-PgramaryeP11OnlineRestartUniverse=#{source.fetch('universe')}"
+      generated_fixture(read)
+      frozen = export(read)
+      program = File.read(File.join(frozen.fetch('bundle'), 'originals/p11OnlineServerRunProgramArgs.txt'))
+      assert_includes program, "--universe\n#{source.fetch('universe')}\n--world\np11-online-world\n"
+      assert P11OnlineRuntime.stub(:verify_jar!, true) { P11OnlineRuntime.verify_frozen!(frozen) }
+      input = File.join(read.fetch('evidence'), 'cooldown-restart-input.json')
+      File.chmod(0o600, input)
+      File.binwrite(input, bytes + ' ')
+      P11OnlineRuntime.stub(:verify_jar!, true) { failure('RESTART_FIXED_INPUT_CHANGED') { P11OnlineRuntime.verify_restart_input!(read) } }
+    end
+  end
+
+  def test_cooldown_restart_requires_its_own_case_process_and_native_terminal_facts
+    with_cooldown_preparation_pin do
+      failure('RESTART_SOURCE_ONLY_EXACT_READ_CASE') { prepare(case: 'cooldown-restart-read') }
+      failure('RESTART_SOURCE_ONLY_EXACT_READ_CASE') { prepare(case: 'cooldown-d600', restart_from: @fixture) }
+      old = cooldown_restart_write_fixture
+      paths = {
+        File.join(old.fetch('runtime'), 'server.exit.json') => ['RESTART_ORIGINAL_PROCESS_NOT_NORMAL_TERMINAL', { 'exitCode' => 1 }, { 'signal' => 15 }],
+        File.join(old.fetch('evidence'), 'client-a/result.json') => ['RESTART_ORIGINAL_CLIENT_FLOW_NOT_TERMINAL', { 'originalP9Sends' => 0 }, { 'closed' => false }],
+        File.join(old.fetch('evidence'), 'client-b/result.json') => ['RESTART_ORIGINAL_CLIENT_FLOW_NOT_TERMINAL', { 'originalP9Sends' => 1 }, { 'currentListenerAbsent' => false }],
+        File.join(old.fetch('evidence'), 'server/data-terminal.json') => ['RESTART_ORIGINAL_DATA_NOT_CLEAN_TERMINAL', { 'sourceFailures' => 1 }, { 'nativeStopNormal' => false }, { 'dirtyUuids' => 1 }, { 'allRootCounts' => [] }]
+      }
+      paths.each do |file, (code, *changes)|
+        original = File.binread(file)
+        changes.each do |change|
+          File.write(file, JSON.generate(JSON.parse(original).merge(change)))
+          failure(code) { cooldown_restart_source_for(old) }
+        end
+        File.binwrite(file, original)
+      end
+      historical = restart_write_fixture
+      failure('RESTART_SOURCE_COHORT_MISMATCH') { cooldown_restart_source_for(historical) }
+      failure('RESTART_SOURCE_COHORT_MISMATCH') { restart_source_for(old) }
+      source, = cooldown_restart_source_for(old)
+      assert_equal old.fetch('runId'), source.fetch('writeRunId')
+    end
+  end
+
+  def test_cooldown_restart_closed_identity_and_obligation_reject_unknown_or_fabricated_inputs
+    with_cooldown_preparation_pin do
+      old = cooldown_restart_write_fixture
+      receipt = File.join(old.fetch('evidence'), 'server/cooldown-restart-expected.json')
+      original = File.binread(receipt)
+      value = JSON.parse(original)
+      [{ 'case' => 'l1-restart-write' }, { 'extra' => true }, { 'productionJarSha256' => '0' * 64 },
+       { 'world' => File.join(@root, 'foreign-world') }, { 'openWorkClosedByStop' => false }].each do |change|
+        File.binwrite(receipt, JSON.generate(value.merge(change)))
+        failure('RESTART_EXACT_STOPPED_WORLD_MISMATCH') { cooldown_restart_source_for(old) }
+      end
+      [{ 'cooldownTicks' => 120 }, { 'revision' => -1 }, { 'stoppedGameTime' => 1601 },
+       { 'obligation' => value.fetch('obligation').merge('expiresAt' => 1701) },
+       { 'obligation' => value.fetch('obligation').merge('releaseNotAfter' => 1102) },
+       { 'publicMinecraftUuid' => '../private' }].each do |change|
+        File.binwrite(receipt, JSON.generate(value.merge(change)))
+        failure('COOLDOWN_RESTART_OBLIGATION_MISMATCH') { cooldown_restart_source_for(old) }
+      end
+      File.binwrite(receipt, JSON.generate(value.merge('fileSha256' => { '../foreign.dat' => '0' * 64 })))
+      failure('COOLDOWN_RESTART_STORAGE_IDENTITY_MISMATCH') { cooldown_restart_source_for(old) }
+      File.binwrite(receipt, original)
+      File.write(File.join(old.fetch('evidence'), 'server/cooldown-restart-stop-failure.json'), 'SYNTHETIC_FAILURE_PRESENCE_ONLY')
+      failure('RESTART_SOURCE_RECORDED_FAILURE') { cooldown_restart_source_for(old) }
     end
   end
 
@@ -601,7 +1030,11 @@ class P11OnlineRuntimeTest < Minitest::Test
     end
     assert ordered.call(server)
     refute ordered.call(server.sub('P11L1WorkRewardProbe.finish()', 'removedLocalProof()'))
-    assert_includes server, 'singleNatural() || P11L1RestartProbe.writeSelected() ? "l1-pre-spawn" : selected()'
+    assert_match(/singleNatural\(\) \|\| P11L1RestartProbe.writeSelected\(\) \? "l1-pre-spawn"\s*: switch \(selected\(\)\)/, server)
+    %w[pre-spawn open claimed].each do |window|
+      assert_includes server, "case \"cooldown-l1-#{window}\" -> \"l1-#{window}\";"
+    end
+    assert_includes server, 'default -> selected();'
     assert_includes server, 'summary.failures() == expectedFailures'
     assert_includes server, 'body.stats == run.initialBody.stats && body.advancements == run.initialBody.advancements'
     assert_includes server, 'peerChicken == run.peerChickenBefore && peerMobKills == run.peerMobKillsBefore'
@@ -698,7 +1131,12 @@ class P11OnlineRuntimeTest < Minitest::Test
       assert_includes bytes, '@At("TAIL")'
     end
     projectile = File.read(File.join(hooks, 'P11L1ProjectileMixin.java'))
-    assert_equal 2, projectile.scan('@WrapMethod(').size
+    assert_equal 3, projectile.scan('@WrapMethod(').size
+    block = projectile[/@WrapMethod\(method = "onHitBlock\(Lnet\/minecraft\/world\/phys\/BlockHitResult;\)V".*?\n    \}/m]
+    refute_nil block
+    assert_equal 1, block.scan('original.call(hit)').size
+    assert_includes block, 'require = 1, expect = 1, allow = 1'
+    assert_match(/blockImpactEntering\(this, hit\);.*?try \{ original\.call\(hit\); normal = true; \}\s*finally \{ com\.yo1no\.gramarye\.P11CooldownL1Probe\.blockImpactReturned\(this, normal\); \}/m, block)
     assert_match(/original\.call\(hit\);\s*P11L1ServerHarness\.hitReturned/, projectile)
     tick_order = /try \{ original\.call\(\); normal = true; \}\s*finally \{ P11L1TerminalBoundaryProbe\.closeDiagnosticTickFinished\(selected, normal\); \}\s*com\.yo1no\.gramarye\.P11L1ImpactCustodyProbe\.tickReturned\(this\);\s*P11L1ServerHarness\.projectileTick/
     impact_observer = 'com.yo1no.gramarye.P11L1ImpactCustodyProbe.tickReturned(this);'
@@ -970,7 +1408,7 @@ class P11OnlineRuntimeTest < Minitest::Test
 
   def test_current_context_build_admission_is_exact_without_widening_scenario_selection
     build = File.binread(File.join(P11OnlineRuntime::REPO, 'build.gradle'))
-    names = "['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward', 'l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'l1-qctx', 'l1-capacity']"
+    names = "['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward', 'l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'l1-qctx', 'l1-capacity', 'cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual', 'cooldown-l1-pre-spawn', 'cooldown-l1-open', 'cooldown-l1-claimed']"
     valid = lambda do |source|
       source.scan(/!p11OnlineJar\.isFile\(\) \|\| !\(p11OnlineCase in (\[[^\n]+\])\)/).flatten == [names]
     end
@@ -1041,10 +1479,11 @@ class P11OnlineRuntimeTest < Minitest::Test
     end
   end
 
-  def test_companion_resource_inventory_is_exact_eight_and_rejects_near_names_or_missing_resource
+  def test_companion_resource_inventory_is_exact_nine_and_rejects_near_names_or_missing_resource
     assert_equal ['gramarye-p11-online-private-console.xml', 'gramarye-p11-online-harness.mixins.json',
                   'gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-c6-observers.mixins.json',
                   'gramarye-p11-l1-harness.mixins.json',
+                  'gramarye-p11-cooldown-harness.mixins.json',
                   'data/gramarye_p11_engineering/advancement/l1_first_kill.json',
                   'data/gramarye_p11_engineering/loot_table/l1_loot.json',
                   'data/gramarye_p11_engineering/function/l1_reward.mcfunction'].sort,
@@ -1052,25 +1491,26 @@ class P11OnlineRuntimeTest < Minitest::Test
     manifest = prepare(case: 'c4a-dedicated')
     generated_fixture(manifest)
     resources = File.join(manifest['repo'], 'build/resources/p11OnlineHarness')
-    selected = File.join(resources, 'gramarye-p11-c6-observers.mixins.json')
-    bytes = File.binread(selected)
-    File.unlink(selected)
-    failure('UNEXPECTED_COMPANION_RESOURCE') { export(manifest) }
-    ['gramarye-p11-c6-observers.mixins.json.extra', 'foreign.mixins.json',
-     'nested/gramarye-p11-c6-observers.mixins.json'].each do |bad|
-      replacement = File.join(resources, bad)
-      FileUtils.mkdir_p(File.dirname(replacement))
-      File.write(replacement, bytes)
+    %w[gramarye-p11-c6-observers.mixins.json gramarye-p11-cooldown-harness.mixins.json].each do |leaf|
+      selected = File.join(resources, leaf)
+      bytes = File.binread(selected)
+      File.unlink(selected)
       failure('UNEXPECTED_COMPANION_RESOURCE') { export(manifest) }
-      File.unlink(replacement)
+      [leaf + '.extra', 'foreign.mixins.json', 'nested/' + leaf].each do |bad|
+        replacement = File.join(resources, bad)
+        FileUtils.mkdir_p(File.dirname(replacement))
+        File.write(replacement, bytes)
+        failure('UNEXPECTED_COMPANION_RESOURCE') { export(manifest) }
+        File.unlink(replacement)
+      end
+      File.write(selected, bytes)
     end
-    File.write(selected, bytes)
     extra = File.join(resources, 'foreign.xml')
     File.write(extra, '<SYNTHETIC/>')
     failure('UNEXPECTED_COMPANION_RESOURCE') { export(manifest) }
     File.unlink(extra)
     frozen = export(manifest)
-    assert_equal 8, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
+    assert_equal 9, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
   end
 
   def test_l1_host_stop_is_prepare_only_exact_case_pin_fixture_and_frozen_mode
@@ -1108,6 +1548,75 @@ class P11OnlineRuntimeTest < Minitest::Test
     end
     _, error = capture_io { assert_equal 2, P11OnlineRuntime.main(['status', '--l1-host-stop']) }
     assert_equal 'PREPARE_ONLY_OPTION', JSON.parse(error).fetch('code')
+  end
+
+  def test_cooldown_host_is_exact_prepare_only_current_pin_t4_and_frozen_mode
+    assert_equal P11OnlineRuntime::COOLDOWN_JAR_SHA, P11OnlineRuntime.product_pin('c4a-host-lan', cooldown_host: true)
+    assert_equal P11OnlineRuntime::C4A_JAR_SHA, P11OnlineRuntime.product_pin('c4a-host-lan')
+    assert_equal P11OnlineRuntime::L1_JAR_SHA, P11OnlineRuntime.product_pin('c4a-host-lan', l1_host_stop: true)
+    P11OnlineRuntime::CASES.reject { |name| name == 'c4a-host-lan' }.each do |name|
+      failure('INVALID_COOLDOWN_HOST_SELECTION') { P11OnlineRuntime.product_pin(name, cooldown_host: true) }
+    end
+    [nil, 'true', 1].each do |bad|
+      failure('INVALID_COOLDOWN_HOST_SELECTION') { P11OnlineRuntime.product_pin('c4a-host-lan', cooldown_host: bad) }
+    end
+    failure('CONFLICTING_HOST_SELECTION') do
+      P11OnlineRuntime.product_pin('c4a-host-lan', l1_host_stop: true, cooldown_host: true)
+    end
+    failure('INVALID_CASE') { P11OnlineRuntime.product_pin('c4a-host-lan.extra', cooldown_host: true) }
+    manifest = prepare(case: 'c4a-host-lan', cooldown_host: true)
+    assert_equal true, manifest.fetch('cooldownHost')
+    assert_equal false, manifest.fetch('l1HostStop')
+    assert_equal %w[host b], manifest.fetch('roles')
+    assert_equal P11OnlineRuntime::COOLDOWN_JAR_SHA, manifest.fetch('jarSha256')
+    assert_includes manifest.fetch('jar'), '/frozen-cooldown/'
+    assert_equal P11OnlineRuntime::FIXTURE_SHA, manifest.fetch('fixtureSha256')
+    assert_equal FIXTURE, File.binread(File.join(manifest['runtime'], 'host/defaultconfigs/gramarye-server.toml'))
+    refute File.exist?(File.join(manifest['runtime'], 'host/saves'))
+    generated_fixture(manifest)
+    source = File.join(manifest['repo'], 'src/p11OnlineHarness/java')
+    mode = File.join(source, 'com/yo1no/gramarye/P11C4aScenario.java')
+    original = File.binread(mode)
+    assert P11OnlineRuntime.verify_host_mode!(manifest, source)
+    %w[UI_HELD COOLDOWN_HOST_EXTRA].each do |bad|
+      File.binwrite(mode, original.sub('Mode.COOLDOWN_HOST;', "Mode.#{bad};"))
+      failure('COOLDOWN_HOST_MODE_MISMATCH') { P11OnlineRuntime.verify_host_mode!(manifest, source) }
+    end
+    File.binwrite(mode, original)
+    failure('COOLDOWN_HOST_MODE_MISMATCH') { P11OnlineRuntime.verify_host_mode!(manifest.merge('cooldownHost' => false), source) }
+    frozen = export(manifest)
+    assert frozen.fetch('cooldownHost')
+    file = File.join(manifest['runtime'], 'frozen-manifest.json')
+    File.chmod(0o600, file)
+    [[false, 'MANIFEST_JAR_MISMATCH'], [nil, 'INVALID_COOLDOWN_HOST_SELECTION'], ['true', 'INVALID_COOLDOWN_HOST_SELECTION']].each do |flag, error|
+      File.binwrite(file, JSON.generate(frozen.merge('cooldownHost' => flag)))
+      failure(error) { P11OnlineRuntime.load_manifest(file, runtime_root: @options[:runtime_root], private_root: @private) }
+    end
+    File.binwrite(file, JSON.generate(frozen))
+    assert P11OnlineRuntime.load_manifest(file, runtime_root: @options[:runtime_root], private_root: @private).fetch('cooldownHost')
+    _, error = capture_io { assert_equal 2, P11OnlineRuntime.main(['status', '--cooldown-host']) }
+    assert_equal 'PREPARE_ONLY_OPTION', JSON.parse(error).fetch('code')
+    File.write(@fixture, FIXTURE.sub('p11.control.maxWaitingConnections = 4', 'p11.control.maxWaitingConnections = 1'))
+    failure('STARTUP_FIXTURE_MISMATCH') { P11OnlineRuntime.startup_fixture!(@fixture, @private, 'c4a-host-lan', cooldown_host: true) }
+  end
+
+  def test_cooldown_host_status_is_fixed_presence_only_and_current_pin_requires_matching_mode
+    manifest = prepare(case: 'c4a-host-lan', cooldown_host: true)
+    leaves = %w[server/cooldown-host-formal.json server/cooldown-host-arm.json server/cooldown-host-saved.json
+                server/cooldown-host-stopped.json server/cooldown-host-failure.json server/cooldown-host-diagnostic.json client-host/cooldown-host-input.json]
+    (leaves + ['server/cooldown-host-arm.json.extra', 'server/latest.log', 'client-host/accounts.json']).each do |leaf|
+      file = File.join(manifest['evidence'], leaf)
+      FileUtils.mkdir_p(File.dirname(file))
+      File.write(file, 'PRESENCE_ONLY_NOT_ACCEPTANCE')
+    end
+    File.stub(:binread, ->(*) { flunk 'status must not read contents' }) do
+      assert_equal (leaves + %w[prepare.json launch-cues.txt]).sort, P11OnlineRuntime.status(manifest).fetch('present').sort
+    end
+    java = File.read(File.join(P11OnlineRuntime::REPO, 'src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineInputs.java'))
+    assert_includes java, 'P11CooldownHostProbe.selected() || java.util.List.of'
+    assert_includes java, 'P11C4aScenario.MODE != P11C4aScenario.Mode.COOLDOWN_HOST || P11CooldownHostProbe.selected()'
+    assert_includes java, 'value.getName().contains("P11CooldownHostProbe")'
+    assert_includes java, 'value.getName().contains("P11CooldownHostClientProbe")'
   end
 
   def test_l1_host_resources_reject_changed_original_bytes_before_bundle_creation
@@ -1281,7 +1790,7 @@ class P11OnlineRuntimeTest < Minitest::Test
       if (name == 'runP11OnlineClientA' || name == 'runP11OnlineClientB') {
           throw new GradleException('P11 authenticated clients require frozen helper private-terminal launch')
       }
-      if (p11OnlineCase == 'l1-restart-read') {
+      if (p11OnlineCase in ['l1-restart-read', 'cooldown-restart-read']) {
           throw new GradleException('P11 restart read requires the frozen helper stopped-world binding')
       }
     GROOVY
@@ -1293,7 +1802,7 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
     assert protected_first.call(build)
     refute protected_first.call(build.sub("name == 'runP11OnlineClientB'", "name == 'runP11OnlineServer'"))
     refute protected_first.call(build.sub('P11 authenticated clients require frozen helper private-terminal launch', 'different'))
-    refute protected_first.call(build.sub("if (p11OnlineCase == 'l1-restart-read') {\n                throw",
+    refute protected_first.call(build.sub("if (p11OnlineCase in ['l1-restart-read', 'cooldown-restart-read']) {\n                throw",
                                          "if (p11OnlineCase == 'l1-restart-read.extra') {\n                throw"))
     refute protected_first.call(build.sub("        doFirst {\n            if (name == 'runP11OnlineClientA'",
                                          "        doFirst {\n            p11OnlineJar.isFile()\n            if (name == 'runP11OnlineClientA'"))
@@ -1451,6 +1960,63 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
     File.write(File.join(@java_home, 'release'), "JAVA_VERSION=\"17.0.1\"\n")
     failure('JAVA_21_REQUIRED') { prepare(run_id: 'java-test-002') }
     failure('PRIVATE_PATH_FORBIDDEN') { prepare(java_home: @private) }
+  end
+
+  def test_owned_wait_reaps_before_any_signal_and_preserves_historical_wait
+    status = Object.new
+    calls = []
+    waiter = lambda do |*arguments|
+      calls << arguments
+      [123, status]
+    end
+    Process.stub(:waitpid2, waiter) do
+      Process.stub(:kill, ->(*) { flunk 'never signal a reaped child' }) do
+        assert_equal [status, false], P11OnlineRuntime.wait_owned_process(123, 'cooldown-d1')
+        assert_equal [status, false], P11OnlineRuntime.wait_owned_process(123, 'l1-open')
+      end
+    end
+    assert_equal [[123, Process::WNOHANG], [123]], calls
+    Process.stub(:waitpid2, ->(*) { raise Errno::ECHILD }) do
+      Process.stub(:kill, ->(*) { flunk 'foreign PID must never be signalled' }) do
+        assert_raises(Errno::ECHILD) { P11OnlineRuntime.wait_owned_process(123, 'cooldown-d1') }
+      end
+    end
+  end
+
+  def test_owned_wait_deadline_signals_only_its_unreaped_child_and_never_reports_pass
+    status = Object.new
+    [false, true].each do |term_exits|
+      times = [0, 901, 901, 922]
+      waits = []
+      signals = []
+      waiter = lambda do |*arguments|
+        waits << arguments
+        if waits.size == 1 || !term_exits && waits.size == 2
+          nil
+        else
+          [123, status]
+        end
+      end
+      Process.stub(:clock_gettime, ->(*) { times.shift || 922 }) do
+        Process.stub(:waitpid2, waiter) do
+          Process.stub(:kill, ->(*arguments) { signals << arguments; 1 }) do
+            assert_equal [status, true], P11OnlineRuntime.wait_owned_process(123, 'cooldown-d600')
+          end
+        end
+      end
+      assert_equal(term_exits ? [['TERM', 123]] : [['TERM', 123], ['KILL', 123]], signals)
+      assert_equal(term_exits ? [[123, Process::WNOHANG]] * 2 : [[123, Process::WNOHANG]] * 2 + [[123]], waits)
+    end
+    times = [0, 901]
+    waits = 0
+    Process.stub(:clock_gettime, ->(*) { times.shift || 901 }) do
+      Process.stub(:waitpid2, ->(*) { waits += 1; waits == 1 ? nil : [123, status] }) do
+        Process.stub(:kill, ->(*) { raise Errno::ESRCH }) do
+          assert_equal [status, true], P11OnlineRuntime.wait_owned_process(123, 'cooldown-d1')
+        end
+      end
+    end
+    assert_equal 2, waits
   end
 
   def test_status_uses_exact_file_presence_not_logs_cues_suffixes_or_json_values
@@ -1755,7 +2321,7 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
     File.write(File.join(repo, 'build.gradle'), '// Synthetic engineering build input only')
     File.write(File.join(repo, 'scripts/p11-online-runtime.rb'), File.binread(File.join(__dir__, 'p11-online-runtime.rb')))
     File.write(File.join(source, 'java/com/yo1no/gramarye/P11OnlineFixture.java'), 'final class P11OnlineFixture {}')
-    selected_mode = manifest.fetch('l1HostStop', false) ? 'L1_HOST_STOP' : 'UI_HELD'
+    selected_mode = manifest.fetch('cooldownHost', false) ? 'COOLDOWN_HOST' : manifest.fetch('l1HostStop', false) ? 'L1_HOST_STOP' : 'UI_HELD'
     File.write(File.join(source, 'java/com/yo1no/gramarye/P11C4aScenario.java'), "final class P11C4aScenario {\n static final Mode MODE = Mode.#{selected_mode};\n}\n")
     FileUtils.mkdir_p(File.join(classes, 'com/yo1no/gramarye'))
     File.write(File.join(classes, 'com/yo1no/gramarye/P11OnlineFixture.class'), 'SYNTHETIC_BYTECODE_NOT_MINECRAFT')
@@ -1767,6 +2333,7 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
       File.write(File.join(dir, 'gramarye-p11-c4a-harness.mixins.json'), '{"required":true}')
       File.write(File.join(dir, 'gramarye-p11-c6-observers.mixins.json'), '{"required":true}')
       File.write(File.join(dir, 'gramarye-p11-l1-harness.mixins.json'), '{"required":true}')
+      File.write(File.join(dir, 'gramarye-p11-cooldown-harness.mixins.json'), '{"required":true}')
       P11OnlineRuntime::L1_HOST_RESOURCES.each_key do |relative|
         target = File.join(dir, relative)
         FileUtils.mkdir_p(File.dirname(target))
@@ -1812,7 +2379,7 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
                 end
       program += %w[--gameDir . --fml.fmlVersion 4.0.43 --fml.mcVersion 1.21.1 --fml.neoForgeVersion 21.1.241 --fml.neoFormVersion 20240808.144430]
       program << '--nogui' if role == 'server'
-      if role == 'server' && manifest.fetch('case') == 'l1-restart-read'
+      if role == 'server' && %w[l1-restart-read cooldown-restart-read].include?(manifest.fetch('case'))
         program += ['--universe', manifest.fetch('restartSource').fetch('universe'), '--world', 'p11-online-world']
       end
       program += P11OnlineRuntime.mixin_configs(manifest.fetch('case')).flat_map { |config| ['--mixin.config', config] }

@@ -66,6 +66,7 @@ public final class P11C4aClientHarness {
     private static long metadataHStarts, metadataHLoginFrames, metadataHConnectionEpoch, metadataHScene;
     private static boolean metadataHActive, metadataHComplete;
     private static boolean hostLeaveActive;
+    private static boolean cooldownHostLeaveClientComplete;
     private static boolean hostExpiryActive;
     private static boolean parkingActive, parkingComplete;
     private static int parkingLogins;
@@ -133,6 +134,10 @@ public final class P11C4aClientHarness {
         var minecraft = Minecraft.getInstance();
         try {
             require(minecraft.isSameThread(), "NOT_CLIENT_THREAD");
+            if (P11CooldownHostProbe.selected() && P11C4aEvidence.cuePresent(
+                    serverOutput == null ? P11C4aEvidence.root().resolve("server") : serverOutput, "abort.ready")) {
+                fail(minecraft, "OWNED_COOLDOWN_HOST_ABORT"); return;
+            }
             P11C4aNativeObservations.requireHealthy();
             if (P11C4aTerminalStatusProbe.selected() && phase == Phase.PLAY) {
                 nativeCall = true;
@@ -206,6 +211,16 @@ public final class P11C4aClientHarness {
                 } finally { nativeCall = false; }
                 return;
             }
+if (P11CooldownHostProbe.selected() && phase == Phase.PLAY) {
+    if (hostLeaveActive) { hostLeave(minecraft); return; }
+    if (!publishHostIfNeeded(minecraft)) { return; }
+    boolean prefixComplete;
+    nativeCall = true;
+    try { prefixComplete = P11CooldownHostClientProbe.prefix(minecraft, connection, role, output, serverOutput); }
+    finally { nativeCall = false; }
+    if (prefixComplete) { hostLeave(minecraft); }
+    return;
+}
 if (P11L1HostStopProbe.selected() && phase == Phase.PLAY) {
     if (!publishHostIfNeeded(minecraft)) { return; }
     nativeCall = true;
@@ -664,9 +679,18 @@ if (P11C4aScenario.MODE == P11C4aScenario.Mode.HOST_EXPIRY && phase == Phase.PLA
         }
         nativeCall = true;
         try {
-            if (P11C4aHostLeaveClientProbe.tick(minecraft)) {
+            if (P11CooldownHostProbe.selected() && cooldownHostLeaveClientComplete
+                    || P11C4aHostLeaveClientProbe.tick(minecraft)) {
+                if (P11CooldownHostProbe.selected()) { cooldownHostLeaveClientComplete = true; }
+                if (P11CooldownHostProbe.selected()
+                        && !P11C4aEvidence.receiptPresent(serverOutput, "cooldown-host-stopped.json")) { return; }
+                if (P11CooldownHostProbe.selected() && host) {
+                    require(P11CooldownHostProbe.complete(), "COOLDOWN_HOST_SOURCE_TERMINAL_NOT_PROVED");
+                }
                 P11C4aEvidence.write(output, "result.json", summary(minecraft,
-                        "HOST_LEAVE_NATIVE_TERMINAL_ONLY_FULL_MATRIX_PENDING"));
+                        P11CooldownHostProbe.selected()
+                                ? "COOLDOWN_HOST_NATIVE_TERMINAL_CACHE_AND_DATA_REQUIRE_SERVER_RECEIPT"
+                                : "HOST_LEAVE_NATIVE_TERMINAL_ONLY_FULL_MATRIX_PENDING"));
                 P11C4aHostLeaveClientProbe.release();
                 connection = null; id = null; phase = Phase.TERMINAL; minecraft.stop();
             }

@@ -8,10 +8,10 @@ final class P7ManaDispatchTask implements Runnable {
     private final long dispatchGeneration;
 
     P7ManaDispatchTask(
-            PlayerManaSnapshot snapshot, P7ClientMirrorDispatchPort dispatchPort) {
+            PlayerManaSnapshot snapshot, P7ClientMirrorDispatchPort dispatchPort, long dispatchGeneration) {
         this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
         this.dispatchPort = Objects.requireNonNull(dispatchPort, "dispatchPort");
-        this.dispatchGeneration = dispatchPort.captureDispatchGeneration();
+        this.dispatchGeneration = dispatchGeneration;
     }
 
     @Override

@@ -56,8 +56,11 @@ public final class P11C4aHostLeaveClientProbe {
                     || !(minecraft.screen instanceof DisconnectedScreen)) { return false; }
             // This may be the original native transport timeout after IntegratedServer.halt
             // removed the peer roster. A disconnect packet or a particular reason is not required.
-            require(P11C4aEvidence.receiptPresent(run.serverOutput, "host-leave-stopped.json")
-                    && run.peerHealthy && run.swings == 1, "HOST_LEAVE_PEER_TERMINAL_WITHOUT_SERVER_STOP");
+            require(run.peerHealthy && run.swings == 1, "HOST_LEAVE_PEER_TERMINAL_WITHOUT_HEALTHY_PROOF");
+            // Remote disconnection can precede the integrated server's original stop
+            // callback and its cross-JVM receipt. Keep the original terminal facts,
+            // but await that receipt; peer-local static state is not server evidence.
+            if (!peerStopReceiptReady(run, Util.getMillis())) { return false; }
             P11C4aEvidence.write(run.output, "host-leave-terminal.json", report(run, "ACTUAL_REMOTE_NATIVE_DISCONNECT_AFTER_HOST_STOP"));
             return true;
         }
@@ -108,6 +111,35 @@ public final class P11C4aHostLeaveClientProbe {
             return false;
         }
         return false;
+    }
+
+    private static boolean peerStopReceiptReady(Run run, long now) throws IOException {
+        if (run.peerStopWaitTicks == 0) { run.peerStopWaitStarted = now; }
+        require(++run.peerStopWaitTicks <= 1200 && now >= run.peerStopWaitStarted
+                && now - run.peerStopWaitStarted <= 60_000, "HOST_LEAVE_PEER_STOP_RECEIPT_DEADLINE");
+        if (!P11C4aEvidence.receiptPresent(run.serverOutput, "host-leave-stopped.json")) { return false; }
+        byte[] bytes;
+        try (var input = java.nio.file.Files.newInputStream(run.serverOutput.resolve("host-leave-stopped.json"))) {
+            bytes = input.readNBytes(16_385);
+        }
+        require(bytes.length <= 16_384, "HOST_LEAVE_PEER_STOP_RECEIPT_BOUND");
+        // The existing CREATE_NEW writer appends newline last; a file can become
+        // visible before its bounded original write has finished.
+        if (bytes.length == 0 || bytes[bytes.length - 1] != '\n') { return false; }
+        var receipt = com.google.gson.JsonParser.parseString(
+                new String(bytes, java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
+        require(receipt.has("status") && receipt.get("status").getAsString().equals("ORIGINAL_HOST_HALT_AND_SERVER_STOPPED")
+                && receipt.has("failure") && receipt.get("failure").getAsString().equals("NONE")
+                && receipt.get("originalHaltCauseEntries").getAsInt() == 1
+                && receipt.get("originalHaltCauseReturns").getAsInt() == 1
+                && receipt.get("integratedHaltEntries").getAsInt() == 1
+                && receipt.get("integratedHaltReturns").getAsInt() == 1
+                && receipt.get("nativeLogouts").getAsInt() == 2
+                && receipt.get("serverStoppedEvents").getAsInt() == 1
+                && receipt.get("originalLeaveEntries").getAsInt() == 1
+                && receipt.get("engineeringCleanupCalls").getAsInt() == 0,
+                "HOST_LEAVE_PEER_STOP_RECEIPT_FAILED");
+        return true;
     }
 
     private static void peer(Minecraft minecraft, Run run) throws IOException {
@@ -190,7 +222,7 @@ public final class P11C4aHostLeaveClientProbe {
         final IntegratedServer retained; final long frameBaseline;
         volatile String failure; volatile State wait, may; volatile boolean intent, observing;
         volatile long receives, acks, challenge, ack, disconnectPackets;
-        int ticks, stage, sends, swings; boolean peerHealthy;
+        int ticks, stage, sends, swings, peerStopWaitTicks; long peerStopWaitStarted; boolean peerHealthy;
         Run(Connection connection, String role, Path output, Path serverOutput, IntegratedServer retained) {
             this.connection = connection; this.role = role; this.output = output; this.serverOutput = serverOutput;
             this.host = role.equals("host"); this.retained = retained;

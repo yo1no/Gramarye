@@ -38,6 +38,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
 
@@ -57,9 +58,15 @@ final class P9StarterSkillContent {
             starterFingerprint(5_000L);
 
     private static StarterGameplayFingerprintV0 starterFingerprint(long magnitude) {
+        return starterFingerprint(magnitude, 0);
+    }
+
+    private static StarterGameplayFingerprintV0 starterFingerprint(long magnitude, int cooldownTicks) {
         return new StarterGameplayFingerprintV0(
                     0,
                     ACTIVE_CAST_ID,
+                    1,
+                    cooldownTicks,
                     SPAWN_PROJECTILE_ID,
                     0,
                     0L,
@@ -110,10 +117,7 @@ final class P9StarterSkillContent {
                 Optional.empty(),
                 List.of(
                         new DraftNode(
-                                DraftTriggerSlot.present(triggerEnvelope(
-                                        ACTIVE_CAST_ID,
-                                        P9ActiveCastTriggerType.INSTANCE.payloadCodec(),
-                                        P9ActiveCastTriggerPayloadV0.INSTANCE)),
+                                DraftTriggerSlot.present(legacyActiveCastEnvelope()),
                                 DraftActionSlot.present(actionEnvelope(
                                         SPAWN_PROJECTILE_ID,
                                         P9SpawnProjectileActionType.INSTANCE.payloadCodec(),
@@ -161,7 +165,26 @@ final class P9StarterSkillContent {
 
     static boolean hasSupportedStarterGameplay(
             SkillReference reference, SkillDocument document) {
-        return projectSupported(reference, document).isPresent();
+        return projectSupported(reference, document)
+                .map(P9StarterSkillContent::hasSupportedStarterGameplay).orElse(false);
+    }
+
+    /** Closed runtime profile, deliberately broader than the only published starter catalog. */
+    static boolean hasSupportedRuntimeGameplay(ValidatedSkillDefinition definition) {
+        return fingerprintOf(definition).map(value ->
+                value.activeCastSchemaVersion() == 1
+                        && value.cooldownTicks() >= 0 && value.cooldownTicks() <= 600
+                        && (value.equals(starterFingerprint(4_000L, value.cooldownTicks()))
+                            || value.equals(starterFingerprint(5_000L, value.cooldownTicks()))))
+                .orElse(false);
+    }
+
+    /** Reads only an already resolved, validated exact profile; unavailable is never zero. */
+    static OptionalInt runtimeCooldownTicks(ValidatedSkillDefinition definition) {
+        return hasSupportedRuntimeGameplay(definition)
+                ? OptionalInt.of(((P9ActiveCastTriggerPayloadV1)
+                        definition.nodes().getFirst().trigger().payload()).cooldownTicks())
+                : OptionalInt.empty();
     }
 
     /** Content equality excludes identity and revision but includes every appearance value. */
@@ -184,7 +207,7 @@ final class P9StarterSkillContent {
         var projection = CANONICAL_PROJECTOR.project(
                 reference, document, CANONICAL_VALIDATION_CONTEXT);
         return projection instanceof P5RuntimeProjector.Projection.Available available
-                        && hasSupportedStarterGameplay(available.definition())
+                        && hasSupportedRuntimeGameplay(available.definition())
                 ? Optional.of(available.definition()) : Optional.empty();
     }
 
@@ -192,7 +215,7 @@ final class P9StarterSkillContent {
             ValidatedSkillDefinition definition, SkillDocument document) {
         Objects.requireNonNull(definition, "definition");
         Objects.requireNonNull(document, "document");
-        if (!hasSupportedStarterGameplay(definition)
+        if (!hasSupportedRuntimeGameplay(definition)
                 || !definition.reference().equals(
                         new SkillReference(document.skillId(), document.revision()))) {
             throw new IllegalArgumentException("Expected exact supported starter projection");
@@ -278,12 +301,16 @@ final class P9StarterSkillContent {
         if (!hasCanonicalNode0Projection(node0)
                 || !hasCanonicalNode1Projection(node1)
                 || node0.trigger().descriptor() != P9ActiveCastTriggerType.INSTANCE
-                || node0.trigger().payload() != P9ActiveCastTriggerPayloadV0.INSTANCE
+                || node0.trigger().schemaVersion() != 1
+                || !(node0.trigger().payload() instanceof P9ActiveCastTriggerPayloadV1 activeCast)
                 || node0.action().descriptor() != P9SpawnProjectileActionType.INSTANCE
+                || node0.action().schemaVersion() != 0
                 || !(node0.action().payload() instanceof P9SpawnProjectileActionPayloadV0 spawn)
                 || node1.trigger().descriptor() != P9EffectHitTriggerType.INSTANCE
+                || node1.trigger().schemaVersion() != 0
                 || !(node1.trigger().payload() instanceof P9EffectHitTriggerPayloadV0 hit)
                 || node1.action().descriptor() != P9DamageActionType.INSTANCE
+                || node1.action().schemaVersion() != 1
                 || !(node1.action().payload() instanceof P9DamageActionPayloadV0 damage)) {
             return Optional.empty();
         }
@@ -291,6 +318,8 @@ final class P9StarterSkillContent {
         return Optional.of(new StarterGameplayFingerprintV0(
                 node0.nodeIndex(),
                 ACTIVE_CAST_ID,
+                node0.trigger().schemaVersion(),
+                activeCast.cooldownTicks(),
                 SPAWN_PROJECTILE_ID,
                 spawn.profileCode(),
                 spawn.manaCost(),
@@ -339,6 +368,11 @@ final class P9StarterSkillContent {
         return source.referencedNodeIndex() == 0
                 && source.role() == ReferenceRole.SOURCE
                 && source.requiredOutputKind().equals(Optional.of(ActionOutputKind.PROJECTILE));
+    }
+
+    private static DefinitionEnvelope legacyActiveCastEnvelope() {
+        var codec = closedPayload(Set.of(), MapCodec.unit(P9ActiveCastTriggerPayloadV0.INSTANCE));
+        return encodedEnvelope(ACTIVE_CAST_ID, codec, P9ActiveCastTriggerPayloadV0.INSTANCE);
     }
 
     private static <P extends TriggerPayload> DefinitionEnvelope triggerEnvelope(
@@ -407,6 +441,8 @@ final class P9StarterSkillContent {
 record StarterGameplayFingerprintV0(
         int firstNodeIndex,
         ResourceLocation activeCastTypeId,
+        int activeCastSchemaVersion,
+        int cooldownTicks,
         ResourceLocation spawnProjectileTypeId,
         int profileCode,
         long spawnManaCost,

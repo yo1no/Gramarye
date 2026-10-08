@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.yo1no.gramarye.harnessmixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "P11CooldownGameTestOwnerMixin",
+    "P11CooldownGameTestCompositionMixin",
+    "P11CooldownGameTestRuntimeMixin",
+    "P11CooldownGameTestFixtureMixin",
+    "P11CooldownP8GameTestScheduleMixin",
+    "P11CooldownP9GameTestScheduleMixin",
+    "P11CooldownGameTestCapacityMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

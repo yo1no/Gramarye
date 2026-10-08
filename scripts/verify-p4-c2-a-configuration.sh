@@ -176,13 +176,15 @@ forbid_fixed_outside() {
     local message="$6"
     local allowed_four="${7:-}"
     local allowed_five="${8:-}"
+    local allowed_six="${9:-}"
     local file=''
     while IFS= read -r -d '' file; do
         if [[ "${file}" == "${allowed_one}" \
                 || ( -n "${allowed_two}" && "${file}" == "${allowed_two}" ) \
                 || ( -n "${allowed_three}" && "${file}" == "${allowed_three}" ) \
                 || ( -n "${allowed_four}" && "${file}" == "${allowed_four}" ) \
-                || ( -n "${allowed_five}" && "${file}" == "${allowed_five}" ) ]]; then
+                || ( -n "${allowed_five}" && "${file}" == "${allowed_five}" ) \
+                || ( -n "${allowed_six}" && "${file}" == "${allowed_six}" ) ]]; then
             continue
         fi
         forbid_fixed "${file}" "${needle}" "${message} (${file})"
@@ -209,6 +211,39 @@ count_fixed_in_file_list() {
     printf '%s\n' "${total}"
 }
 
+verify_exact_gametest_components() {
+    local file="$1"
+    local actual=''
+    local expected=''
+    # These are native serializer/copy components on unplaced holders, never a managed
+    # respawn grant. Keep each entire exception body closed, not a GameTest-wide exemption.
+    actual="$(LC_ALL=C awk '
+        /^    private static ServerPlayer componentCopy\(/ { selected = 1 }
+        selected { line = $0; gsub(/[[:space:]]/, "", line); body = body line }
+        selected && /^    }/ { print body; selected = 0 }
+    ' "${file}")"
+    expected='privatestaticServerPlayercomponentCopy(MinecraftServerserver,ServerPlayeroriginal,booleandeath){vartarget=unplacedPlayer(server,original.getUUID(),"p4c2-copy-component");net.neoforged.neoforge.attachment.AttachmentInternals.onPlayerClone(newnet.neoforged.neoforge.event.entity.player.PlayerEvent.Clone(target,original,death));returntarget;}'
+    [[ "${actual}" == "${expected}" ]] || fail 'P4-C2-A unplaced serialized-copy component body drifted'
+    actual="$(LC_ALL=C awk '
+        /^    private static void loadAttachmentFixture\(/ { selected = 1 }
+        selected && !/^[[:space:]]*\/\// { line = $0; gsub(/[[:space:]]/, "", line); body = body line }
+        selected && /^    }/ { print body; selected = 0 }
+    ' "${file}")"
+    expected='privatestaticvoidloadAttachmentFixture(ServerPlayerplayer,Tagattachment){player.setData(PlayerSkillAttachments.type(),readUnboundComponent(player,attachment));}'
+    [[ "${actual}" == "${expected}" ]] || fail 'P4-C2-A unplaced material fixture assignment drifted'
+    actual="$(LC_ALL=C awk '
+        /^    private static PlayerSkillAttachmentState readUnboundComponent\(/ { selected = 1 }
+        selected { line = $0; gsub(/[[:space:]]/, "", line); body = body line }
+        selected && /^    }/ { print body; selected = 0 }
+    ' "${file}")"
+    expected='privatestaticPlayerSkillAttachmentStatereadUnboundComponent(ServerPlayerplayer,Tagattachment){if(player.getServer().getPlayerList().getPlayer(player.getUUID())==player||player.isAddedToLevel()||player.hasData(PlayerSkillAttachments.type())){thrownewAssertionError("componentinputrequiresanunplacedfreshholder");}returnPlayerSkillAttachmentSerializer.INSTANCE.read(player,attachment.copy(),player.registryAccess());}'
+    [[ "${actual}" == "${expected}" ]] || fail 'P4-C2-A unplaced fresh-holder input guards drifted'
+    require_fixed_count "${file}" 'PlayerEvent' 1 'P4-C2-A component must not add a gameplay event observer'
+    require_fixed_count "${file}" '.setData(' 1 'P4-C2-A component must not add another Attachment mutator'
+    require_fixed "${file}" 'holder.getServer().getPlayerList().getPlayer(holder.getUUID()) != holder' \
+        'P4-C2-A copied component must remain distinct from a managed online source'
+}
+
 verify_exact_sources_and_registration() {
     local package_path='src/main/java/com/yo1no/gramarye/magic/definition/player'
     local registration="${package_path}/PlayerSkillAttachments.java"
@@ -221,6 +256,10 @@ verify_exact_sources_and_registration() {
     local mana_definition="${mana_path}/ManaAttachments.java"
     local mana_bridge="${mana_path}/ManaAttachmentDefinitionBridge.java"
     local mana_game_tests="${mana_path}/ManaLifecycleGameTests.java"
+    local cooldown_definition='src/main/java/com/yo1no/gramarye/P11CastCooldownAttachments.java'
+    local cooldown_bridge='src/main/java/com/yo1no/gramarye/P11CastCooldownDefinitionBridge.java'
+    local cooldown_material='src/main/java/com/yo1no/gramarye/P11CastCooldownMaterial.java'
+    local cooldown_codec='src/main/java/com/yo1no/gramarye/P11CastCooldownCodec.java'
     local p8_client='src/main/java/com/yo1no/gramarye/GramaryeClient.java'
     local p8_client_factories='src/main/java/com/yo1no/gramarye/magic/api/registry/P8BuiltInClientProfileFactories.java'
     local p9_entity_registration='src/main/java/com/yo1no/gramarye/P9StarterProjectileRegistration.java'
@@ -258,6 +297,9 @@ verify_exact_sources_and_registration() {
         'P6-S2-R3 public mana Attachment definition bridge is missing'
     require_regular_file "${mana_game_tests}" \
         'P6-S2 mana lifecycle GameTest holder is missing'
+    for source in "${cooldown_definition}" "${cooldown_bridge}" "${cooldown_material}" "${cooldown_codec}"; do
+        require_regular_file "${source}" 'P11 cooldown definition/material/codec source is missing'
+    done
     require_regular_file "${p9_entity_registration}" \
         'P9-S3 exact projectile EntityType registration owner is missing'
     require_fixed "${admission_source}" \
@@ -323,10 +365,14 @@ verify_exact_sources_and_registration() {
     require_fixed_count \
         "${registration}" 'ManaAttachmentDefinitionBridge::attachmentType' 1 \
         'P6-S2-R3 player_mana definition must enter the sole DeferredRegister exactly once'
-    require_fixed_count "${registration}" 'DeferredHolder<' 2 \
-        'P6-S2-R3 sole registration owner must contain exactly two Attachment holders'
-    require_fixed_count "${registration}" 'ATTACHMENT_TYPES.register(' 3 \
-        'P6-S2-R3 sole registration owner must contain two entries and one bus registration'
+    require_fixed_count "${registration}" 'P11CastCooldownDefinitionBridge.attachmentId().getPath()' 1 \
+        'P11 cast_cooldowns ID must enter the sole DeferredRegister exactly once'
+    require_fixed_count "${registration}" 'P11CastCooldownDefinitionBridge::attachmentType' 1 \
+        'P11 cooldown definition must enter the sole DeferredRegister exactly once'
+    require_fixed_count "${registration}" 'DeferredHolder<' 3 \
+        'P11 sole registration owner must contain exactly skills/mana/cooldown holders'
+    require_fixed_count "${registration}" 'ATTACHMENT_TYPES.register(' 4 \
+        'P11 sole registration owner must contain three entries and one bus registration'
     require_fixed_count "${mana_definition}" '"player_mana"' 1 \
         'P6-S2 mana definition must own the stable player_mana path exactly once'
     require_fixed_count \
@@ -337,9 +383,67 @@ verify_exact_sources_and_registration() {
     require_fixed_count "${mana_definition}" '.copyHandler(ManaLifecycle::copy)' 1 \
         'P6-S2 mana definition must wire the exact custom copy handler once'
 
+    for literal in \
+        'public final class P11CastCooldownDefinitionBridge' \
+        'private P11CastCooldownDefinitionBridge()' \
+        'public static ResourceLocation attachmentId() { return P11CastCooldownAttachments.ID; }' \
+        'public static AttachmentType<?> attachmentType() { return P11CastCooldownAttachments.TYPE; }'; do
+        require_fixed_count "${cooldown_bridge}" "${literal}" 1 \
+            "P11 cooldown definition-only bridge drifted: ${literal}"
+    done
+    require_ere_count "${cooldown_bridge}" '^[[:space:]]*public[[:space:]]' 3 \
+        'P11 cooldown bridge exposes only its class and two definition accessors'
+    require_ere_count "${cooldown_bridge}" '^[[:space:]]*protected[[:space:]]' 0 \
+        'P11 cooldown bridge exposes no protected member'
+    for literal in \
+        'final class P11CastCooldownAttachments {' \
+        'ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, "cast_cooldowns")' \
+        'AttachmentType.builder(P11CastCooldownData::unbound)' \
+        '.serialize(new Serializer()).copyOnDeath().build();' \
+        'return actor.hasData(TYPE) ? actor.getData(TYPE) : null;' \
+        'if (existing(actor) != expected) { throw new IllegalStateException("COOLDOWN_MATERIAL_CHANGED"); }' \
+        'var before = P11CastCooldownMaterial.capture(actor);' \
+        'actor.setData(TYPE, replacement);' \
+        'P11NativeStorageBoundary.cooldownPublished(before, P11CastCooldownMaterial.capture(actor));' \
+        'var result = P11CastCooldownCodec.read(input);' \
+        'P11NativeStorageBoundary.cooldownReadCompleted(holder, P11CastCooldownMaterial.read(holder, result));' \
+        'Tag output = P11CastCooldownCodec.write(data);' \
+        'P11NativeStorageBoundary.cooldownWritten(P11CastCooldownMaterial.written(data, output));'; do
+        require_fixed_count "${cooldown_definition}" "${literal}" 1 \
+            "P11 cooldown native definition/serializer/access contract drifted: ${literal}"
+    done
+    require_fixed_count "${cooldown_definition}" '.copyOnDeath()' 1 \
+        'P11 cooldown must retain exactly one serialized copyOnDeath definition'
+    require_ere_count "${cooldown_definition}" 'public[[:space:]]' 2 \
+        'P11 cooldown definition has only the two mandatory private serializer overrides'
+    for literal in '.sync(' '.copyHandler(' 'freshEmptyReady' 'public final class' 'protected '; do
+        forbid_fixed "${cooldown_definition}" "${literal}" \
+            "P11 cooldown definition must remain unbound/server-only/serialized-copy (${literal})"
+    done
+    for literal in \
+        'private State(ServerPlayer actor, P11CastCooldownData data)' \
+        'boolean current(ServerPlayer expected) { return bound(expected) && P11CastCooldownAttachments.existing(expected) == data; }' \
+        'boolean same(State other) { return other != null && actor == other.actor && data == other.data; }' \
+        'private Write(P11CastCooldownData data, Tag output)' \
+        'return output == actual && data == P11CastCooldownAttachments.existing(actor);'; do
+        require_fixed_count "${cooldown_material}" "${literal}" 1 \
+            "P11 cooldown exact material witness drifted: ${literal}"
+    done
+    for source in "${cooldown_material}" "${cooldown_codec}"; do
+        forbid_ere "${source}" '(^|[[:space:]])(public|protected)[[:space:]]' \
+            'P11 cooldown material/codec must remain package-private with no public bridge'
+    done
+    for literal in 'static P11CastCooldownData read(Tag input)' \
+        'static CompoundTag write(P11CastCooldownData data)' \
+        'if (data.kind == P11CastCooldownData.Kind.UNBOUND) { throw new IllegalStateException("COOLDOWN_UNBOUND_MATERIAL"); }'; do
+        require_fixed_count "${cooldown_codec}" "${literal}" 1 \
+            "P11 cooldown codec must preserve its closed native datum entrypoints: ${literal}"
+    done
+
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" 'AttachmentType' "${registration}" "${mana_definition}" \
-        "${mana_bridge}" 'Attachment definition surface escaped the exact three-file allowlist'
+        "${mana_bridge}" 'Attachment definition surface escaped the exact five-file allowlist' \
+        "${cooldown_definition}" "${cooldown_bridge}"
     for literal in \
         'DeferredRegister<AttachmentType<?>>' \
         'NeoForgeRegistries.Keys.ATTACHMENT_TYPES' \
@@ -359,8 +463,8 @@ verify_exact_sources_and_registration() {
         'P9-S3 EntityType registration must not acquire Attachment ownership'
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" '.copyOnDeath()' "${registration}" \
-        "${mana_definition}" '' \
-        'Attachment copyOnDeath definition escaped its exact two-file allowlist'
+        "${mana_definition}" "${cooldown_definition}" \
+        'Attachment copyOnDeath definition escaped its exact three-file allowlist'
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" '.copyHandler(' "${mana_definition}" '' '' \
         'Attachment copyHandler definition escaped the mana definition owner'
@@ -406,6 +510,10 @@ verify_exact_sources_and_registration() {
             "ManaAttachments must remain definition/access-only, not registry mutation (${literal})"
         forbid_fixed "${mana_bridge}" "${literal}" \
             "ManaAttachmentDefinitionBridge must remain mutation-free (${literal})"
+        for source in "${cooldown_definition}" "${cooldown_bridge}" "${cooldown_material}" "${cooldown_codec}"; do
+            forbid_fixed "${source}" "${literal}" \
+                "P11 cooldown definition/material/codec must not mutate registration (${literal})"
+        done
     done
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" '"player_skills"' "${registration}" "${game_tests}" "${p11_storage_boundary}" \
@@ -424,22 +532,29 @@ verify_exact_sources_and_registration() {
         'P11 must not add another player skill ID use'
     require_fixed_count "${p11_storage_boundary}" '"player_mana"' 1 \
         'P11 must not add another mana ID use'
-    for owner in "${service}" "${game_tests}" "${source_observation}" "${mana_definition}"; do
+    forbid_fixed_outside "${PRODUCTION_SOURCE_LIST}" '"cast_cooldowns"' \
+        "${cooldown_definition}" '' '' 'stable cooldown ID escaped its exact definition owner'
+    require_fixed_count "${p11_storage_boundary}" \
+        'private static final ResourceLocation COOLDOWNS = P11CastCooldownAttachments.ID;' 1 \
+        'P11 native storage must use the sole cooldown definition ID'
+    for owner in "${service}" "${game_tests}" "${source_observation}" "${mana_definition}" "${cooldown_definition}"; do
         require_fixed "${owner}" '.getData(' \
             "reviewed Attachment getData owner lost its access (${owner})"
     done
     forbid_fixed_outside \
         "${PRODUCTION_SOURCE_LIST}" '.getData(' "${service}" "${game_tests}" \
         "${source_observation}" \
-        'player Attachment getData escaped the exact four-file access allowlist' \
-        "${mana_definition}"
+        'player Attachment getData escaped the exact five-file access allowlist' \
+        "${mana_definition}" "${cooldown_definition}"
     require_fixed "${service}" '.setData(' \
         'player skill Attachment service lost its controlled setData access'
     require_fixed "${mana_definition}" '.setData(' \
         'mana Attachment definition/access owner lost its controlled setData access'
     forbid_fixed_outside \
-        "${PRODUCTION_SOURCE_LIST}" '.setData(' "${service}" "${mana_definition}" '' \
-        'Attachment setData escaped the exact two-file access allowlist'
+        "${PRODUCTION_SOURCE_LIST}" '.setData(' "${service}" "${mana_definition}" "${cooldown_definition}" \
+        'Attachment setData escaped the exact owners and unplaced GameTest component' \
+        "${game_tests}"
+    verify_exact_gametest_components "${game_tests}"
     forbid_fixed_in_file_list \
         "${PRODUCTION_SOURCE_LIST}" '.removeData(' \
         'production must never remove the permanent player skill Attachment entry'
@@ -478,6 +593,9 @@ verify_phase_bounds_and_normal_tests() {
                         'reconciliation escaped the exact P4-E2 player-service owner'
                 fi
             done < "${C2_SOURCE_LIST}"
+        elif [[ "${literal}" == 'PlayerEvent.Clone' ]]; then
+            forbid_fixed_outside "${C2_SOURCE_LIST}" "${literal}" "${game_tests}" '' '' \
+                'PlayerEvent.Clone escaped the exact unplaced serialized-copy component'
         else
             forbid_fixed_in_file_list \
                 "${C2_SOURCE_LIST}" "${literal}" \
@@ -533,7 +651,8 @@ verify_phase_bounds_and_normal_tests() {
         'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' \
         'PlayerEvent escaped the exact P4-D3-A recovery-service allowlist' \
         'src/main/java/com/yo1no/gramarye/magic/definition/store/SkillSubmissionRecoveryGameTests.java' \
-        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java'
+        'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
+        "${game_tests}"
 
     for literal in \
         "sourceSets.create('p4C2Probe')" \
@@ -611,7 +730,12 @@ verify_production_jar() {
             'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$OpaqueAdmissionSource.class' \
             'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditAdmitted.class' \
             'com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService$RootAuditSink.class' \
-            'com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.class'; do
+            'com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.class' \
+            'com/yo1no/gramarye/P11CastCooldownAttachments.class' \
+            'com/yo1no/gramarye/P11CastCooldownAttachments$Serializer.class' \
+            'com/yo1no/gramarye/P11CastCooldownDefinitionBridge.class' \
+            'com/yo1no/gramarye/P11CastCooldownMaterial.class' \
+            'com/yo1no/gramarye/P11CastCooldownCodec.class'; do
             require_fixed "${JAR_LISTING}" "${class_path}" \
                 "P4-E1-A.1 production JAR lacks reviewed class ${class_path}"
         done

@@ -1,7 +1,10 @@
 package com.yo1no.gramarye.magic.network;
 
+import net.minecraft.network.Connection;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
+
 interface P7ClientMirrorDispatchPort {
-    long captureDispatchGeneration();
+    long captureDispatchGeneration(Connection sourceConnection, ICommonPacketListener sourceListener);
 
     void onIntentAcknowledgement(
             long dispatchGeneration, IntentAcknowledgement acknowledgement);

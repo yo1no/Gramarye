@@ -380,9 +380,14 @@ final class SkillRuntimeAuthenticatedCastIngressTest {
 
                 final class SkillRuntimeService {
                     // Type-only dependencies of the exact InstanceState source below.
-                    // This ingress model does not qualify P11 logout or work release.
+                    // This ingress model does not qualify P11 logout, cooldown or work release.
                     enum LogoutState { ONLINE, IN_PROGRESS, COMPLETE, INVALID }
                     static final class NormalLogoutScope {
+                    }
+                    static final class CooldownReleaseReceipt {
+                        void revoke() {
+                            throw new AssertionError("Cooldown release is outside this ingress model");
+                        }
                     }
                     private final IdentityHashMap<MinecraftServer, ServerSlot> slots =
                             new IdentityHashMap<>();
@@ -450,6 +455,14 @@ final class SkillRuntimeAuthenticatedCastIngressTest {
                     static final class WorkReservation {
                         void release() {
                             throw new AssertionError("P11 release is outside this ingress model");
+                        }
+                    }
+                }
+
+                final class P11CastCooldownService {
+                    static final class Prepared {
+                        void settle() {
+                            throw new AssertionError("Cooldown reconciliation is outside this ingress model");
                         }
                     }
                 }

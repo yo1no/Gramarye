@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 
 final class P7P5AdmissionMapperTest {
     @Test
-    void allTwentyOneAdmissionVariantsHaveTheExactOneSixteenThreeOnePartition() {
+    void allTwentyTwoAdmissionTypesIncludingFiveCooldownReasonsKeepTheExistingWireDispositions() {
         var serverToken = new RuntimeServerToken(1);
         var skillInstanceId = new SkillInstanceId(new UUID(1, 1));
         RuntimeAdmissionResult accepted = new RuntimeAdmissionResult.AcceptedMemoryOnly(
@@ -49,11 +49,16 @@ final class P7P5AdmissionMapperTest {
                         false)),
                 new RuntimeAdmissionResult.SequenceExhausted(
                         RuntimeSequenceKind.EVENT_SEQUENCE),
-                new RuntimeAdmissionResult.TickExhausted());
+                new RuntimeAdmissionResult.TickExhausted(),
+                new RuntimeAdmissionResult.CooldownRejected(CooldownRejectionReason.ACTIVE),
+                new RuntimeAdmissionResult.CooldownRejected(CooldownRejectionReason.PENDING),
+                new RuntimeAdmissionResult.CooldownRejected(CooldownRejectionReason.RECOVERY));
         List<RuntimeAdmissionResult> unavailable = List.of(
                 new RuntimeAdmissionResult.ServerNotRunning(),
                 new RuntimeAdmissionResult.ServerStopping(),
-                new RuntimeAdmissionResult.KernelFaulted());
+                new RuntimeAdmissionResult.KernelFaulted(),
+                new RuntimeAdmissionResult.CooldownRejected(CooldownRejectionReason.CLOCK),
+                new RuntimeAdmissionResult.CooldownRejected(CooldownRejectionReason.UNAVAILABLE));
         RuntimeAdmissionResult wrongThread = new RuntimeAdmissionResult.WrongThread();
 
         var allVariants = new ArrayList<RuntimeAdmissionResult>();
@@ -62,10 +67,10 @@ final class P7P5AdmissionMapperTest {
         allVariants.addAll(unavailable);
         allVariants.add(wrongThread);
 
-        assertEquals(16, ordinaryRejections.size());
-        assertEquals(3, unavailable.size());
-        assertEquals(21, allVariants.size());
-        assertEquals(21, RuntimeAdmissionResult.class.getPermittedSubclasses().length);
+        assertEquals(19, ordinaryRejections.size());
+        assertEquals(5, unavailable.size());
+        assertEquals(26, allVariants.size());
+        assertEquals(22, RuntimeAdmissionResult.class.getPermittedSubclasses().length);
         assertEquals(
                 Arrays.stream(RuntimeAdmissionResult.class.getPermittedSubclasses())
                         .collect(Collectors.toSet()),
@@ -91,9 +96,9 @@ final class P7P5AdmissionMapperTest {
                         P7ServerAuthorizationBoundary.AdmissionDisposition.ACCEPTED,
                         1L,
                         P7ServerAuthorizationBoundary.AdmissionDisposition.P5_ADMISSION_REJECTED,
-                        16L,
+                        19L,
                         P7ServerAuthorizationBoundary.AdmissionDisposition.P5_UNAVAILABLE,
-                        3L,
+                        5L,
                         P7ServerAuthorizationBoundary.AdmissionDisposition.INTERNAL_SERVER_FAULT,
                         1L),
                 allVariants.stream()

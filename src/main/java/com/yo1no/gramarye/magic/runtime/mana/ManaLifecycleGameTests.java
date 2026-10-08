@@ -138,6 +138,7 @@ public final class ManaLifecycleGameTests {
     }
 
     @GameTest(
+            batch = "p6_s2_native_death",
             templateNamespace = "minecraft",
             template = "bastion/blocks/air",
             timeoutTicks = 300)
@@ -146,14 +147,18 @@ public final class ManaLifecycleGameTests {
         assertServerThread(helper, server);
         removeOnlinePlayer(server, DEATH_PLAYER_ID);
         var connected = placePlayer(server, DEATH_PLAYER_ID, "p6s2-death");
+        queueConnected(helper, connected, () -> deathCloneAfterLogin(helper, connected));
+    }
+
+    private static void deathCloneAfterLogin(GameTestHelper helper, ConnectedPlayer connected) {
+        var server = helper.getLevel().getServer();
         try {
             var original = connected.player();
+            com.yo1no.gramarye.P7S4LoginManaGameTests.requireCooldownLoginComplete(original);
             ManaAttachments.replace(original, ManaState.available(814L));
             var sourceState = ManaAttachments.state(original);
 
-            var replacement = server.getPlayerList().respawn(
-                    original, false, Entity.RemovalReason.KILLED);
-            replacement.connection.player = replacement;
+            var replacement = com.yo1no.gramarye.P7S4LoginManaGameTests.respawnNativeGameTestPlayer(original);
             helper.assertTrue(replacement != original,
                     "death respawn must create a replacement ServerPlayer");
             helper.assertTrue(sourceState.equals(ManaAttachments.state(replacement)),
@@ -164,10 +169,10 @@ public final class ManaLifecycleGameTests {
             removeOnlinePlayer(server, DEATH_PLAYER_ID);
             connected.channel().finishAndReleaseAll();
         }
-        helper.succeed();
     }
 
     @GameTest(
+            batch = "p6_s2_native_end",
             templateNamespace = "minecraft",
             template = "bastion/blocks/air",
             timeoutTicks = 300)
@@ -176,14 +181,18 @@ public final class ManaLifecycleGameTests {
         assertServerThread(helper, server);
         removeOnlinePlayer(server, NON_DEATH_PLAYER_ID);
         var connected = placePlayer(server, NON_DEATH_PLAYER_ID, "p6s2-endclone");
+        queueConnected(helper, connected, () -> nonDeathCloneAfterLogin(helper, connected));
+    }
+
+    private static void nonDeathCloneAfterLogin(GameTestHelper helper, ConnectedPlayer connected) {
+        var server = helper.getLevel().getServer();
         try {
             var original = connected.player();
+            com.yo1no.gramarye.P7S4LoginManaGameTests.requireCooldownLoginComplete(original);
             ManaAttachments.replace(original, ManaState.available(915L));
             var sourceState = ManaAttachments.state(original);
 
-            var replacement = server.getPlayerList().respawn(
-                    original, true, Entity.RemovalReason.CHANGED_DIMENSION);
-            replacement.connection.player = replacement;
+            var replacement = com.yo1no.gramarye.P7S4LoginManaGameTests.completeEndGameTestPlayer(original);
             helper.assertTrue(replacement != original,
                     "End-equivalent non-death respawn must replace the ServerPlayer");
             helper.assertTrue(sourceState.equals(ManaAttachments.state(replacement)),
@@ -194,7 +203,26 @@ public final class ManaLifecycleGameTests {
             removeOnlinePlayer(server, NON_DEATH_PLAYER_ID);
             connected.channel().finishAndReleaseAll();
         }
-        helper.succeed();
+    }
+
+    private static void queueConnected(GameTestHelper helper, ConnectedPlayer connected, Runnable body) {
+        try {
+            com.yo1no.gramarye.P7S4LoginManaGameTests.runCooldownFixtureAfterTick(
+                    helper, body, helper::succeed, primary -> cleanupConnected(connected, primary));
+        } catch (RuntimeException | Error failure) {
+            cleanupConnected(connected, failure);
+            throw failure;
+        }
+    }
+
+    private static void cleanupConnected(ConnectedPlayer connected, Throwable primary) {
+        try {
+            removeOnlinePlayer(connected.player().getServer(), connected.player().getUUID());
+        } catch (RuntimeException | Error cleanup) {
+            if (cleanup != primary) { primary.addSuppressed(cleanup); }
+        } finally {
+            connected.channel().finishAndReleaseAll();
+        }
     }
 
     @GameTest(
@@ -327,16 +355,9 @@ public final class ManaLifecycleGameTests {
 
     private static ConnectedPlayer placePlayer(
             MinecraftServer server, UUID playerId, String name) {
-        var cookie = CommonListenerCookie.createInitial(
-                new GameProfile(playerId, name), false);
-        var player = new ServerPlayer(
-                server,
-                server.overworld(),
-                cookie.gameProfile(),
-                cookie.clientInformation());
-        var connection = new Connection(PacketFlow.SERVERBOUND);
-        var channel = new EmbeddedChannel(connection);
-        server.getPlayerList().placeNewPlayer(connection, player, cookie);
+        var player = com.yo1no.gramarye.P7S4LoginManaGameTests.connectNativeGameTestPlayer(
+                server, playerId, name);
+        var channel = (EmbeddedChannel) player.connection.getConnection().channel();
         return new ConnectedPlayer(player, channel);
     }
 

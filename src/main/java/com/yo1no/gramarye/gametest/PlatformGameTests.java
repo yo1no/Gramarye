@@ -102,12 +102,14 @@ public final class PlatformGameTests {
                 Set.copyOf(registry.keySet()).equals(Set.of(activeCast, effectHit)),
                 "Trigger registry must contain exactly the canonical P9 entries");
 
+        var activeCastPayload = new JsonObject();
+        activeCastPayload.addProperty("cooldown_ticks", 0);
         assertTriggerPayload(
                 helper,
                 registry.getOptional(activeCast).orElseThrow(),
                 "com.yo1no.gramarye.P9ActiveCastTriggerType",
-                "com.yo1no.gramarye.P9ActiveCastTriggerPayloadV0",
-                new JsonObject());
+                "com.yo1no.gramarye.P9ActiveCastTriggerPayloadV1",
+                activeCastPayload);
         var hitPayload = new JsonObject();
         hitPayload.add("source_node_index", new JsonPrimitive(0));
         hitPayload.add("source_output_ordinal", new JsonPrimitive(0));
@@ -192,9 +194,13 @@ public final class PlatformGameTests {
         helper.assertTrue(
                 descriptor.getClass().getName().equals(expectedDescriptorClass),
                 "Trigger descriptor class identity differs from the P9 authority");
+        var activeCast = expectedDescriptorClass.equals("com.yo1no.gramarye.P9ActiveCastTriggerType");
         helper.assertTrue(
-                descriptor.currentPayloadSchemaVersion() == 0,
-                "Trigger descriptor schema must be zero");
+                descriptor.currentPayloadSchemaVersion() == (activeCast ? 1 : 0),
+                "Active cast uses current schema one; effect hit remains schema zero");
+        helper.assertTrue(
+                descriptor.payloadMigrationPlan().steps().size() == (activeCast ? 1 : 0),
+                "Active cast owns only the guarded empty V0-to-V1 migration edge");
         P payload = descriptor.payloadCodec().codec()
                 .parse(JsonOps.INSTANCE, expectedPayload)
                 .getOrThrow();

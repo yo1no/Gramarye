@@ -372,9 +372,10 @@ public final class P9S3ProjectileGameTests {
     @SuppressWarnings("removal")
     public static void reservedClaimAndWrongTransferWitnessesAreOneShot(GameTestHelper helper) {
         exerciseWrongLoadedObjectTransfer(helper, 0x9304L);
-        exerciseSameUuidActorReplacementBeforeTransfer(helper, 0x9305L);
-        exercisePresentationFailureIsolation(helper, 0x9340L);
-        helper.succeed();
+        exerciseSameUuidActorReplacementBeforeTransfer(helper, 0x9305L, () -> {
+            exercisePresentationFailureIsolation(helper, 0x9340L);
+            helper.succeed();
+        });
     }
 
     @GameTest(
@@ -384,16 +385,17 @@ public final class P9S3ProjectileGameTests {
             timeoutTicks = 420)
     @SuppressWarnings("removal")
     public static void replacementRemovalAndDeadlineCloseWithoutDamage(GameTestHelper helper) {
-        exerciseOpenActorReplacement(helper, 0x9306L);
-        exerciseClaimedActorReplacement(helper, 0x9307L);
-        exerciseClaimedEntityRemoval(helper, 0x9308L);
-        exerciseOpenDeadline(helper, 0x9309L);
-        exerciseOpenReload(helper, 0x9314L);
-        exerciseExactRangeTerminal(helper, 0x9316L);
-        exerciseAgeTerminalBeforeSweep(helper, 0x9317L);
-        exerciseClaimedActorDimensionChange(helper, 0x9350L);
-        exerciseDamageThrowableNoRetry(helper, 0x9360L);
-        helper.succeed();
+        exerciseOpenActorReplacement(helper, 0x9306L, () ->
+                exerciseClaimedActorReplacement(helper, 0x9307L, () -> {
+                    exerciseClaimedEntityRemoval(helper, 0x9308L);
+                    exerciseOpenDeadline(helper, 0x9309L);
+                    exerciseOpenReload(helper, 0x9314L);
+                    exerciseExactRangeTerminal(helper, 0x9316L);
+                    exerciseAgeTerminalBeforeSweep(helper, 0x9317L);
+                    exerciseClaimedActorDimensionChange(helper, 0x9350L);
+                    exerciseDamageThrowableNoRetry(helper, 0x9360L);
+                    helper.succeed();
+                }));
     }
 
     @GameTest(
@@ -405,7 +407,8 @@ public final class P9S3ProjectileGameTests {
     public static void sixteenthOpenPermitIsThePerPlayerMaximum(GameTestHelper helper) {
         try (var scenario = new ProductionScenario(helper, 0x930AL)) {
             for (var index = 0; index < 17; index++) {
-                scenario.admit();
+                var accepted = scenario.admit();
+                assertZeroCooldownBeforeSpawn(scenario.runtime(), server(scenario), scenario.actor(), accepted);
             }
             scenario.post();
             helper.assertTrue(
@@ -430,6 +433,11 @@ public final class P9S3ProjectileGameTests {
                     "bounded server-stop cleanup must report and terminate exactly 16 transfers");
         }
         helper.succeed();
+    }
+
+    private static void assertZeroCooldownBeforeSpawn(SkillRuntimeService runtime,
+            MinecraftServer server, ServerPlayer actor, RuntimeAdmissionResult.AcceptedMemoryOnly accepted) {
+        throw new AssertionError("exact stock GameTest D0 observer was not installed");
     }
 
     private static void exerciseAbsorptionAppliedTruth(
@@ -953,7 +961,7 @@ public final class P9S3ProjectileGameTests {
     private static void exerciseWrongLoadedObjectTransfer(
             GameTestHelper helper, long fixtureId) {
         var server = helper.getLevel().getServer();
-        var actor = helper.makeMockServerPlayerInLevel();
+        var actor = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, fixtureId);
         P7S4LoginManaGameTests.P9GameTestFixture fixture = null;
         SkillRuntimeService runtime = null;
         Throwable primary = null;
@@ -984,13 +992,26 @@ public final class P9S3ProjectileGameTests {
 
     @SuppressWarnings("removal")
     private static void exerciseSameUuidActorReplacementBeforeTransfer(
-            GameTestHelper helper, long fixtureId) {
+            GameTestHelper helper, long fixtureId, Runnable after) {
         var server = helper.getLevel().getServer();
-        var actor = helper.makeMockServerPlayerInLevel();
+        var actor = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, fixtureId);
+        try {
+            P7S4LoginManaGameTests.runCooldownFixtureAfterTick(helper,
+                    () -> exerciseSameUuidActorReplacementAfterLogin(helper, fixtureId, server, actor),
+                    after, primary -> cleanupManual(server, actor.getUUID(), null, null, primary));
+        } catch (RuntimeException | Error primary) {
+            cleanupManual(server, actor.getUUID(), null, null, primary);
+            throw primary;
+        }
+    }
+
+    private static void exerciseSameUuidActorReplacementAfterLogin(GameTestHelper helper,
+            long fixtureId, MinecraftServer server, ServerPlayer actor) {
         P7S4LoginManaGameTests.P9GameTestFixture fixture = null;
         SkillRuntimeService runtime = null;
         Throwable primary = null;
         try {
+            P7S4LoginManaGameTests.requireCooldownLoginComplete(actor);
             fixture = P7S4LoginManaGameTests.openP9GameTestFixture(
                     helper, actor, fixtureId);
             var geometry = fixture.geometry();
@@ -1014,8 +1035,31 @@ public final class P9S3ProjectileGameTests {
         }
     }
 
-    private static void exerciseOpenActorReplacement(GameTestHelper helper, long fixtureId) {
-        try (var scenario = new ProductionScenario(helper, fixtureId)) {
+    private static void exerciseOpenActorReplacement(
+            GameTestHelper helper, long fixtureId, Runnable after) {
+        var scenario = new ProductionScenario(helper, fixtureId);
+        try {
+            P7S4LoginManaGameTests.runCooldownFixtureAfterTick(helper,
+                    () -> exerciseOpenActorReplacementAfterLogin(helper, scenario),
+                    after, primary -> {
+                        try { scenario.close(); }
+                        catch (RuntimeException | Error cleanup) {
+                            if (cleanup != primary) { primary.addSuppressed(cleanup); }
+                        }
+                    });
+        } catch (RuntimeException | Error primary) {
+            try { scenario.close(); }
+            catch (RuntimeException | Error cleanup) {
+                if (cleanup != primary) { primary.addSuppressed(cleanup); }
+            }
+            throw primary;
+        }
+    }
+
+    private static void exerciseOpenActorReplacementAfterLogin(
+            GameTestHelper helper, ProductionScenario scenario) {
+        try (scenario) {
+            P7S4LoginManaGameTests.requireCooldownLoginComplete(scenario.actor());
             var accepted = scenario.admit();
             scenario.post();
             var projectile = scenario.requireProjectile(
@@ -1179,8 +1223,31 @@ public final class P9S3ProjectileGameTests {
         }
     }
 
-    private static void exerciseClaimedActorReplacement(GameTestHelper helper, long fixtureId) {
-        try (var scenario = new ProductionScenario(helper, fixtureId)) {
+    private static void exerciseClaimedActorReplacement(
+            GameTestHelper helper, long fixtureId, Runnable after) {
+        var scenario = new ProductionScenario(helper, fixtureId);
+        try {
+            P7S4LoginManaGameTests.runCooldownFixtureAfterTick(helper,
+                    () -> exerciseClaimedActorReplacementAfterLogin(helper, scenario),
+                    after, primary -> {
+                        try { scenario.close(); }
+                        catch (RuntimeException | Error cleanup) {
+                            if (cleanup != primary) { primary.addSuppressed(cleanup); }
+                        }
+                    });
+        } catch (RuntimeException | Error primary) {
+            try { scenario.close(); }
+            catch (RuntimeException | Error cleanup) {
+                if (cleanup != primary) { primary.addSuppressed(cleanup); }
+            }
+            throw primary;
+        }
+    }
+
+    private static void exerciseClaimedActorReplacementAfterLogin(
+            GameTestHelper helper, ProductionScenario scenario) {
+        try (scenario) {
+            P7S4LoginManaGameTests.requireCooldownLoginComplete(scenario.actor());
             var accepted = scenario.admit();
             scenario.post();
             var projectile = scenario.requireProjectile(
@@ -1638,7 +1705,7 @@ public final class P9S3ProjectileGameTests {
     private static void removeCurrentPlayer(MinecraftServer server, UUID actorId) {
         var current = server.getPlayerList().getPlayer(actorId);
         if (current != null) {
-            server.getPlayerList().remove(current);
+            P7S4LoginManaGameTests.closeCooldownMockPlayer(current);
         }
     }
 
@@ -1695,7 +1762,7 @@ public final class P9S3ProjectileGameTests {
                 long magnitude) {
             this.helper = Objects.requireNonNull(helper, "helper");
             level = helper.getLevel();
-            actor = helper.makeMockServerPlayerInLevel();
+            actor = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, fixtureId);
             actorId = actor.getUUID();
             P7S4LoginManaGameTests.P9GameTestFixture openedFixture = null;
             try {
@@ -1755,7 +1822,8 @@ public final class P9S3ProjectileGameTests {
 
         @SuppressWarnings("removal")
         private ServerPlayer addPlayerTarget(Vec3 position) {
-            var target = helper.makeMockServerPlayerInLevel();
+            var target = P7S4LoginManaGameTests.makeCooldownMockPlayer(
+                    helper, Math.addExact(actorId.getLeastSignificantBits() & Long.MAX_VALUE, 0x100000L));
             target.setPos(position.x, position.y - 0.5, position.z);
             controlledEntities.add(target);
             return target;
@@ -1788,9 +1856,7 @@ public final class P9S3ProjectileGameTests {
             var current = level.getServer().getPlayerList().getPlayer(actorId);
             helper.assertTrue(current != null,
                     "same-UUID replacement control requires the current actor");
-            var replacement = level.getServer().getPlayerList().respawn(
-                    current, false, Entity.RemovalReason.KILLED);
-            replacement.connection.player = replacement;
+            var replacement = P7S4LoginManaGameTests.respawnCooldownMockPlayer(current);
             helper.assertTrue(
                     replacement != current
                             && replacement.getUUID().equals(actorId)
@@ -1863,7 +1929,7 @@ public final class P9S3ProjectileGameTests {
                             && level.getServer().getPlayerList().getPlayer(
                                             player.getUUID())
                                     == player) {
-                        level.getServer().getPlayerList().remove(player);
+                        P7S4LoginManaGameTests.closeCooldownMockPlayer(player);
                     } else if (!entity.isRemoved()) {
                         entity.discard();
                     }
@@ -2150,9 +2216,7 @@ public final class P9S3ProjectileGameTests {
                     geometry);
             helper.assertTrue(original.serverLevel().addFreshEntity(projectile),
                     "replacement-witness control requires the original A entity loaded");
-            replacement = server.getPlayerList().respawn(
-                    original, false, Entity.RemovalReason.KILLED);
-            replacement.connection.player = replacement;
+            replacement = P7S4LoginManaGameTests.respawnCooldownMockPlayer(original);
             helper.assertTrue(
                     replacement != original
                             && replacement.getUUID().equals(original.getUUID())

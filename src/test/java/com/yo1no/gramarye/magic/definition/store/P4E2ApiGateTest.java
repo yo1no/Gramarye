@@ -476,6 +476,35 @@ final class P4E2ApiGateTest {
     void compositionOwnersAndGlobalSideEffectOwnersRemainExact() throws Exception {
         var production = com.yo1no.gramarye.P7GameTestInventory.productionSource();
         var storeService = STORE_ROOT.resolve("SkillDefinitionStoreService.java");
+        var cooldown = Files.readString(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/P11CastCooldownAttachments.java"));
+        var component = Files.readString(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java"));
+        var writeOwners = sourcePathsContaining(".setData(");
+        assertReviewedAttachmentWrites(production, writeOwners, cooldown, component);
+        var foreignOwners = new java.util.HashSet<>(writeOwners);
+        foreignOwners.remove("com/yo1no/gramarye/P11CastCooldownAttachments.java");
+        foreignOwners.add("com/yo1no/gramarye/P11CastCooldownAttachmentsExtra.java");
+        assertThrows(AssertionError.class, () -> assertReviewedAttachmentWrites(
+                production, foreignOwners, cooldown, component));
+        assertThrows(AssertionError.class, () -> assertReviewedAttachmentWrites(
+                production + " actor.setData(TYPE, replacement);", writeOwners, cooldown, component));
+        for (var mutation : List.of(
+                cooldown.replace("existing(actor) != expected", "false"),
+                cooldown.replace("actor.hasData(TYPE) ? actor.getData(TYPE) : null", "actor.getData(TYPE)"),
+                cooldown.replace("cooldownPublished(before,", "cooldownPublished(null,"))) {
+            assertFalse(mutation.equals(cooldown));
+            assertThrows(AssertionError.class, () -> assertReviewedAttachmentWrites(
+                    production, writeOwners, mutation, component));
+        }
+        for (var mutation : List.of(
+                component.replace("|| player.isAddedToLevel()", "|| false"),
+                component.replace("attachment.copy()", "attachment"),
+                component.replace("readUnboundComponent(player, attachment)", "readUnboundComponent(null, attachment)"))) {
+            assertFalse(mutation.equals(component));
+            assertThrows(AssertionError.class, () -> assertReviewedAttachmentWrites(
+                    production, writeOwners, cooldown, mutation));
+        }
         assertAll(
                 () -> assertEquals(1, occurrences(
                         production, "new SkillRetentionRootAuditService(")),
@@ -489,14 +518,6 @@ final class P4E2ApiGateTest {
                                 relative(RECOVERY_SERVICE),
                                 "com/yo1no/gramarye/P8ServerPresentationService.java"),
                         sourcePathsContaining("PlayerEvent.PlayerLoggedInEvent")),
-                () -> assertEquals(2, occurrences(production, ".setData(")),
-                () -> assertEquals(
-                        Set.of(
-                                "com/yo1no/gramarye/magic/definition/player/"
-                                        + "PlayerSkillAttachmentService.java",
-                                "com/yo1no/gramarye/magic/runtime/mana/"
-                                        + "ManaAttachments.java"),
-                        sourcePathsContaining(".setData(")),
                 () -> assertEquals(1, occurrences(
                         Files.readString(PLAYER_SERVICE),
                         ".recordE2SetDataAttempt(")),
@@ -516,6 +537,53 @@ final class P4E2ApiGateTest {
                                 "com/yo1no/gramarye/magic/definition/store/"
                                         + "SkillDefinitionStoreService.java"),
                         sourcePathsContaining(".reclaim(")));
+    }
+
+    private static void assertReviewedAttachmentWrites(
+            String production, Set<String> owners, String cooldown, String component) {
+        assertEquals(4, occurrences(production, ".setData("));
+        assertEquals(Set.of(
+                "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java",
+                "com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java",
+                "com/yo1no/gramarye/P11CastCooldownAttachments.java",
+                "com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java"), owners);
+        assertEquals(1, occurrences(cooldown, ".setData("));
+        assertEquals(1, occurrences(component, ".setData("));
+        assertExactWriteMethod(cooldown,
+                "staticP11CastCooldownDataexisting(ServerPlayeractor)",
+                "{returnactor.hasData(TYPE)?actor.getData(TYPE):null;}");
+        assertExactWriteMethod(cooldown,
+                "staticvoidreplace(ServerPlayeractor,P11CastCooldownDataexpected,P11CastCooldownDatareplacement)",
+                "{if(existing(actor)!=expected){thrownewIllegalStateException(\"COOLDOWN_MATERIAL_CHANGED\");}"
+                        + "varbefore=P11CastCooldownMaterial.capture(actor);actor.setData(TYPE,replacement);"
+                        + "P11NativeStorageBoundary.cooldownPublished(before,P11CastCooldownMaterial.capture(actor));}");
+        assertExactWriteMethod(component,
+                "privatestaticvoidloadAttachmentFixture(ServerPlayerplayer,Tagattachment)",
+                "{player.setData(PlayerSkillAttachments.type(),readUnboundComponent(player,attachment));}");
+        assertExactWriteMethod(component,
+                "privatestaticPlayerSkillAttachmentStatereadUnboundComponent(ServerPlayerplayer,Tagattachment)",
+                "{if(player.getServer().getPlayerList().getPlayer(player.getUUID())==player"
+                        + "||player.isAddedToLevel()||player.hasData(PlayerSkillAttachments.type())){"
+                        + "thrownewAssertionError(\"componentinputrequiresanunplacedfreshholder\");}"
+                        + "returnPlayerSkillAttachmentSerializer.INSTANCE.read(player,attachment.copy(),player.registryAccess());}");
+    }
+
+    private static void assertExactWriteMethod(String source, String signature, String body) {
+        var code = source.replaceAll("(?m)//[^\\r\\n]*", "").replaceAll("\\s+", "");
+        assertEquals(1, occurrences(code, signature));
+        var start = code.indexOf(signature);
+        assertTrue(start >= 0);
+        var opening = start + signature.length();
+        assertEquals('{', code.charAt(opening));
+        int depth = 0;
+        for (int index = opening; index < code.length(); index++) {
+            if (code.charAt(index) == '{') { depth++; }
+            if (code.charAt(index) == '}' && --depth == 0) {
+                assertEquals(signature + body, code.substring(start, index + 1));
+                return;
+            }
+        }
+        throw new AssertionError("missing exact write method end");
     }
 
     @Test

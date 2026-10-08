@@ -21,6 +21,12 @@ import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
 import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import com.yo1no.gramarye.magic.runtime.mana.P7ManaSnapshotBridge;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
+import io.netty.util.AttributeKey;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -30,21 +36,31 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
+import net.minecraft.network.protocol.configuration.ConfigurationProtocols;
+import net.minecraft.network.protocol.configuration.ServerboundFinishConfigurationPacket;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
+import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
+import net.minecraft.server.network.config.JoinWorldTask;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.portal.DimensionTransition;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.level.storage.LevelResource;
@@ -67,6 +83,9 @@ import net.neoforged.neoforge.network.registration.NetworkRegistry;
 @PrefixGameTestTemplate(false)
 public final class P7S4LoginManaGameTests {
     private static final String SAVED_DATA_NAME = "gramarye_skill_definitions";
+    private static final AttributeKey<ConnectedPlayer> COOLDOWN_PLAYER =
+            AttributeKey.valueOf("gramarye.p11.gametest.owned-player");
+    private static final String COOLDOWN_STATE_OBSERVER = "gramarye-p11-gametest-state";
     private static final SkillId P9_RESERVED_SKILL_ID = new SkillId(
             UUID.fromString("74000000-0000-4000-8000-000000000901"));
     private static final SkillId P9_WITNESS_SKILL_ID = new SkillId(
@@ -121,7 +140,7 @@ public final class P7S4LoginManaGameTests {
                         0x7910000000004000L,
                         0x8000000000000000L | fixtureId),
                 "p9-s3-author");
-        var fixture = loginFixture(server, (exactServer, exactActor) -> {});
+        var fixture = cooldownLoginFixture(server, (exactServer, exactActor) -> {});
         try {
             var canonical = P9StarterSkillContent.canonicalDraft(new SkillId(new UUID(
                     0x7900000000004000L,
@@ -237,7 +256,7 @@ public final class P7S4LoginManaGameTests {
                         0x7810000000004000L,
                         0x8000000000000000L | fixtureId),
                 "p8-p9-author");
-        var fixture = loginFixture(server, (exactServer, exactActor) -> {});
+        var fixture = cooldownLoginFixture(server, (exactServer, exactActor) -> {});
         SkillRuntimeService runtime = null;
         Throwable primary = null;
         try {
@@ -342,14 +361,20 @@ public final class P7S4LoginManaGameTests {
         helper.succeed();
     }
 
-    @GameTest(templateNamespace = "minecraft", template = "bastion/blocks/air", timeoutTicks = 200)
+    @GameTest(batch = "p7_e2_native_terminals", templateNamespace = "minecraft", template = "bastion/blocks/air", timeoutTicks = 200)
     public static void e2NormalAndChangedTerminalsHandoffOnceAndQuarantineNeverHandoffs(
             GameTestHelper helper) {
+        e2ReadyPhase(helper, new AtomicInteger(), false);
+    }
+
+    private static void e2ReadyPhase(GameTestHelper helper, AtomicInteger calls, boolean changedPhase) {
         var server = helper.getLevel().getServer();
-        var calls = new AtomicInteger();
-        var tick = server.getTickCount();
-        try (var player = placePlayer(server, 3, "p7s4-e2");
-                var fixture = loginFixture(server, (exactServer, actor) -> {
+        var player = placePlayer(server, 3, "p7s4-e2");
+        runCooldownFixtureAfterTick(helper, () -> {
+            try (player) {
+            requireCooldownLoginComplete(player.actor());
+            var tick = server.getTickCount();
+            try (player; var fixture = cooldownLoginFixture(server, (exactServer, actor) -> {
                     helper.assertTrue(exactServer == server
                                     && actor == server.getPlayerList().getPlayer(actor.getUUID())
                                     && server.isSameThread(),
@@ -366,13 +391,14 @@ public final class P7S4LoginManaGameTests {
             helper.assertTrue(collisionRefused
                             && server.getPlayerList().getPlayer(actor.getUUID()) == actor,
                     "fixture claim must refuse an already-live UUID without replacing its owner");
-            var unchanged = postObservedLogin(fixture, actor, 1);
-            helper.assertTrue(unchanged.reconciliationVariant()
+            if (!changedPhase) {
+                var unchanged = postObservedLogin(fixture, actor, 1);
+                helper.assertTrue(unchanged.reconciliationVariant()
                             == P4E2QualificationFacade.ReconciliationVariant.NO_CHANGES,
                     "fresh E2 fixture must end in NoChanges");
-            helper.assertTrue(calls.get() == 1 && unchanged.continuationCalls() == 1,
+                helper.assertTrue(calls.get() == 1 && unchanged.continuationCalls() == 1,
                     "normal E2 completion must hand off exactly once");
-
+            } else {
             var stale = new SkillReference(new SkillId(playerId(30)), new SkillRevision(0));
             var mutation = fixture.attachments().setEquipped(actor, 0, Optional.of(stale));
             helper.assertTrue(mutation instanceof PlayerSkillAttachmentService.Available<?>,
@@ -384,49 +410,110 @@ public final class P7S4LoginManaGameTests {
                     "E2 must prune the missing exact equipped reference before handoff");
             helper.assertTrue(calls.get() == 2 && changed.continuationCalls() == 1,
                     "Changed E2 completion must hand off exactly once");
+            }
+            helper.assertTrue(server.getTickCount() == tick,
+                    "recovery, E2 and handoff must finish in one synchronous server turn");
+            }
+            assertPlayerdataReleased(helper, server, playerId(3));
+            server.getPlayerList().saveAll();
+            assertPlayerdataReleased(helper, server, playerId(3));
+            }
+        }, () -> {
+            if (changedPhase) { e2NativeQuarantine(helper, calls); }
+            else { e2ReadyPhase(helper, calls, true); }
+        }, failure -> closeFixtureAfterFailure(player, failure));
+    }
 
-            var malformed = new CompoundTag();
-            malformed.putInt("schema_version", -1);
-            loadAttachment(actor, "gramarye:player_skills", malformed);
-            var deferred = postObservedLogin(fixture, actor, 3);
+    private static void e2NativeQuarantine(GameTestHelper helper, AtomicInteger calls) {
+        var server = helper.getLevel().getServer();
+        // A fresh source identity: test disk must never replace qualified retained MEMORY.
+        var id = playerId(8);
+        var claim = PlayerdataClaim.claim(server, id);
+        var malformed = new CompoundTag();
+        malformed.putInt("schema_version", -1);
+        var holder = unplacedPlayer(server, id, "p7s4-q-input");
+        var owner = P11NativeStorageBoundary.nativeSourceOwner(holder);
+        if (owner == null || owner.account(holder) != null) {
+            throw new AssertionError("pre-login quarantine requires an unused exact source identity");
+        }
+        var root = PlayerSkillAttachmentGameTests.isolatedPlayerSkillsInput(holder, malformed);
+        P4E2QualificationFacade facade = null;
+        P4E2QualificationFacade.Session observation = null;
+        Throwable primary = null;
+        try {
+        net.minecraft.nbt.NbtIo.writeCompressed(root, claim.directory.resolve(claim.primaryName));
+        facade = nativeGameTestFacade(server);
+        observation = facade.arm(server, id.getMostSignificantBits(), id.getLeastSignificantBits(),
+                3, P4E2QualificationFacade.Phase.READY_FIRST);
+        try (var player = placeCooldownPlayer(server,
+                CommonListenerCookie.createInitial(new GameProfile(id, "p7s4-quarantine"), false), claim)) {
+            var deferred = facade.consume(observation);
+            observation = null;
             helper.assertTrue(deferred.reconciliationVariant()
                             == P4E2QualificationFacade.ReconciliationVariant.DEFERRED,
                     "quarantined skills must end in a nonnormal E2 terminal");
-            helper.assertTrue(calls.get() == 2 && deferred.continuationCalls() == 1,
+            helper.assertTrue(calls.get() == 2 && deferred.continuationCalls() == 1
+                            && !com.yo1no.gramarye.magic.network.P7S4NetworkGameTests.hasNativeSession(id),
                     "nonnormal E2 completion must call the login port zero times");
-            helper.assertTrue(server.getTickCount() == tick,
-                    "recovery, E2 and handoff must finish in one synchronous server turn");
+            var attachments = nativeGameTestAttachments(server);
             player.closeAndInspectSaved(reloaded -> {
-                helper.assertTrue(malformed.equals(attachmentPayload(
-                                reloaded, "gramarye:player_skills")),
+                helper.assertTrue(malformed.equals(attachmentPayload(reloaded, "gramarye:player_skills")),
                         "actual playerdata reload must preserve the exact malformed raw payload");
-                var result = fixture.attachments().draftCount(reloaded);
-                helper.assertTrue(
-                        result instanceof PlayerSkillAttachmentService.Unavailable<?> unavailable
-                                && unavailable.reason()
-                                        == PlayerSkillAttachmentService.UnavailableReason
-                                                .PRESERVED_RAW_QUARANTINE,
+                var result = attachments.draftCount(reloaded);
+                helper.assertTrue(result instanceof PlayerSkillAttachmentService.Unavailable<?> unavailable
+                                && unavailable.reason() == PlayerSkillAttachmentService.UnavailableReason.PRESERVED_RAW_QUARANTINE,
                         "actual playerdata reload must retain the rejected quarantine state");
             });
         }
-        assertPlayerdataReleased(helper, server, playerId(3));
-        server.getPlayerList().saveAll();
-        assertPlayerdataReleased(helper, server, playerId(3));
-        helper.runAfterDelay(1, () -> {
-            assertPlayerdataReleased(helper, server, playerId(3));
-            helper.succeed();
-        });
+        } catch (IOException failure) {
+            var wrapped = new AssertionError("owned pre-login input write failed", failure);
+            primary = wrapped;
+            throw wrapped;
+        } catch (RuntimeException | Error failure) {
+            primary = failure;
+            throw failure;
+        } finally {
+            if (observation != null) {
+                try { facade.discard(observation); }
+                catch (RuntimeException | Error cleanup) {
+                    if (primary == null) { throw cleanup; }
+                    if (cleanup != primary) { primary.addSuppressed(cleanup); }
+                }
+            }
+            try { claim.release(); }
+            catch (RuntimeException | Error cleanup) {
+                if (primary == null) { throw cleanup; }
+                if (cleanup != primary) { primary.addSuppressed(cleanup); }
+            }
+        }
+        assertPlayerdataReleased(helper, server, id);
+        helper.runAfterDelay(1, () -> { assertPlayerdataReleased(helper, server, id); helper.succeed(); });
     }
 
-    @GameTest(templateNamespace = "minecraft", template = "bastion/blocks/air", timeoutTicks = 200)
+    private static void closeFixtureAfterFailure(ConnectedPlayer player, Throwable primary) {
+        try { player.close(); }
+        catch (RuntimeException | Error cleanup) { if (cleanup != primary) { primary.addSuppressed(cleanup); } }
+    }
+
+    @GameTest(batch = "p7_e2_native_runtime", templateNamespace = "minecraft", template = "bastion/blocks/air", timeoutTicks = 200)
     public static void e2LoginPortRuntimeFailurePropagatesTheSameObject(GameTestHelper helper) {
+        var player = placePlayer(helper.getLevel().getServer(), 4, "p7s4-runtime");
+        runCooldownFixtureAfterTick(helper, () -> {
+            try (player) {
+            requireCooldownLoginComplete(player.actor());
+            e2RuntimeAfterInitialDelivery(helper, player);
+            }
+        }, helper::succeed, failure -> closeFixtureAfterFailure(player, failure));
+    }
+
+    private static void e2RuntimeAfterInitialDelivery(GameTestHelper helper, ConnectedPlayer readyPlayer) {
         var server = helper.getLevel().getServer();
         var primary = new IllegalStateException("P7_S4_EXPECTED_LOGIN_RUNTIME");
         var calls = new AtomicInteger();
         var observed = false;
         try {
-            try (var player = placePlayer(server, 4, "p7s4-runtime");
-                    var fixture = loginFixture(server, (exactServer, actor) -> {
+            try (var player = readyPlayer;
+                    var fixture = cooldownLoginFixture(server, (exactServer, actor) -> {
                         calls.incrementAndGet();
                         throw primary;
                     })) {
@@ -445,36 +532,47 @@ public final class P7S4LoginManaGameTests {
 
         var logoutFailure = new IllegalStateException("P7_S4_EXPECTED_LOGOUT_RUNTIME");
         var listener = new OneShotLogoutFailure(playerId(4), logoutFailure);
-        NeoForge.EVENT_BUS.register(listener);
+        var fixtureLogoutBus = BusBuilder.builder().build();
         var logoutObserved = false;
         try {
-            try (var ignored = placePlayer(server, 4, "p7s4-logout-failure")) {
-                // The close path below exercises recovery after a real logout listener fault.
+            try (var player = placePlayer(server, 4, "p7s4-logout-fail")) {
+                // Isolated fixture event propagation only. A real managed native logout
+                // failure is UNKNOWN and must never be replayed to force detachment.
+                fixtureLogoutBus.register(listener);
+                try { fixtureLogoutBus.post(new PlayerEvent.PlayerLoggedOutEvent(player.actor())); }
+                finally { fixtureLogoutBus.unregister(listener); }
             }
         } catch (RuntimeException exact) {
             helper.assertTrue(exact == logoutFailure,
-                    "terminal cleanup must propagate the identical logout listener failure");
+                    "isolated event propagation must preserve the identical logout listener failure");
             logoutObserved = true;
-        } finally {
-            NeoForge.EVENT_BUS.unregister(listener);
         }
-        helper.assertTrue(logoutObserved && logoutFailure.getSuppressed().length == 0,
-                "one-shot logout failure must recover detachment and storage cleanup");
+        helper.assertTrue(logoutObserved && listener.fired && logoutFailure.getSuppressed().length == 0,
+                "one-shot fixture event fault must retain primary through one ordinary native close");
         assertPlayerdataReleased(helper, server, playerId(4));
         server.getPlayerList().saveAll();
         assertPlayerdataReleased(helper, server, playerId(4));
-        helper.succeed();
     }
 
-    @GameTest(templateNamespace = "minecraft", template = "bastion/blocks/air", timeoutTicks = 200)
+    @GameTest(batch = "p7_e2_native_error", templateNamespace = "minecraft", template = "bastion/blocks/air", timeoutTicks = 200)
     public static void e2LoginPortErrorPropagatesTheSameObject(GameTestHelper helper) {
+        var player = placePlayer(helper.getLevel().getServer(), 5, "p7s4-error");
+        runCooldownFixtureAfterTick(helper, () -> {
+            try (player) {
+            requireCooldownLoginComplete(player.actor());
+            e2ErrorAfterInitialDelivery(helper, player);
+            }
+        }, helper::succeed, failure -> closeFixtureAfterFailure(player, failure));
+    }
+
+    private static void e2ErrorAfterInitialDelivery(GameTestHelper helper, ConnectedPlayer readyPlayer) {
         var server = helper.getLevel().getServer();
         var primary = new AssertionError("P7_S4_EXPECTED_LOGIN_ERROR");
         var calls = new AtomicInteger();
         var observed = false;
         try {
-            try (var player = placePlayer(server, 5, "p7s4-error");
-                    var fixture = loginFixture(server, (exactServer, actor) -> {
+            try (var player = readyPlayer;
+                    var fixture = cooldownLoginFixture(server, (exactServer, actor) -> {
                         calls.incrementAndGet();
                         throw primary;
                     })) {
@@ -492,7 +590,6 @@ public final class P7S4LoginManaGameTests {
         assertPlayerdataReleased(helper, server, playerId(5));
         server.getPlayerList().saveAll();
         assertPlayerdataReleased(helper, server, playerId(5));
-        helper.succeed();
     }
 
     @GameTest(
@@ -508,7 +605,7 @@ public final class P7S4LoginManaGameTests {
         var player = placePlayer(server, 6, "p9-s2-reserved");
         final LoginFixture fixture;
         try {
-            fixture = loginFixture(server, (exactServer, actor) -> {});
+            fixture = cooldownLoginFixture(server, (exactServer, actor) -> {});
         } catch (RuntimeException | Error failure) {
             player.close();
             throw failure;
@@ -707,15 +804,31 @@ public final class P7S4LoginManaGameTests {
         var player = placePlayer(server, 7, "p9-s2-witness-a");
         final LoginFixture fixture;
         try {
-            fixture = loginFixture(server, (exactServer, actor) -> {});
+            fixture = cooldownLoginFixture(server, (exactServer, actor) -> {});
         } catch (RuntimeException | Error failure) {
             player.close();
             throw failure;
         }
 
+        // Native LoggedIn queues P7 initial sync for Post; GameTestTicker also precedes
+        // native PLAY resumeFlushing. Let both original boundaries return before waiting.
+        try {
+            runCooldownFixtureAfterTick(helper,
+                    () -> exerciseActorWitnessAfterLogin(helper, server, player, fixture),
+                    helper::succeed,
+                    primary -> cleanupDirectRuntimeFixture(null, player, fixture, primary));
+        } catch (RuntimeException | Error primary) {
+            cleanupDirectRuntimeFixture(null, player, fixture, primary);
+            throw primary;
+        }
+    }
+
+    private static void exerciseActorWitnessAfterLogin(GameTestHelper helper,
+            MinecraftServer server, ConnectedPlayer player, LoginFixture fixture) {
         Throwable primary = null;
         try {
             var actor = player.current();
+            requireCooldownLoginComplete(actor);
             var reference = submitCanonical(
                     helper,
                     fixture,
@@ -742,7 +855,6 @@ public final class P7S4LoginManaGameTests {
         } finally {
             cleanupDirectRuntimeFixture(null, player, fixture, primary);
         }
-        helper.succeed();
     }
 
     private static void exerciseReplacementBeforeDrain(
@@ -2017,10 +2129,34 @@ public final class P7S4LoginManaGameTests {
 
     private static LoginFixture loginFixture(
             MinecraftServer server, P7ServerAuthorizationBoundary.LoginReadyPort port) {
+        return loginFixture(server, port,
+                PlayerSkillAttachmentGameTests.newServiceForSubmissionGameTests());
+    }
+
+    private static LoginFixture cooldownLoginFixture(
+            MinecraftServer server, P7ServerAuthorizationBoundary.LoginReadyPort port) {
+        return loginFixture(server, port, cooldownAttachments(server));
+    }
+
+    private static PlayerSkillAttachmentService cooldownAttachments(MinecraftServer server) {
+        throw new AssertionError("P9 GameTests require the excluded original-root binding");
+    }
+
+    /** The exact original source-bound owner; never a second publication service. */
+    public static PlayerSkillAttachmentService nativeGameTestAttachments(MinecraftServer server) {
+        return cooldownAttachments(server);
+    }
+
+    private static P4E2QualificationFacade nativeGameTestFacade(MinecraftServer server) {
+        throw new AssertionError("native E2 observation requires the excluded original-root binding");
+    }
+
+    private static LoginFixture loginFixture(MinecraftServer server,
+            P7ServerAuthorizationBoundary.LoginReadyPort port,
+            PlayerSkillAttachmentService attachments) {
         var storage = server.overworld().getDataStorage();
         var original = Objects.requireNonNull(storage.get(CACHE_ONLY, SAVED_DATA_NAME));
         var bus = BusBuilder.builder().build();
-        var attachments = PlayerSkillAttachmentGameTests.newServiceForSubmissionGameTests();
         var facade = new P4E2QualificationFacade();
         var store = SkillDefinitionStoreService.registerOn(
                 bus, attachments, port, facade.storeView(), facade.playerView());
@@ -2060,9 +2196,36 @@ public final class P7S4LoginManaGameTests {
             String stage) {
         var actual = actor.saveWithoutId(new CompoundTag())
                 .getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY);
-        helper.assertTrue(
-                expected.equals(actual),
-                stage + " changed an Attachment: expected=" + expected + ", actual=" + actual);
+        var expectedRest = expected.copy();
+        var actualRest = actual.copy();
+        var key = "gramarye:cast_cooldowns";
+        var before = expectedRest.get(key);
+        var after = actualRest.get(key);
+        expectedRest.remove(key);
+        actualRest.remove(key);
+        helper.assertTrue(expectedRest.equals(actualRest), stage + " changed another Attachment");
+        helper.assertTrue(legalEmptyCooldownFloor(before, after, actor.getServer().overworld().getGameTime()),
+                stage + " changed more than the trusted empty cooldown clock floor");
+    }
+
+    private static boolean legalEmptyCooldownFloor(Tag before, Tag after, long gameTime) {
+        if (Objects.equals(before, after)) { return true; }
+        if (!(before instanceof CompoundTag old) || !(after instanceof CompoundTag current)
+                || !(old.get("clock_floor") instanceof net.minecraft.nbt.LongTag oldFloor)
+                || !(current.get("clock_floor") instanceof net.minecraft.nbt.LongTag newFloor)
+                || oldFloor.getAsLong() < 0 || newFloor.getAsLong() < oldFloor.getAsLong()
+                || newFloor.getAsLong() > gameTime
+                || !old.getAllKeys().equals(java.util.Set.of("schema_version", "kind", "clock_floor", "entries"))
+                || !(old.get("schema_version") instanceof net.minecraft.nbt.IntTag version)
+                || version.getAsInt() != 1
+                || !(old.get("kind") instanceof net.minecraft.nbt.ByteTag kind) || kind.getAsByte() != 0
+                || !(old.get("entries") instanceof net.minecraft.nbt.ListTag entries)
+                || !entries.isEmpty()) { return false; }
+        var oldRest = old.copy();
+        var newRest = current.copy();
+        oldRest.remove("clock_floor");
+        newRest.remove("clock_floor");
+        return oldRest.equals(newRest);
     }
 
     private static Tag attachmentPayload(ServerPlayer actor, String key) {
@@ -2087,24 +2250,367 @@ public final class P7S4LoginManaGameTests {
 
     private static ConnectedPlayer placePlayer(MinecraftServer server, int suffix, String name) {
         var cookie = CommonListenerCookie.createInitial(new GameProfile(playerId(suffix), name), false);
-        var actor = unplacedPlayer(server, suffix, name);
-        var playerdata = PlayerdataClaim.claim(server, actor.getUUID());
+        return placeCooldownPlayer(server, cookie);
+    }
+
+    /** Named stock GameTests retain ownership of their existing on-disk input and cleanup. */
+    public static ServerPlayer connectNativeGameTestPlayer(
+            MinecraftServer server, UUID playerId, String name) {
+        if (!server.isSameThread() || server.getPlayerList().getPlayer(playerId) != null) {
+            throw new IllegalStateException("native GameTest login requires an unoccupied exact UUID");
+        }
+        return placeCooldownPlayer(server,
+                CommonListenerCookie.createInitial(new GameProfile(playerId, name), false), null).actor();
+    }
+
+    static ServerPlayer makeCooldownMockPlayer(GameTestHelper helper, long fixtureId) {
+        if (fixtureId <= 0) { throw new IllegalArgumentException("positive fixture identity required"); }
+        var server = helper.getLevel().getServer();
+        var profile = new GameProfile(new UUID(0x79c0000000004000L,
+                0x8000000000000000L | fixtureId), "p11-test-player");
+        var fixture = placeCooldownPlayer(server, CommonListenerCookie.createInitial(profile, false));
+        try {
+            var actor = fixture.actor();
+            if (actor.serverLevel() != helper.getLevel()) {
+                throw new AssertionError("qualified mock must use the original GameTest level");
+            }
+            actor.setGameMode(GameType.CREATIVE);
+            return actor;
+        } catch (RuntimeException | Error failure) {
+            try { fixture.close(); }
+            catch (RuntimeException | Error cleanup) {
+                if (cleanup != failure) { failure.addSuppressed(cleanup); }
+            }
+            throw failure;
+        }
+    }
+
+    static void closeCooldownMockPlayer(ServerPlayer actor) {
+        var fixture = actor.connection.getConnection().channel().attr(COOLDOWN_PLAYER).get();
+        if (fixture == null || !fixture.actor().getUUID().equals(actor.getUUID())) {
+            throw new AssertionError("exact owned cooldown GameTest player required");
+        }
+        fixture.close();
+    }
+
+    public static ServerPlayer respawnNativeGameTestPlayer(ServerPlayer before) {
+        return respawnCooldownMockPlayer(before);
+    }
+
+    static ServerPlayer respawnCooldownMockPlayer(ServerPlayer before) {
+        var server = before.getServer();
+        var connection = before.connection.getConnection();
+        var fixture = connection.channel().attr(COOLDOWN_PLAYER).get();
+        var observer = (CooldownStateObserver) connection.channel().pipeline()
+                .get(COOLDOWN_STATE_OBSERVER);
+        if (!server.isSameThread() || fixture == null || fixture.current() != before
+                || observer == null || !before.isAlive()) {
+            throw new AssertionError("respawn control requires the exact living managed mock");
+        }
+        var previous = observer.state;
+        before.kill();
+        awaitNative(server, connection, () -> freshDeathState(previous, observer.state),
+                "original death STATE was not delivered");
+        var state = observer.state;
+        var request = new P11TransitionProtocol.Request(state.scope(), state.connectionEpoch(),
+                state.sceneSerial(), state.actorGeneration(), fixture.nextControlSequence(state),
+                P11TransitionProtocol.Command.TRY, state.kind());
+        before.connection.handleCustomPayload(new ServerboundCustomPayloadPacket(
+                new P11TransitionRequestPayload(request)));
+        awaitNative(server, connection, () -> {
+            var current = server.getPlayerList().getPlayer(before.getUUID());
+            return current != null && current != before;
+        }, "original authorized PERFORM_RESPAWN did not replace the actor");
+        var replacement = server.getPlayerList().getPlayer(before.getUUID());
+        if (replacement.connection != before.connection || replacement.connection.player != replacement) {
+            throw new AssertionError("native respawn did not preserve the exact connection");
+        }
+        fixture.currentActor = replacement;
+        return replacement;
+    }
+
+    /** Original first End completion, not a direct PlayerList respawn or a seeded wonGame flag. */
+    public static ServerPlayer completeEndGameTestPlayer(ServerPlayer before) {
+        var server = before.getServer();
+        var connection = before.connection.getConnection();
+        var fixture = connection.channel().attr(COOLDOWN_PLAYER).get();
+        var observer = (CooldownStateObserver) connection.channel().pipeline().get(COOLDOWN_STATE_OBSERVER);
+        if (!server.isSameThread() || fixture == null || fixture.current() != before
+                || observer == null || before.isRemoved() || before.wonGame || before.seenCredits) {
+            throw new AssertionError("End control requires the exact fresh current mock");
+        }
+        var end = Objects.requireNonNull(server.getLevel(net.minecraft.world.level.Level.END));
+        if (before.serverLevel() != end) {
+            var changed = before.changeDimension(new DimensionTransition(end, before, DimensionTransition.DO_NOTHING));
+            before.hasChangedDimension();
+            if (changed != before) { throw new AssertionError("original End travel did not retain the actor"); }
+        }
+        var previous = observer.state;
+        before.showEndCredits();
+        awaitNative(server, connection, () -> freshSceneState(previous, observer.state,
+                P11TransitionProtocol.Kind.END), "original End STATE was not delivered");
+        var state = observer.state;
+        before.connection.handleCustomPayload(new ServerboundCustomPayloadPacket(new P11TransitionRequestPayload(
+                new P11TransitionProtocol.Request(state.scope(), state.connectionEpoch(), state.sceneSerial(),
+                        state.actorGeneration(), fixture.nextControlSequence(state),
+                        P11TransitionProtocol.Command.TRY, state.kind()))));
+        awaitNative(server, connection, () -> {
+            var current = server.getPlayerList().getPlayer(before.getUUID());
+            return current != null && current != before;
+        }, "original authorized End completion did not replace the actor");
+        var replacement = server.getPlayerList().getPlayer(before.getUUID());
+        if (replacement.connection != before.connection || replacement.connection.player != replacement
+                || !replacement.seenCredits || replacement.wonGame) {
+            throw new AssertionError("original End completion did not preserve native connection/credit state");
+        }
+        fixture.currentActor = replacement;
+        return replacement;
+    }
+
+    private static boolean freshDeathState(P11TransitionProtocol.State previous,
+            P11TransitionProtocol.State current) {
+        return freshSceneState(previous, current, P11TransitionProtocol.Kind.DEATH);
+    }
+
+    private static boolean freshSceneState(P11TransitionProtocol.State previous,
+            P11TransitionProtocol.State current, P11TransitionProtocol.Kind kind) {
+        return previous != null && current != null
+                && current.scope() == P11TransitionProtocol.Scope.PLAY
+                && current.kind() == kind
+                && current.connectionEpoch() == previous.connectionEpoch()
+                && current.sceneSerial() > previous.sceneSerial()
+                && current.actorGeneration() >= previous.actorGeneration()
+                && current.requestSeq() == 0
+                && current.statusVersion() > previous.statusVersion();
+    }
+
+    /** Four native-control fixtures run only after native flushing and Post have resumed. */
+    public static void runCooldownFixtureAfterTick(GameTestHelper helper, Runnable body,
+            Runnable after, Consumer<Throwable> abandon) {
+        var server = helper.getLevel().getServer();
+        if (!server.isSameThread()) {
+            throw new AssertionError("owned cooldown fixture scheduling requires the server thread");
+        }
+        var completion = new CompletableFuture<Throwable>();
+        // Publication belongs to GameTestInfo.tick, not the external server task: native
+        // test listeners are notified only when that tick observes its own terminal state.
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(completion.isDone(),
+                        "original queued cooldown fixture body has not returned"))
+                .thenExecute(() -> {
+                    var primary = completion.getNow(null);
+                    if (primary != null) {
+                        helper.testInfo.fail(primary);
+                        return;
+                    }
+                    try { after.run(); }
+                    catch (RuntimeException | Error failure) { helper.testInfo.fail(failure); }
+                });
+        // execute() runs inline on main; tell(TickTask) is the actual deferred native queue.
+        server.tell(new TickTask(server.getTickCount(), () -> {
+            if (helper.testInfo.isDone()) {
+                var primary = helper.testInfo.getError();
+                if (primary == null) {
+                    primary = new AssertionError("owned cooldown test ended before its queued body");
+                }
+                try { abandon.accept(primary); }
+                catch (RuntimeException | Error cleanup) {
+                    if (cleanup != primary) { primary.addSuppressed(cleanup); }
+                }
+                completion.complete(primary);
+                return;
+            }
+            Throwable primary = null;
+            try { body.run(); }
+            catch (RuntimeException | Error failure) { primary = failure; }
+            completion.complete(primary);
+        }));
+    }
+
+    /** Read-only fixture precondition after an actual native post-login tick. */
+    public static void requireCooldownLoginComplete(ServerPlayer actor) {
+        var server = actor.getServer();
+        var connection = actor.connection.getConnection();
+        var fixture = connection.channel().attr(COOLDOWN_PLAYER).get();
+        if (!server.isSameThread() || fixture == null || fixture.current() != actor
+                || connection.getPacketListener() != actor.connection || !connection.isConnected()) {
+            throw new AssertionError("initial sync requires the exact owned current mock");
+        }
+        var source = P11NativeStorageBoundary.nativeSourceOwner(actor);
+        var body = source == null ? null : source.body(actor);
+        if (body == null || body.account.metadata != null
+                || source.controlGate(actor.getUUID(), actor) != P11QualifiedSourceOwner.ControlGate.CLEAR) {
+            throw new AssertionError("original post-login sync has not released its real H responsibility");
+        }
+    }
+
+    /** Real negative only: a nonnormal E2 account cannot manufacture a completed respawn. */
+    public static void assertNativeQuarantineBlocksRespawn(ServerPlayer actor) {
+        var server = actor.getServer();
+        var connection = actor.connection.getConnection();
+        var fixture = connection.channel().attr(COOLDOWN_PLAYER).get();
+        var observer = (CooldownStateObserver) connection.channel().pipeline().get(COOLDOWN_STATE_OBSERVER);
+        var source = P11NativeStorageBoundary.nativeSourceOwner(actor);
+        var body = source == null ? null : source.body(actor);
+        if (!server.isSameThread() || fixture == null || fixture.current() != actor || observer == null
+                || body == null || !source.canCopy(body) || body.account.metadata == null
+                || source.controlGate(actor.getUUID(), actor) != P11QualifiedSourceOwner.ControlGate.ACTIVE_TRANSITION) {
+            throw new AssertionError("quarantine negative requires the real blocked metadata owner");
+        }
+        var previous = observer.state;
+        actor.kill();
+        awaitNative(server, connection, () -> freshDeathState(previous, observer.state),
+                "quarantine negative did not observe the original fresh DEATH state");
+        var state = observer.state;
+        long sequence = fixture.nextControlSequence(state);
+        actor.connection.handleCustomPayload(new ServerboundCustomPayloadPacket(new P11TransitionRequestPayload(
+                new P11TransitionProtocol.Request(state.scope(), state.connectionEpoch(), state.sceneSerial(),
+                        state.actorGeneration(), sequence, P11TransitionProtocol.Command.TRY, state.kind()))));
+        awaitNative(server, connection, () -> observer.state != null && observer.state.requestSeq() == sequence
+                && observer.state.outcome() == P11TransitionProtocol.Outcome.NOT_STARTED,
+                "quarantine negative did not observe original refusal");
+        var refused = observer.state;
+        if (refused.reason() != P11TransitionProtocol.Reason.ACTIVE_TRANSITION
+                || refused.availability() != P11TransitionProtocol.Availability.WAIT_NOTIFY
+                || refused.connectionEpoch() != state.connectionEpoch() || refused.sceneSerial() != state.sceneSerial()
+                || refused.actorGeneration() != state.actorGeneration() || refused.statusVersion() <= state.statusVersion()
+                || server.getPlayerList().getPlayer(actor.getUUID()) != actor || source.body(actor) != body
+                || body.account.metadata == null || !actor.isDeadOrDying()) {
+            throw new AssertionError("blocked original C4a request must not install a successful replacement");
+        }
+    }
+
+    private static ConnectedPlayer placeCooldownPlayer(
+            MinecraftServer server, CommonListenerCookie cookie) {
+        var playerdata = PlayerdataClaim.claim(server, cookie.gameProfile().getId());
+        return placeCooldownPlayer(server, cookie, playerdata);
+    }
+
+    private static ConnectedPlayer placeCooldownPlayer(
+            MinecraftServer server, CommonListenerCookie cookie, PlayerdataClaim playerdata) {
+        cooldownAttachments(server);
         var connection = new Connection(PacketFlow.SERVERBOUND);
-        var channel = new EmbeddedChannel(connection);
-        var fixture = new ConnectedPlayer(server, actor, channel, playerdata);
+        var observer = new CooldownStateObserver();
+        var channel = new EmbeddedChannel(new ChannelInitializer<Channel>() {
+            @Override
+            protected void initChannel(Channel exact) {
+                Connection.configureInMemoryPipeline(exact.pipeline(), PacketFlow.SERVERBOUND);
+                connection.configurePacketHandler(exact.pipeline());
+                exact.pipeline().addLast(COOLDOWN_STATE_OBSERVER, observer);
+            }
+        });
         try {
             NetworkRegistry.configureMockConnection(connection);
-            server.getPlayerList().placeNewPlayer(connection, actor, cookie);
+            var nativeCookie = new CommonListenerCookie(cookie.gameProfile(), cookie.latency(),
+                    cookie.clientInformation(), cookie.transferred(),
+                    NetworkRegistry.getConnectionType(connection));
+            var configuration = new ServerConfigurationPacketListenerImpl(server, connection, nativeCookie);
+            connection.setupInboundProtocol(ConfigurationProtocols.SERVERBOUND, configuration);
+            connection.setupOutboundProtocol(ConfigurationProtocols.CLIENTBOUND);
+            configuration.returnToWorld();
+            awaitNative(server, connection, () -> JoinWorldTask.TYPE.equals(
+                    ((P11ConfigurationBoundary.Access) configuration).p11$currentConfigurationTask()),
+                    "original P11 configuration task did not complete");
+            configuration.handleConfigurationFinished(ServerboundFinishConfigurationPacket.INSTANCE);
+            var actor = server.getPlayerList().getPlayer(cookie.gameProfile().getId());
+            if (actor == null || actor.connection.getConnection() != connection
+                    || connection.getPacketListener() != actor.connection) {
+                throw new AssertionError("original Finish did not place the exact mock actor");
+            }
+            awaitNative(server, connection, () -> observer.state != null
+                    && observer.state.kind() == P11TransitionProtocol.Kind.JOIN
+                    && observer.state.outcome() == P11TransitionProtocol.Outcome.COMPLETED
+                    && observer.state.targetActorGeneration() > 0,
+                    "original JOIN completion was not delivered");
+            var fixture = new ConnectedPlayer(server, actor, channel, playerdata);
+            channel.attr(COOLDOWN_PLAYER).set(fixture);
             return fixture;
         } catch (RuntimeException | Error failure) {
             try {
-                fixture.close();
-            } catch (RuntimeException | Error cleanup) {
-                if (cleanup != failure) {
-                    failure.addSuppressed(cleanup);
+                var actor = server.getPlayerList().getPlayer(cookie.gameProfile().getId());
+                if (actor != null && actor.connection.getConnection() == connection) {
+                    server.getPlayerList().remove(actor);
                 }
+                channel.finishAndReleaseAll();
+                if (playerdata != null) { playerdata.release(); }
+            } catch (RuntimeException | Error cleanup) {
+                if (cleanup != failure) { failure.addSuppressed(cleanup); }
             }
             throw failure;
+        }
+    }
+
+    private static void awaitNative(MinecraftServer server, Connection connection,
+            BooleanSupplier completed, String failure) {
+        int enteredTick = server.getTickCount();
+        long until = System.nanoTime() + 5_000_000_000L;
+        server.managedBlock(() -> completed.getAsBoolean()
+                || !connection.isConnected() || System.nanoTime() >= until);
+        if (!connection.isConnected() || !completed.getAsBoolean()) {
+            var primary = new AssertionError(failure);
+            try {
+                primary.addSuppressed(new AssertionError(
+                        cooldownTimeoutObservation(server, connection, enteredTick)));
+            } catch (RuntimeException | Error ignoredDiagnostic) {
+                // This test-only readout must never replace the original failed assertion.
+            }
+            throw primary;
+        }
+    }
+
+    /** Fixed enums/scalars only: no profile, packet, Throwable text or actor serialization. */
+    private static String cooldownTimeoutObservation(
+            MinecraftServer server, Connection connection, int enteredTick) {
+        String result = "P11_GT_CONTROL_TIMEOUT main=" + server.isSameThread()
+                + " connected=" + connection.isConnected()
+                + " enteredTick=" + Integer.toUnsignedLong(enteredTick)
+                + " currentTick=" + Integer.toUnsignedLong(server.getTickCount());
+        if (!server.isSameThread()) { return result; }
+        var observer = (CooldownStateObserver) connection.channel().pipeline()
+                .get(COOLDOWN_STATE_OBSERVER);
+        var state = observer == null ? null : observer.state;
+        if (state != null) {
+            result += " state=" + state.scope() + "/" + state.kind() + "/" + state.outcome()
+                    + "/" + state.availability() + "/" + state.reason()
+                    + " c=" + state.connectionEpoch() + " scene=" + state.sceneSerial()
+                    + " actor=" + state.actorGeneration() + " n=" + state.requestSeq()
+                    + " v=" + state.statusVersion();
+        } else { result += " state=UNAVAILABLE"; }
+        var fixture = connection.channel().attr(COOLDOWN_PLAYER).get();
+        if (fixture == null) { return result + " source=UNAVAILABLE"; }
+        var actor = fixture.currentActor;
+        result += " sent=" + fixture.controlSequence + " listenerCurrent="
+                + (actor.connection != null && connection.getPacketListener() == actor.connection)
+                + " rosterCurrent=" + (server.getPlayerList().getPlayer(actor.getUUID()) == actor)
+                + " healthZero=" + (actor.getHealth() <= 0);
+        var source = P11NativeStorageBoundary.nativeSourceOwner(actor);
+        var body = source == null ? null : source.body(actor);
+        if (source == null || body == null) { return result + " source=UNAVAILABLE"; }
+        result += " gate=" + source.controlGate(actor.getUUID(), actor)
+                + " e=" + body.source.epoch() + " sourceV=" + body.source.version()
+                + " complete=" + body.complete + " bodyFault=" + body.fault
+                + " accountFault=" + body.account.fault + " candidate=" + (body.account.candidate != null);
+        for (var kind : new P11ControlBudgets.Root[] {P11ControlBudgets.Root.WORK,
+                P11ControlBudgets.Root.NATIVE_CREDIT, P11ControlBudgets.Root.OPERATION,
+                P11ControlBudgets.Root.COMMAND_CONTEXT, P11ControlBudgets.Root.TRANSITION}) {
+            result += " " + kind + "=" + body.account.nativeCounts[kind.ordinal()];
+        }
+        return result;
+    }
+
+    private static final class CooldownStateObserver extends ChannelOutboundHandlerAdapter {
+        private P11TransitionProtocol.State state;
+
+        @Override
+        public void write(ChannelHandlerContext context, Object message, ChannelPromise promise)
+                throws Exception {
+            if (message instanceof ClientboundCustomPayloadPacket packet
+                    && packet.payload() instanceof P11TransitionStatePayload payload) {
+                promise.addListener(result -> {
+                    if (result.isSuccess()) { state = payload.state(); }
+                });
+            }
+            super.write(context, message, promise);
         }
     }
 
@@ -2125,6 +2631,7 @@ public final class P7S4LoginManaGameTests {
         private final EmbeddedChannel channel;
         private final PlayerdataClaim playerdata;
         private ServerPlayer currentActor;
+        private long controlSequence;
         private boolean closed;
 
         private ConnectedPlayer(
@@ -2135,7 +2642,7 @@ public final class P7S4LoginManaGameTests {
             this.server = Objects.requireNonNull(server, "server");
             this.actor = Objects.requireNonNull(actor, "actor");
             this.channel = Objects.requireNonNull(channel, "channel");
-            this.playerdata = Objects.requireNonNull(playerdata, "playerdata");
+            this.playerdata = playerdata; // null only for named fixtures that own their persisted input.
             this.currentActor = actor;
         }
 
@@ -2152,12 +2659,17 @@ public final class P7S4LoginManaGameTests {
             return current;
         }
 
+        private long nextControlSequence(P11TransitionProtocol.State observed) {
+            requireOpen();
+            // A new scene's BINDING is n=0, not a reset of this physical connection's sender.
+            controlSequence = Math.addExact(Math.max(controlSequence, observed.requestSeq()), 1);
+            return controlSequence;
+        }
+
         private ServerPlayer respawnCurrent() {
             var before = current();
-            var replacement = server.getPlayerList().respawn(
-                    before, false, Entity.RemovalReason.KILLED);
+            var replacement = respawnCooldownMockPlayer(before);
             currentActor = Objects.requireNonNull(replacement, "replacement");
-            replacement.connection.player = replacement;
             if (replacement == before
                     || !replacement.getUUID().equals(before.getUUID())
                     || replacement.connection != before.connection
@@ -2195,15 +2707,16 @@ public final class P7S4LoginManaGameTests {
             try {
                 removeExactCurrent();
                 playerdata.requireOnlySavedPrimary();
-                var reloaded = new ServerPlayer(
-                        server,
-                        server.overworld(),
-                        actor.getGameProfile(),
-                        actor.clientInformation());
-                if (server.getPlayerList().load(reloaded).isEmpty()) {
-                    throw new AssertionError("actual saved playerdata did not reload");
+                try (var readback = placeCooldownPlayer(server,
+                        CommonListenerCookie.createInitial(actor.getGameProfile(), false), null)) {
+                    var reloaded = readback.actor();
+                    var source = P11NativeStorageBoundary.nativeSourceOwner(reloaded);
+                    var body = source == null ? null : source.body(reloaded);
+                    if (body == null || body.inputKind != P11QualifiedSourceOwner.InputKind.PRIMARY) {
+                        throw new AssertionError("actual saved playerdata did not reload");
+                    }
+                    inspection.accept(reloaded);
                 }
-                inspection.accept(reloaded);
             } catch (RuntimeException | Error failure) {
                 primary = failure;
                 throw failure;
@@ -2246,17 +2759,8 @@ public final class P7S4LoginManaGameTests {
             } catch (RuntimeException | Error failure) {
                 primary = failure;
             }
-            if (isStillLive()) {
-                try {
-                    server.getPlayerList().remove(removing);
-                } catch (RuntimeException | Error retryFailure) {
-                    if (primary == null) {
-                        primary = retryFailure;
-                    } else if (retryFailure != primary) {
-                        primary.addSuppressed(retryFailure);
-                    }
-                }
-            }
+            // Managed UNKNOWN is not a retry grant. Preserve the first original
+            // failure and report remaining ownership instead of replaying remove.
             try {
                 requireDetached();
             } catch (RuntimeException | Error detachFailure) {
@@ -2297,7 +2801,7 @@ public final class P7S4LoginManaGameTests {
             } catch (RuntimeException | Error failure) {
                 cleanupFailure = failure;
             }
-            if (cleanupFailure == null) {
+            if (cleanupFailure == null && playerdata != null) {
                 try {
                     playerdata.release();
                 } catch (RuntimeException | Error failure) {
@@ -2370,11 +2874,14 @@ public final class P7S4LoginManaGameTests {
         private void requireOnlySavedPrimary() {
             var artifacts = artifacts();
             var primary = directory.resolve(primaryName);
-            if (artifacts.size() != 1 || !artifacts.getFirst().equals(primary)) {
+            var old = directory.resolve(oldName);
+            if (!artifacts.contains(primary) || artifacts.size() > 2
+                    || artifacts.stream().anyMatch(path -> !path.equals(primary) && !path.equals(old))) {
                 throw new AssertionError(
-                        "actual player save did not publish one exact primary: " + artifacts);
+                        "actual player save did not publish the exact primary/optional native old pair: " + artifacts);
             }
             requireRegular(primary, "saved primary");
+            if (artifacts.contains(old)) { requireRegular(old, "native previous primary"); }
         }
 
         private void release() {

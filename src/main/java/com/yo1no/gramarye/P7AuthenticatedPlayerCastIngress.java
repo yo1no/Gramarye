@@ -190,6 +190,10 @@ final class P7AuthenticatedPlayerCastIngress
             RuntimeAdmissionResult result) {
         Objects.requireNonNull(result, "result");
         return switch (result) {
+            case RuntimeAdmissionResult.CooldownRejected rejected -> switch (rejected.reason()) {
+                case ACTIVE, PENDING, RECOVERY -> P7ServerAuthorizationBoundary.AdmissionDisposition.P5_ADMISSION_REJECTED;
+                case CLOCK, UNAVAILABLE -> P7ServerAuthorizationBoundary.AdmissionDisposition.P5_UNAVAILABLE;
+            };
             case RuntimeAdmissionResult.AcceptedMemoryOnly ignored ->
                     P7ServerAuthorizationBoundary.AdmissionDisposition.ACCEPTED;
             case RuntimeAdmissionResult.PersistentScheduleUnsupported ignored ->

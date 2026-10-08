@@ -92,6 +92,39 @@ class P4C2AApiGateTest {
                 "com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java";
         var manaBridgeRelative =
                 "com/yo1no/gramarye/magic/runtime/mana/ManaAttachmentDefinitionBridge.java";
+        var cooldownDefinitionRelative = "com/yo1no/gramarye/P11CastCooldownAttachments.java";
+        var cooldownBridgeRelative = "com/yo1no/gramarye/P11CastCooldownDefinitionBridge.java";
+        var cooldownDefinition = read(MAIN_JAVA.resolve(cooldownDefinitionRelative));
+        var cooldownBridgeSource = read(MAIN_JAVA.resolve(cooldownBridgeRelative));
+        assertCooldownDefinition(cooldownDefinition, cooldownBridgeSource);
+        for (var mutation : List.of(
+                cooldownDefinition.replace("P11CastCooldownData::unbound", "P11CastCooldownData::freshReady"),
+                cooldownDefinition.replace(".copyOnDeath()", ".copyHandler(unsafe).copyOnDeath()"),
+                cooldownDefinition.replace("existing(actor) != expected", "false"),
+                cooldownDefinition.replace("cooldownReadCompleted(holder,", "cooldownReadCompleted(null,"))) {
+            assertFalse(mutation.equals(cooldownDefinition));
+            assertThrows(AssertionError.class, () -> assertCooldownDefinition(mutation, cooldownBridgeSource));
+        }
+        var publicMutator = cooldownBridgeSource.replace("private P11CastCooldownDefinitionBridge()",
+                "public P11CastCooldownDefinitionBridge()");
+        assertFalse(publicMutator.equals(cooldownBridgeSource));
+        assertThrows(AssertionError.class, () -> assertCooldownDefinition(cooldownDefinition, publicMutator));
+        var cooldownBridge = load("com.yo1no.gramarye.P11CastCooldownDefinitionBridge");
+        assertEquals(Set.of("attachmentId", "attachmentType"), Arrays.stream(cooldownBridge.getDeclaredMethods())
+                .map(java.lang.reflect.Method::getName).collect(Collectors.toSet()));
+        assertTrue(Arrays.stream(cooldownBridge.getDeclaredMethods()).allMatch(method ->
+                Modifier.isPublic(method.getModifiers()) && Modifier.isStatic(method.getModifiers())
+                        && method.getParameterCount() == 0));
+        assertEquals(ResourceLocation.class, cooldownBridge.getDeclaredMethod("attachmentId").getReturnType());
+        assertEquals("net.neoforged.neoforge.attachment.AttachmentType<?>",
+                cooldownBridge.getDeclaredMethod("attachmentType").getGenericReturnType().getTypeName());
+        assertEquals(ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, "cast_cooldowns"),
+                cooldownBridge.getDeclaredMethod("attachmentId").invoke(null));
+        assertTrue(Arrays.stream(cooldownBridge.getDeclaredConstructors())
+                .allMatch(constructor -> Modifier.isPrivate(constructor.getModifiers())));
+        assertTrue(Arrays.stream(cooldownBridge.getDeclaredFields()).noneMatch(field ->
+                Modifier.isPublic(field.getModifiers()) || Modifier.isProtected(field.getModifiers())));
+        assertEquals(0, cooldownBridge.getDeclaredClasses().length);
         var p9EntityRegistrationRelative =
                 "com/yo1no/gramarye/P9StarterProjectileRegistration.java";
         var manaDefinition = withoutCommentsAndLiterals(
@@ -173,7 +206,8 @@ class P4C2AApiGateTest {
                         ".build()"),
                 () -> assertFalse(code.contains(".sync(")),
                 () -> assertEquals(
-                        Set.of(registrationRelative, manaDefinitionRelative, manaBridgeRelative),
+                        Set.of(registrationRelative, manaDefinitionRelative, manaBridgeRelative,
+                                cooldownDefinitionRelative, cooldownBridgeRelative),
                         relativeFilesContaining(production, "AttachmentType")),
                 () -> assertEquals(Set.of(registrationRelative),
                         relativeFilesContaining(
@@ -184,7 +218,7 @@ class P4C2AApiGateTest {
                 () -> assertEquals(
                         Set.of(registrationRelative, p9EntityRegistrationRelative),
                         registryMutationOwners),
-                () -> assertEquals(Set.of(registrationRelative, manaDefinitionRelative),
+                () -> assertEquals(Set.of(registrationRelative, manaDefinitionRelative, cooldownDefinitionRelative),
                         relativeFilesContaining(production, ".copyOnDeath()")),
                 () -> assertEquals(Set.of(manaDefinitionRelative),
                         relativeFilesContaining(production, ".copyHandler(")),
@@ -199,13 +233,17 @@ class P4C2AApiGateTest {
                         .noneMatch(manaDefinition::contains)),
                 () -> assertTrue(bridgeForbiddenFragments.stream()
                         .noneMatch(manaBridgeSource::contains)),
+                () -> assertTrue(registryMutationFragments.stream().noneMatch(cooldownDefinition::contains)),
+                () -> assertTrue(bridgeForbiddenFragments.stream().noneMatch(cooldownBridgeSource::contains)),
                 () -> assertEquals(1, occurrences(
                         registration,
                         "ManaAttachmentDefinitionBridge.attachmentId().getPath()")),
                 () -> assertEquals(1, occurrences(
                         registration, "ManaAttachmentDefinitionBridge::attachmentType")),
-                () -> assertEquals(2, occurrences(registration, "DeferredHolder<")),
-                () -> assertEquals(3, occurrences(registration, "ATTACHMENT_TYPES.register(")),
+                () -> assertEquals(1, occurrences(registration, "P11CastCooldownDefinitionBridge.attachmentId().getPath()")),
+                () -> assertEquals(1, occurrences(registration, "P11CastCooldownDefinitionBridge::attachmentType")),
+                () -> assertEquals(3, occurrences(registration, "DeferredHolder<")),
+                () -> assertEquals(4, occurrences(registration, "ATTACHMENT_TYPES.register(")),
                 () -> assertEquals(1, occurrences(
                         read(MAIN_JAVA.resolve(manaDefinitionRelative)), "\"player_mana\"")),
                 () -> assertTrue(relativeFilesContaining(production, "\"player_skills\"")
@@ -359,8 +397,18 @@ class P4C2AApiGateTest {
                 + "PlayerSkillAttachmentSourceObservation.java";
         var manaAttachments = "com/yo1no/gramarye/magic/runtime/mana/"
                 + "ManaAttachments.java";
+        var cooldownAttachments = "com/yo1no/gramarye/P11CastCooldownAttachments.java";
         var reviewedAttachmentAccessors = Set.of(
-                service, gameTests, sourceObservation, manaAttachments);
+                service, gameTests, sourceObservation, manaAttachments, cooldownAttachments);
+        var componentSource = read(MAIN_JAVA.resolve(gameTests));
+        assertUnplacedComponents(componentSource);
+        for (var mutation : List.of(
+                componentSource.replace("|| player.isAddedToLevel()", "|| false"),
+                componentSource.replace("attachment.copy()", "attachment"),
+                componentSource.replace("PlayerEvent.Clone(target, original, death)", "PlayerEvent.Clone(original, target, death)"))) {
+            assertFalse(mutation.equals(componentSource));
+            assertThrows(AssertionError.class, () -> assertUnplacedComponents(mutation));
+        }
         var getDataOwners = relativeFilesContaining(production, ".getData(");
         var setDataOwners = relativeFilesContaining(production, ".setData(");
         var playerSources = javaSources(PLAYER_ROOT);
@@ -373,7 +421,7 @@ class P4C2AApiGateTest {
 
         assertAll(
                 () -> assertEquals(reviewedAttachmentAccessors, getDataOwners),
-                () -> assertEquals(Set.of(service, manaAttachments), setDataOwners),
+                () -> assertEquals(Set.of(service, manaAttachments, cooldownAttachments, gameTests), setDataOwners),
                 () -> assertTrue(relativeFilesContaining(production, ".removeData(").isEmpty()),
                 () -> assertEquals(Set.of("MutationGeneration.java"), successorOwners),
                 () -> assertTrue(read(PLAYER_ROOT.resolve("MutationGeneration.java"))
@@ -501,10 +549,12 @@ class P4C2AApiGateTest {
                 "StreamCodec",
                 "PayloadRegistrar",
                 "PacketDistributor",
-                "net.minecraft.client",
-                "PlayerEvent.Clone")) {
+                "net.minecraft.client")) {
             assertFalse(c2Source.contains(forbidden), () -> "C2-A source contains " + forbidden);
         }
+        assertEquals(Set.of("com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java"),
+                relativeFilesContaining(javaSources(MAIN_JAVA), "PlayerEvent.Clone"));
+        assertUnplacedComponents(read(PLAYER_ROOT.resolve("PlayerSkillAttachmentGameTests.java")));
         assertFalse(c2SourceWithoutReviewedE2PlayerService.contains("Reconciliation"),
                 "reconciliation escaped the exact P4-E2 player-service owner");
         for (var forbidden : List.of(
@@ -718,6 +768,43 @@ class P4C2AApiGateTest {
                 "publicstaticvoidregisterTasks(RegisterConfigurationTasksEventevent){"
                         + "if(event.getListener()instanceofServerConfigurationPacketListenerImpllistener){"
                         + "event.register(newP11ConfigurationTask(listener));}}"));
+    }
+
+    private static void assertCooldownDefinition(String definition, String bridge) {
+        assertTrue(definition.contains("final class P11CastCooldownAttachments {"));
+        assertTrue(definition.contains("ResourceLocation.fromNamespaceAndPath(Gramarye.MOD_ID, \"cast_cooldowns\")"));
+        assertEquals(1, occurrences(definition, ".copyOnDeath()"));
+        assertFalse(definition.contains(".copyHandler(") || definition.contains(".sync("));
+        assertOrdered(definition, "AttachmentType.builder(P11CastCooldownData::unbound)",
+                ".serialize(new Serializer()).copyOnDeath().build();");
+        assertTrue(definition.contains("return actor.hasData(TYPE) ? actor.getData(TYPE) : null;"));
+        assertOrdered(definition, "if (existing(actor) != expected)", "P11CastCooldownMaterial.capture(actor)",
+                "actor.setData(TYPE, replacement)", "P11NativeStorageBoundary.cooldownPublished(before,");
+        assertOrdered(definition, "P11CastCooldownCodec.read(input)",
+                "cooldownReadCompleted(holder, P11CastCooldownMaterial.read(holder, result))", "return result;");
+        assertOrdered(definition, "P11CastCooldownCodec.write(data)",
+                "cooldownWritten(P11CastCooldownMaterial.written(data, output))", "return output;");
+        assertEquals(3, occurrences(bridge, "public "));
+        assertFalse(bridge.contains("protected "));
+        assertTrue(bridge.contains("private P11CastCooldownDefinitionBridge()"));
+        assertTrue(bridge.contains("public static ResourceLocation attachmentId() { return P11CastCooldownAttachments.ID; }"));
+        assertTrue(bridge.contains("public static AttachmentType<?> attachmentType() { return P11CastCooldownAttachments.TYPE; }"));
+    }
+
+    private static void assertUnplacedComponents(String source) {
+        var compact = withoutCommentsAndLiterals(source).replaceAll("\\s+", "");
+        assertEquals(1, occurrences(source, "PlayerEvent"));
+        assertEquals(1, occurrences(source, ".setData("));
+        assertTrue(compact.contains("privatestaticServerPlayercomponentCopy(MinecraftServerserver,ServerPlayeroriginal,booleandeath){"
+                + "vartarget=unplacedPlayer(server,original.getUUID(),\"\");"
+                + "net.neoforged.neoforge.attachment.AttachmentInternals.onPlayerClone("
+                + "newnet.neoforged.neoforge.event.entity.player.PlayerEvent.Clone(target,original,death));returntarget;}"));
+        assertTrue(compact.contains("privatestaticvoidloadAttachmentFixture(ServerPlayerplayer,Tagattachment){"
+                + "player.setData(PlayerSkillAttachments.type(),readUnboundComponent(player,attachment));}"));
+        assertTrue(compact.contains("privatestaticPlayerSkillAttachmentStatereadUnboundComponent(ServerPlayerplayer,Tagattachment){"
+                + "if(player.getServer().getPlayerList().getPlayer(player.getUUID())==player||player.isAddedToLevel()"
+                + "||player.hasData(PlayerSkillAttachments.type())){thrownewAssertionError(\"\");}"
+                + "returnPlayerSkillAttachmentSerializer.INSTANCE.read(player,attachment.copy(),player.registryAccess());}"));
     }
 
     private static String withoutCommentsAndLiterals(String source) {
