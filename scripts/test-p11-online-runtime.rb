@@ -107,6 +107,161 @@ class P11OnlineRuntimeTest < Minitest::Test
     end
   end
 
+  def test_d3_pin_is_exact_pending_or_current_and_never_inherits_prior_acceptance
+    java = File.read(File.join(P11OnlineRuntime::REPO, 'src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineInputs.java'))
+    pattern = /private static final String D3_PRODUCT_PIN = (null|"[0-9a-f]{64}");/
+    pin = P11OnlineRuntime::D3_JAR_SHA
+    expected = pin.nil? ? 'null' : '"' + pin + '"'
+    assert_equal [expected], java.scan(pattern).flatten
+    refute_equal [expected], java.sub(pattern, '').scan(pattern).flatten
+    refute_equal [expected], (java + "\n" + java.match(pattern)[0]).scan(pattern).flatten
+    P11OnlineRuntime::D3_CASES.each do |name|
+      if pin.nil?
+        failure('D3_PRODUCT_PIN_PENDING') { P11OnlineRuntime.product_pin(name) }
+        failure('D3_PRODUCT_PIN_PENDING') { prepare(case: name, run_id: name) }
+        refute File.exist?(File.join(@options[:runtime_root], name))
+        refute File.exist?(File.join(@options[:evidence_root], name))
+      else
+        assert_equal pin, P11OnlineRuntime.product_pin(name)
+        failure('FROZEN_JAR_MISMATCH') { P11OnlineRuntime.verify_jar!(@jar, name) }
+      end
+    end
+    assert_includes java, 'D3_PRODUCT_PIN != null && D3_PRODUCT_PIN.matches("[0-9a-f]{64}")'
+  end
+
+  def test_d3_case_and_native_topology_are_closed_without_private_input_access
+    cases = %w[d3-replay d3-old-source d3-late-task d3-old-result d3-respawn d3-dual d3-host-lan]
+    assert_equal cases, P11OnlineRuntime::D3_CASES
+    cases.each do |name|
+      assert_equal 1, P11OnlineRuntime::CASES.count(name)
+      assert_equal ['gramarye-p11-d3-harness.mixins.json'], P11OnlineRuntime.mixin_configs(name)
+      assert_equal FIXTURE, P11OnlineRuntime.startup_fixture!(@fixture, @private, name)
+      assert_equal({}, P11OnlineRuntime.reward_fixture_sources!(@options[:repo], @private, name))
+      failure('INVALID_L1_HOST_SELECTION') { P11OnlineRuntime.product_pin(name, l1_host_stop: true) }
+    end
+    %w[d3 d3-replay.extra d3-old-source/../single D3-HOST-LAN].each do |name|
+      failure('INVALID_CASE') { P11OnlineRuntime.product_pin(name) }
+      failure('INVALID_CASE') { P11OnlineRuntime.mixin_config(name) }
+    end
+    original = File.method(:binread)
+    guarded = lambda do |file, *args|
+      flunk 'private input' if P11OnlineRuntime.within?(file, @private) || P11OnlineRuntime.within?(file, P11OnlineRuntime::PRIVATE_ROOT)
+      original.call(file, *args)
+    end
+    P11OnlineRuntime.stub(:product_pin, 'a' * 64) do
+      File.stub(:binread, guarded) do
+        cases.each do |name|
+          manifest = prepare(case: name, run_id: 'test-' + name)
+          host = name == 'd3-host-lan'
+          assert_equal host ? %w[host b] : %w[server a b], manifest['roles']
+          assert_equal File.join(@options[:runtime_root], 'frozen-d3', 'a' * 64, 'gramarye-1.0.0.jar'), manifest['jar']
+          assert_equal 'NOT_RUN_NOT_PROVEN', manifest['authenticationAcceptance']
+          failure('SERVER_NOT_READY') { P11OnlineRuntime.server_ready_for_client!(manifest) }
+          if host
+            assert File.file?(File.join(manifest['runtime'], 'host/defaultconfigs/gramarye-server.toml'))
+            refute File.exist?(File.join(manifest['runtime'], 'host/saves'))
+            failure('INTEGRATED_HOST_REQUIRES_CLIENT_A') { P11OnlineRuntime.launch_server(manifest) }
+            failure('INTEGRATED_HOST_STOPS_WITH_CLIENT') { P11OnlineRuntime.stop(manifest) }
+          end
+          assert_equal manifest, P11OnlineRuntime.load_manifest(File.join(manifest['runtime'], 'manifest.json'),
+            runtime_root: @options[:runtime_root], private_root: @private)
+        end
+      end
+    end
+  end
+
+  def test_d3_c4a_baseline_is_a_separate_current_pin_original_c4a_fixture_and_route
+    name = 'd3-c4a-baseline'
+    assert_equal name, P11OnlineRuntime::D3_C4A_CASE
+    assert_equal 1, P11OnlineRuntime::CASES.count(name)
+    refute_includes P11OnlineRuntime::D3_CASES, name
+    assert_equal %w[c4a-dedicated c4a-host-lan c4a-reward], P11OnlineRuntime::C4A_CASES
+    assert_equal P11OnlineRuntime::D3_JAR_SHA, P11OnlineRuntime.product_pin(name)
+    assert_equal P11OnlineRuntime::C4A_JAR_SHA, P11OnlineRuntime.product_pin('c4a-dedicated')
+    assert_equal P11OnlineRuntime.mixin_configs('c4a-dedicated'), P11OnlineRuntime.mixin_configs(name)
+    assert_equal P11OnlineRuntime.startup_fixture!(@fixture, @private, 'c4a-dedicated'),
+                 P11OnlineRuntime.startup_fixture!(@fixture, @private, name)
+    assert_includes P11OnlineRuntime.startup_fixture!(@fixture, @private, name), 'p11.retention.maxUuids = 2'
+    assert_equal %w[server a b], P11OnlineRuntime.roles_for(name)
+    assert_equal File.join(@options[:runtime_root], 'frozen-d3', P11OnlineRuntime::D3_JAR_SHA, 'gramarye-1.0.0.jar'),
+                 P11OnlineRuntime.frozen_jar_path(@options[:runtime_root], name)
+    %w[d3-c4a d3-c4a-baseline.extra D3-C4A-BASELINE d3-c4a-baseline/../single].each do |bad|
+      failure('INVALID_CASE') { P11OnlineRuntime.product_pin(bad) }
+      failure('INVALID_CASE') { P11OnlineRuntime.mixin_configs(bad) }
+    end
+    failure('INVALID_L1_HOST_SELECTION') { P11OnlineRuntime.product_pin(name, l1_host_stop: true) }
+    failure('INVALID_COOLDOWN_HOST_SELECTION') { P11OnlineRuntime.product_pin(name, cooldown_host: true) }
+  end
+
+  def test_d3_c4a_mode_is_exact_conditional_and_original_host_mode_contract_remains
+    manifest = prepare(case: 'd3-c4a-baseline', run_id: 'd3-c4a-mode-001')
+    generated_fixture(manifest)
+    source = File.join(manifest['repo'], 'src/p11OnlineHarness/java')
+    file = File.join(source, 'com/yo1no/gramarye/P11C4aScenario.java')
+    original = File.binread(file)
+    assert P11OnlineRuntime.verify_host_mode!(manifest, source)
+    assert P11OnlineRuntime.verify_host_mode!(manifest.merge('case' => 'c4a-dedicated'), source)
+    mutants = [original.sub('"d3-c4a-baseline".equals', '"d3-c4a-baseline.extra".equals'),
+               original.sub('? Mode.BASELINE : Mode.UI_HELD', '? Mode.UI_HELD : Mode.BASELINE'),
+               original.sub('? Mode.BASELINE : Mode.UI_HELD', '? Mode.BASELINE : Mode.BASELINE'),
+               original.sub('System.getProperty("gramarye.p11.online.case", "")', 'System.getProperty("foreign", "")'),
+               original + "\nstatic final Mode MODE = Mode.BASELINE;\n",
+               "static final Mode MODE = Mode.BASELINE;\n"]
+    mutants.each do |bad|
+      refute_equal original, bad
+      File.binwrite(file, bad)
+      failure('D3_C4A_BASELINE_MODE_MISMATCH') { P11OnlineRuntime.verify_host_mode!(manifest, source) }
+    end
+    File.binwrite(file, original)
+    frozen = export(manifest)
+    assert_equal 'd3-c4a-baseline', frozen['case']
+    P11OnlineRuntime.stub(:verify_jar!, true) { assert P11OnlineRuntime.verify_frozen!(frozen) }
+  end
+
+  def test_d3_c4a_owned_wait_and_abort_are_exact_alias_only
+    status = Object.new
+    calls = []
+    Process.stub(:waitpid2, ->(*args) { calls << args; [123, status] }) do
+      Process.stub(:kill, ->(*) { flunk 'already reaped child must not be signalled' }) do
+        assert_equal [status, false], P11OnlineRuntime.wait_owned_process(123, 'd3-c4a-baseline')
+        assert_equal [status, false], P11OnlineRuntime.wait_owned_process(123, 'c4a-dedicated')
+      end
+    end
+    assert_equal [[123, Process::WNOHANG], [123]], calls
+    java = File.read(File.join(P11OnlineRuntime::REPO, 'src/p11OnlineHarness/java/com/yo1no/gramarye/P11C4aClientHarness.java'))
+    exact = <<~JAVA.strip
+      if ("d3-c4a-baseline".equals(System.getProperty("gramarye.p11.online.case", ""))
+              && P11C4aEvidence.cuePresent(serverOutput == null
+                      ? P11C4aEvidence.root().resolve("server") : serverOutput, "abort.ready")) {
+          fail(minecraft, "OWNED_D3_C4A_BASELINE_ABORT"); return;
+      }
+    JAVA
+    normalize = ->(text) { text.gsub(/\s+/, ' ').strip }
+    assert_includes normalize.call(java), normalize.call(exact)
+    %w[d3-c4a-baseline.extra d3-replay].each do |bad|
+      refute_includes normalize.call(java.sub('"d3-c4a-baseline".equals', '"' + bad + '".equals')), normalize.call(exact)
+    end
+  end
+
+  def test_d3_status_reports_only_exact_public_receipt_presence_without_auth_inference
+    P11OnlineRuntime.stub(:product_pin, 'a' * 64) do
+      manifest = prepare(case: 'd3-old-source', run_id: 'test-d3-status')
+      server = File.join(manifest['evidence'], 'server')
+      Dir.mkdir(server)
+      %w[d3-held.json d3-late-release.json d3-result.json d3-cost.json data-terminal.json
+         d3-held.json.extra private-auth.json native-console.txt host-2-stopped.json].each do |leaf|
+        File.write(File.join(server, leaf), 'NOT_TO_BE_READ')
+      end
+      File.stub(:binread, ->(*) { flunk 'presence status must not read contents' }) do
+        report = P11OnlineRuntime.status(manifest)
+        assert_equal ['prepare.json', 'launch-cues.txt'] +
+          %w[d3-held.json d3-late-release.json d3-result.json d3-cost.json data-terminal.json].map { |leaf| 'server/' + leaf }, report['present']
+        assert_equal 'STRUCTURED_FILE_PRESENCE_ONLY', report['status']
+        assert_equal 'NOT_INFERRED_FROM_FILE_PRESENCE', report['authenticationAcceptance']
+      end
+    end
+  end
+
   def test_cooldown_pin_is_matching_and_distinct_or_pending_fail_closed
     java = File.read(File.join(P11OnlineRuntime::REPO, 'src/p11OnlineHarness/java/com/yo1no/gramarye/P11OnlineInputs.java'))
     pattern = /private static final String COOLDOWN_PRODUCT_PIN = (null|"[0-9a-f]{64}");/
@@ -259,7 +414,7 @@ class P11OnlineRuntimeTest < Minitest::Test
         File.write(file, original)
         frozen = export(manifest)
         assert P11OnlineRuntime.stub(:verify_jar!, true) { P11OnlineRuntime.verify_frozen!(frozen) }
-        assert_equal 9, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
+        assert_equal 10, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
       end
     end
   end
@@ -303,6 +458,26 @@ class P11OnlineRuntimeTest < Minitest::Test
     assert_includes client, '&& readyApplied && readyDrawn && (P11CooldownServerHarness.duration() == 1'
     assert_includes client, 'P11C4aEvidence.write(output, "hud-ready.json"'
     refute_match(/setGameTime\(|Thread\.sleep\(|setSyncSequence\(/, server)
+  end
+
+  def test_d600_reconnected_active_control_has_only_its_exact_public_receipts
+    names = %w[server/active-refusal-after-reconnect.json client-a/cast-4.json
+               client-a/input-focus-4.json client-a/input-stall-4.json]
+    with_cooldown_preparation_pin do
+      %w[cooldown-d600 cooldown-d120].each do |name|
+        manifest = prepare(case: name, run_id: name + '-d3-control')
+        %w[server client-a].each { |role| Dir.mkdir(File.join(manifest['evidence'], role)) }
+        (names + names.map { |leaf| leaf + '.extra' } + %w[server/accounts.json client-a/cast-5.json]).each do |leaf|
+          File.write(File.join(manifest['evidence'], leaf), 'SYNTHETIC_CONTENT_NOT_READ')
+        end
+        File.stub(:binread, ->(*) { flunk 'status must not read receipt contents' }) do
+          report = P11OnlineRuntime.status(manifest)
+          expected = name == 'cooldown-d600' ? names : []
+          assert_equal ['prepare.json', 'launch-cues.txt'] + expected, report['present']
+          assert_equal 'NOT_INFERRED_FROM_FILE_PRESENCE', report['authenticationAcceptance']
+        end
+      end
+    end
   end
 
   def test_cooldown_each_named_cast_may_request_focus_but_never_bypass_original_input_gates
@@ -1410,7 +1585,9 @@ class P11OnlineRuntimeTest < Minitest::Test
     build = File.binread(File.join(P11OnlineRuntime::REPO, 'build.gradle'))
     names = "['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward', 'l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'l1-qctx', 'l1-capacity', 'cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual', 'cooldown-l1-pre-spawn', 'cooldown-l1-open', 'cooldown-l1-claimed']"
     valid = lambda do |source|
-      source.scan(/!p11OnlineJar\.isFile\(\) \|\| !\(p11OnlineCase in (\[[^\n]+\])\)/).flatten == [names]
+      source.scan(/!p11OnlineJar\.isFile\(\) \|\| !\(p11OnlineCase in \((\[[^\n]+\]) \+ p11D3Cases \+ \['d3-c4a-baseline'\]\)\)/).flatten == [names] &&
+        source.scan(/def p11D3Cases = (\[[^\n]+\])/).flatten ==
+          ["['d3-replay', 'd3-old-source', 'd3-late-task', 'd3-old-result', 'd3-respawn', 'd3-dual', 'd3-host-lan']"]
     end
     assert valid.call(build)
     [names.sub(", 'c4a-capacity'", ''), names.sub('c4a-qctx', 'c4a-qctx.extra'),
@@ -1418,8 +1595,9 @@ class P11OnlineRuntimeTest < Minitest::Test
      names.sub(']', ", 'foreign']")].each do |bad|
       refute valid.call(build.sub(names, bad))
     end
-    refute valid.call(build.sub("p11OnlineCase in #{names}", "p11OnlineCase.startsWith('c4a')"))
-    assert_equal 2, build.scan("p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']").size
+    refute valid.call(build.sub("p11OnlineCase in (#{names} + p11D3Cases + ['d3-c4a-baseline'])", "p11OnlineCase.startsWith('c4a')"))
+    refute valid.call(build.sub("'d3-old-source'", "'d3-old-source.extra'"))
+    assert_equal 2, build.scan("p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward', 'd3-c4a-baseline']").size
   end
 
 
@@ -1427,13 +1605,13 @@ class P11OnlineRuntimeTest < Minitest::Test
     legacy = ['gramarye-p11-online-harness.mixins.json']
     c4a = ['gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-c6-observers.mixins.json']
     %w[single qctx capacity].each { |name| assert_equal legacy, P11OnlineRuntime.mixin_configs(name) }
-    %w[c4a-dedicated c4a-host-lan c4a-reward].each { |name| assert_equal c4a, P11OnlineRuntime.mixin_configs(name) }
+    %w[c4a-dedicated c4a-host-lan c4a-reward d3-c4a-baseline].each { |name| assert_equal c4a, P11OnlineRuntime.mixin_configs(name) }
     %w[c4a c4a-dedicated.extra c4a-host-lan/../single c4a-foreign].each do |name|
       failure('INVALID_CASE') { P11OnlineRuntime.mixin_configs(name) }
     end
     build = File.binread(File.expand_path('../build.gradle', __dir__))
     exact = <<~GROOVY.strip
-      if (p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']) {
+      if (p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward', 'd3-c4a-baseline']) {
           programArguments.addAll '--mixin.config', 'gramarye-p11-c6-observers.mixins.json'
       }
     GROOVY
@@ -1445,7 +1623,7 @@ class P11OnlineRuntimeTest < Minitest::Test
     ["p11OnlineCase.startsWith('c4a')",
      "p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'single']",
      "p11OnlineCase in ['c4a-dedicated']"].each do |bad|
-      refute valid.call(build.sub("p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward']) {", bad + ') {'))
+      refute valid.call(build.sub("p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward', 'd3-c4a-baseline']) {", bad + ') {'))
     end
     refute valid.call(build.sub('gramarye-p11-c6-observers.mixins.json', 'gramarye-p11-c6-observers.mixins.json.extra'))
   end
@@ -1479,11 +1657,12 @@ class P11OnlineRuntimeTest < Minitest::Test
     end
   end
 
-  def test_companion_resource_inventory_is_exact_nine_and_rejects_near_names_or_missing_resource
+  def test_companion_resource_inventory_is_exact_ten_and_rejects_near_names_or_missing_resource
     assert_equal ['gramarye-p11-online-private-console.xml', 'gramarye-p11-online-harness.mixins.json',
                   'gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-c6-observers.mixins.json',
                   'gramarye-p11-l1-harness.mixins.json',
                   'gramarye-p11-cooldown-harness.mixins.json',
+                  'gramarye-p11-d3-harness.mixins.json',
                   'data/gramarye_p11_engineering/advancement/l1_first_kill.json',
                   'data/gramarye_p11_engineering/loot_table/l1_loot.json',
                   'data/gramarye_p11_engineering/function/l1_reward.mcfunction'].sort,
@@ -1491,7 +1670,7 @@ class P11OnlineRuntimeTest < Minitest::Test
     manifest = prepare(case: 'c4a-dedicated')
     generated_fixture(manifest)
     resources = File.join(manifest['repo'], 'build/resources/p11OnlineHarness')
-    %w[gramarye-p11-c6-observers.mixins.json gramarye-p11-cooldown-harness.mixins.json].each do |leaf|
+    %w[gramarye-p11-c6-observers.mixins.json gramarye-p11-cooldown-harness.mixins.json gramarye-p11-d3-harness.mixins.json].each do |leaf|
       selected = File.join(resources, leaf)
       bytes = File.binread(selected)
       File.unlink(selected)
@@ -1510,7 +1689,7 @@ class P11OnlineRuntimeTest < Minitest::Test
     failure('UNEXPECTED_COMPANION_RESOURCE') { export(manifest) }
     File.unlink(extra)
     frozen = export(manifest)
-    assert_equal 9, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
+    assert_equal 10, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
   end
 
   def test_l1_host_stop_is_prepare_only_exact_case_pin_fixture_and_frozen_mode
@@ -2322,7 +2501,10 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
     File.write(File.join(repo, 'scripts/p11-online-runtime.rb'), File.binread(File.join(__dir__, 'p11-online-runtime.rb')))
     File.write(File.join(source, 'java/com/yo1no/gramarye/P11OnlineFixture.java'), 'final class P11OnlineFixture {}')
     selected_mode = manifest.fetch('cooldownHost', false) ? 'COOLDOWN_HOST' : manifest.fetch('l1HostStop', false) ? 'L1_HOST_STOP' : 'UI_HELD'
-    File.write(File.join(source, 'java/com/yo1no/gramarye/P11C4aScenario.java'), "final class P11C4aScenario {\n static final Mode MODE = Mode.#{selected_mode};\n}\n")
+    mode_source = manifest['case'] == P11OnlineRuntime::D3_C4A_CASE ?
+      File.binread(File.join(P11OnlineRuntime::REPO, 'src/p11OnlineHarness/java/com/yo1no/gramarye/P11C4aScenario.java')) :
+      "final class P11C4aScenario {\n static final Mode MODE = Mode.#{selected_mode};\n}\n"
+    File.write(File.join(source, 'java/com/yo1no/gramarye/P11C4aScenario.java'), mode_source)
     FileUtils.mkdir_p(File.join(classes, 'com/yo1no/gramarye'))
     File.write(File.join(classes, 'com/yo1no/gramarye/P11OnlineFixture.class'), 'SYNTHETIC_BYTECODE_NOT_MINECRAFT')
     File.write(File.join(classes, 'com/yo1no/gramarye/P11C4aScenario.class'), 'SYNTHETIC_MODE_BYTECODE_NOT_MINECRAFT')
@@ -2334,6 +2516,7 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
       File.write(File.join(dir, 'gramarye-p11-c6-observers.mixins.json'), '{"required":true}')
       File.write(File.join(dir, 'gramarye-p11-l1-harness.mixins.json'), '{"required":true}')
       File.write(File.join(dir, 'gramarye-p11-cooldown-harness.mixins.json'), '{"required":true}')
+      File.write(File.join(dir, 'gramarye-p11-d3-harness.mixins.json'), '{"required":true}')
       P11OnlineRuntime::L1_HOST_RESOURCES.each_key do |relative|
         target = File.join(dir, relative)
         FileUtils.mkdir_p(File.dirname(target))

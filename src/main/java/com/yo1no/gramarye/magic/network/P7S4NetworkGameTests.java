@@ -49,8 +49,7 @@ public final class P7S4NetworkGameTests {
             helper.assertTrue(drainP7(fixture.channel()).isEmpty(),
                     "ALREADY_ACTIVE must not request a duplicate initial full snapshot");
             fixture.close();
-            helper.assertTrue(P7NetworkComposition.production().connectionEpochSource()
-                            .currentEpoch(fixture.playerId()).isEmpty(),
+            helper.assertTrue(!hasNativeSession(fixture.playerId()),
                     "actual logout must remove the production session");
             helper.succeed();
             }));
@@ -86,8 +85,7 @@ public final class P7S4NetworkGameTests {
             helper.runAfterDelay(22, () -> runGuarded(fixture, () -> {
                 assertFullSet(helper, drainP7(fixture.channel()), 2);
                 fixture.close();
-                helper.assertTrue(P7NetworkComposition.production().connectionEpochSource()
-                                .currentEpoch(fixture.playerId()).isEmpty(),
+                helper.assertTrue(!hasNativeSession(fixture.playerId()),
                         "actual logout must invalidate the old epoch");
                 var reconnected = place(server, 2, "p7s4-live-again");
                 runGuarded(reconnected, () -> {
@@ -153,12 +151,23 @@ public final class P7S4NetworkGameTests {
 
     /** Read-only stock-fixture check; no session opening, delivery or source permission. */
     public static boolean hasNativeSession(UUID playerId) {
-        return P7NetworkComposition.production().connectionEpochSource().currentEpoch(playerId).isPresent();
+        return nativeSession(playerId).isPresent();
     }
 
     private static long requireEpoch(UUID playerId) {
+        return nativeSession(playerId).orElseThrow().connectionEpoch();
+    }
+
+    private static java.util.Optional<P7SessionIdentity> nativeSession(UUID playerId) {
+        var server = net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer();
+        if (server == null || !server.isSameThread()) {
+            throw new AssertionError("stock session observation requires the current server thread");
+        }
+        var actor = server.getPlayerList().getPlayer(playerId);
+        if (actor == null || actor.connection == null) { return java.util.Optional.empty(); }
+        // Stock fixture observation only, never a C2S UUID-only producer.
         return P7NetworkComposition.production().connectionEpochSource()
-                .currentEpoch(playerId).orElseThrow();
+                .captureAuthenticatedSession(playerId, actor.connection.getConnection()).identity();
     }
 
     private static ConnectedPlayer place(MinecraftServer server, int suffix, String name) {

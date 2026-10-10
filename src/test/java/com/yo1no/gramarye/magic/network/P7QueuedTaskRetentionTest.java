@@ -20,14 +20,13 @@ final class P7QueuedTaskRetentionTest {
     void queuedCastIntentRetainsExactlyUuidEpochAndImmutableIntent() {
         var playerId = new UUID(0L, 301L);
         var intent = minimumIntent(81L);
-        var queued = new P7QueuedCastIntent(playerId, 41L, intent);
+        var queued = new P7QueuedCastIntent(new P7SessionIdentity(playerId, 41L, 1L), intent);
 
-        assertEquals(playerId, queued.authenticatedPlayerId());
-        assertEquals(41L, queued.connectionEpoch());
+        assertEquals(playerId, queued.sessionIdentity().authenticatedPlayerId());
+        assertEquals(41L, queued.sessionIdentity().connectionEpoch());
         assertSame(intent, queued.intent());
         assertExactPrivateFinalFields(P7QueuedCastIntent.class, Map.of(
-                "authenticatedPlayerId", UUID.class,
-                "connectionEpoch", long.class,
+                "sessionIdentity", P7SessionIdentity.class,
                 "intent", CastIntent.class));
     }
 
@@ -37,13 +36,13 @@ final class P7QueuedTaskRetentionTest {
         var intent = minimumIntent(82L);
 
         assertThrows(NullPointerException.class, () ->
-                new P7QueuedCastIntent(null, 1L, intent));
+                new P7QueuedCastIntent(null, intent));
         assertThrows(NullPointerException.class, () ->
-                new P7QueuedCastIntent(playerId, 1L, null));
+                new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1L, 1L), null));
         assertThrows(P7SemanticInvariantException.class, () ->
-                new P7QueuedCastIntent(playerId, 0L, intent));
+                new P7QueuedCastIntent(new P7SessionIdentity(playerId, 0L, 1L), intent));
         assertThrows(P7SemanticInvariantException.class, () ->
-                new P7QueuedCastIntent(playerId, -1L, intent));
+                new P7QueuedCastIntent(new P7SessionIdentity(playerId, -1L, 1L), intent));
     }
 
     @Test
@@ -92,10 +91,10 @@ final class P7QueuedTaskRetentionTest {
 
     @Test
     void normalServerDispatchRunsOnceAndReleasesPermitExactlyOnce() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = new UUID(0L, 303L);
-        var permit = owner.acquire(playerId, 1L).permit().orElseThrow();
-        var queued = new P7QueuedCastIntent(playerId, 1L, minimumIntent(83L));
+        var permit = owner.acquire(playerId, 1L, owner.captureServerGeneration()).permit().orElseThrow();
+        var queued = new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1L, 1L), minimumIntent(83L));
         var calls = new int[1];
         var task = new P7ServerDispatchTask(queued, actual -> {
             calls[0]++;
@@ -114,10 +113,10 @@ final class P7QueuedTaskRetentionTest {
 
     @Test
     void serverDispatchRuntimeExceptionIsSameObjectAndStillReleasesWithoutRetry() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = new UUID(0L, 304L);
-        var permit = owner.acquire(playerId, 1L).permit().orElseThrow();
-        var queued = new P7QueuedCastIntent(playerId, 1L, minimumIntent(84L));
+        var permit = owner.acquire(playerId, 1L, owner.captureServerGeneration()).permit().orElseThrow();
+        var queued = new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1L, 1L), minimumIntent(84L));
         var failure = new IllegalStateException("runtime dispatch failure");
         var calls = new int[1];
         var task = new P7ServerDispatchTask(queued, ignored -> {
@@ -136,10 +135,10 @@ final class P7QueuedTaskRetentionTest {
 
     @Test
     void serverDispatchErrorIsSameObjectAndStillReleasesWithoutRetry() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = new UUID(0L, 305L);
-        var permit = owner.acquire(playerId, 1L).permit().orElseThrow();
-        var queued = new P7QueuedCastIntent(playerId, 1L, minimumIntent(85L));
+        var permit = owner.acquire(playerId, 1L, owner.captureServerGeneration()).permit().orElseThrow();
+        var queued = new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1L, 1L), minimumIntent(85L));
         var failure = new AssertionError("error dispatch failure");
         var calls = new int[1];
         var task = new P7ServerDispatchTask(queued, ignored -> {
@@ -238,6 +237,12 @@ final class P7QueuedTaskRetentionTest {
         assertTrue(Arrays.stream(type.getDeclaredFields())
                 .allMatch(field -> Modifier.isPrivate(field.getModifiers())
                         && Modifier.isFinal(field.getModifiers())));
+    }
+
+    private static P7PendingPermitOwner startedOwner() {
+        var owner = new P7PendingPermitOwner();
+        owner.startServer();
+        return owner;
     }
 
     private static CastIntent minimumIntent(long sequence) {

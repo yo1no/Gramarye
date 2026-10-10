@@ -521,7 +521,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(180, dependencyErrorCatchCount(production)),
+                () -> assertEquals(194, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -734,6 +734,10 @@ class P4B2BApiGateTest {
                 "com/yo1no/gramarye/SkillRuntimeService.java")));
         var networkHandler = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java")));
+        var dispatchTask = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/network/P7ServerDispatchTask.java")));
+        var pendingOwner = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java")));
         var p5Catches = errorCatchBlocks(runtimeService);
         assertP5WorkErrorCatches(runtimeService);
         var p5Primary = p5Catches.stream()
@@ -754,12 +758,19 @@ class P4B2BApiGateTest {
                 .toList();
         var storeCatches = errorCatchBlocks(service);
         var networkCatches = errorCatchBlocks(networkHandler);
+        var taskCatches = errorCatchBlocks(dispatchTask);
+        var pendingCatches = errorCatchBlocks(pendingOwner);
+        assertP7ErrorCatches(networkHandler, "handler");
+        assertP7ErrorCatches(dispatchTask, "task");
+        assertP7ErrorCatches(pendingOwner, "permits");
         var syncSource = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java")));
         assertNativeHelperCatches(syncSource, syncErrorContracts());
         var syncCatches = errorCatchBlocks(syncSource);
-        var lifecycleCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
-                "com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java"))));
+        var lifecycleSource = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java")));
+        var lifecycleCatches = errorCatchBlocks(lifecycleSource);
+        assertP7ErrorCatches(lifecycleSource, "lifecycle");
         var p8ClientState = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/P8ClientPresentationState.java")));
         var p8ClientCatches = errorCatchBlocks(p8ClientState);
@@ -843,7 +854,8 @@ class P4B2BApiGateTest {
                 "com.yo1no.gramarye.P8ClientTransportMaintenanceResult");
         var primary = new java.util.ArrayList<ErrorCatchBlock>(p5Primary);
         primary.addAll(storeCatches);
-        primary.addAll(networkCatches);
+        primary.add(networkCatches.getFirst());
+        primary.add(taskCatches.getFirst());
         primary.addAll(syncCatches);
         primary.addAll(p8ClientPrimary);
         primary.addAll(p8ServerCatches);
@@ -851,7 +863,7 @@ class P4B2BApiGateTest {
         assertAll(
                 () -> assertEquals(24, p5Catches.size()),
                 () -> assertEquals(11, p5Primary.size()),
-                () -> assertEquals(26, primary.size()),
+                () -> assertEquals(27, primary.size()),
                 () -> assertEquals(8, secondary.size()),
                 () -> assertEquals(2, diagnosticIsolation.size()),
                 () -> assertEquals(3, p9ErrorPrimitiveIsolation.size()),
@@ -881,7 +893,9 @@ class P4B2BApiGateTest {
                                         block.body().replaceAll("\\s+", ""))).toList()),
                 () -> assertEquals(0, catchTypeCount(p11Boundary, "Throwable")),
                 () -> assertEquals(1, storeCatches.size()),
-                () -> assertEquals(1, networkCatches.size()),
+                () -> assertEquals(3, networkCatches.size()),
+                () -> assertEquals(3, taskCatches.size()),
+                () -> assertEquals(3, pendingCatches.size()),
                 () -> assertEquals(5, syncCatches.size()),
                 () -> assertEquals(15, p8ClientCatches.size()),
                 () -> assertEquals(1, p8ClientPrimary.size()),
@@ -953,8 +967,8 @@ class P4B2BApiGateTest {
                 () -> assertTrue(p8ServerCatches.getFirst().body().contains(
                         "connectionAuthority.cancel(key);")),
                 () -> assertTrue(p8ServerCatches.getFirst().body().contains("throw failure;")),
-                () -> assertEquals(6, lifecycleCatches.size()),
-                () -> assertEquals(5, lifecycleCatches.stream()
+                () -> assertEquals(12, lifecycleCatches.size()),
+                () -> assertEquals(6, lifecycleCatches.stream()
                         .filter(block -> block.binding().equals("secondary")
                                 && block.body().trim().equals("suppress(primary, secondary);")).count()),
                 () -> assertEquals(1, lifecycleCatches.stream()
@@ -963,8 +977,7 @@ class P4B2BApiGateTest {
                 () -> assertEquals("failure", storeCatches.getFirst().binding()),
                 () -> assertTrue(storeCatches.getFirst().body().contains("throw failure;")),
                 () -> assertEquals("failure", networkCatches.getFirst().binding()),
-                () -> assertTrue(networkCatches.getFirst().body().contains(
-                        "permit.releaseAfterEnqueueFailure();")),
+                () -> assertTrue(networkCatches.getFirst().body().contains("primary = failure;")),
                 () -> assertTrue(networkCatches.getFirst().body().contains("throw failure;")),
                 () -> assertTrue(p5Primary.stream().allMatch(block ->
                         block.body().contains("throw primary;")
@@ -1015,14 +1028,16 @@ class P4B2BApiGateTest {
                                 + p9ErrorPrimitiveIsolation.size()
                                 + p9CleanupIsolation.size()
                                 + lifecycleCatches.size()
+                                + 4 // Two exact handler/task secondary catches per owner.
+                                + pendingCatches.size()
                                 + reviewedP8S5Catches
                                 + p11ObservationIsolation.size()
                                 + p11NativeHelpers
                                 + fixtureCatches,
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(180, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(194, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
-                "permit.releaseAfterEnqueueFailure();", "throw failure;");
+                "primary = failure;", "throw failure;");
         assertOrdered(
                 bodyFollowing(runtimeService, "Error preserveErrorFault("),
                 "enterFaultAfterError(",
@@ -1092,6 +1107,41 @@ class P4B2BApiGateTest {
 
     @Test
     void nativeErrorContractsRejectChangedBindingBodyPrimaryAndForeignMethod() throws Exception {
+        for (var owner : Map.of(
+                "P7CastIntentNetworkHandler.java", "handler",
+                "P7ServerDispatchTask.java", "task",
+                "P7PendingPermitOwner.java", "permits",
+                "P7ServerLifecycleCoordinator.java", "lifecycle").entrySet()) {
+            var source = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                    "com/yo1no/gramarye/magic/network/" + owner.getKey())));
+            assertP7ErrorCatches(source, owner.getValue());
+            for (var method : p7ErrorContracts(owner.getValue()).keySet()) {
+                var mutant = source.replace(method, method.replace("(", "Unreviewed("));
+                assertFalse(mutant.equals(source));
+                assertThrows(AssertionError.class, () -> assertP7ErrorCatches(mutant, owner.getValue()));
+            }
+            for (var replacement : List.of(
+                    List.of("Error failure", "Error foreign"),
+                    List.of("Error primary", "Error foreign"),
+                    List.of("Error secondary", "Error foreign"),
+                    List.of("Error suppressionFailure", "Error foreign"),
+                    List.of("primary = failure;", "primary = null;"),
+                    List.of("throw failure;", "throw new Error();"),
+                    List.of("throw primary;", "throw new Error();"),
+                    List.of("suppress(primary, secondary);", "unsafe();"),
+                    List.of("permit.releaseAfterEnqueueFailure();", "permit.release();"),
+                    List.of("permit.releaseAfterTask();", "permit.release();"),
+                    List.of("discardStoppedState(server, primary);", "unsafe();"),
+                    List.of("serverPending = previousServerPending;", "serverPending = 0;"),
+                    List.of("exhausted = true;", "exhausted = false;"))) {
+                if (!source.contains(replacement.getFirst())) { continue; }
+                var mutant = source.replace(replacement.getFirst(), replacement.getLast());
+                assertFalse(mutant.equals(source));
+                assertThrows(AssertionError.class, () -> assertP7ErrorCatches(mutant, owner.getValue()));
+            }
+            assertThrows(AssertionError.class, () -> assertP7ErrorCatches(source
+                    + "void foreign(){try{}catch(RuntimeException|Error failure){throw failure;}}", owner.getValue()));
+        }
         for (var fixture : Map.of(
                 "magic/runtime/mana/ManaLifecycleGameTests.java", manaFixtureErrorContracts(),
                 "magic/definition/player/PlayerSkillAttachmentGameTests.java", attachmentFixtureErrorContracts())
@@ -1446,11 +1496,57 @@ class P4B2BApiGateTest {
                 "void finishAttempt(", List.of(new ErrorCatchBlock("cleanupFailure",
                         "lifecycle.submissionFailed(server,actor,identity,primary==null?cleanupFailure:primary);"
                                 + "if(primary==null){throwcleanupFailure;}")),
-                "void submitInitialFamily(", List.of(new ErrorCatchBlock("primary",
+                "boolean submitInitialFamily(", List.of(new ErrorCatchBlock("primary",
                         "if(initial){P11NativeStorageBoundary.metadataInitialSync(actor,identity.connectionEpoch(),"
-                                + "mana?MetadataInitialStage.MANA_FAILED:MetadataInitialStage.COOLDOWN_FAILED);}throwprimary;")),
+                                + "identity.serverGeneration(),mana?MetadataInitialStage.MANA_FAILED:MetadataInitialStage.COOLDOWN_FAILED);}throwprimary;")),
                 "P7ServerSyncState commitFamily(", samePrimary,
                 "Submission submit(", samePrimary);
+    }
+
+    private static Map<String, List<ErrorCatchBlock>> p7ErrorContracts(String kind) {
+        var secondary = new ErrorCatchBlock("secondary", "suppress(primary,secondary);");
+        var suppression = List.of(new ErrorCatchBlock("suppressionFailure", ""));
+        if (kind.equals("handler") || kind.equals("task")) {
+            return Map.of(kind.equals("handler") ? "void handleAuthenticated(" : "void run(", List.of(
+                    new ErrorCatchBlock("failure", "primary=failure;throwfailure;"), secondary),
+                    "void suppress(", suppression);
+        }
+        if (kind.equals("permits")) {
+            var cleanup = "exhausted=true;if(secondary!=primary){try{primary.addSuppressed(secondary);}"
+                    + "catch(RuntimeException|ErrorsuppressionFailure){}}";
+            return Map.of("AcquireResult acquire(", List.of(
+                    new ErrorCatchBlock("primary", "try{try{if(playerPending==0){perPlayerPending.remove(authenticatedPlayerId);}"
+                            + "else{perPlayerPending.replace(authenticatedPlayerId,playerPending);}}finally{"
+                            + "try{playerPermits.remove(permit);}finally{if(newPlayer){activePermitsByPlayer.remove(authenticatedPlayerId,playerPermits);}}}}"
+                            + "catch(RuntimeException|Errorsecondary){" + cleanup + "}finally{serverPending=previousServerPending;}throwprimary;"),
+                    new ErrorCatchBlock("secondary", cleanup), new ErrorCatchBlock("suppressionFailure", "")));
+        }
+        if (!kind.equals("lifecycle")) { throw new AssertionError("unreviewed P7 catch owner"); }
+        var stopped = new ErrorCatchBlock("secondary",
+                "if(failure==null){failure=secondary;}else{suppress(failure,secondary);}");
+        return Map.of(
+                "void submissionFailed(", List.of(secondary, secondary, secondary, secondary, secondary),
+                "int stop(", List.of(new ErrorCatchBlock("failure", "primary=failure;throwfailure;")),
+                "void start(", List.of(new ErrorCatchBlock("primary", "stopped=true;try{sessions.stop(server);}"
+                        + "catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}"
+                        + "discardStoppedState(server,primary);throwprimary;"), secondary),
+                "void discardStoppedState(", List.of(stopped, stopped, stopped),
+                "void suppress(", suppression);
+    }
+
+    private static void assertP7ErrorCatches(String source, String kind) {
+        assertNativeHelperCatches(source, p7ErrorContracts(kind));
+        var compact = source.replaceAll("\\s+", "");
+        if (kind.equals("handler")) {
+            assertTrue(compact.contains("finally{if(!submissionReturned){if(primary==null){permit.releaseAfterEnqueueFailure();}"
+                    + "else{try{permit.releaseAfterEnqueueFailure();}catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}}}}"));
+        } else if (kind.equals("task")) {
+            assertTrue(compact.contains("finally{if(primary==null){permit.releaseAfterTask();}else{try{permit.releaseAfterTask();}"
+                    + "catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}}}"));
+        } else if (kind.equals("lifecycle")) {
+            assertTrue(bodyFollowing(source, "int stop(").replaceAll("\\s+", "")
+                    .contains("finally{discardStoppedState(server,primary);}"));
+        }
     }
 
     private static int exactNativeHelperCatches(String file, Map<String, List<ErrorCatchBlock>> contracts)

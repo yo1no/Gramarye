@@ -288,10 +288,11 @@ final class P7S2BoundaryTest {
                 java.lang.reflect.Modifier.isPrivate(field.getModifiers())
                         && java.lang.reflect.Modifier.isFinal(field.getModifiers())));
         assertSame(production, P7NetworkComposition.production());
-        assertTrue(production.connectionEpochSource().currentEpoch(playerId).isEmpty());
+        assertTrue(production.connectionEpochSource().captureAuthenticatedSession(playerId,
+                new net.minecraft.network.Connection(
+                        net.minecraft.network.protocol.PacketFlow.SERVERBOUND)).identity().isEmpty());
         assertEquals(0, production.pendingPermitOwner().serverPending());
-        production.serverIntentDispatchPort().dispatch(new P7QueuedCastIntent(
-                playerId, 1, validIntent()));
+        production.serverIntentDispatchPort().dispatch(new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1, 1L), validIntent()));
         production.clientMirrorDispatchPort().onIntentAcknowledgement(
                 production.clientMirrorDispatchPort().captureDispatchGeneration(null, null),
                 new IntentAcknowledgement(
@@ -312,7 +313,7 @@ final class P7S2BoundaryTest {
     @Test
     void queuedAndDispatchTypesRetainOnlyReviewedTypedState() {
         assertFieldTypes(P7QueuedCastIntent.class,
-                Set.of(UUID.class, long.class, CastIntent.class));
+                Set.of(P7SessionIdentity.class, CastIntent.class));
         assertFieldTypes(P7ServerDispatchTask.class,
                 Set.of(
                         P7QueuedCastIntent.class,

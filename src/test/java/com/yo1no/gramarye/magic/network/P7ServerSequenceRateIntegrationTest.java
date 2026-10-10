@@ -35,7 +35,7 @@ final class P7ServerSequenceRateIntegrationTest {
                 new P7SessionIdentity(
                         java.util.UUID.fromString(
                                 "00000000-0000-0000-0000-000000000709"),
-                        1L),
+                        1L, 1L),
                 1L,
                 P7ServerAuthorizationBoundary.AdmissionDisposition.UNKNOWN_SKILL);
 

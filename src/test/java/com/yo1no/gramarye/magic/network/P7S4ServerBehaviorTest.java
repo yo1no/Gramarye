@@ -35,6 +35,7 @@ final class P7S4ServerBehaviorTest {
         var production = projectRoot().resolve("src/main/java/com/yo1no/gramarye/magic/network");
         for (var file : List.of("P7ServerSessionService.java", "P7ServerSessionState.java",
                 "P7ServerSyncState.java", "P7SyncSequence.java", "P7SessionIdentity.java",
+                "P7ConnectionEpochSnapshotSource.java",
                 "ConnectionEpochState.java", "P7NetworkBounds.java", "IntentTickBudget.java",
                 "CastIntentAdmissionSemantics.java", "IntentSequenceState.java", "IntentTokenBucket.java",
                 "RateStrikeState.java", "P7SemanticInvariantException.java", "P7IntentFailureReason.java",
@@ -61,6 +62,15 @@ final class P7S4ServerBehaviorTest {
                 package net.minecraft.network.protocol.common.custom;
                 public interface CustomPacketPayload {}
                 """));
+        units.add(write(sourceRoot, "net/minecraft/network/Connection.java", """
+                package net.minecraft.network;
+                public final class Connection {
+                    public Object listener;
+                    public boolean connected = true;
+                    public Object getPacketListener() { return listener; }
+                    public boolean isConnected() { return connected; }
+                }
+                """));
         units.add(write(sourceRoot, "net/minecraft/server/level/ServerPlayer.java", """
                 package net.minecraft.server.level;
                 import java.util.UUID;
@@ -71,16 +81,22 @@ final class P7S4ServerBehaviorTest {
                 public final class ServerPlayer {
                     private final UUID id;
                     public final MinecraftServer server;
-                    public final Connection connection = new Connection();
+                    public Connection connection;
                     public boolean connected = true;
                     public int disconnects;
                     public RuntimeException disconnectFailure;
-                    public ServerPlayer(MinecraftServer server, UUID id) { this.server = server; this.id = id; }
+                    public ServerPlayer(MinecraftServer server, UUID id) {
+                        this.server = server; this.id = id; this.connection = new Connection(this);
+                    }
                     public UUID getUUID() { return id; }
                     public boolean isAlive() { return true; }
                     public boolean isSpectator() { return false; }
                     public static final class Connection {
+                        public ServerPlayer player;
+                        public final net.minecraft.network.Connection transport = new net.minecraft.network.Connection();
                         public final List<CustomPacketPayload> sent = new ArrayList<>();
+                        public Connection(ServerPlayer player) { this.player = player; transport.listener = this; }
+                        public net.minecraft.network.Connection getConnection() { return transport; }
                         public void send(CustomPacketPayload payload) { sent.add(payload); }
                     }
                 }
@@ -144,11 +160,15 @@ final class P7S4ServerBehaviorTest {
                     }
                     public static final class MetadataContinuation {
                         public long epoch;
+                        public long generation;
                         public int starts;
                         public long openedSession(LoginReadyPort port) { return epoch; }
+                        public long openedServerGeneration(LoginReadyPort port) { return generation; }
                         public boolean loginActor(LoginReadyPort port, net.minecraft.server.level.ServerPlayer actor) { return true; }
                         public void sessionStarted(LoginReadyPort port) { starts++; }
-                        public void sessionOpened(LoginReadyPort port, long value) { epoch = value; }
+                        public void sessionOpened(LoginReadyPort port, long value, long serverGeneration) {
+                            epoch = value; generation = serverGeneration;
+                        }
                     }
                 }
                 """));
@@ -160,7 +180,7 @@ final class P7S4ServerBehaviorTest {
                     public static int observationBegins, observationEnds, observationFailures;
                     public static boolean observing;
                     public static final class MetadataManaObservation {}
-                    public static MetadataManaObservation beginMetadataManaObservation(ServerPlayer actor, long epoch) {
+                    public static MetadataManaObservation beginMetadataManaObservation(ServerPlayer actor, long epoch, long generation) {
                         if (observing) { throw new AssertionError("nested observation scope"); }
                         observing = true; observationBegins++;
                         return new MetadataManaObservation();
@@ -171,7 +191,7 @@ final class P7S4ServerBehaviorTest {
                         observing = false; observationEnds++;
                         if (!normal) { observationFailures++; }
                     }
-                    public static void metadataInitialSync(ServerPlayer actor, long epoch, MetadataInitialStage stage) {}
+                    public static void metadataInitialSync(ServerPlayer actor, long epoch, long generation, MetadataInitialStage stage) {}
                 }
                 """));
         units.add(write(sourceRoot, "com/yo1no/gramarye/magic/network/P7AdvisoryTargetValidator.java", """
@@ -202,7 +222,13 @@ final class P7S4ServerBehaviorTest {
                     ServerPlayer currentPlayer(MinecraftServer server, UUID id) { return players.get(id); }
                     boolean currentConnectedPlayer(MinecraftServer server, ServerPlayer actor, UUID id) {
                         return actor.server == server && actor.connected && actor.getUUID().equals(id)
-                                && players.get(id) == actor;
+                                && players.get(id) == actor && actorConnection(server, actor) != null
+                                && actor.connection.transport.isConnected();
+                    }
+                    net.minecraft.network.Connection actorConnection(MinecraftServer server, ServerPlayer actor) {
+                        var listener = actor.connection;
+                        return actor.server == server && listener != null && listener.player == actor
+                                && listener.transport.listener == listener ? listener.transport : null;
                     }
                     void disconnectCurrent(MinecraftServer server, ServerPlayer actor) {
                         if (currentConnectedPlayer(server, actor, actor.getUUID())) {
@@ -327,6 +353,26 @@ final class P7S4ServerBehaviorTest {
         run("rate-terminal");
     }
 
+    @Test
+    void oldLifetimeResultsCleanupAndMetadataCannotAffectReusedEpoch() throws Exception {
+        run("d3-lifetime");
+    }
+
+    @Test
+    void sameConnectionRespawnCoalescesBeforeListenerAssignmentWithoutReopening() throws Exception {
+        run("d3-respawn");
+    }
+
+    @Test
+    void nativeSendReentryCannotCleanOrSubmitToReplacementSession() throws Exception {
+        run("d3-send-reentry");
+    }
+
+    @Test
+    void generationExhaustionStillRetiresLifecycleQueueDiagnosticsAndPermits() throws Exception {
+        run("d3-stop-exhaustion");
+    }
+
     private static void run(String scenario) throws Exception {
         assertEquals("PASS", harness.getMethod("run", String.class).invoke(null, scenario));
     }
@@ -377,6 +423,10 @@ final class P7S4ServerBehaviorTest {
                             case "lifecycle" -> lifecycle();
                             case "diagnostics" -> diagnostics();
                             case "rate-terminal" -> rateTerminal();
+                            case "d3-lifetime" -> d3Lifetime();
+                            case "d3-respawn" -> d3Respawn();
+                            case "d3-send-reentry" -> d3SendReentry();
+                            case "d3-stop-exhaustion" -> d3StopExhaustion();
                             default -> throw new AssertionError("unknown case");
                         }
                         return "PASS";
@@ -426,7 +476,8 @@ final class P7S4ServerBehaviorTest {
                         var before = f.sessions.currentSession(id).orElseThrow();
                         check(before.admissionState().sequenceState().expectedNext().orElseThrow() == 1,
                                 "ACK must not mutate admission sequence");
-                        sync.accept(result(new P7SessionIdentity(actor.getUUID(), id.connectionEpoch() + 1), true));
+                        sync.accept(result(new P7SessionIdentity(actor.getUUID(), id.connectionEpoch() + 1,
+                                id.serverGeneration()), true));
                         actor.connected = false;
                         sync.accept(result(id, true));
                         check(sent.size() == submitted, "stale/disconnected recipients must not submit");
@@ -438,7 +489,7 @@ final class P7S4ServerBehaviorTest {
                             var actor = f.player(1);
                             var id = f.open(actor);
                             f.life.requestSync(f.server, actor.getUUID());
-                            var permit = f.permits.acquire(actor.getUUID(), id.connectionEpoch()).permit().orElseThrow();
+                            var permit = f.permits.acquire(actor.getUUID(), id.connectionEpoch(), id.serverGeneration()).permit().orElseThrow();
                             Throwable primary = error ? new AssertionError("primary") : new IllegalStateException("primary");
                             var secondary = new IllegalArgumentException("disconnect-secondary");
                             actor.disconnectFailure = secondary;
@@ -530,6 +581,7 @@ final class P7S4ServerBehaviorTest {
                         var id = f.open(actor);
                         var receipt = new com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation();
                         receipt.epoch = id.connectionEpoch();
+                        receipt.generation = id.serverGeneration();
                         P7ServerAuthorizationBoundary.LoginReadyPort port = new P7ServerAuthorizationBoundary.LoginReadyPort() {};
                         f.life.onLoginReady(f.server, actor, receipt, port);
                         check(receipt.starts == 0 && f.sessions.activeSessionCount() == 1
@@ -886,7 +938,7 @@ final class P7S4ServerBehaviorTest {
                         check(f.sessions.activeSessionCount() == 1 && f.life.queuedCount() == 1
                                         && f.identity(actor).equals(first),
                                 "ALREADY_ACTIVE duplicated/reset the session or initial sync");
-                        var permit = f.permits.acquire(actor.getUUID(), first.connectionEpoch()).permit().orElseThrow();
+                        var permit = f.permits.acquire(actor.getUUID(), first.connectionEpoch(), first.serverGeneration()).permit().orElseThrow();
                         f.life.onDisconnect(f.server, actor);
                         check(f.sessions.activeSessionCount() == 0 && f.life.queuedCount() == 0 && permit.released(),
                                 "logout did not clear bounded session/permit/queue state");
@@ -910,7 +962,7 @@ final class P7S4ServerBehaviorTest {
                         for (int n = 1; n <= 8; n++) {
                             var id = f.identity(f.access.players.get(uuid(n)));
                             for (int p = 0; p < 8; p++) {
-                                f.permits.acquire(id.authenticatedPlayerId(), id.connectionEpoch()).permit().orElseThrow();
+                                f.permits.acquire(id.authenticatedPlayerId(), id.connectionEpoch(), id.serverGeneration()).permit().orElseThrow();
                             }
                         }
                         check(f.life.stop(f.server) == 576, "stop must count exact 256 + 256 + 64 records");
@@ -918,6 +970,9 @@ final class P7S4ServerBehaviorTest {
                                         && f.life.queuedCount() == 0 && f.permits.serverPending() == 0
                                         && f.diagnostics.snapshot().isEmpty(),
                                 "stop left server-lifetime state or repeated cleanup");
+                        f.server = new MinecraftServer();
+                        f.access.server = f.server;
+                        f.access.players.clear();
                         f.life.start(f.server);
                         var restarted = f.player(300);
                         f.life.onLoginReady(f.server, restarted);
@@ -980,15 +1035,15 @@ final class P7S4ServerBehaviorTest {
                             var dispatcher = new P7ServerAuthorizationDispatcher(f.sessions, f.access,
                                     new P7AdvisoryTargetValidator(), sync::accept, f.life::finishInvalidated);
                             for (long sequence = 1; sequence <= 8; sequence++) {
-                                dispatcher.dispatch(new P7QueuedCastIntent(actor.getUUID(), id.connectionEpoch(),
+                                dispatcher.dispatch(new P7QueuedCastIntent(id,
                                         new CastIntent(sequence, 0, CastInputKind.CAST, 0, null, null)));
                             }
-                            var rejected = new P7QueuedCastIntent(actor.getUUID(), id.connectionEpoch(),
+                            var rejected = new P7QueuedCastIntent(id,
                                     new CastIntent(9, 0, CastInputKind.CAST, 0, null, null));
                             for (int strike = 0; strike < 7; strike++) { dispatcher.dispatch(rejected); }
                             check(sent[0] == 15 && f.sessions.currentSession(id).isPresent(),
                                     "seven strikes should preserve the current session");
-                            var permit = f.permits.acquire(actor.getUUID(), id.connectionEpoch()).permit().orElseThrow();
+                            var permit = f.permits.acquire(actor.getUUID(), id.connectionEpoch(), id.serverGeneration()).permit().orElseThrow();
                             f.life.requestSync(f.server, actor.getUUID());
                             try {
                                 dispatcher.dispatch(rejected);
@@ -1013,28 +1068,175 @@ final class P7S4ServerBehaviorTest {
                                 true, false, false, true, false);
                     }
 
+                    private static void d3Lifetime() {
+                        var f = new Fixture();
+                        var oldServer = f.server;
+                        var oldActor = f.player(1);
+                        var oldId = f.open(oldActor);
+                        f.life.requestSync(oldServer, oldActor.getUUID());
+                        var oldPermit = f.permits.acquire(oldActor.getUUID(), oldId.connectionEpoch(),
+                                oldId.serverGeneration()).permit().orElseThrow();
+                        check(f.life.stop(oldServer) == 3 && oldPermit.released(), "old lifetime did not retire");
+                        f.server = new MinecraftServer();
+                        f.access.server = f.server;
+                        f.access.players.clear();
+                        f.life.start(f.server);
+                        var actor = f.player(1);
+                        var id = f.open(actor);
+                        check(id.connectionEpoch() == oldId.connectionEpoch()
+                                        && id.serverGeneration() > oldId.serverGeneration(), "ABA fixture missing");
+                        f.life.requestSync(f.server, actor.getUUID());
+                        var permit = f.permits.acquire(actor.getUUID(), id.connectionEpoch(),
+                                id.serverGeneration()).permit().orElseThrow();
+                        var state = f.sessions.currentSession(id).orElseThrow();
+                        var sent = new int[1];
+                        f.sync((a, payload) -> sent[0]++).accept(result(oldId, true));
+                        f.life.onDisconnect(oldServer, oldActor);
+                        f.life.onDisconnect(f.server, oldActor);
+                        f.life.terminate(f.server, oldActor, oldId);
+                        f.life.submissionFailed(oldServer, oldActor, oldId, new AssertionError("old send"));
+                        f.life.onReloadComplete(oldServer);
+                        f.life.tick(oldServer);
+                        check(f.life.stop(oldServer) == 0, "late stop affected new server");
+                        oldPermit.releaseAfterTask();
+                        var results = new ArrayList<P7ServerIntentResult>();
+                        var dispatcher = new P7ServerAuthorizationDispatcher(f.sessions, f.access,
+                                new P7AdvisoryTargetValidator(), results::add, f.life::finishInvalidated);
+                        var bytes = new CastIntent(1, 0, CastInputKind.CAST, 0, null, null);
+                        dispatcher.dispatch(new P7QueuedCastIntent(oldId, bytes));
+                        check(results.isEmpty() && sent[0] == 0 && actor.disconnects == 0
+                                        && f.sessions.currentSession(id).orElseThrow() == state
+                                        && f.life.queuedCount() == 1 && f.permits.serverPending() == 1
+                                        && !permit.released(), "old identity mutated new session");
+                        var receipt = new com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation();
+                        receipt.epoch = oldId.connectionEpoch(); receipt.generation = oldId.serverGeneration();
+                        P7ServerAuthorizationBoundary.LoginReadyPort port = new P7ServerAuthorizationBoundary.LoginReadyPort() {};
+                        try {
+                            f.life.onLoginReady(f.server, actor, receipt, port);
+                            throw new AssertionError("old metadata generation accepted");
+                        } catch (P7SemanticInvariantException expected) {}
+                        check(receipt.starts == 0 && f.identity(actor).equals(id), "metadata reopened new session");
+                        dispatcher.dispatch(new P7QueuedCastIntent(id, bytes));
+                        check(results.size() == 1 && results.getFirst().sequenceConsumed()
+                                        && f.sessions.currentSession(id).orElseThrow().admissionState()
+                                                .sequenceState().expectedNext().orElseThrow() == 2,
+                                "fresh same bytes were blocked or not consumed");
+                    }
+
+                    private static void d3Respawn() {
+                        var f = new Fixture();
+                        var before = f.player(1);
+                        var id = f.open(before);
+                        f.sessions.transition(f.server, id, 0, 1).orElseThrow();
+                        var admission = f.sessions.currentSession(id).orElseThrow().admissionState();
+                        var after = f.player(1);
+                        after.connection = before.connection;
+                        // Native roster insertion / PlayerRespawnEvent precedes listener.player assignment.
+                        f.life.requestSync(f.server, after.getUUID());
+                        f.life.onDisconnect(f.server, before);
+                        var sent = new int[1];
+                        var sync = f.sync((a, payload) -> { check(a == after, "sync used replaced actor"); sent[0]++; });
+                        sync.accept(result(id, true));
+                        check(sent[0] == 0 && f.life.queuedCount() == 1
+                                        && f.sessions.currentSession(id).isPresent(), "half-installed actor obtained authority");
+                        after.connection.player = after;
+                        f.life.onLoginReady(f.server, after);
+                        check(f.identity(after).equals(id) && f.life.queuedCount() == 1
+                                        && f.sessions.currentSession(id).orElseThrow().admissionState() == admission,
+                                "same-C respawn reset identity or admission state");
+                        f.access.players.remove(after.getUUID());
+                        f.life.onDisconnect(f.server, before);
+                        check(f.sessions.currentSession(id).isPresent(), "old actor with null roster closed B");
+                        f.access.players.put(after.getUUID(), after);
+                        check(sync.fullSync(f.server, id, 0) && sent[0] == 2, "current B did not receive original sync");
+                        after.connected = false;
+                        after.connection.transport.connected = false;
+                        f.life.onDisconnect(f.server, after);
+                        check(f.sessions.currentSession(id).isEmpty() && f.life.queuedCount() == 0,
+                                "closed exact-C logout failed to revoke session");
+                    }
+
+                    private static void d3SendReentry() {
+                        for (boolean error : new boolean[] {false, true}) {
+                            var f = new Fixture();
+                            var before = f.player(1);
+                            var id = f.open(before);
+                            var successor = new ServerPlayer[1];
+                            var nextIdentity = new P7SessionIdentity[1];
+                            var sent = new int[1];
+                            Throwable primary = error ? new AssertionError("original send")
+                                    : new IllegalStateException("original send");
+                            var sync = f.sync((a, payload) -> {
+                                sent[0]++;
+                                f.life.onDisconnect(f.server, before);
+                                successor[0] = f.player(1);
+                                nextIdentity[0] = f.open(successor[0]);
+                                f.life.requestSync(f.server, successor[0].getUUID());
+                                throwExact(primary);
+                            });
+                            try {
+                                sync.accept(result(id, true));
+                                throw new AssertionError("original send failure disappeared");
+                            } catch (RuntimeException | Error observed) { check(observed == primary, "primary replaced"); }
+                            check(sent[0] == 1 && successor[0].disconnects == 0
+                                            && f.life.queuedCount() == 1
+                                            && f.sessions.currentSession(nextIdentity[0]).isPresent(),
+                                    "old send cleanup removed replacement");
+                            sync.accept(result(id, true));
+                            check(sent[0] == 1, "late old ACK sent on replacement");
+                        }
+                    }
+
+                    private static void d3StopExhaustion() throws Exception {
+                        var f = new Fixture();
+                        f.life.stop(f.server);
+                        var generation = P7PendingPermitOwner.class.getDeclaredField("serverGeneration");
+                        generation.setAccessible(true);
+                        generation.setLong(f.permits, Long.MAX_VALUE);
+                        f.server = new MinecraftServer(); f.access.server = f.server;
+                        f.life.start(f.server);
+                        var actor = f.player(1); var id = f.open(actor);
+                        check(id.serverGeneration() == Long.MAX_VALUE, "maximum lifetime fixture missing");
+                        f.life.requestSync(f.server, actor.getUUID());
+                        f.life.observe(f.server, actor.getUUID(), P7IntentFailureReason.SERVER_BUSY);
+                        var permit = f.permits.acquire(actor.getUUID(), id.connectionEpoch(),
+                                id.serverGeneration()).permit().orElseThrow();
+                        boolean failed = false;
+                        try { f.life.stop(f.server); } catch (P7SemanticInvariantException expected) { failed = true; }
+                        check(failed && !f.sessions.isCurrentServer(f.server)
+                                        && f.sessions.activeSessionCount() == 0 && f.life.queuedCount() == 0
+                                        && f.diagnostics.snapshot().isEmpty() && permit.released()
+                                        && f.permits.serverPending() == 0 && generation.getLong(f.permits) == Long.MAX_VALUE,
+                                "exhausted stop left owned state or wrapped generation");
+                        check(f.life.stop(f.server) == 0, "fallback repeated failed terminal stop");
+                        failed = false;
+                        f.server = new MinecraftServer(); f.access.server = f.server;
+                        try { f.life.start(f.server); } catch (P7SemanticInvariantException expected) { failed = true; }
+                        check(failed && !f.sessions.isCurrentServer(f.server), "exhausted owner restarted");
+                    }
+
                     private static final class Fixture {
-                        final MinecraftServer server = new MinecraftServer();
+                        MinecraftServer server = new MinecraftServer();
                         final P7ServerAccess access = new P7ServerAccess();
                         final P7ReloadAdmissionGate gate = new P7ReloadAdmissionGate();
-                        final P7ServerSessionService sessions = new P7ServerSessionService(access, gate);
                         final P7PendingPermitOwner permits = new P7PendingPermitOwner();
+                        final P7ServerSessionService sessions = new P7ServerSessionService(access, gate, permits);
                         final P7Diagnostics diagnostics = new P7Diagnostics();
                         final P7ServerLifecycleCoordinator life = new P7ServerLifecycleCoordinator(
                                 sessions, access, permits, gate, diagnostics, actor -> 731);
-                        Fixture() { access.server = server; }
+                        Fixture() { access.server = server; life.start(server); }
                         ServerPlayer player(long n) {
                             var actor = new ServerPlayer(server, uuid(n));
                             access.players.put(actor.getUUID(), actor);
                             return actor;
                         }
                         P7SessionIdentity open(ServerPlayer actor) {
-                            check(sessions.open(server, actor.getUUID()) == P7ServerSessionService.OpenResult.OPENED,
+                            check(sessions.open(server, actor) == P7ServerSessionService.OpenResult.OPENED,
                                     "test session open failed");
                             return identity(actor);
                         }
                         P7SessionIdentity identity(ServerPlayer actor) {
-                            return new P7SessionIdentity(actor.getUUID(), sessions.currentEpoch(actor.getUUID()).orElseThrow());
+                            return sessions.currentIdentity(server, actor.getUUID()).orElseThrow();
                         }
                         P7ServerSyncState state(P7SessionIdentity id) { return sessions.currentSession(id).orElseThrow().syncState(); }
                         P7AuthoritativeSyncService sync(P7AuthoritativeSyncService.Transport transport) {

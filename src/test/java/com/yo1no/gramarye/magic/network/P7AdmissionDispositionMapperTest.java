@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 final class P7AdmissionDispositionMapperTest {
     private static final P7SessionIdentity IDENTITY = new P7SessionIdentity(
-            UUID.fromString("00000000-0000-0000-0000-000000000703"), 7L);
+            UUID.fromString("00000000-0000-0000-0000-000000000703"), 7L, 1L);
 
     @Test
     void allEightRootDispositionsMapWithoutOrdinalOrDefaultFallback() {

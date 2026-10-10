@@ -5,21 +5,22 @@ import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
-/** Sole server-thread sync/lifecycle owner; retained work consists only of UUIDs. */
+/** Sole server-thread sync/lifecycle owner; retained work consists only of scalar identities. */
 final class P7ServerLifecycleCoordinator {
     private final P7ServerSessionService sessions;
     private final P7ServerAccess access;
     private final P7PendingPermitOwner permits;
     private final P7ReloadAdmissionGate reloadGate;
     private final P7Diagnostics diagnostics;
-    private final Set<UUID> reconciliation = new LinkedHashSet<>();
+    private final Set<P7SessionIdentity> reconciliation = new LinkedHashSet<>();
     private final P7AuthoritativeSyncService sync;
     private long drainTick = -1;
     private int processedThisTick;
-    private boolean stopped;
+    private boolean stopped = true;
 
     P7ServerLifecycleCoordinator(P7ServerSessionService sessions, P7ServerAccess access,
             P7PendingPermitOwner permits, P7ReloadAdmissionGate reloadGate,
@@ -39,10 +40,11 @@ final class P7ServerLifecycleCoordinator {
     void onLoginReady(MinecraftServer server, ServerPlayer actor) {
         requireServerThread(server);
         Objects.requireNonNull(actor, "actor");
-        if (stopped || !access.currentConnectedPlayer(server, actor, actor.getUUID())) {
+        if (stopped || !sessions.isCurrentServer(server)
+                || !access.currentConnectedPlayer(server, actor, actor.getUUID())) {
             throw new P7SemanticInvariantException("login actor is not current");
         }
-        switch (sessions.open(server, actor.getUUID())) {
+        switch (sessions.open(server, actor)) {
             case OPENED -> requestSync(server, actor.getUUID());
             case ALREADY_ACTIVE -> { }
             case CAPACITY_REJECTED, EPOCH_EXHAUSTED -> {
@@ -57,26 +59,30 @@ final class P7ServerLifecycleCoordinator {
             P7ServerAuthorizationBoundary.LoginReadyPort port) {
         requireServerThread(server);
         Objects.requireNonNull(actor, "actor");
-        if (stopped || !access.currentConnectedPlayer(server, actor, actor.getUUID())
+        if (stopped || !sessions.isCurrentServer(server)
+                || !access.currentConnectedPlayer(server, actor, actor.getUUID())
                 || !receipt.loginActor(port, actor)) {
             throw new P7SemanticInvariantException("login actor is not current");
         }
         long opened = receipt.openedSession(port);
         if (opened > 0) {
             // A known opened session is resumed, never re-opened or inferred by UUID alone.
-            if (sessions.currentEpoch(actor.getUUID()).orElse(0) != opened) {
+            var identity = new P7SessionIdentity(actor.getUUID(), opened,
+                    receipt.openedServerGeneration(port));
+            if (!sessions.matchesCurrentActor(server, identity, actor)) {
                 throw new P7SemanticInvariantException("metadata session is no longer current");
             }
             requestSync(server, actor.getUUID());
             return;
         }
-        if (sessions.currentEpoch(actor.getUUID()).isPresent()) {
+        if (sessions.currentIdentity(server, actor.getUUID()).isPresent()) {
             throw new P7SemanticInvariantException("unproven existing metadata session");
         }
         receipt.sessionStarted(port);
-        switch (sessions.open(server, actor.getUUID())) {
+        switch (sessions.open(server, actor)) {
             case OPENED -> {
-                receipt.sessionOpened(port, sessions.currentEpoch(actor.getUUID()).orElseThrow());
+                var identity = sessions.currentIdentity(server, actor.getUUID()).orElseThrow();
+                receipt.sessionOpened(port, identity.connectionEpoch(), identity.serverGeneration());
                 requestSync(server, actor.getUUID());
             }
             case CAPACITY_REJECTED, EPOCH_EXHAUSTED -> {
@@ -90,33 +96,25 @@ final class P7ServerLifecycleCoordinator {
 
     void onDisconnect(MinecraftServer server, ServerPlayer actor) {
         requireServerThread(server);
-        var playerId = actor.getUUID();
-        var current = access.currentPlayer(server, playerId);
-        if (current != null && current != actor) {
-            return;
-        }
-        var epoch = sessions.currentEpoch(playerId);
-        if (epoch.isPresent()) {
-            var identity = new P7SessionIdentity(playerId, epoch.getAsLong());
-            sessions.closeSession(server, playerId, identity.connectionEpoch());
-            clearOwnedState(identity);
-        }
+        sessions.closeForActor(server, actor).ifPresent(this::clearOwnedState);
     }
 
     void requestSync(MinecraftServer server, UUID playerId) {
         requireServerThread(server);
-        if (!stopped && sessions.currentEpoch(playerId).isPresent()) {
-            if (!reconciliation.contains(playerId)
+        if (!stopped && sessions.isCurrentServer(server)) {
+            var identity = sessions.currentIdentity(server, playerId).orElse(null);
+            if (identity == null) { return; }
+            if (!reconciliation.contains(identity)
                     && reconciliation.size() == P7NetworkBounds.MAX_RELOAD_RECONCILIATION_QUEUE) {
                 throw new P7SemanticInvariantException("reconciliation capacity exceeded");
             }
-            reconciliation.add(playerId);
+            reconciliation.add(identity);
         }
     }
 
     void onReloadComplete(MinecraftServer server) {
         requireServerThread(server);
-        if (stopped) {
+        if (stopped || !sessions.isCurrentServer(server)) {
             return;
         }
         if (!reloadGate.beginReconciliation(server)) {
@@ -129,7 +127,7 @@ final class P7ServerLifecycleCoordinator {
 
     void tick(MinecraftServer server) {
         requireServerThread(server);
-        if (stopped) {
+        if (stopped || !sessions.isCurrentServer(server)) {
             return;
         }
         var tick = access.authoritativeTick(server);
@@ -141,48 +139,51 @@ final class P7ServerLifecycleCoordinator {
             processedThisTick = 0;
         }
         for (var playerId : sessions.activePlayerIds(server)) {
-            var identity = new P7SessionIdentity(playerId, sessions.currentEpoch(playerId).orElseThrow());
+            var identity = sessions.currentIdentity(server, playerId).orElseThrow();
             if (sessions.currentSession(identity).orElseThrow().syncState().due(tick)) {
                 requestSync(server, playerId);
             }
         }
         // Snapshot only bounded scalar IDs: terminal cleanup may remove from the sole set.
-        for (var playerId : java.util.List.copyOf(reconciliation)) {
+        for (var identity : java.util.List.copyOf(reconciliation)) {
+            if (!sessions.isCurrentServer(server)) { return; }
             if (processedThisTick == P7NetworkBounds.MAX_RELOAD_RECONCILIATION_PER_TICK) {
                 break;
             }
             processedThisTick++;
-            var epoch = sessions.currentEpoch(playerId);
-            if (epoch.isEmpty()) {
-                reconciliation.remove(playerId);
+            if (sessions.currentSession(identity).isEmpty()) {
+                reconciliation.remove(identity);
                 continue;
             }
-            if (sync.fullSync(server, new P7SessionIdentity(playerId, epoch.getAsLong()), tick)) {
-                reconciliation.remove(playerId);
+            if (sync.fullSync(server, identity, tick)) {
+                reconciliation.remove(identity);
             }
         }
-        if (reconciliation.isEmpty()) {
+        if (reconciliation.isEmpty() && sessions.isCurrentServer(server)) {
             reloadGate.open(server);
         }
     }
 
     void terminate(MinecraftServer server, ServerPlayer actor, P7SessionIdentity identity) {
         requireServerThread(server);
-        sessions.closeSession(server, identity.authenticatedPlayerId(), identity.connectionEpoch());
         finishInvalidated(server, actor, identity);
     }
 
     void finishInvalidated(MinecraftServer server, ServerPlayer actor, P7SessionIdentity identity) {
         requireServerThread(server);
+        var connection = ownedActorConnection(server, actor, identity);
+        if (connection == null || !sessions.closeSession(server, identity)) { return; }
         clearOwnedState(identity);
-        disconnectExact(server, actor, identity);
+        disconnectExact(server, actor, identity, connection);
     }
 
     void submissionFailed(MinecraftServer server, ServerPlayer actor,
             P7SessionIdentity identity, Throwable primary) {
         // Each stage runs once even when an earlier cleanup stage fails. No Throwable is retained.
+        Connection connection = null;
         try {
-            sessions.closeSession(server, identity.authenticatedPlayerId(), identity.connectionEpoch());
+            connection = ownedActorConnection(server, actor, identity);
+            if (connection != null) { sessions.closeSession(server, identity); }
         } catch (RuntimeException | Error secondary) {
             suppress(primary, secondary);
         }
@@ -192,17 +193,19 @@ final class P7ServerLifecycleCoordinator {
             suppress(primary, secondary);
         }
         try {
-            permits.invalidateSession(identity.authenticatedPlayerId(), identity.connectionEpoch());
+            permits.invalidateSession(identity);
         } catch (RuntimeException | Error secondary) {
             suppress(primary, secondary);
         }
         try {
-            disconnectExact(server, actor, identity);
+            disconnectExact(server, actor, identity, connection);
         } catch (RuntimeException | Error secondary) {
             suppress(primary, secondary);
         }
         try {
-            observe(server, identity.authenticatedPlayerId(), P7IntentFailureReason.INTERNAL_SERVER_FAULT);
+            if (sessions.isCurrentServer(server, identity.serverGeneration())) {
+                observe(server, identity.authenticatedPlayerId(), P7IntentFailureReason.INTERNAL_SERVER_FAULT);
+            }
         } catch (RuntimeException | Error secondary) {
             suppress(primary, secondary);
         }
@@ -210,38 +213,56 @@ final class P7ServerLifecycleCoordinator {
 
     void observe(MinecraftServer server, UUID playerId, P7IntentFailureReason reason) {
         requireServerThread(server);
-        diagnostics.record(playerId, access.authoritativeTick(server), reason);
+        if (sessions.isCurrentServer(server)) {
+            diagnostics.record(playerId, access.authoritativeTick(server), reason);
+        }
     }
 
     int stop(MinecraftServer server) {
         requireServerThread(server);
-        if (stopped) {
+        if (stopped || !sessions.isCurrentServer(server)) {
             return 0;
         }
         stopped = true;
-        reloadGate.close(server);
-        var count = sessions.stop(server);
-        count += reconciliation.size();
-        reconciliation.clear();
-        count += permits.stopAll();
-        diagnostics.discard();
-        if (count > P7NetworkBounds.MAX_SERVER_STOP_CLEANUP_RECORDS) {
-            throw new P7SemanticInvariantException("server cleanup bound exceeded");
+        Throwable primary = null;
+        try {
+            var count = sessions.stop(server) + reconciliation.size();
+            if (count > P7NetworkBounds.MAX_SERVER_STOP_CLEANUP_RECORDS) {
+                throw new P7SemanticInvariantException("server cleanup bound exceeded");
+            }
+            return count;
+        } catch (RuntimeException | Error failure) {
+            primary = failure;
+            throw failure;
+        } finally {
+            discardStoppedState(server, primary);
         }
-        return count;
     }
 
     void start(MinecraftServer server) {
         requireServerThread(server);
+        if (sessions.isCurrentServer(server)) { return; }
         if (!reconciliation.isEmpty()) {
             throw new P7SemanticInvariantException("reconciliation survived stop");
         }
         sessions.start(server);
-        reloadGate.reset(server);
-        diagnostics.discard();
-        drainTick = -1;
-        processedThisTick = 0;
-        stopped = false;
+        try {
+            // The new slot is empty: no authenticated capture exists until an actual open.
+            reloadGate.reset(server);
+            diagnostics.discard();
+            drainTick = -1;
+            processedThisTick = 0;
+            stopped = false;
+        } catch (RuntimeException | Error primary) {
+            stopped = true;
+            try {
+                sessions.stop(server);
+            } catch (RuntimeException | Error secondary) {
+                suppress(primary, secondary);
+            }
+            discardStoppedState(server, primary);
+            throw primary;
+        }
     }
 
     int queuedCount() {
@@ -250,20 +271,52 @@ final class P7ServerLifecycleCoordinator {
 
     private void clearOwnedState(P7SessionIdentity identity) {
         clearQueue(identity);
-        permits.invalidateSession(identity.authenticatedPlayerId(), identity.connectionEpoch());
+        permits.invalidateSession(identity);
     }
 
     private void clearQueue(P7SessionIdentity identity) {
-        var currentEpoch = sessions.currentEpoch(identity.authenticatedPlayerId());
-        if (currentEpoch.isEmpty() || currentEpoch.getAsLong() == identity.connectionEpoch()) {
-            reconciliation.remove(identity.authenticatedPlayerId());
+        reconciliation.remove(identity);
+    }
+
+    private Connection ownedActorConnection(MinecraftServer server, ServerPlayer actor,
+            P7SessionIdentity identity) {
+        if (!sessions.isCurrentServer(server, identity.serverGeneration())
+                || !identity.authenticatedPlayerId().equals(actor.getUUID())) { return null; }
+        var connection = access.actorConnection(server, actor);
+        var current = access.currentPlayer(server, identity.authenticatedPlayerId());
+        return connection != null && (current == null || current == actor)
+                && sessions.isCurrentCapture(identity, connection) ? connection : null;
+    }
+
+    private void disconnectExact(MinecraftServer server, ServerPlayer actor, P7SessionIdentity identity,
+            Connection connection) {
+        if (connection != null && sessions.isCurrentServer(server, identity.serverGeneration())
+                && sessions.currentIdentity(server, identity.authenticatedPlayerId()).isEmpty()
+                && access.actorConnection(server, actor) == connection) {
+            access.disconnectCurrent(server, actor);
         }
     }
 
-    private void disconnectExact(MinecraftServer server, ServerPlayer actor, P7SessionIdentity identity) {
-        var currentEpoch = sessions.currentEpoch(identity.authenticatedPlayerId());
-        if (currentEpoch.isEmpty() || currentEpoch.getAsLong() == identity.connectionEpoch()) {
-            access.disconnectCurrent(server, actor);
+    private void discardStoppedState(MinecraftServer server, Throwable primary) {
+        Throwable failure = primary;
+        try {
+            reloadGate.close(server);
+        } catch (RuntimeException | Error secondary) {
+            if (failure == null) { failure = secondary; } else { suppress(failure, secondary); }
+        }
+        try {
+            reconciliation.clear();
+        } catch (RuntimeException | Error secondary) {
+            if (failure == null) { failure = secondary; } else { suppress(failure, secondary); }
+        }
+        try {
+            diagnostics.discard();
+        } catch (RuntimeException | Error secondary) {
+            if (failure == null) { failure = secondary; } else { suppress(failure, secondary); }
+        }
+        if (primary == null) {
+            if (failure instanceof RuntimeException runtime) { throw runtime; }
+            if (failure instanceof Error error) { throw error; }
         }
     }
 

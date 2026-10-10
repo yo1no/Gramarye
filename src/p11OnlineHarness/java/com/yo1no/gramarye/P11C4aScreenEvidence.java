@@ -158,7 +158,8 @@ public final class P11C4aScreenEvidence {
         String role = P11C4aEvidence.property("role");
         String selectedCase = P11C4aEvidence.property("case");
         if (!run.matches("[A-Za-z0-9_-]{8,64}")
-                || !((selectedCase.equals("c4a-dedicated") || selectedCase.equals("c4a-reward")) && Set.of("a", "b").contains(role)
+                || !((selectedCase.equals("c4a-dedicated") || selectedCase.equals("c4a-reward")
+                    || selectedCase.equals("d3-c4a-baseline")) && Set.of("a", "b").contains(role)
                 || selectedCase.equals("c4a-host-lan") && Set.of("host", "b").contains(role))) {
             throw new IllegalStateException("SCREEN_EVIDENCE_COHORT_IDENTITY");
         }

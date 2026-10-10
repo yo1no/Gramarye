@@ -34,7 +34,10 @@ module P11OnlineRuntime
   COOLDOWN_CASES = %w[cooldown-d1 cooldown-d120 cooldown-d600 cooldown-restart-write cooldown-restart-read cooldown-prepared-reentry cooldown-add-false cooldown-add-remove cooldown-clone cooldown-before-arm-throw cooldown-after-arm-throw cooldown-unarmed-stop cooldown-save-active cooldown-save-clear cooldown-dual].freeze
   COOLDOWN_L1_CASES = %w[cooldown-l1-pre-spawn cooldown-l1-open cooldown-l1-claimed].freeze
   # No launch is authorized by an old phase's pin. Filled only after this product build.
-  COOLDOWN_JAR_SHA = 'ec5158a5051c8913d30f765bbb8ecee2f5c98a6bde4d1c13ae17a6a5719be030'.freeze
+  COOLDOWN_JAR_SHA = '3e1960fdc37bca113f8e9d9569241e65192c5eb7ee119b64cadef8f3a97059d2'.freeze
+  D3_CASES = %w[d3-replay d3-old-source d3-late-task d3-old-result d3-respawn d3-dual d3-host-lan].freeze
+  D3_C4A_CASE = 'd3-c4a-baseline'.freeze
+  D3_JAR_SHA = '3e1960fdc37bca113f8e9d9569241e65192c5eb7ee119b64cadef8f3a97059d2'.freeze
   L1_STATS_MEMORY_FIXTURE_SHA = '04c94e6c2913d0ad20a200e03c55787c740275c9a70fcc94af5de2286d4c52a3'.freeze
   L1_FIXTURE_HASHES = {
     'advancement/l1_first_kill.json' => '61e2889dade9569ed5f7a4b0862e0e69c209a205841d13c4b483e43a0949119b',
@@ -58,7 +61,7 @@ module P11OnlineRuntime
     'function/delivery_tail.mcfunction' => '063b29f7caed0f928290c56bd4c67be669f80ea75a3aae821c0e84e2fe9dde3f'
   }.freeze
   CURRENT_CONTEXT_CASES = %w[c4a-qctx c4a-capacity].freeze
-  CASES = (%w[single qctx capacity] + C4A_CASES + CURRENT_CONTEXT_CASES + L1_CASES + L1_CONTEXT_CASES + COOLDOWN_CASES + COOLDOWN_L1_CASES).freeze
+  CASES = (%w[single qctx capacity] + C4A_CASES + CURRENT_CONTEXT_CASES + L1_CASES + L1_CONTEXT_CASES + COOLDOWN_CASES + COOLDOWN_L1_CASES + D3_CASES + [D3_C4A_CASE]).freeze
   CLIENT_FILES = %w[bootstrap.json onboarding-continued.json inputs.json login-1.json login-2.json first-play.json
                     first-disconnected.json second-play.json capacity-respawn.json result.json].freeze
   SERVER_FILES = %w[ready.json readiness-result.json native-context-result.json result.json
@@ -74,10 +77,12 @@ module P11OnlineRuntime
                       .to_h { |leaf| ['data/gramarye_p11_engineering/' + leaf, L1_FIXTURE_HASHES.fetch(leaf)] }.freeze
   COMPANION_RESOURCES = [CONSOLE_XML, 'gramarye-p11-online-harness.mixins.json',
                          'gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-l1-harness.mixins.json',
-                         'gramarye-p11-cooldown-harness.mixins.json', C6_MIXIN_CONFIG,
+                         'gramarye-p11-cooldown-harness.mixins.json', 'gramarye-p11-d3-harness.mixins.json', C6_MIXIN_CONFIG,
                          *L1_HOST_RESOURCES.keys].sort.freeze
   DIAGNOSTIC_CLASS = 'com/yo1no/gramarye/P11OnlineLaunchDiagnostic'.freeze
-  MAX_FROZEN_BUNDLE_FILES = 1024
+  # D3 measured source/class/resource inventory needs 1043 frozen files (no diagnostics).
+  # This bounds an excluded immutable launch bundle, not any gameplay capacity.
+  MAX_FROZEN_BUNDLE_FILES = 1088
 
   class Failure < StandardError
     attr_reader :code
@@ -159,6 +164,10 @@ module P11OnlineRuntime
   def product_pin(case_name, l1_host_stop: false, cooldown_host: false)
     check(CASES.include?(case_name), 'INVALID_CASE')
     cooldown_host_selection!(case_name, cooldown_host, l1_host_stop: l1_host_stop)
+    if D3_CASES.include?(case_name) || case_name == D3_C4A_CASE
+      check(D3_JAR_SHA.is_a?(String) && D3_JAR_SHA.match?(/\A[0-9a-f]{64}\z/), 'D3_PRODUCT_PIN_PENDING')
+      return D3_JAR_SHA
+    end
     if COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || cooldown_host
       check(COOLDOWN_JAR_SHA.is_a?(String) && COOLDOWN_JAR_SHA.match?(/\A[0-9a-f]{64}\z/), 'COOLDOWN_PRODUCT_PIN_PENDING')
       return COOLDOWN_JAR_SHA
@@ -173,29 +182,35 @@ module P11OnlineRuntime
   end
 
   def current_product_case?(case_name)
-    C4A_CASES.include?(case_name) || CURRENT_CONTEXT_CASES.include?(case_name) || L1_CASES.include?(case_name) || L1_CONTEXT_CASES.include?(case_name) || COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name)
+    C4A_CASES.include?(case_name) || CURRENT_CONTEXT_CASES.include?(case_name) || L1_CASES.include?(case_name) || L1_CONTEXT_CASES.include?(case_name) || COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || D3_CASES.include?(case_name) || case_name == D3_C4A_CASE
+  end
+
+  def host_case?(case_name)
+    %w[c4a-host-lan d3-host-lan].include?(case_name)
   end
 
   def roles_for(case_name)
-    return %w[host b] if case_name == 'c4a-host-lan'
+    return %w[host b] if host_case?(case_name)
     case_name == 'single' ? %w[server single] : %w[server a b]
   end
 
   def mixin_config(case_name)
     check(CASES.include?(case_name), 'INVALID_CASE')
+    return 'gramarye-p11-d3-harness.mixins.json' if D3_CASES.include?(case_name)
     return 'gramarye-p11-cooldown-harness.mixins.json' if COOLDOWN_CASES.include?(case_name)
     return 'gramarye-p11-l1-harness.mixins.json' if L1_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name)
-    C4A_CASES.include?(case_name) ? 'gramarye-p11-c4a-harness.mixins.json' : 'gramarye-p11-online-harness.mixins.json'
+    C4A_CASES.include?(case_name) || case_name == D3_C4A_CASE ? 'gramarye-p11-c4a-harness.mixins.json' : 'gramarye-p11-online-harness.mixins.json'
   end
 
   def mixin_configs(case_name)
     configs = [mixin_config(case_name)]
-    configs << C6_MIXIN_CONFIG if C4A_CASES.include?(case_name)
+    configs << C6_MIXIN_CONFIG if C4A_CASES.include?(case_name) || case_name == D3_C4A_CASE
     configs
   end
 
   def frozen_jar_path(runtime_root, case_name, l1_host_stop: false, cooldown_host: false)
     pin = product_pin(case_name, l1_host_stop: l1_host_stop, cooldown_host: cooldown_host)
+    return File.join(runtime_root, 'frozen-d3', pin, 'gramarye-1.0.0.jar') if D3_CASES.include?(case_name) || case_name == D3_C4A_CASE
     return File.join(runtime_root, 'frozen-cooldown', pin, 'gramarye-1.0.0.jar') if COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || cooldown_host
     return File.join(runtime_root, 'frozen-l1', pin, 'gramarye-1.0.0.jar') if L1_CASES.include?(case_name) || L1_CONTEXT_CASES.include?(case_name) || l1_host_stop
     return File.join(runtime_root, 'frozen', 'gramarye-1.0.0.jar') unless current_product_case?(case_name)
@@ -250,7 +265,7 @@ module P11OnlineRuntime
           'STARTUP_FIXTURE_MISMATCH')
     # Natural L1 positives use the original four-UUID fixture. The old two-UUID
     # context cohort is a separate stress configuration, not its admission setup.
-    limit = %w[capacity c4a-capacity l1-capacity l1-work-capacity].include?(case_name) ? 1 : (L1_CASES.include?(case_name) || COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || l1_host_stop || cooldown_host) ? 4 : 2
+    limit = %w[capacity c4a-capacity l1-capacity l1-work-capacity].include?(case_name) ? 1 : (L1_CASES.include?(case_name) || COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || D3_CASES.include?(case_name) || l1_host_stop || cooldown_host) ? 4 : 2
     %w[p11.retention.maxUuids p11.save.dirtyUuidAdmissionWatermark].each do |key|
       pattern = /^#{Regexp.escape(key)} = 4$/
       check(raw.scan(pattern).length == 1, 'STARTUP_FIXTURE_KEY_MISMATCH')
@@ -364,7 +379,7 @@ module P11OnlineRuntime
     check(LAUNCH_STEMS.include?(stem), 'INVALID_LAUNCH_ROLE')
     return 'server' if stem == 'p11OnlineServer'
     return 'b' if stem == 'p11OnlineClientB'
-    return 'host' if manifest.fetch('case') == 'c4a-host-lan'
+    return 'host' if host_case?(manifest.fetch('case'))
     manifest.fetch('case') == 'single' ? 'single' : 'a'
   end
 
@@ -504,7 +519,17 @@ module P11OnlineRuntime
     cooldown = cooldown_host_selection!(manifest.fetch('case'), manifest.fetch('cooldownHost', false), l1_host_stop: selected)
     file = nonsecret_path!(File.join(source_root, 'com/yo1no/gramarye/P11C4aScenario.java'), manifest.fetch('privateRoot'))
     check(File.file?(file) && File.size(file).between?(1, 16_384), 'L1_HOST_MODE_SOURCE_MISSING')
-    matches = File.binread(file).scan(/^\s*static final Mode MODE = Mode\.([A-Z0-9_]+);\s*$/).flatten
+    source = File.binread(file)
+    conditional = <<~JAVA.strip
+      static final Mode MODE = "d3-c4a-baseline".equals(System.getProperty("gramarye.p11.online.case", ""))
+              ? Mode.BASELINE : Mode.UI_HELD;
+    JAVA
+    declarations = source.scan(/\bstatic\s+final\s+Mode\s+MODE\s*=[^;]*;/m)
+    exact_conditional = declarations.length == 1 && declarations.first.gsub(/\s+/, ' ').strip == conditional.gsub(/\s+/, ' ').strip
+    check(exact_conditional, 'D3_C4A_BASELINE_MODE_MISMATCH') if manifest.fetch('case') == D3_C4A_CASE
+    matches = exact_conditional ? [manifest.fetch('case') == D3_C4A_CASE ? 'BASELINE' : 'UI_HELD'] :
+      source.scan(/^\s*static final Mode MODE = Mode\.([A-Z0-9_]+);\s*$/).flatten
+    check(declarations.length == 1, 'L1_HOST_MODE_MISMATCH')
     check(matches.length == 1 && (matches.first == 'L1_HOST_STOP') == selected, 'L1_HOST_MODE_MISMATCH')
     check((matches.first == 'COOLDOWN_HOST') == cooldown, 'COOLDOWN_HOST_MODE_MISMATCH')
     true
@@ -887,7 +912,7 @@ module P11OnlineRuntime
         status: 'EXACT_PUBLIC_NATIVE_REWARD_INPUTS_NOT_RUNTIME_PROOF', sourceHashes: reward_fixture_hashes(case_name),
         deliveryRootSha256: Digest::SHA256.file(File.join(data, 'delivery_root.json')).hexdigest) + "\n")
     end
-    if case_name == 'c4a-host-lan'
+    if host_case?(case_name)
       # Minecraft's original createFreshLevel owns the host world; never pre-create it.
       host_config = File.join(runtime, 'host', 'defaultconfigs')
       mkdir_new(host_config)
@@ -924,7 +949,7 @@ module P11OnlineRuntime
       write_new(File.join(runtime, "launch-client-#{client}.command"), client_launcher(manifest, client), 0o700)
     end
     cues = "PREPARED_NOT_LAUNCHED; authentication NOT_PROVEN.\n" \
-      "Topology: #{case_name == 'c4a-host-lan' ? 'Client A creates/publishes the original integrated host; client B waits for its ready receipt.' : 'Launch the original dedicated server before clients.'}\n" \
+      "Topology: #{host_case?(case_name) ? 'Client A creates/publishes the original integrated host; client B waits for its ready receipt.' : 'Launch the original dedicated server before clients.'}\n" \
       "Clients: open only the local launch-client-a.command / launch-client-b.command files in Terminal.\n" \
       "Launch is disabled until generated MDG launch files are frozen for this exact cohort.\n" \
       "Only the holder enters Microsoft credentials and device codes in their browser; do not send them here.\n" \
@@ -986,7 +1011,7 @@ module P11OnlineRuntime
   # its PID cannot be reused. No process scan, credentials, or guessed external PID.
   def wait_owned_process(pid, case_name, cooldown_host: false)
     cooldown_host_selection!(case_name, cooldown_host)
-    unless COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || cooldown_host
+    unless COOLDOWN_CASES.include?(case_name) || COOLDOWN_L1_CASES.include?(case_name) || D3_CASES.include?(case_name) || case_name == D3_C4A_CASE || cooldown_host
       return [Process.waitpid2(pid).last, false]
     end
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 900
@@ -1017,7 +1042,7 @@ module P11OnlineRuntime
   end
 
   def launch_server(manifest)
-    check(manifest.fetch('case') != 'c4a-host-lan', 'INTEGRATED_HOST_REQUIRES_CLIENT_A')
+    check(!host_case?(manifest.fetch('case')), 'INTEGRATED_HOST_REQUIRES_CLIENT_A')
     verify_frozen!(manifest)
     check(manifest.fetch('eulaAccepted'), 'EULA_ACK_REQUIRED')
     verify_jar!(nonsecret_path!(manifest.fetch('jar'), manifest.fetch('privateRoot')), manifest.fetch('case'), l1_host_stop: manifest.fetch('l1HostStop', false), cooldown_host: manifest.fetch('cooldownHost', false))
@@ -1061,9 +1086,9 @@ module P11OnlineRuntime
     check(File.size(file) <= 4096, 'SERVER_READY_INVALID')
     ready = JSON.parse(File.binread(file))
     expected = {
-      'status' => manifest.fetch('case') == 'c4a-host-lan' ? 'ONLINE_INTEGRATED_PUBLISHED_NO_PARTNER_AUTH_CLAIM' : 'ONLINE_DEDICATED_READY_NO_AUTH_CLAIM', 'case' => manifest.fetch('case'),
+      'status' => host_case?(manifest.fetch('case')) ? 'ONLINE_INTEGRATED_PUBLISHED_NO_PARTNER_AUTH_CLAIM' : 'ONLINE_DEDICATED_READY_NO_AUTH_CLAIM', 'case' => manifest.fetch('case'),
       'runId' => manifest.fetch('runId'), 'productionJarSha256' => manifest.fetch('jarSha256'),
-      'onlineMode' => true, 'integrated' => manifest.fetch('case') == 'c4a-host-lan',
+      'onlineMode' => true, 'integrated' => host_case?(manifest.fetch('case')),
       'expectedPlayers' => manifest.fetch('case') == 'single' ? 1 : 2,
       'configurationSha256' => manifest.fetch('fixtureSha256')
     }
@@ -1081,7 +1106,7 @@ module P11OnlineRuntime
     verify_frozen!(manifest)
     # Only the exact host-A case bootstraps its own native integrated server.
     # Partner B and every dedicated client still require the matching server receipt.
-    server_ready_for_client!(manifest) unless manifest.fetch('case') == 'c4a-host-lan' && client == 'a'
+    server_ready_for_client!(manifest) unless host_case?(manifest.fetch('case')) && client == 'a'
     runtime = manifest.fetch('runtime')
     write_new(File.join(runtime, "client-#{client}.launch-reserved"), "OWNED_CLIENT_LAUNCH\n")
     stem = client == 'a' ? 'p11OnlineClientA' : 'p11OnlineClientB'
@@ -1122,7 +1147,7 @@ module P11OnlineRuntime
   end
 
   def stop(manifest)
-    check(manifest.fetch('case') != 'c4a-host-lan', 'INTEGRATED_HOST_STOPS_WITH_CLIENT')
+    check(!host_case?(manifest.fetch('case')), 'INTEGRATED_HOST_STOPS_WITH_CLIENT')
     descriptor = IO.sysopen(fifo!(manifest), File::WRONLY | File::NONBLOCK)
     IO.open(descriptor, 'w') { |io| io.write("stop\n"); io.flush }
     { 'status' => 'STOP_COMMAND_WRITTEN_NOT_TERMINAL_PROOF' }
@@ -1136,6 +1161,23 @@ module P11OnlineRuntime
       CLIENT_FILES.map { |name| "client-#{role}/#{name}" } +
         %W[#{role}-auth-1.json #{role}-auth-2.json #{role}-first-native.json #{role}-reconnect-native.json]
           .map { |name| "server/#{name}" }
+    end
+    if D3_CASES.include?(manifest.fetch('case'))
+      files += %w[d3-held.json d3-late-release.json d3-before-death.json d3-result.json d3-cost.json data-terminal.json
+                  host-1-held.json host-generation-late-task.json].map { |name| "server/#{name}" }
+      files += %w[a b].flat_map do |role|
+        %w[starter.json cast-1.json cast-2.json ack-1.json ack-2.json ack-3.json ack-4.json replayed.json left.json respawn.json]
+          .map { |name| "client-#{role}/#{name}" }
+      end
+      if manifest.fetch('case') == 'd3-host-lan'
+        files += [1, 2].flat_map do |ordinal|
+          %W[host-#{ordinal}-ready.json host-#{ordinal}-host-login.json host-#{ordinal}-b-login.json
+             host-#{ordinal}-data-terminal.json host-#{ordinal}-stopped.json host-#{ordinal}-cost.json]
+            .map { |name| "server/#{name}" } +
+            %W[client-host/host-#{ordinal}-terminal.json client-b/host-#{ordinal}-terminal.json
+               client-b/host-#{ordinal}-starter.json]
+        end
+      end
     end
     if COOLDOWN_CASES.include?(manifest.fetch('case'))
       files += %w[cooldown-result.json data-terminal.json formal-submission.json arm-1.json arm-2.json
@@ -1159,6 +1201,10 @@ module P11OnlineRuntime
       files += %w[client-a/cooldown-cost.json client-b/cooldown-cost.json]
       files += %w[input-focus-1.json input-focus-2.json input-focus-3.json
                   input-stall-1.json input-stall-2.json input-stall-3.json].map { |name| "client-a/#{name}" }
+      if manifest.fetch('case') == 'cooldown-d600'
+        files += %w[server/active-refusal-after-reconnect.json client-a/cast-4.json
+                    client-a/input-focus-4.json client-a/input-stall-4.json]
+      end
       if manifest.fetch('case') == 'cooldown-dual'
         files += %w[formal-submission-a.json formal-submission-b.json cooldown-dual-a.json
                     cooldown-dual-b.json cooldown-dual-result.json].map { |name| "server/#{name}" }
@@ -1194,12 +1240,19 @@ module P11OnlineRuntime
         files << 'l1-restart-input.json' if manifest.fetch('case') == 'l1-restart-read'
       end
     end
-    if C4A_CASES.include?(manifest.fetch('case'))
+    if C4A_CASES.include?(manifest.fetch('case')) || manifest.fetch('case') == D3_C4A_CASE
       files += (C4A_SCENE_FILES + ['normal-path-result.json']).map { |name| "server/#{name}" }
       files += manifest.fetch('roles').reject { |role| role == 'server' }.flat_map do |role|
         C4A_SCENE_FILES.map { |name| "client-#{role}/#{name}" }
       end
       files << 'client-host/host-published.json' if manifest.fetch('case') == 'c4a-host-lan'
+      if manifest.fetch('case') == D3_C4A_CASE
+        files += %w[enter-config-terminal.json metadata-h-config-terminal.json reload-fop.json reload-qctx.json
+                    reload-subset-result.json first-try.json reload-h.json parking.json parking-keepalive.json]
+          .map { |name| "server/#{name}" }
+        files += %w[enter-config-terminal.json metadata-h-config-terminal.json reload-fop.json reload-qctx.json
+                    first-try.json reload-h.json parking.json].map { |name| "client-a/#{name}" }
+      end
       if manifest.fetch('l1HostStop', false)
         files += %w[host-l1-reward.json host-l1-open-before-quit.json host-l1-stopped.json host-l1-stop-failure.json]
           .map { |name| "server/#{name}" }

@@ -7,8 +7,9 @@ import java.util.UUID;
 final class P7SessionIdentity {
     private final UUID authenticatedPlayerId;
     private final long connectionEpoch;
+    private final long serverGeneration;
 
-    P7SessionIdentity(UUID authenticatedPlayerId, long connectionEpoch) {
+    P7SessionIdentity(UUID authenticatedPlayerId, long connectionEpoch, long serverGeneration) {
         if (authenticatedPlayerId == null) {
             throw new P7SemanticInvariantException("authenticated player ID is required");
         }
@@ -19,6 +20,10 @@ final class P7SessionIdentity {
         }
         this.authenticatedPlayerId = authenticatedPlayerId;
         this.connectionEpoch = connectionEpoch;
+        if (serverGeneration <= 0) {
+            throw new P7SemanticInvariantException("server generation is outside the positive range");
+        }
+        this.serverGeneration = serverGeneration;
     }
 
     UUID authenticatedPlayerId() {
@@ -29,16 +34,21 @@ final class P7SessionIdentity {
         return connectionEpoch;
     }
 
+    long serverGeneration() {
+        return serverGeneration;
+    }
+
     @Override
     public boolean equals(Object other) {
         return this == other
                 || other instanceof P7SessionIdentity that
                         && connectionEpoch == that.connectionEpoch
+                        && serverGeneration == that.serverGeneration
                         && authenticatedPlayerId.equals(that.authenticatedPlayerId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(authenticatedPlayerId, connectionEpoch);
+        return Objects.hash(authenticatedPlayerId, connectionEpoch, serverGeneration);
     }
 }

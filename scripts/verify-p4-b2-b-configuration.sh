@@ -518,9 +518,25 @@ verify_p11_native_helper_error_catches() {
                 samePrimary = "catch(RuntimeException|Errorprimary){lifecycle.submissionFailed(server,actor,identity,primary);throwprimary;}"
                 expect("fullSync", 1, "catch(RuntimeException|Errorfailure){primary=failure;lifecycle.submissionFailed(server,actor,identity,failure);throwfailure;}")
                 expect("finishAttempt", 1, "catch(RuntimeException|ErrorcleanupFailure){lifecycle.submissionFailed(server,actor,identity,primary==null?cleanupFailure:primary);if(primary==null){throwcleanupFailure;}}")
-                expect("submitInitialFamily", 1, "catch(RuntimeException|Errorprimary){if(initial){P11NativeStorageBoundary.metadataInitialSync(actor,identity.connectionEpoch(),mana?MetadataInitialStage.MANA_FAILED:MetadataInitialStage.COOLDOWN_FAILED);}throwprimary;}")
+                expect("submitInitialFamily", 1, "catch(RuntimeException|Errorprimary){if(initial){P11NativeStorageBoundary.metadataInitialSync(actor,identity.connectionEpoch(),identity.serverGeneration(),mana?MetadataInitialStage.MANA_FAILED:MetadataInitialStage.COOLDOWN_FAILED);}throwprimary;}")
                 expect("commitFamily", 1, samePrimary)
                 expect("submit", 1, samePrimary)
+            } else if (kind == "p7_handler" || kind == "p7_task") {
+                operation = kind == "p7_handler" ? "handleAuthenticated" : "run"
+                expect(operation, 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
+                expect(operation, 2, "catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}")
+                expect("suppress", 1, "catch(RuntimeException|ErrorsuppressionFailure){}")
+            } else if (kind == "p7_permits") {
+                expect("acquire", 1, "catch(RuntimeException|Errorprimary){try{try{if(playerPending==0){perPlayerPending.remove(authenticatedPlayerId);}else{perPlayerPending.replace(authenticatedPlayerId,playerPending);}}finally{try{playerPermits.remove(permit);}finally{if(newPlayer){activePermitsByPlayer.remove(authenticatedPlayerId,playerPermits);}}}}catch(RuntimeException|Errorsecondary){exhausted=true;if(secondary!=primary){try{primary.addSuppressed(secondary);}catch(RuntimeException|ErrorsuppressionFailure){}}}finally{serverPending=previousServerPending;}throwprimary;}")
+                expect("acquire", 2, "catch(RuntimeException|Errorsecondary){exhausted=true;if(secondary!=primary){try{primary.addSuppressed(secondary);}catch(RuntimeException|ErrorsuppressionFailure){}}}")
+                expect("acquire", 3, "catch(RuntimeException|ErrorsuppressionFailure){}")
+            } else if (kind == "p7_lifecycle") {
+                for (i = 1; i <= 5; i++) expect("submissionFailed", i, "catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}")
+                expect("stop", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
+                expect("start", 1, "catch(RuntimeException|Errorprimary){stopped=true;try{sessions.stop(server);}catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}discardStoppedState(server,primary);throwprimary;}")
+                expect("start", 2, "catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}")
+                for (i = 1; i <= 3; i++) expect("discardStoppedState", i, "catch(RuntimeException|Errorsecondary){if(failure==null){failure=secondary;}else{suppress(failure,secondary);}}")
+                expect("suppress", 1, "catch(RuntimeException|ErrorsuppressionFailure){}")
             } else if (kind == "live_transition") {
                 expect("prepareAndDispatch", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
                 expect("prepareAndDispatch", 2, "catch(RuntimeException|Errorsecondary){stopping=true;wakeup.retire();dispatcher.retireSlot();if(primary==null){throwsecondary;}recordTerminalFailure(null,secondary);}")
@@ -608,6 +624,9 @@ verify_p11_native_helper_error_catches() {
         }
         END {
             if (bad) exit 1
+            if (kind == "p7_handler" && !index(source["handleAuthenticated"], "finally{if(!submissionReturned){if(primary==null){permit.releaseAfterEnqueueFailure();}else{try{permit.releaseAfterEnqueueFailure();}catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}}}}")) reject("changed submission finally ownership")
+            if (kind == "p7_task" && !index(source["run"], "finally{if(primary==null){permit.releaseAfterTask();}else{try{permit.releaseAfterTask();}catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}}}")) reject("changed task finally ownership")
+            if (kind == "p7_lifecycle" && !index(source["stop"], "finally{discardStoppedState(server,primary);}")) reject("changed stop finally cleanup")
             for (method in source) {
                 text = source[method]; offset = 1; ordinal = 0
                 while (match(substr(text, offset), /catch\([^)]*(Error|Throwable)[^)]*\)\{/)) {
@@ -930,13 +949,21 @@ verify_search_helpers() {
     done
     local native_source=''
     local native_kind=''
-    for native_kind in operation cleanup sync source_stop live_transition keep_alive p5_l1 p9_l1 p9_tracking mana_fixture attachment_fixture; do
+    for native_kind in operation cleanup sync p7_handler p7_task p7_permits p7_lifecycle source_stop live_transition keep_alive p5_l1 p9_l1 p9_tracking mana_fixture attachment_fixture; do
         if [[ "${native_kind}" == operation ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
         elif [[ "${native_kind}" == cleanup ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11NativeCleanup.java'
         elif [[ "${native_kind}" == sync ]]; then
             native_source='src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java'
+        elif [[ "${native_kind}" == p7_handler ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java'
+        elif [[ "${native_kind}" == p7_task ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/magic/network/P7ServerDispatchTask.java'
+        elif [[ "${native_kind}" == p7_permits ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java'
+        elif [[ "${native_kind}" == p7_lifecycle ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java'
         elif [[ "${native_kind}" == live_transition ]]; then
             native_source='src/main/java/com/yo1no/gramarye/P11LiveTransitionService.java'
         elif [[ "${native_kind}" == keep_alive ]]; then
@@ -1007,7 +1034,22 @@ verify_search_helpers() {
             's/LogoutOutcome finishLogout(/LogoutOutcome unreviewedLogout(/g' \
             's/void chunkStatus(/void unreviewedChunkStatus(/g' \
             's/void moved(/void unreviewedMoved(/g' \
-            's/cleanup = failure;/cleanup = new Error();/g'; do
+            's/cleanup = failure;/cleanup = new Error();/g' \
+            's/void handleAuthenticated(/void unreviewedAuthenticated(/g' \
+            's/void run(/void unreviewedRun(/g' \
+            's/AcquireResult acquire(/AcquireResult unreviewedAcquire(/g' \
+            's/int stop(/int unreviewedStop(/g' \
+            's/void start(/void unreviewedStart(/g' \
+            's/void discardStoppedState(/void unreviewedStoppedState(/g' \
+            's/void suppress(/void unreviewedSuppress(/g' \
+            's/primary = failure;/primary = null;/g' \
+            's/suppress(primary, secondary);/unsafe();/g' \
+            's/exhausted = true;/exhausted = false;/g' \
+            's/serverPending = previousServerPending;/serverPending = 0;/g' \
+            's/identity.serverGeneration()/0/g'; do
+            if [[ "${mutation}" == 's/identity.serverGeneration()/0/g' && "${native_kind}" != sync ]]; then
+                continue
+            fi
             if [[ "${native_kind}" == p5_l1 \
                 && "${mutation}" != 's/Error primary/Error unreviewed/g' \
                 && "${mutation}" != 's/throw primary;/throw new Error();/g' ]]; then
@@ -1657,6 +1699,8 @@ verify_b2_sources_and_outputs() {
     local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
     local runtime_service='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
     local p7_network_handler='src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java'
+    local p7_dispatch_task='src/main/java/com/yo1no/gramarye/magic/network/P7ServerDispatchTask.java'
+    local p7_pending_owner='src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java'
     local p7_sync='src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java'
     local p7_lifecycle='src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java'
     local p8_client_state='src/main/java/com/yo1no/gramarye/P8ClientPresentationState.java'
@@ -1886,6 +1930,8 @@ verify_b2_sources_and_outputs() {
         if [[ "${source}" == "${store_service}" \
                 || "${source}" == "${runtime_service}" \
                 || "${source}" == "${p7_network_handler}" \
+                || "${source}" == "${p7_dispatch_task}" \
+                || "${source}" == "${p7_pending_owner}" \
                 || "${source}" == "${p7_sync}" \
                 || "${source}" == "${p7_lifecycle}" \
                 || "${source}" == "${p8_client_state}" \
@@ -2028,23 +2074,14 @@ verify_b2_sources_and_outputs() {
             'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
             "P9-S3 Error owner must not catch Throwable: ${source}"
     done
-    require_ere_count \
-        "${p7_network_handler}" \
-        'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
-        1 \
-        'P7CastIntentNetworkHandler must contain exactly its one reviewed enqueue cleanup Error catch'
-    forbid_ere \
-        "${p7_network_handler}" \
-        'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \
-        'P7CastIntentNetworkHandler must not catch Throwable'
-    require_fixed_count_in_range "${p7_network_handler}" \
-        '        } catch (RuntimeException | Error failure) {' '        }' \
-        'permit.releaseAfterEnqueueFailure();' 1 \
-        'P7 enqueue failure must use its exact lifecycle-terminal-safe permit cleanup'
-    require_fixed_count_in_range "${p7_network_handler}" \
-        '        } catch (RuntimeException | Error failure) {' '        }' \
-        'throw failure;' 1 \
-        'P7 enqueue cleanup must rethrow the same observed failure'
+    verify_p11_native_helper_error_catches "${p7_network_handler}" p7_handler
+    verify_p11_native_helper_error_catches "${p7_dispatch_task}" p7_task
+    verify_p11_native_helper_error_catches "${p7_pending_owner}" p7_permits
+    verify_p11_native_helper_error_catches "${p7_lifecycle}" p7_lifecycle
+    require_fixed_count "${p7_network_handler}" 'permit.releaseAfterEnqueueFailure();' 2 \
+        'P7 submission-finally must retain normal and same-primary cleanup paths'
+    require_fixed_count "${p7_dispatch_task}" 'permit.releaseAfterTask();' 2 \
+        'P7 task-finally must retain normal and same-primary cleanup paths'
     forbid_fixed "${p7_network_handler}" 'permit.release();' \
         'P7 enqueue failure must not use non-lifecycle-safe explicit release'
     require_ere_count "${p7_sync}" \
@@ -2059,19 +2096,7 @@ verify_b2_sources_and_outputs() {
         'P7 transport lost exact session cleanup'
     require_fixed "${p7_sync}" 'throw primary;' \
         'P7 transport must rethrow the same observed object'
-    require_ere_count "${p7_lifecycle}" \
-        'catch[[:space:]]*\(RuntimeException \| Error secondary\)' 5 \
-        'P7 cleanup must isolate its exact five cleanup stages'
-    require_ere_count "${p7_lifecycle}" \
-        'catch[[:space:]]*\(RuntimeException \| Error suppressionFailure\)' 1 \
-        'P7 suppression must preserve the original throwable if suppression fails'
-    require_ere_count "${p7_lifecycle}" \
-        'catch[[:space:]]*\([^)]*Error' 6 \
-        'P7 lifecycle Error catches escaped exact cleanup/suppression operations'
-    require_ere_count "${p7_lifecycle}" \
-        '^[[:space:]]*suppress\(primary, secondary\);$' 5 \
-        'P7 secondary failures must use the exact same-primary suppression policy'
-    for source in "${p7_sync}" "${p7_lifecycle}"; do
+    for source in "${p7_sync}" "${p7_lifecycle}" "${p7_network_handler}" "${p7_dispatch_task}" "${p7_pending_owner}"; do
         forbid_ere "${source}" 'catch[[:space:]]*\([^)]*Throwable' \
             'P7 transport/lifecycle must not catch Throwable'
     done

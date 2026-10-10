@@ -67,10 +67,11 @@ final class P7ServerAuthorizationDispatcherTest {
                 source,
                 "serverAccess.currentServer()",
                 "serverAccess.sameThread(server)",
+                "sessionService.isCurrentServer(server, identity.serverGeneration())",
                 "sessionService.currentSession(identity)",
                 "serverAccess.running(server)",
                 "serverAccess.currentPlayer(server, identity.authenticatedPlayerId())",
-                "serverAccess.currentConnectedPlayer(",
+                "sessionService.matchesCurrentActor(server, identity, actor)",
                 "sessionService.admissionOpen(server)",
                 "serverAccess.authoritativeTick(server)",
                 "sessionService.transition(",
@@ -107,8 +108,8 @@ final class P7ServerAuthorizationDispatcherTest {
                 "if (decision.disconnect())",
                 "P7AdmissionDispositionMapper.fromAdmissionSemantics(",
                 "resultSink.accept(result)",
-                "sessionService.invalidateAfterRateLimit(server, identity)",
                 "disconnectPort.disconnect(server, actor, identity)");
+        assertFalse(source.contains("invalidateAfterRateLimit("));
         assertFalse(source.contains("PacketDistributor"));
         assertFalse(source.contains("P6RuntimeExecution"));
     }
@@ -186,6 +187,7 @@ final class P7ServerAuthorizationDispatcherTest {
                     public static String run() {
                         noServerStopsImmediately();
                         wrongThreadFailsClosed();
+                        oldServerLifetimeStopsBeforeSessionSequenceOrAck();
                         absentSessionStopsBeforeServerState();
                         staleSessionStopsBeforeServerState();
                         unavailableServerPublishesOneRepairAck();
@@ -205,6 +207,14 @@ final class P7ServerAuthorizationDispatcherTest {
                         fixture.dispatch();
 
                         fixture.trace.expectEvents("server");
+                        fixture.trace.expectCounts(0, 0, 0, 0, 0);
+                    }
+
+                    private static void oldServerLifetimeStopsBeforeSessionSequenceOrAck() {
+                        var fixture = new Fixture();
+                        fixture.trace.currentLifetime = false;
+                        fixture.dispatch();
+                        fixture.trace.expectEvents("server", "sameThread", "lifetime");
                         fixture.trace.expectCounts(0, 0, 0, 0, 0);
                     }
 
@@ -230,7 +240,7 @@ final class P7ServerAuthorizationDispatcherTest {
 
                         fixture.dispatch();
 
-                        fixture.trace.expectEvents("server", "sameThread", "session");
+                        fixture.trace.expectEvents("server", "sameThread", "lifetime", "session");
                         fixture.trace.expectCounts(1, 0, 0, 0, 0);
                     }
 
@@ -241,7 +251,7 @@ final class P7ServerAuthorizationDispatcherTest {
 
                         fixture.dispatch();
 
-                        fixture.trace.expectEvents("server", "sameThread", "session:stale");
+                        fixture.trace.expectEvents("server", "sameThread", "lifetime", "session:stale");
                         fixture.trace.expectCounts(1, 0, 0, 0, 0);
                     }
 
@@ -253,7 +263,7 @@ final class P7ServerAuthorizationDispatcherTest {
                         fixture.dispatch();
 
                         fixture.trace.expectEvents(
-                                "server", "sameThread", "session", "running",
+                                "server", "sameThread", "lifetime", "session", "running",
                                 "map:unavailable", "sink:unavailable");
                         fixture.trace.expectCounts(1, 0, 0, 1, 0);
                         check(fixture.trace.lastResult.sequence() == 73L,
@@ -269,7 +279,7 @@ final class P7ServerAuthorizationDispatcherTest {
                         fixture.dispatch();
 
                         fixture.trace.expectEvents(
-                                "server", "sameThread", "session", "running", "player",
+                                "server", "sameThread", "lifetime", "session", "running", "player",
                                 "connected", "map:disconnected", "sink:disconnected");
                         fixture.trace.expectCounts(1, 0, 0, 1, 0);
                     }
@@ -282,7 +292,7 @@ final class P7ServerAuthorizationDispatcherTest {
                         fixture.dispatch();
 
                         fixture.trace.expectEvents(
-                                "server", "sameThread", "session", "running", "player",
+                                "server", "sameThread", "lifetime", "session", "running", "player",
                                 "connected", "admission", "map:reload", "sink:reload");
                         fixture.trace.expectCounts(1, 0, 0, 1, 0);
                         check(fixture.trace.lastResult.expectedNext() == 83L,
@@ -296,7 +306,7 @@ final class P7ServerAuthorizationDispatcherTest {
                         fixture.dispatch();
 
                         fixture.trace.expectEvents(
-                                "server", "sameThread", "session", "running", "player",
+                                "server", "sameThread", "lifetime", "session", "running", "player",
                                 "connected", "admission", "tick", "transition",
                                 "map:admission", "sink:admission");
                         fixture.trace.expectCounts(1, 1, 0, 1, 0);
@@ -307,7 +317,7 @@ final class P7ServerAuthorizationDispatcherTest {
                         dead.trace.alive = false;
                         dead.dispatch();
                         dead.trace.expectEvents(
-                                "server", "sameThread", "session", "running", "player",
+                                "server", "sameThread", "lifetime", "session", "running", "player",
                                 "connected", "admission", "tick", "transition", "alive",
                                 "map:unauthorized", "sink:unauthorized");
                         dead.trace.expectCounts(1, 1, 0, 1, 0);
@@ -316,7 +326,7 @@ final class P7ServerAuthorizationDispatcherTest {
                         spectator.trace.spectator = true;
                         spectator.dispatch();
                         spectator.trace.expectEvents(
-                                "server", "sameThread", "session", "running", "player",
+                                "server", "sameThread", "lifetime", "session", "running", "player",
                                 "connected", "admission", "tick", "transition", "alive",
                                 "spectator", "map:unauthorized", "sink:unauthorized");
                         spectator.trace.expectCounts(1, 1, 0, 1, 0);
@@ -328,7 +338,7 @@ final class P7ServerAuthorizationDispatcherTest {
                         fixture.dispatch();
 
                         fixture.trace.expectEvents(
-                                "server", "sameThread", "session", "running", "player",
+                                "server", "sameThread", "lifetime", "session", "running", "player",
                                 "connected", "admission", "tick", "transition", "alive",
                                 "spectator", "root", "target", "map:root", "sink:root");
                         fixture.trace.expectCounts(1, 1, 1, 1, 0);
@@ -343,7 +353,7 @@ final class P7ServerAuthorizationDispatcherTest {
                         fixture.dispatch();
 
                         fixture.trace.expectEvents(
-                                "server", "sameThread", "session", "running", "player",
+                                "server", "sameThread", "lifetime", "session", "running", "player",
                                 "connected", "admission", "tick", "transition",
                                 "map:admission", "sink:disconnect", "invalidate", "disconnect");
                         fixture.trace.expectCounts(1, 1, 0, 1, 1);
@@ -369,8 +379,7 @@ final class P7ServerAuthorizationDispatcherTest {
                                     new P7AdvisoryTargetValidator(trace),
                                     new P7ServerIntentResultSink(trace),
                                     new P7ServerDisconnectPort(trace));
-                            dispatcher.dispatch(new P7QueuedCastIntent(
-                                    PLAYER_ID, 19L, new CastIntent(73L, 4)));
+                            dispatcher.dispatch(new P7QueuedCastIntent(new P7SessionIdentity(PLAYER_ID, 19L, 1L), new CastIntent(73L, 4)));
                         }
                     }
                 }
@@ -379,6 +388,7 @@ final class P7ServerAuthorizationDispatcherTest {
                     final List<String> events = new ArrayList<>();
                     boolean serverPresent = true;
                     boolean sameThread = true;
+                    boolean currentLifetime = true;
                     boolean sessionPresent = true;
                     boolean staleSession;
                     boolean running = true;
@@ -445,6 +455,16 @@ final class P7ServerAuthorizationDispatcherTest {
 
                     P7ServerSessionService(Trace trace) {
                         this.trace = trace;
+                    }
+
+                    boolean isCurrentServer(MinecraftServer server, long generation) {
+                        trace.add("lifetime");
+                        return generation == 1L && trace.currentLifetime;
+                    }
+
+                    boolean matchesCurrentActor(MinecraftServer server, P7SessionIdentity identity, ServerPlayer actor) {
+                        trace.add("connected");
+                        return trace.connected;
                     }
 
                     Optional<P7ServerSessionState> currentSession(P7SessionIdentity identity) {
@@ -578,6 +598,8 @@ final class P7ServerAuthorizationDispatcherTest {
 
                     void disconnect(MinecraftServer server, ServerPlayer actor,
                             P7SessionIdentity identity) {
+                        trace.invalidations++;
+                        trace.add("invalidate");
                         trace.disconnects++;
                         trace.add("disconnect");
                     }
@@ -687,7 +709,7 @@ final class P7ServerAuthorizationDispatcherTest {
                     }
                 }
 
-                record P7SessionIdentity(UUID authenticatedPlayerId, long connectionEpoch) {
+                record P7SessionIdentity(UUID authenticatedPlayerId, long connectionEpoch, long serverGeneration) {
                 }
 
                 final class P7ServerSessionState {
@@ -715,23 +737,15 @@ final class P7ServerAuthorizationDispatcherTest {
                 }
 
                 final class P7QueuedCastIntent {
-                    private final UUID playerId;
-                    private final long epoch;
+                    private final P7SessionIdentity identity;
                     private final CastIntent intent;
 
-                    P7QueuedCastIntent(UUID playerId, long epoch, CastIntent intent) {
-                        this.playerId = playerId;
-                        this.epoch = epoch;
+                    P7QueuedCastIntent(P7SessionIdentity identity, CastIntent intent) {
+                        this.identity = identity;
                         this.intent = intent;
                     }
 
-                    UUID authenticatedPlayerId() {
-                        return playerId;
-                    }
-
-                    long connectionEpoch() {
-                        return epoch;
-                    }
+                    P7SessionIdentity sessionIdentity() { return identity; }
 
                     CastIntent intent() {
                         return intent;

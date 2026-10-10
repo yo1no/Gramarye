@@ -34,9 +34,10 @@ final class P7ServerAuthorizationDispatcher {
                     "server authorization dispatch requires the server thread");
         }
 
-        var identity = new P7SessionIdentity(
-                queuedIntent.authenticatedPlayerId(),
-                queuedIntent.connectionEpoch());
+        var identity = queuedIntent.sessionIdentity();
+        if (!sessionService.isCurrentServer(server, identity.serverGeneration())) {
+            return;
+        }
         var session = sessionService.currentSession(identity);
         if (session.isEmpty()) {
             return;
@@ -51,8 +52,7 @@ final class P7ServerAuthorizationDispatcher {
         }
         var actor = serverAccess.currentPlayer(server, identity.authenticatedPlayerId());
         if (actor == null
-                || !serverAccess.currentConnectedPlayer(
-                        server, actor, identity.authenticatedPlayerId())) {
+                || !sessionService.matchesCurrentActor(server, identity, actor)) {
             resultSink.accept(P7AdmissionDispositionMapper.disconnected(
                     identity, intent.sequence(), false));
             return;
@@ -76,7 +76,6 @@ final class P7ServerAuthorizationDispatcher {
             var result = P7AdmissionDispositionMapper.fromAdmissionSemantics(
                     identity, intent.sequence(), decision);
             resultSink.accept(result);
-            sessionService.invalidateAfterRateLimit(server, identity);
             disconnectPort.disconnect(server, actor, identity);
             return;
         }

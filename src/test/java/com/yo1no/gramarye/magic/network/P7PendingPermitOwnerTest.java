@@ -25,10 +25,10 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void firstPermitIsGrantedAndCarriesAuthenticatedIdentityAndEpoch() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-        var acquisition = owner.acquire(playerId, 17L);
+        var acquisition = owner.acquire(playerId, 17L, owner.captureServerGeneration());
         var permit = acquisition.permit().orElseThrow();
 
         assertEquals(P7PendingPermitOwner.AcquireOutcome.GRANTED, acquisition.outcome());
@@ -44,16 +44,16 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void sameUuidGetsExactlyEightPermitsAndNinthIsRejectedAcrossEpochs() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = UUID.fromString("00000000-0000-0000-0000-000000000002");
         var permits = new ArrayList<P7PendingPermit>();
 
         for (var epoch = 1L; epoch <= 8L; epoch++) {
-            var acquisition = owner.acquire(playerId, epoch);
+            var acquisition = owner.acquire(playerId, epoch, owner.captureServerGeneration());
             assertEquals(P7PendingPermitOwner.AcquireOutcome.GRANTED, acquisition.outcome());
             permits.add(acquisition.permit().orElseThrow());
         }
-        var rejected = owner.acquire(playerId, Long.MAX_VALUE);
+        var rejected = owner.acquire(playerId, Long.MAX_VALUE, owner.captureServerGeneration());
 
         assertEquals(P7PendingPermitOwner.AcquireOutcome.SERVER_BUSY, rejected.outcome());
         assertTrue(rejected.permit().isEmpty());
@@ -69,18 +69,18 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void serverGetsExactlySixtyFourPermitsAndSixtyFifthIsRejected() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var permits = new ArrayList<P7PendingPermit>();
 
         for (var index = 1; index <= 64; index++) {
             var playerId = new UUID(0L, index);
-            var acquisition = owner.acquire(playerId, 1L);
+            var acquisition = owner.acquire(playerId, 1L, owner.captureServerGeneration());
             assertEquals(P7PendingPermitOwner.AcquireOutcome.GRANTED, acquisition.outcome());
             permits.add(acquisition.permit().orElseThrow());
         }
 
         var rejectedPlayer = new UUID(0L, 65L);
-        var rejected = owner.acquire(rejectedPlayer, 1L);
+        var rejected = owner.acquire(rejectedPlayer, 1L, owner.captureServerGeneration());
 
         assertEquals(P7PendingPermitOwner.AcquireOutcome.SERVER_BUSY, rejected.outcome());
         assertTrue(rejected.permit().isEmpty());
@@ -95,17 +95,17 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void rejectedAcquisitionLeavesEveryCountUnchanged() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = UUID.fromString("00000000-0000-0000-0000-000000000003");
         var permits = new ArrayList<P7PendingPermit>();
         for (var epoch = 1L; epoch <= 8L; epoch++) {
-            permits.add(owner.acquire(playerId, epoch).permit().orElseThrow());
+            permits.add(owner.acquire(playerId, epoch, owner.captureServerGeneration()).permit().orElseThrow());
         }
 
         var beforePlayer = owner.playerPending(playerId);
         var beforeServer = owner.serverPending();
         var beforeTracked = owner.trackedPlayerCount();
-        var rejected = owner.acquire(playerId, 9L);
+        var rejected = owner.acquire(playerId, 9L, owner.captureServerGeneration());
 
         assertEquals(P7PendingPermitOwner.AcquireOutcome.SERVER_BUSY, rejected.outcome());
         assertEquals(beforePlayer, owner.playerPending(playerId));
@@ -117,12 +117,12 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void releaseDecrementsBothCountsAndRemovesOnlyTheZeroPlayerEntry() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var firstPlayer = new UUID(0L, 101L);
         var secondPlayer = new UUID(0L, 102L);
-        var firstPermit = owner.acquire(firstPlayer, 1L).permit().orElseThrow();
-        var secondPermit = owner.acquire(firstPlayer, 2L).permit().orElseThrow();
-        var otherPermit = owner.acquire(secondPlayer, 1L).permit().orElseThrow();
+        var firstPermit = owner.acquire(firstPlayer, 1L, owner.captureServerGeneration()).permit().orElseThrow();
+        var secondPermit = owner.acquire(firstPlayer, 2L, owner.captureServerGeneration()).permit().orElseThrow();
+        var otherPermit = owner.acquire(secondPlayer, 1L, owner.captureServerGeneration()).permit().orElseThrow();
 
         firstPermit.release();
         assertEquals(1, owner.playerPending(firstPlayer));
@@ -141,10 +141,10 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void duplicateAndForeignReleaseAreRejectedWithoutUnderflow() {
-        var owner = new P7PendingPermitOwner();
-        var foreignOwner = new P7PendingPermitOwner();
+        var owner = startedOwner();
+        var foreignOwner = startedOwner();
         var playerId = new UUID(0L, 103L);
-        var permit = owner.acquire(playerId, 1L).permit().orElseThrow();
+        var permit = owner.acquire(playerId, 1L, owner.captureServerGeneration()).permit().orElseThrow();
 
         assertThrows(P7SemanticInvariantException.class, () -> foreignOwner.release(permit));
         assertThrows(P7SemanticInvariantException.class, () ->
@@ -161,9 +161,9 @@ final class P7PendingPermitOwnerTest {
         assertEquals(0, owner.serverPending());
         assertEquals(0, owner.trackedPlayerCount());
 
-        var started = owner.acquire(playerId, 2L).permit().orElseThrow();
+        var started = owner.acquire(playerId, 2L, owner.captureServerGeneration()).permit().orElseThrow();
         assertTrue(started.tryStartTask());
-        assertThrows(P7SemanticInvariantException.class, started::releaseAfterEnqueueFailure);
+        started.releaseAfterEnqueueFailure(); // Started task, not the submitter, owns release.
         assertEquals(1, owner.serverPending());
         started.releaseAfterTask();
         assertEquals(0, owner.serverPending());
@@ -171,29 +171,29 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void nullIdentityAndNonpositiveEpochAreRejectedBeforeMutation() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = new UUID(0L, 104L);
 
-        assertThrows(NullPointerException.class, () -> owner.acquire(null, 1L));
-        assertThrows(P7SemanticInvariantException.class, () -> owner.acquire(playerId, 0L));
-        assertThrows(P7SemanticInvariantException.class, () -> owner.acquire(playerId, -1L));
+        assertThrows(NullPointerException.class, () -> owner.acquire(null, 1L, owner.captureServerGeneration()));
+        assertThrows(P7SemanticInvariantException.class, () -> owner.acquire(playerId, 0L, owner.captureServerGeneration()));
+        assertThrows(P7SemanticInvariantException.class, () -> owner.acquire(playerId, -1L, owner.captureServerGeneration()));
         assertEquals(0, owner.serverPending());
         assertEquals(0, owner.trackedPlayerCount());
     }
 
     @Test
     void exactSessionInvalidationReleasesOnlyMatchingEpochAndSuppressesItsTask() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = new UUID(0L, 105L);
-        var oldPermit = owner.acquire(playerId, 1L).permit().orElseThrow();
-        var currentPermit = owner.acquire(playerId, 2L).permit().orElseThrow();
+        var oldPermit = owner.acquire(playerId, 1L, owner.captureServerGeneration()).permit().orElseThrow();
+        var currentPermit = owner.acquire(playerId, 2L, owner.captureServerGeneration()).permit().orElseThrow();
         var dispatchCalls = new int[1];
         var oldTask = new P7ServerDispatchTask(
-                new P7QueuedCastIntent(playerId, 1L, minimumIntent(1L)),
+                new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1L, owner.captureServerGeneration()), minimumIntent(1L)),
                 ignored -> dispatchCalls[0]++,
                 oldPermit);
 
-        assertEquals(1, owner.invalidateSession(playerId, 1L));
+        assertEquals(1, owner.invalidateSession(new P7SessionIdentity(playerId, 1L, owner.captureServerGeneration())));
         assertTrue(oldPermit.released());
         assertEquals(1, owner.playerPending(playerId));
         assertEquals(1, owner.serverPending());
@@ -209,12 +209,12 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void lifecycleTerminationDuringStartedTaskMakesOnlyItsLateFinallyBenign() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = new UUID(0L, 106L);
-        var permit = owner.acquire(playerId, 7L).permit().orElseThrow();
+        var permit = owner.acquire(playerId, 7L, owner.captureServerGeneration()).permit().orElseThrow();
 
         assertTrue(permit.tryStartTask());
-        assertEquals(1, owner.invalidateSession(playerId, 7L));
+        assertEquals(1, owner.invalidateSession(new P7SessionIdentity(playerId, 7L, owner.captureServerGeneration())));
         permit.releaseAfterTask();
 
         assertTrue(permit.released());
@@ -226,16 +226,17 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void stopTerminalizesAllPermitsAndNewServerGenerationIsIndependent() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var firstPlayer = new UUID(0L, 107L);
         var secondPlayer = new UUID(0L, 108L);
-        var oldPermit = owner.acquire(firstPlayer, 1L).permit().orElseThrow();
-        var otherOldPermit = owner.acquire(secondPlayer, 1L).permit().orElseThrow();
+        var oldPermit = owner.acquire(firstPlayer, 1L, owner.captureServerGeneration()).permit().orElseThrow();
+        var otherOldPermit = owner.acquire(secondPlayer, 1L, owner.captureServerGeneration()).permit().orElseThrow();
 
         assertEquals(2, owner.stopAll());
         assertEquals(0, owner.serverPending());
         assertEquals(0, owner.trackedPlayerCount());
-        var newPermit = owner.acquire(firstPlayer, 1L).permit().orElseThrow();
+        owner.startServer();
+        var newPermit = owner.acquire(firstPlayer, 1L, owner.captureServerGeneration()).permit().orElseThrow();
 
         assertEquals(2L, newPermit.serverGeneration());
         oldPermit.releaseAfterTask();
@@ -249,13 +250,13 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void absentSessionInvalidationAndEmptyStopAreBoundedNoOps() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = new UUID(0L, 109L);
 
-        assertThrows(NullPointerException.class, () -> owner.invalidateSession(null, 1L));
+        assertThrows(NullPointerException.class, () -> owner.invalidateSession(null));
         assertThrows(P7SemanticInvariantException.class, () ->
-                owner.invalidateSession(playerId, 0L));
-        assertEquals(0, owner.invalidateSession(playerId, 1L));
+                owner.invalidateSession(new P7SessionIdentity(playerId, 0L, owner.captureServerGeneration())));
+        assertEquals(0, owner.invalidateSession(new P7SessionIdentity(playerId, 1L, owner.captureServerGeneration())));
         assertEquals(0, owner.stopAll());
         assertEquals(0, owner.serverPending());
         assertEquals(0, owner.trackedPlayerCount());
@@ -263,16 +264,17 @@ final class P7PendingPermitOwnerTest {
 
     @Test
     void staleServerGenerationAcquisitionIsBusyAndDoesNotMutateCounts() {
-        var owner = new P7PendingPermitOwner();
+        var owner = startedOwner();
         var playerId = new UUID(0L, 110L);
         var oldGeneration = owner.captureServerGeneration();
         assertEquals(0, owner.stopAll());
 
+        owner.startServer();
         var stale = owner.acquire(playerId, 1L, oldGeneration);
         var current = owner.acquire(
                 playerId, 1L, owner.captureServerGeneration());
 
-        assertEquals(P7PendingPermitOwner.AcquireOutcome.SERVER_BUSY, stale.outcome());
+        assertEquals(P7PendingPermitOwner.AcquireOutcome.STALE_GENERATION, stale.outcome());
         assertTrue(stale.permit().isEmpty());
         assertEquals(P7PendingPermitOwner.AcquireOutcome.GRANTED, current.outcome());
         assertEquals(1, owner.playerPending(playerId));
@@ -297,7 +299,9 @@ final class P7PendingPermitOwnerTest {
                         "perPlayerPending",
                         "activePermitsByPlayer",
                         "serverPending",
-                        "serverGeneration"),
+                        "serverGeneration",
+                        "accepting",
+                        "exhausted"),
                 fieldsByName.keySet());
         assertEquals(Object.class, monitor.getType());
         assertTrue(Modifier.isPrivate(monitor.getModifiers()));
@@ -369,6 +373,12 @@ final class P7PendingPermitOwnerTest {
                         || name.contains("IPayloadContext")
                         || name.contains("ByteBuf")
                         || name.contains("Connection")));
+    }
+
+    private static P7PendingPermitOwner startedOwner() {
+        var owner = new P7PendingPermitOwner();
+        owner.startServer();
+        return owner;
     }
 
     private static int occurrences(String source, String fragment) {

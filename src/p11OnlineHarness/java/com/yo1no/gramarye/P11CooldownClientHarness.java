@@ -199,6 +199,9 @@ public final class P11CooldownClientHarness {
         if (starter && inputReady && minecraft.isWindowActive() && expectedReference != null
                 && expectedReference.equals(mirroredReference) && cue(castRole() + "-cast-" + (casts + 1) + ".ready")) {
             if (casts == 0 && !(P11CooldownRestartProbe.readSelected() ? activeDrawn : readyDrawn)) return;
+            if (P11CooldownServerHarness.reconnectActiveControlSelected() && casts == 2) {
+                require(logins == 2 && latestState.equals("ACTIVE"), "NEW_CONNECTION_ACTIVE_BEFORE_ORIGINAL_R");
+            }
             require(!inputArmed && sends == casts && casts < expectedCasts(), "EXACT_R_COUNT");
             inputArmed = true; casts++;
             long window = minecraft.getWindow().getWindow(); int scan = GLFW.glfwGetKeyScancode(GLFW.GLFW_KEY_R);
@@ -230,6 +233,7 @@ public final class P11CooldownClientHarness {
         if (P11CooldownDualProbe.selected()) return 2;
         if (P11CooldownFaultProbe.selected() || P11CooldownDurabilityProbe.selected()) return 1;
         if (P11CooldownCloneProbe.selected()) return 2;
+        if (P11CooldownServerHarness.reconnectActiveControlSelected()) return 4;
         return P11CooldownRestartProbe.writeSelected() ? 1
                 : P11CooldownRestartProbe.readSelected() || P11CooldownServerHarness.duration() == 1 ? 2 : 3;
     }
@@ -313,10 +317,14 @@ public final class P11CooldownClientHarness {
         try {
             require(phase == Phase.PLAY && castingRole() && inputArmed && sends + 1 == casts
                     && sequence > 0 && slot == 0 && mask == 0 && hintsAbsent, "ORIGINAL_R_SLOT_ZERO_PAYLOAD");
+            if (P11CooldownServerHarness.reconnectActiveControlSelected()) {
+                require(logins == (sends < 2 ? 1 : 2) && sequence == sends % 2 + 1,
+                        "ORIGINAL_NEW_CONNECTION_SEQUENCE_ONE_THEN_TWO");
+            }
             sends++; inputArmed = false;
             P11C4aEvidence.write(output, "cast-" + sends + ".json", Map.of("status", "ORIGINAL_P9_SEND_RETURN",
                     "sequence", sequence, "slot", slot, "hintsAbsent", true, "mirrorStateAtSend", latestState,
-                    "nativeCallbackNotPhysicalOSInput", true));
+                    "loginOrdinal", logins, "nativeCallbackNotPhysicalOSInput", true));
         } catch (Exception | LinkageError problem) { fail(Minecraft.getInstance(), P11C4aEvidence.failureCode(problem)); }
     }
     /** Called only after the exact real P7 mirror accepted this same snapshot/generation. */

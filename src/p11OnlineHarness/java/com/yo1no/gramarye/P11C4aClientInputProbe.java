@@ -178,7 +178,8 @@ public final class P11C4aClientInputProbe {
 
     private static void requireOwnedClient(Minecraft minecraft) {
         String scenario = System.getProperty("gramarye.p11.online.case", "");
-        if ((!scenario.equals("c4a-dedicated") && !scenario.equals("c4a-host-lan") && !scenario.equals("c4a-reward") && !scenario.equals("l1-work-context-refusal"))
+        if ((!scenario.equals("c4a-dedicated") && !scenario.equals("c4a-host-lan") && !scenario.equals("c4a-reward")
+                && !scenario.equals("d3-c4a-baseline") && !scenario.equals("l1-work-context-refusal"))
                 || minecraft != Minecraft.getInstance() || !minecraft.isSameThread()) {
             throw new IllegalStateException("P11_C4A_INPUT_OUTSIDE_OWNED_CLIENT");
         }

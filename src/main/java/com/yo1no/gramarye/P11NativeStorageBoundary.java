@@ -143,25 +143,25 @@ public final class P11NativeStorageBoundary {
     }
 
     /** Observation from the sole P7 sender; it does not mint or resume a continuation. */
-    public static void metadataInitialSync(ServerPlayer actor, long epoch,
+    public static void metadataInitialSync(ServerPlayer actor, long epoch, long generation,
             SkillSubmissionRecoveryService.MetadataInitialStage stage) {
         try {
             var source = nativeSourceOwner(actor);
             var body = source == null ? null : source.body(actor);
             var lease = body == null ? null : body.account.metadata;
-            if (metadataSessionCurrent(lease)) { lease.continuation.observeInitialSync(lease, epoch, stage); }
+            if (metadataSessionCurrent(lease)) { lease.continuation.observeInitialSync(lease, epoch, generation, stage); }
         } catch (RuntimeException | Error secondary) {
             if (observerFailures != Long.MAX_VALUE) { observerFailures++; }
         }
     }
 
     /** Call-local P7 observation; only the native Mana owner can attest its one publication. */
-    public static MetadataManaObservation beginMetadataManaObservation(ServerPlayer actor, long epoch) {
+    public static MetadataManaObservation beginMetadataManaObservation(ServerPlayer actor, long epoch, long generation) {
         try {
             var source = nativeSourceOwner(actor);
             var body = source == null ? null : source.body(actor);
             var lease = body == null ? null : body.account.metadata;
-            if (!metadataCurrent(lease) || !lease.continuation.matchesSession(lease, epoch)) { return null; }
+            if (!metadataCurrent(lease) || !lease.continuation.matchesSession(lease, epoch, generation)) { return null; }
             var token = new MetadataManaObservation(lease, METADATA_MANA.get());
             METADATA_MANA.set(token);
             return token;

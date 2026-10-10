@@ -16,7 +16,10 @@ final class P11OnlineInputs {
     private static final String C4A_PRODUCT_PIN = "9f499356841f302b04d3846d85640ed273ec3104dbc0e743f8cea452243b4c97";
     // Local development candidate e22a5cde; this pin is not a runtime acceptance claim.
     private static final String L1_PRODUCT_PIN = "fc15bf045905285c4b8dfe661b41d34e890f628c3399c5824070194ae395aeb8";
-    private static final String COOLDOWN_PRODUCT_PIN = "ec5158a5051c8913d30f765bbb8ecee2f5c98a6bde4d1c13ae17a6a5719be030";
+    // D3 affected cooldown/L1 regression uses this actual current product, not old acceptance.
+    private static final String COOLDOWN_PRODUCT_PIN = "3e1960fdc37bca113f8e9d9569241e65192c5eb7ee119b64cadef8f3a97059d2";
+    // Filled only from the coordinated D3 product build; old acceptance pins never authorize D3.
+    private static final String D3_PRODUCT_PIN = "3e1960fdc37bca113f8e9d9569241e65192c5eb7ee119b64cadef8f3a97059d2";
 
     private P11OnlineInputs() {}
 
@@ -26,7 +29,7 @@ final class P11OnlineInputs {
     }
 
     static boolean c4aCase() {
-        return java.util.List.of("c4a-dedicated", "c4a-host-lan", "c4a-reward")
+        return java.util.List.of("c4a-dedicated", "c4a-host-lan", "c4a-reward", "d3-c4a-baseline")
                 .contains(System.getProperty("gramarye.p11.online.case", ""));
     }
 
@@ -53,6 +56,12 @@ final class P11OnlineInputs {
     }
 
     private static String productPin() {
+        if (java.util.List.of("d3-replay", "d3-old-source", "d3-late-task", "d3-old-result",
+                "d3-respawn", "d3-dual", "d3-host-lan", "d3-c4a-baseline")
+                .contains(System.getProperty("gramarye.p11.online.case", ""))) {
+            require(D3_PRODUCT_PIN != null && D3_PRODUCT_PIN.matches("[0-9a-f]{64}"), "D3_PRODUCT_PIN_PENDING");
+            return D3_PRODUCT_PIN;
+        }
         if (P11CooldownServerHarness.selected() || P11CooldownHostProbe.selected() || java.util.List.of("cooldown-l1-pre-spawn", "cooldown-l1-open", "cooldown-l1-claimed")
                 .contains(System.getProperty("gramarye.p11.online.case", ""))) {
             require(COOLDOWN_PRODUCT_PIN != null && COOLDOWN_PRODUCT_PIN.matches("[0-9a-f]{64}"), "COOLDOWN_PRODUCT_PIN_PENDING");
@@ -69,6 +78,8 @@ final class P11OnlineInputs {
     }
 
     static String verifyFrozenJar() throws IOException {
+        require(!"d3-c4a-baseline".equals(System.getProperty("gramarye.p11.online.case", ""))
+                || P11C4aScenario.MODE == P11C4aScenario.Mode.BASELINE, "D3_C4A_BASELINE_MODE_MISMATCH");
         require(P11C4aScenario.MODE != P11C4aScenario.Mode.L1_HOST_STOP || P11L1HostStopProbe.selected(),
                 "L1_HOST_CASE_MODE_MISMATCH");
         require(P11C4aScenario.MODE != P11C4aScenario.Mode.COOLDOWN_HOST || P11CooldownHostProbe.selected(),
@@ -102,6 +113,7 @@ final class P11OnlineInputs {
             require(jar.stream().noneMatch(value -> value.getName().contains("P11Online")
                     || value.getName().contains("P11L1")
                     || value.getName().contains("P11C4a")
+                    || value.getName().contains("P11D3")
                     || value.getName().contains("P11CooldownServerHarness")
                     || value.getName().contains("P11CooldownClientHarness")
                     || value.getName().contains("P11CooldownInputObservation")
@@ -120,6 +132,7 @@ final class P11OnlineInputs {
                     || value.getName().contains("/harnessmixin/")
                     || value.getName().equals("gramarye-p11-online-harness.mixins.json")
                     || value.getName().equals("gramarye-p11-cooldown-harness.mixins.json")
+                    || value.getName().equals("gramarye-p11-d3-harness.mixins.json")
                     || value.getName().equals("gramarye-p11-gametest-harness.mixins.json")
                     || value.getName().equals("gramarye-p11-c4a-harness.mixins.json")), "COMPANION_IN_PRODUCT");
             try (var archived = jar.getInputStream(jar.getJarEntry(entry))) {

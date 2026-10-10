@@ -42,11 +42,11 @@ final class P7NetworkCompositionS3Test {
         var playerId = UUID.fromString("00000000-0000-0000-0000-000000000710");
 
         assertEquals(0, service.activeSessionCount());
-        assertTrue(service.currentEpoch(playerId).isEmpty());
         assertTrue(P7NetworkComposition.production()
                 .connectionEpochSource()
-                .currentEpoch(playerId)
-                .isEmpty());
+                .captureAuthenticatedSession(playerId, new net.minecraft.network.Connection(
+                        net.minecraft.network.protocol.PacketFlow.SERVERBOUND))
+                .identity().isEmpty());
     }
 
     @Test
@@ -56,7 +56,9 @@ final class P7NetworkCompositionS3Test {
 
         assertEquals(1, occurrences(source, "new P7ServerSessionService("));
         assertEquals(1, occurrences(source, "new P7ServerAuthorizationDispatcher("));
-        assertEquals(1, occurrences(source, "SESSION_SERVICE::currentEpoch"));
+        assertEquals(0, occurrences(source, "SESSION_SERVICE::currentEpoch"));
+        assertEquals(1, occurrences(source, "SESSION_SERVICE.captureAuthenticatedSession("));
+        assertEquals(1, occurrences(source, "SESSION_SERVICE.isCurrentCapture("));
         assertEquals(1, occurrences(source, "SERVER_DISPATCHER::dispatch"));
         assertEquals(1, occurrences(source, "P7ServerIntentResultSink RESULT_SINK"));
         assertFalse(source.contains("OptionalLong.empty()"));
@@ -73,9 +75,11 @@ final class P7NetworkCompositionS3Test {
         var intent = new CastIntent(1L, 0, CastInputKind.CAST, 0, null, null);
 
         composition.serverIntentDispatchPort().dispatch(
-                new P7QueuedCastIntent(playerId, 1L, intent));
+                new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1L, 1L), intent));
 
-        assertTrue(composition.connectionEpochSource().currentEpoch(playerId).isEmpty());
+        assertTrue(composition.connectionEpochSource().captureAuthenticatedSession(playerId,
+                new net.minecraft.network.Connection(
+                        net.minecraft.network.protocol.PacketFlow.SERVERBOUND)).identity().isEmpty());
         var holder = Class.forName(P7NetworkComposition.class.getName() + "$ProductionHolder");
         var field = holder.getDeclaredField("SESSION_SERVICE");
         field.setAccessible(true);

@@ -19,7 +19,7 @@ public final class P11C4aLoadedConfiguration {
     @SubscribeEvent
     static void loading(ModConfigEvent.Loading event) {
         if (!P11C4aEvidence.enabled() && !P11L1ServerHarness.enabled()
-                && !P11CooldownServerHarness.selected()) { return; }
+                && !P11CooldownServerHarness.selected() && !P11D3ServerHarness.selected()) { return; }
         var config = event.getConfig();
         if (config.getType() == ModConfig.Type.SERVER && Gramarye.MOD_ID.equals(config.getModId())
                 && P5ServerRuntimeConfig.CONFIG_FILE_NAME.equals(config.getFileName())) {

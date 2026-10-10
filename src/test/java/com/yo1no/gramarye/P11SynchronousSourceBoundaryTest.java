@@ -245,6 +245,8 @@ final class P11SynchronousSourceBoundaryTest {
                         "!P11NativeStorageBoundary.metadataCurrent(candidate)")));
         assertThrows(AssertionError.class, () -> assertMetadataCompletionContracts(boundary,
                 recovery.replace("stages.initialSync(stage);", "refresh(); stages.initialSync(stage);")));
+        assertThrows(AssertionError.class, () -> assertMetadataCompletionContracts(boundary,
+                recovery.replace(" || generation != sessionGeneration", "")));
     }
 
     /** Wiring contract only; authenticated native stage/H release evidence belongs to the harness. */
@@ -261,11 +263,11 @@ final class P11SynchronousSourceBoundaryTest {
                 compactMethodBody(boundary, "privatestaticbooleanresumeMetadata("));
         assertEquals("try{varsource=nativeSourceOwner(actor);varbody=source==null?null:source.body(actor);"
                         + "varlease=body==null?null:body.account.metadata;"
-                        + "if(metadataSessionCurrent(lease)){lease.continuation.observeInitialSync(lease,epoch,stage);}}"
+                        + "if(metadataSessionCurrent(lease)){lease.continuation.observeInitialSync(lease,epoch,generation,stage);}}"
                         + "catch(RuntimeException|Errorsecondary){if(observerFailures!=Long.MAX_VALUE){observerFailures++;}}",
                 compactMethodBody(boundary, "publicstaticvoidmetadataInitialSync("));
         assertTrue(compactMethodBody(boundary, "publicstaticMetadataManaObservationbeginMetadataManaObservation(")
-                .contains("if(!metadataCurrent(lease)||!lease.continuation.matchesSession(lease,epoch)){returnnull;}"));
+                .contains("if(!metadataCurrent(lease)||!lease.continuation.matchesSession(lease,epoch,generation)){returnnull;}"));
         assertEquals("returnresuming&&dependency==candidate&&player==actor"
                         + "&&P11NativeStorageBoundary.metadataCurrent(lease);",
                 compactMethodBody(recovery, "publicbooleanresumeAuthorized("));
@@ -275,7 +277,7 @@ final class P11SynchronousSourceBoundaryTest {
         assertTrue(compactMethodBody(recovery, "publicbooleanresume(")
                 .contains("if(candidate==null||candidate!=lease||resuming||!stages.resumable()"
                         + "||!P11NativeStorageBoundary.metadataCurrent(candidate)){returnfalse;}"));
-        assertEquals("if(candidate==null||candidate!=lease||epoch!=sessionEpoch"
+        assertEquals("if(candidate==null||candidate!=lease||epoch!=sessionEpoch||generation!=sessionGeneration"
                         + "||stages.session!=MetadataStage.DONE||stage==null){return;}"
                         + "if(!P11NativeStorageBoundary.metadataSessionCurrent(candidate)){stages.blocked=true;return;}"
                         + "stages.initialSync(stage);if(stages.complete()&&!stages.blocked){release();}",

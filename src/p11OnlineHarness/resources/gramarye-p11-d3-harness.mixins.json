@@ -1,0 +1,9 @@
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "package": "com.yo1no.gramarye.harnessmixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["P11OnlineAuthenticatorMixin", "P11D3LoginMixin", "P11D3SessionMixin", "P11D3NetworkMixin", "P11D3TaskMixin", "P11D3ResultMixin", "P11D3RuntimeMixin", "P11D3FoundationMixin", "P11D3SessionCostMixin", "P11D3PermitCostMixin"],
+  "client": ["P11D3ClientInputMixin", "P11D3ClientMirrorMixin", "P11D3ClientPacketMixin", "P11C4aMouseInputMixin"],
+  "injectors": {"defaultRequire": 1}
+}

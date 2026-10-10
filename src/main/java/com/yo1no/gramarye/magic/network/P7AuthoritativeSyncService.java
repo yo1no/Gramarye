@@ -19,7 +19,7 @@ final class P7AuthoritativeSyncService {
         void submit(ServerPlayer actor, CustomPacketPayload payload);
     }
 
-    enum Submission { SUBMITTED }
+    enum Submission { SUBMITTED, NOT_CURRENT }
 
     private final P7ServerSessionService sessions;
     private final P7ServerAccess access;
@@ -90,7 +90,8 @@ final class P7AuthoritativeSyncService {
             PlayerManaSyncPayload mana = null;
             if (needsMana) {
                 var observation = state.initialPending()
-                        ? P11NativeStorageBoundary.beginMetadataManaObservation(actor, identity.connectionEpoch()) : null;
+                        ? P11NativeStorageBoundary.beginMetadataManaObservation(actor,
+                                identity.connectionEpoch(), identity.serverGeneration()) : null;
                 boolean normal = false;
                 try {
                     var balance = manaObservation.observe(actor);
@@ -114,11 +115,15 @@ final class P7AuthoritativeSyncService {
             // Both complete immutable payloads are validated before either family is submitted.
             if (!captureCurrent(server, actor, identity, state, connection, capture)) { return false; }
             if (needsMana) {
-                submitInitialFamily(server, actor, identity, mana, state.initialPending(), true);
+                if (!submitInitialFamily(server, actor, identity, mana, state.initialPending(), true)) {
+                    return false;
+                }
                 state = commitFamily(server, actor, identity, state, true, tick);
             }
             if (!captureCurrent(server, actor, identity, state, connection, capture)) { return false; }
-            submitInitialFamily(server, actor, identity, cooldown, state.initialPending(), false);
+            if (!submitInitialFamily(server, actor, identity, cooldown, state.initialPending(), false)) {
+                return false;
+            }
             state = commitFamily(server, actor, identity, state, false, tick);
             if (state.mana().exhausted() || state.cooldown().exhausted()) {
                 lifecycle.terminate(server, actor, identity);
@@ -147,6 +152,7 @@ final class P7AuthoritativeSyncService {
     private void finishAttempt(MinecraftServer server, ServerPlayer actor,
             P7SessionIdentity identity, Throwable primary) {
         try {
+            if (!sessions.isCurrentServer(server, identity.serverGeneration())) { return; }
             var current = sessions.currentSession(identity);
             if (current.isPresent() && current.orElseThrow().syncState().sending()) {
                 var state = current.orElseThrow().syncState();
@@ -158,25 +164,27 @@ final class P7AuthoritativeSyncService {
         }
     }
 
-    private void submitInitialFamily(MinecraftServer server, ServerPlayer actor,
+    private boolean submitInitialFamily(MinecraftServer server, ServerPlayer actor,
             P7SessionIdentity identity, CustomPacketPayload payload, boolean initial, boolean mana) {
+        if (currentActor(server, identity) != actor) { return false; }
         if (initial) {
-            P11NativeStorageBoundary.metadataInitialSync(actor, identity.connectionEpoch(),
+            P11NativeStorageBoundary.metadataInitialSync(actor, identity.connectionEpoch(), identity.serverGeneration(),
                     mana ? MetadataInitialStage.MANA_STARTED : MetadataInitialStage.COOLDOWN_STARTED);
         }
         try {
-            submit(server, actor, identity, payload);
+            if (submit(server, actor, identity, payload) != Submission.SUBMITTED) { return false; }
         } catch (RuntimeException | Error primary) {
             if (initial) {
-                P11NativeStorageBoundary.metadataInitialSync(actor, identity.connectionEpoch(),
+                P11NativeStorageBoundary.metadataInitialSync(actor, identity.connectionEpoch(), identity.serverGeneration(),
                         mana ? MetadataInitialStage.MANA_FAILED : MetadataInitialStage.COOLDOWN_FAILED);
             }
             throw primary;
         }
         if (initial) {
-            P11NativeStorageBoundary.metadataInitialSync(actor, identity.connectionEpoch(),
+            P11NativeStorageBoundary.metadataInitialSync(actor, identity.connectionEpoch(), identity.serverGeneration(),
                     mana ? MetadataInitialStage.MANA_SUBMITTED : MetadataInitialStage.COOLDOWN_SUBMITTED);
         }
+        return true;
     }
 
     private P7ServerSyncState commitFamily(MinecraftServer server, ServerPlayer actor,
@@ -195,6 +203,7 @@ final class P7AuthoritativeSyncService {
     private Submission submit(MinecraftServer server, ServerPlayer actor,
             P7SessionIdentity identity, CustomPacketPayload payload) {
         try {
+            if (currentActor(server, identity) != actor) { return Submission.NOT_CURRENT; }
             transport.submit(actor, payload);
             // SUBMITTED_TO_CURRENT_CONNECTION is not remote delivery or application.
             return Submission.SUBMITTED;
@@ -205,11 +214,12 @@ final class P7AuthoritativeSyncService {
     }
 
     private ServerPlayer currentActor(MinecraftServer server, P7SessionIdentity identity) {
-        if (sessions.currentSession(identity).isEmpty()) {
+        if (!sessions.isCurrentServer(server, identity.serverGeneration())
+                || sessions.currentSession(identity).isEmpty()) {
             return null;
         }
         var actor = access.currentPlayer(server, identity.authenticatedPlayerId());
-        return actor != null && access.currentConnectedPlayer(server, actor, identity.authenticatedPlayerId())
+        return actor != null && sessions.matchesCurrentActor(server, identity, actor)
                 ? actor : null;
     }
 

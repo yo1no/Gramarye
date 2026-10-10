@@ -24,7 +24,7 @@ final class P7ServerSessionServiceTest {
     @Test
     void initialSessionHasExactEpochSequenceTokenAndStrikeState() {
         var identity = new P7SessionIdentity(
-                UUID.fromString("00000000-0000-0000-0000-000000000706"), 1L);
+                UUID.fromString("00000000-0000-0000-0000-000000000706"), 1L, 1L);
         var state = P7ServerSessionState.initial(identity, 12L);
 
         assertEquals(identity, state.identity());
@@ -40,7 +40,7 @@ final class P7ServerSessionServiceTest {
     @Test
     void sessionStateReplacementIsImmutableAndIdentityPreserving() {
         var identity = new P7SessionIdentity(
-                UUID.fromString("00000000-0000-0000-0000-000000000707"), 2L);
+                UUID.fromString("00000000-0000-0000-0000-000000000707"), 2L, 1L);
         var original = P7ServerSessionState.initial(identity, 0L);
         var decision = CastIntentAdmissionSemantics.evaluate(
                 original.admissionState(),
@@ -60,11 +60,13 @@ final class P7ServerSessionServiceTest {
     @Test
     void newSessionOwnerStartsEmptyAndEpochSnapshotIsScalarOnly() {
         var service = new P7ServerSessionService(
-                new P7ServerAccess(), new P7ReloadAdmissionGate());
+                new P7ServerAccess(), new P7ReloadAdmissionGate(), new P7PendingPermitOwner());
         var playerId = UUID.fromString("00000000-0000-0000-0000-000000000708");
 
         assertEquals(0, service.activeSessionCount());
-        assertTrue(service.currentEpoch(playerId).isEmpty());
+        assertTrue(service.captureAuthenticatedSession(playerId,
+                new net.minecraft.network.Connection(net.minecraft.network.protocol.PacketFlow.SERVERBOUND))
+                .identity().isEmpty());
     }
 
     @Test
@@ -80,13 +82,15 @@ final class P7ServerSessionServiceTest {
                 java.util.Map.class,
                 P7ServerAccess.class,
                 P7ReloadAdmissionGate.class,
+                P7PendingPermitOwner.class,
+                net.minecraft.server.MinecraftServer.class,
                 ConnectionEpochState.class,
                 boolean.class,
+                long.class,
                 IntentTickBudget.class), fields.stream()
                 .map(java.lang.reflect.Field::getType)
                 .collect(java.util.stream.Collectors.toSet()));
         for (var forbidden : List.of(
-                "MinecraftServer",
                 "ServerPlayer",
                 "Entity",
                 "Level",
@@ -97,6 +101,11 @@ final class P7ServerSessionServiceTest {
                 "Throwable")) {
             assertTrue(names.stream().noneMatch(name -> name.contains(forbidden)), forbidden);
         }
+        var binding = Arrays.stream(P7ServerSessionService.class.getDeclaredClasses())
+                .filter(type -> type.getSimpleName().equals("BoundSession")).findFirst().orElseThrow();
+        assertEquals(Set.of(P7ServerSessionState.class, net.minecraft.network.Connection.class),
+                Arrays.stream(binding.getDeclaredFields()).filter(field -> !Modifier.isStatic(field.getModifiers()))
+                        .map(java.lang.reflect.Field::getType).collect(java.util.stream.Collectors.toSet()));
     }
 
     @Test
@@ -109,6 +118,20 @@ final class P7ServerSessionServiceTest {
         var outputRoot = temporaryRoot.resolve("classes");
         Files.createDirectories(outputRoot);
 
+        var connectionStub = write(sourceRoot, "net/minecraft/network/Connection.java", """
+                package net.minecraft.network;
+                public final class Connection {}
+                """);
+        var playerStub = write(sourceRoot, "net/minecraft/server/level/ServerPlayer.java", """
+                package net.minecraft.server.level;
+                public final class ServerPlayer {
+                    private final java.util.UUID id;
+                    public final net.minecraft.network.Connection connection = new net.minecraft.network.Connection();
+                    public ServerPlayer(java.util.UUID id) { this.id = id; }
+                    public java.util.UUID getUUID() { return id; }
+                }
+                """);
+
         var minecraftServerStub = write(sourceRoot,
                 "net/minecraft/server/MinecraftServer.java", """
                 package net.minecraft.server;
@@ -117,6 +140,10 @@ final class P7ServerSessionServiceTest {
                     private boolean sameThread = true;
                     private boolean running = true;
                     private long authoritativeTick;
+                    private final java.util.Map<java.util.UUID, net.minecraft.server.level.ServerPlayer> players = new java.util.HashMap<>();
+                    public net.minecraft.server.level.ServerPlayer player(java.util.UUID id) {
+                        return players.computeIfAbsent(id, net.minecraft.server.level.ServerPlayer::new);
+                    }
 
                     public boolean sameThread() {
                         return sameThread;
@@ -150,6 +177,17 @@ final class P7ServerSessionServiceTest {
                 import net.minecraft.server.MinecraftServer;
 
                 final class P7ServerAccess {
+                    net.minecraft.network.Connection actorConnection(MinecraftServer server,
+                            net.minecraft.server.level.ServerPlayer actor) {
+                        return server.player(actor.getUUID()) == actor ? actor.connection : null;
+                    }
+                    boolean currentConnectedPlayer(MinecraftServer server,
+                            net.minecraft.server.level.ServerPlayer actor, java.util.UUID id) {
+                        return id.equals(actor.getUUID()) && server.player(id) == actor;
+                    }
+                    net.minecraft.server.level.ServerPlayer currentPlayer(MinecraftServer server, java.util.UUID id) {
+                        return server.player(id);
+                    }
                     boolean sameThread(MinecraftServer server) {
                         return server.sameThread();
                     }
@@ -203,21 +241,21 @@ final class P7ServerSessionServiceTest {
 
                     private static void epochsCloseAndReconnectResetAllPerSessionState() {
                         var server = serverAt(12L);
-                        var service = service();
+                        var service = service(server);
                         var playerId = uuid(1L);
 
-                        check(service.currentEpoch(playerId).isEmpty(),
+                        check(epoch(service, server, playerId).isEmpty(),
                                 "unopened player exposed an epoch");
-                        var firstEpoch = service.openSession(server, playerId).orElseThrow();
+                        var firstEpoch = open(service, server, playerId).orElseThrow();
                         check(firstEpoch == 1L, "first epoch was not one");
-                        check(service.currentEpoch(playerId).orElseThrow() == firstEpoch,
+                        check(epoch(service, server, playerId).orElseThrow() == firstEpoch,
                                 "currentEpoch did not expose the bounded scalar");
-                        check(service.openSession(server, playerId).isEmpty(),
+                        check(open(service, server, playerId).isEmpty(),
                                 "duplicate active UUID was accepted");
                         check(service.activeSessionCount() == 1,
                                 "duplicate active UUID mutated capacity");
 
-                        var firstIdentity = new P7SessionIdentity(playerId, firstEpoch);
+                        var firstIdentity = new P7SessionIdentity(playerId, firstEpoch, 1L);
                         var accepted = service.transition(server, firstIdentity, 12L, 1L)
                                 .orElseThrow();
                         check(accepted.outcome()
@@ -231,22 +269,22 @@ final class P7ServerSessionServiceTest {
                         check(consumed.tokenBucket().tokens() == 7,
                                 "accepted transition did not commit token consumption");
 
-                        check(!service.closeSession(server, playerId, firstEpoch + 1L),
+                        check(!close(service, server, playerId, firstEpoch + 1L),
                                 "stale close removed the current session");
-                        check(service.currentEpoch(playerId).orElseThrow() == firstEpoch,
+                        check(epoch(service, server, playerId).orElseThrow() == firstEpoch,
                                 "stale close changed the current epoch");
-                        check(service.closeSession(server, playerId, firstEpoch),
+                        check(close(service, server, playerId, firstEpoch),
                                 "current close was rejected");
-                        check(service.currentEpoch(playerId).isEmpty(),
+                        check(epoch(service, server, playerId).isEmpty(),
                                 "current close retained the session");
 
-                        var secondEpoch = service.openSession(server, playerId).orElseThrow();
+                        var secondEpoch = open(service, server, playerId).orElseThrow();
                         check(secondEpoch == 2L,
                                 "duplicate rejection or reconnect corrupted epoch allocation");
-                        check(service.currentEpoch(playerId).orElseThrow() == secondEpoch,
+                        check(epoch(service, server, playerId).orElseThrow() == secondEpoch,
                                 "reconnect epoch scalar was not current");
                         var reset = service.currentSession(
-                                        new P7SessionIdentity(playerId, secondEpoch))
+                                        new P7SessionIdentity(playerId, secondEpoch, 1L))
                                 .orElseThrow()
                                 .admissionState();
                         check(reset.sequenceState().expectedNext().orElseThrow() == 1L,
@@ -262,32 +300,32 @@ final class P7ServerSessionServiceTest {
 
                     private static void capacityIsExactlyTwoHundredFiftySix() {
                         var server = serverAt(20L);
-                        var service = service();
+                        var service = service(server);
                         var identities = new ArrayList<P7SessionIdentity>();
                         for (var index = 0;
                                 index < P7NetworkBounds.MAX_ACTIVE_SESSIONS_PER_SERVER;
                                 index++) {
                             var playerId = uuid(1_000L + index);
-                            var epoch = service.openSession(server, playerId).orElseThrow();
+                            var epoch = open(service, server, playerId).orElseThrow();
                             check(epoch == index + 1L, "capacity allocation skipped an epoch");
-                            identities.add(new P7SessionIdentity(playerId, epoch));
+                            identities.add(new P7SessionIdentity(playerId, epoch, 1L));
                         }
                         check(service.activeSessionCount() == 256,
                                 "the 256th active session was not retained");
 
                         var overflowPlayer = uuid(2_000L);
-                        check(service.openSession(server, overflowPlayer).isEmpty(),
+                        check(open(service, server, overflowPlayer).isEmpty(),
                                 "the 257th active session was accepted");
                         check(service.activeSessionCount() == 256,
                                 "capacity rejection mutated the active count");
 
                         var first = identities.get(0);
-                        check(service.closeSession(
-                                        server,
+                        check(close(
+                                        service, server,
                                         first.authenticatedPlayerId(),
                                         first.connectionEpoch()),
                                 "capacity slot could not be released");
-                        var postCloseEpoch = service.openSession(server, overflowPlayer)
+                        var postCloseEpoch = open(service, server, overflowPlayer)
                                 .orElseThrow();
                         check(postCloseEpoch == 257L,
                                 "capacity rejection consumed a connection epoch");
@@ -297,18 +335,18 @@ final class P7ServerSessionServiceTest {
 
                     private static void wrongThreadOperationsHaveZeroMutation() {
                         var server = serverAt(30L);
-                        var service = service();
+                        var service = service(server);
                         var playerId = uuid(3_000L);
 
                         server.setSameThread(false);
-                        expectInvariant(() -> service.openSession(server, playerId),
+                        expectInvariant(() -> open(service, server, playerId),
                                 "wrong-thread open");
                         check(service.activeSessionCount() == 0,
                                 "wrong-thread open mutated sessions");
                         server.setSameThread(true);
-                        var epoch = service.openSession(server, playerId).orElseThrow();
+                        var epoch = open(service, server, playerId).orElseThrow();
                         check(epoch == 1L, "wrong-thread open consumed an epoch");
-                        var identity = new P7SessionIdentity(playerId, epoch);
+                        var identity = new P7SessionIdentity(playerId, epoch, 1L);
                         var before = service.currentSession(identity)
                                 .orElseThrow()
                                 .admissionState();
@@ -316,14 +354,14 @@ final class P7ServerSessionServiceTest {
                         server.setSameThread(false);
                         expectInvariant(() -> service.transition(server, identity, 30L, 1L),
                                 "wrong-thread transition");
-                        expectInvariant(() -> service.closeSession(server, playerId, epoch),
+                        expectInvariant(() -> close(service, server, playerId, epoch),
                                 "wrong-thread close");
                         var after = service.currentSession(identity)
                                 .orElseThrow()
                                 .admissionState();
                         check(before.equals(after),
                                 "wrong-thread transition partially mutated session state");
-                        check(service.currentEpoch(playerId).orElseThrow() == epoch,
+                        check(epoch(service, server, playerId).orElseThrow() == epoch,
                                 "wrong-thread close removed the session");
 
                         server.setSameThread(true);
@@ -332,34 +370,34 @@ final class P7ServerSessionServiceTest {
                         check(accepted.outcome()
                                         == CastIntentAdmissionSemantics.Outcome.ELIGIBLE,
                                 "wrong-thread transition mutated global admission state");
-                        check(service.closeSession(server, playerId, epoch),
+                        check(close(service, server, playerId, epoch),
                                 "current-thread close failed after wrong-thread rejection");
                     }
 
                     private static void stoppedServerOpenHasZeroMutation() {
                         var server = serverAt(40L);
-                        var service = service();
+                        var service = service(server);
                         var playerId = uuid(4_000L);
 
                         server.setRunning(false);
-                        check(service.openSession(server, playerId).isEmpty(),
+                        check(open(service, server, playerId).isEmpty(),
                                 "stopped server accepted a session");
                         check(service.activeSessionCount() == 0,
                                 "stopped server mutated sessions");
                         server.setRunning(true);
-                        check(service.openSession(server, playerId).orElseThrow() == 1L,
+                        check(open(service, server, playerId).orElseThrow() == 1L,
                                 "stopped-server rejection consumed an epoch");
                     }
 
                     private static void transitionCommitsSessionAndGlobalStateAtomically() {
                         var server = serverAt(100L);
-                        var service = service();
+                        var service = service(server);
                         var identities = new ArrayList<P7SessionIdentity>();
                         for (var index = 0; index < 9; index++) {
                             var playerId = uuid(5_000L + index);
                             identities.add(new P7SessionIdentity(
                                     playerId,
-                                    service.openSession(server, playerId).orElseThrow()));
+                                    open(service, server, playerId).orElseThrow(), 1L));
                         }
 
                         var first = identities.get(0);
@@ -434,9 +472,29 @@ final class P7ServerSessionServiceTest {
                                 "eligible transition did not consume sequence");
                     }
 
-                    private static P7ServerSessionService service() {
-                        return new P7ServerSessionService(
-                                new P7ServerAccess(), new P7ReloadAdmissionGate());
+                    private static P7ServerSessionService service(MinecraftServer server) {
+                        var service = new P7ServerSessionService(
+                                new P7ServerAccess(), new P7ReloadAdmissionGate(), new P7PendingPermitOwner());
+                        service.start(server);
+                        return service;
+                    }
+
+                    private static java.util.OptionalLong open(P7ServerSessionService service,
+                            MinecraftServer server, UUID id) {
+                        return service.open(server, server.player(id)) == P7ServerSessionService.OpenResult.OPENED
+                                ? epoch(service, server, id) : java.util.OptionalLong.empty();
+                    }
+
+                    private static java.util.OptionalLong epoch(P7ServerSessionService service,
+                            MinecraftServer server, UUID id) {
+                        var captured = service.captureAuthenticatedSession(id, server.player(id).connection).identity();
+                        return captured.isPresent() ? java.util.OptionalLong.of(captured.orElseThrow().connectionEpoch())
+                                : java.util.OptionalLong.empty();
+                    }
+
+                    private static boolean close(P7ServerSessionService service,
+                            MinecraftServer server, UUID id, long epoch) {
+                        return service.closeSession(server, new P7SessionIdentity(id, epoch, 1L));
                     }
 
                     private static MinecraftServer serverAt(long tick) {
@@ -475,6 +533,10 @@ final class P7ServerSessionServiceTest {
                 "P7ServerSyncState.java",
                 "P7SyncSequence.java",
                 "P7SessionIdentity.java",
+                "P7ConnectionEpochSnapshotSource.java",
+                "P7PendingPermitOwner.java",
+                "P7PendingPermit.java",
+                "PendingPermitAccounting.java",
                 "ConnectionEpochState.java",
                 "P7NetworkBounds.java",
                 "IntentTickBudget.java",
@@ -488,7 +550,7 @@ final class P7ServerSessionServiceTest {
             units.add(source);
         }
         units.addAll(List.of(
-                minecraftServerStub, serverAccessStub, reloadGateStub, harness));
+                minecraftServerStub, playerStub, connectionStub, serverAccessStub, reloadGateStub, harness));
 
         var diagnostics = new DiagnosticCollector<JavaFileObject>();
         boolean compiled;

@@ -79,11 +79,11 @@ final class P7NetworkComposition {
         private static final P7ServerAccess SERVER_ACCESS = new P7ServerAccess();
         private static final P7ReloadAdmissionGate RELOAD_GATE =
                 new P7ReloadAdmissionGate();
+        private static final P7PendingPermitOwner PERMITS = new P7PendingPermitOwner();
         private static final P7ServerSessionService SESSION_SERVICE =
-                new P7ServerSessionService(SERVER_ACCESS, RELOAD_GATE);
+                new P7ServerSessionService(SERVER_ACCESS, RELOAD_GATE, PERMITS);
         private static final P7AdvisoryTargetValidator TARGET_VALIDATOR =
                 new P7AdvisoryTargetValidator();
-        private static final P7PendingPermitOwner PERMITS = new P7PendingPermitOwner();
         private static final P7ServerLifecycleCoordinator LIFECYCLE =
                 new P7ServerLifecycleCoordinator(SESSION_SERVICE, SERVER_ACCESS, PERMITS,
                         RELOAD_GATE, new P7Diagnostics(),
@@ -99,7 +99,19 @@ final class P7NetworkComposition {
                         RESULT_SINK,
                         DISCONNECT_PORT);
         private static final P7NetworkComposition INSTANCE = new P7NetworkComposition(
-                SESSION_SERVICE::currentEpoch,
+                new P7ConnectionEpochSnapshotSource() {
+                    @Override
+                    public CaptureResult captureAuthenticatedSession(
+                            java.util.UUID playerId, net.minecraft.network.Connection connection) {
+                        return SESSION_SERVICE.captureAuthenticatedSession(playerId, connection);
+                    }
+
+                    @Override
+                    public boolean isCurrentCapture(P7SessionIdentity identity,
+                            net.minecraft.network.Connection connection) {
+                        return SESSION_SERVICE.isCurrentCapture(identity, connection);
+                    }
+                },
                 PERMITS,
                 SERVER_DISPATCHER::dispatch,
                 P7ClientMirrorDispatchFactory.production());

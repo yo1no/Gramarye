@@ -2,6 +2,7 @@ package com.yo1no.gramarye.magic.network;
 
 import java.util.Objects;
 import java.util.UUID;
+import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -35,13 +36,24 @@ final class P7ServerAccess {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(actor, "actor");
         Objects.requireNonNull(authenticatedPlayerId, "authenticatedPlayerId");
-        var connection = actor.connection;
-        return actor.getServer() == server
+        var connection = actorConnection(server, actor);
+        return connection != null
                 && authenticatedPlayerId.equals(actor.getUUID())
                 && server.getPlayerList().getPlayer(authenticatedPlayerId) == actor
-                && connection != null
-                && connection.isAcceptingMessages()
+                && actor.connection.isAcceptingMessages()
                 && !actor.hasDisconnected();
+    }
+
+    /** Exact native source, including closed-C logout; never substitutes the UUID roster. */
+    Connection actorConnection(MinecraftServer server, ServerPlayer actor) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(actor, "actor");
+        var listener = actor.connection;
+        if (actor.getServer() != server || listener == null || listener.player != actor) {
+            return null;
+        }
+        var connection = listener.getConnection();
+        return connection.getPacketListener() == listener ? connection : null;
     }
 
     long authoritativeTick(MinecraftServer server) {

@@ -27,6 +27,7 @@ final class P7RecordingPayloadContext implements IPayloadContext {
     private Component disconnectReason;
     private final net.minecraft.network.Connection clientConnection;
     private final ICommonPacketListener clientListener;
+    private boolean executeInline;
 
     P7RecordingPayloadContext(Player player) {
         this(player, null, null, PacketFlow.SERVERBOUND);
@@ -62,12 +63,12 @@ final class P7RecordingPayloadContext implements IPayloadContext {
         this.replyFailure = replyFailure;
         this.packetFlow = Objects.requireNonNull(packetFlow, "packetFlow");
         this.beforeEnqueue = Objects.requireNonNull(beforeEnqueue, "beforeEnqueue");
-        clientConnection = packetFlow == PacketFlow.CLIENTBOUND ? new net.minecraft.network.Connection(packetFlow) : null;
-        clientListener = clientConnection == null ? null : (ICommonPacketListener) java.lang.reflect.Proxy.newProxyInstance(
+        clientConnection = new net.minecraft.network.Connection(packetFlow);
+        clientListener = (ICommonPacketListener) java.lang.reflect.Proxy.newProxyInstance(
                 ICommonPacketListener.class.getClassLoader(), new Class<?>[] {ICommonPacketListener.class},
                 (proxy, method, args) -> switch (method.getName()) {
                     case "getConnection" -> clientConnection;
-                    case "flow" -> PacketFlow.CLIENTBOUND;
+                    case "flow" -> packetFlow;
                     case "protocol" -> net.minecraft.network.ConnectionProtocol.PLAY;
                     case "equals" -> proxy == args[0];
                     case "hashCode" -> System.identityHashCode(proxy);
@@ -77,7 +78,6 @@ final class P7RecordingPayloadContext implements IPayloadContext {
 
     @Override
     public ICommonPacketListener listener() {
-        if (packetFlow != PacketFlow.CLIENTBOUND) { throw new AssertionError("C2S listener access was not expected"); }
         return clientListener;
     }
 
@@ -106,7 +106,11 @@ final class P7RecordingPayloadContext implements IPayloadContext {
         Objects.requireNonNull(task, "task");
         beforeEnqueue.run();
         throwEnqueueFailure();
-        queuedTasks.addLast(task);
+        if (executeInline) {
+            task.run();
+        } else {
+            queuedTasks.addLast(task);
+        }
         return CompletableFuture.completedFuture(null);
     }
 
@@ -132,6 +136,10 @@ final class P7RecordingPayloadContext implements IPayloadContext {
 
     int playerCalls() {
         return playerCalls;
+    }
+
+    void executeInline() {
+        executeInline = true;
     }
 
     int enqueueCalls() {

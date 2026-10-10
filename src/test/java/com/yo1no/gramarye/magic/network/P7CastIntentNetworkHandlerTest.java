@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,7 +39,7 @@ final class P7CastIntentNetworkHandlerTest {
     void validEpochAndPermitEnqueueOneScalarTaskThenDispatchExactlyOnce() {
         var playerId = UUID.fromString("00000000-0000-0000-0000-000000000201");
         var epochLookup = new AtomicReference<UUID>();
-        var owner = new P7PendingPermitOwner();
+        var owner = runningOwner();
         var dispatched = new ArrayList<P7QueuedCastIntent>();
         var composition = composition(
                 requestedPlayer -> {
@@ -64,8 +65,9 @@ final class P7CastIntentNetworkHandlerTest {
 
         assertEquals(1, dispatched.size());
         var queued = dispatched.getFirst();
-        assertEquals(playerId, queued.authenticatedPlayerId());
-        assertEquals(31L, queued.connectionEpoch());
+        assertEquals(playerId, queued.sessionIdentity().authenticatedPlayerId());
+        assertEquals(31L, queued.sessionIdentity().connectionEpoch());
+        assertEquals(1L, queued.sessionIdentity().serverGeneration());
         assertSame(intent, queued.intent());
         assertEquals(0, owner.playerPending(playerId));
         assertEquals(0, owner.serverPending());
@@ -76,7 +78,7 @@ final class P7CastIntentNetworkHandlerTest {
     void absentEpochReturnsWithoutPermitEnqueueDisconnectOrDispatch() {
         var playerId = new UUID(0L, 202L);
         var epochCalls = new AtomicInteger();
-        var owner = new P7PendingPermitOwner();
+        var owner = runningOwner();
         var dispatchCalls = new AtomicInteger();
         var composition = composition(
                 requestedPlayer -> {
@@ -104,10 +106,10 @@ final class P7CastIntentNetworkHandlerTest {
     @Test
     void busyPermitReturnsWithoutEnqueueAndLeavesCountsUnchanged() {
         var playerId = new UUID(0L, 203L);
-        var owner = new P7PendingPermitOwner();
+        var owner = runningOwner();
         var existingPermits = new ArrayList<P7PendingPermit>();
         for (var epoch = 1L; epoch <= 8L; epoch++) {
-            existingPermits.add(owner.acquire(playerId, epoch).permit().orElseThrow());
+            existingPermits.add(owner.acquire(playerId, epoch, 1L).permit().orElseThrow());
         }
         var dispatchCalls = new AtomicInteger();
         var composition = composition(
@@ -153,7 +155,7 @@ final class P7CastIntentNetworkHandlerTest {
     @Test
     void invalidEpochSourceValueFailsBeforePermitOrEnqueue() {
         var playerId = new UUID(0L, 204L);
-        var owner = new P7PendingPermitOwner();
+        var owner = runningOwner();
         var dispatchCalls = new AtomicInteger();
         var composition = composition(
                 ignored -> OptionalLong.of(0L),
@@ -177,11 +179,12 @@ final class P7CastIntentNetworkHandlerTest {
     @Test
     void serverRestartBetweenGenerationAndEpochReadsFailsBusyWithoutOldEpochPermit() {
         var playerId = new UUID(0L, 208L);
-        var owner = new P7PendingPermitOwner();
+        var owner = runningOwner();
         var dispatchCalls = new AtomicInteger();
         var composition = composition(
                 ignored -> {
                     assertEquals(0, owner.stopAll());
+                    owner.startServer();
                     return OptionalLong.of(1L);
                 },
                 owner,
@@ -194,10 +197,7 @@ final class P7CastIntentNetworkHandlerTest {
                 context,
                 composition);
 
-        assertEquals(1, context.replyCalls());
-        assertEquals(IntentAcknowledgement.Disposition.SERVER_BUSY,
-                ((IntentAckPayload) context.replyPayload())
-                        .acknowledgement().disposition());
+        assertEquals(0, context.replyCalls());
         assertEquals(0, context.enqueueCalls());
         assertEquals(0, owner.playerPending(playerId));
         assertEquals(0, owner.serverPending());
@@ -207,7 +207,7 @@ final class P7CastIntentNetworkHandlerTest {
     @Test
     void nonServerSenderDisconnectsExactlyOnceWithGenericBoundedReason() {
         var epochCalls = new AtomicInteger();
-        var owner = new P7PendingPermitOwner();
+        var owner = runningOwner();
         var dispatchCalls = new AtomicInteger();
         var composition = composition(
                 ignored -> {
@@ -243,7 +243,7 @@ final class P7CastIntentNetworkHandlerTest {
     private static void assertEnqueueFailureDuringLifecycle(Throwable failure) {
         for (var terminal : new String[] {"active", "disconnect", "stop"}) {
             var playerId = new UUID(0L, 205L);
-            var owner = new P7PendingPermitOwner();
+            var owner = runningOwner();
             var dispatchCalls = new AtomicInteger();
             var replacement = new AtomicReference<P7PendingPermit>();
             var context = new P7RecordingPayloadContext(null, failure, null,
@@ -252,12 +252,13 @@ final class P7CastIntentNetworkHandlerTest {
                         switch (terminal) {
                             case "active" -> { }
                             case "disconnect" -> {
-                                assertEquals(1, owner.invalidateSession(playerId, 1L));
-                                replacement.set(owner.acquire(playerId, 2L).permit().orElseThrow());
+                                assertEquals(1, owner.invalidateSession(new P7SessionIdentity(playerId, 1L, 1L)));
+                                replacement.set(owner.acquire(playerId, 2L, 1L).permit().orElseThrow());
                             }
                             case "stop" -> {
                                 assertEquals(1, owner.stopAll());
-                                replacement.set(owner.acquire(playerId, 1L).permit().orElseThrow());
+                                owner.startServer();
+                                replacement.set(owner.acquire(playerId, 1L, 2L).permit().orElseThrow());
                             }
                             default -> throw new AssertionError("unknown fixture terminal");
                         }
@@ -296,8 +297,11 @@ final class P7CastIntentNetworkHandlerTest {
         assertTrue(source.contains("player instanceof ServerPlayer serverPlayer"));
         assertTrue(source.contains("serverPlayer.getUUID()"));
         assertTrue(source.contains("handleAuthenticated("));
-        assertTrue(source.indexOf("captureServerGeneration()")
-                < source.indexOf("currentEpoch(authenticatedPlayerId)"));
+        assertTrue(source.contains("context.connection()"));
+        assertTrue(source.contains("captureAuthenticatedSession("));
+        assertTrue(source.contains("isCurrentCapture("));
+        assertFalse(source.contains("currentEpoch("));
+        assertFalse(source.contains("captureServerGeneration("));
         assertTrue(source.contains("context.enqueueWork(task)"));
         assertFalse(source.contains("IntentSequenceState"));
         assertFalse(source.contains("IntentTokenBucket"));
@@ -326,6 +330,11 @@ final class P7CastIntentNetworkHandlerTest {
     private void assertPlatformEntryBehavior() throws Exception {
         var sourceRoot = Files.createDirectories(temporary.resolve("source"));
         var outputRoot = Files.createDirectories(temporary.resolve("classes"));
+        var connectionStub = write(sourceRoot,
+                "net/minecraft/network/Connection.java", """
+                package net.minecraft.network;
+                public final class Connection {}
+                """);
         var componentStub = write(sourceRoot,
                 "net/minecraft/network/chat/Component.java", """
                 package net.minecraft.network.chat;
@@ -370,6 +379,7 @@ final class P7CastIntentNetworkHandlerTest {
                 import net.minecraft.network.chat.Component;
 
                 public interface IPayloadContext {
+                    net.minecraft.network.Connection connection();
                     Object player();
 
                     void disconnect(Component reason);
@@ -400,17 +410,28 @@ final class P7CastIntentNetworkHandlerTest {
                         var player = new ServerPlayer(playerId);
                         var context = new RecordingContext(player);
                         var owner = new P7PendingPermitOwner();
+                        owner.startServer();
                         var epochPlayer = new UUID[1];
                         var epochCalls = new int[1];
                         var dispatchCalls = new int[1];
+                        var captured = new P7SessionIdentity(playerId, 47L, 1L);
+                        var dispatches = new java.util.ArrayList<P7QueuedCastIntent>();
                         var composition = new P7NetworkComposition(
-                                requestedPlayer -> {
-                                    epochPlayer[0] = requestedPlayer;
-                                    epochCalls[0]++;
-                                    return OptionalLong.of(47L);
+                                new P7ConnectionEpochSnapshotSource() {
+                                    public CaptureResult captureAuthenticatedSession(UUID requestedPlayer,
+                                            net.minecraft.network.Connection connection) {
+                                        check(connection == context.connection(), "not original context connection");
+                                        epochPlayer[0] = requestedPlayer;
+                                        epochCalls[0]++;
+                                        return CaptureResult.captured(captured);
+                                    }
+                                    public boolean isCurrentCapture(P7SessionIdentity identity,
+                                            net.minecraft.network.Connection connection) {
+                                        return identity == captured && connection == context.connection();
+                                    }
                                 },
                                 owner,
-                                ignored -> dispatchCalls[0]++);
+                                value -> { dispatchCalls[0]++; dispatches.add(value); });
                         var intent = new CastIntent();
 
                         P7CastIntentNetworkHandler.handle(
@@ -420,20 +441,23 @@ final class P7CastIntentNetworkHandlerTest {
                         check(player.uuidCalls() == 1, "ServerPlayer UUID lookup count");
                         check(playerId.equals(epochPlayer[0]), "epoch UUID capture");
                         check(epochCalls[0] == 1, "epoch lookup count");
-                        check(playerId.equals(owner.playerId), "permit UUID capture");
-                        check(owner.epoch == 47L, "permit epoch capture");
+                        check(owner.playerPending(playerId) == 1, "permit UUID capture");
+                        check(owner.serverPending() == 1, "permit acquisition");
                         check(context.enqueueCalls == 1, "enqueue count");
                         check(context.disconnectCalls == 0, "unexpected disconnect");
                         var task = (P7ServerDispatchTask) context.task;
-                        check(playerId.equals(task.queuedIntent().authenticatedPlayerId()),
-                                "queued UUID capture");
-                        check(task.queuedIntent().connectionEpoch() == 47L,
-                                "queued epoch capture");
-                        check(task.queuedIntent().intent() == intent,
-                                "queued intent identity");
                         task.run();
+                        var queued = dispatches.getFirst();
+                        check(playerId.equals(queued.sessionIdentity().authenticatedPlayerId()),
+                                "queued UUID capture");
+                        check(queued.sessionIdentity().connectionEpoch() == 47L,
+                                "queued epoch capture");
+                        check(queued.sessionIdentity().serverGeneration() == 1L, "queued generation capture");
+                        check(queued.intent() == intent,
+                                "queued intent identity");
                         check(dispatchCalls[0] == 1, "dispatch count");
-                        check(owner.permit.releases == 1, "permit release count");
+                        check(owner.serverPending() == 0 && owner.playerPending(playerId) == 0,
+                                "permit release count");
                         return "PASS";
                     }
 
@@ -449,10 +473,14 @@ final class P7CastIntentNetworkHandlerTest {
                         private int enqueueCalls;
                         private int disconnectCalls;
                         private Runnable task;
+                        private final net.minecraft.network.Connection connection = new net.minecraft.network.Connection();
 
                         private RecordingContext(Object player) {
                             this.player = player;
                         }
+
+                        @Override
+                        public net.minecraft.network.Connection connection() { return connection; }
 
                         @Override
                         public Object player() {
@@ -541,129 +569,10 @@ final class P7CastIntentNetworkHandlerTest {
                     }
                 }
 
-                interface P7ConnectionEpochSnapshotSource {
-                    OptionalLong currentEpoch(UUID playerId);
-                }
-
                 interface P7ServerIntentDispatchPort {
                     void dispatch(P7QueuedCastIntent queuedIntent);
                 }
 
-                final class P7PendingPermitOwner {
-                    enum AcquireOutcome {
-                        GRANTED,
-                        SERVER_BUSY
-                    }
-
-                    UUID playerId;
-                    long epoch;
-                    P7PendingPermit permit;
-
-                    long captureServerGeneration() {
-                        return 1L;
-                    }
-
-                    AcquireResult acquire(
-                            UUID authenticatedPlayerId,
-                            long connectionEpoch,
-                            long serverGeneration) {
-                        playerId = authenticatedPlayerId;
-                        epoch = connectionEpoch;
-                        permit = new P7PendingPermit();
-                        return new AcquireResult(permit);
-                    }
-
-                    static final class AcquireResult {
-                        private final P7PendingPermit permit;
-
-                        AcquireResult(P7PendingPermit permit) {
-                            this.permit = permit;
-                        }
-
-                        AcquireOutcome outcome() {
-                            return AcquireOutcome.GRANTED;
-                        }
-
-                        Optional<P7PendingPermit> permit() {
-                            return Optional.of(permit);
-                        }
-                    }
-                }
-
-                final class P7PendingPermit {
-                    int releases;
-
-                    void release() {
-                        releases++;
-                    }
-
-                    void releaseAfterEnqueueFailure() {
-                        releases++;
-                    }
-                }
-
-                final class P7QueuedCastIntent {
-                    private final UUID authenticatedPlayerId;
-                    private final long connectionEpoch;
-                    private final CastIntent intent;
-
-                    P7QueuedCastIntent(
-                            UUID authenticatedPlayerId,
-                            long connectionEpoch,
-                            CastIntent intent) {
-                        this.authenticatedPlayerId = authenticatedPlayerId;
-                        this.connectionEpoch = connectionEpoch;
-                        this.intent = intent;
-                    }
-
-                    UUID authenticatedPlayerId() {
-                        return authenticatedPlayerId;
-                    }
-
-                    long connectionEpoch() {
-                        return connectionEpoch;
-                    }
-
-                    CastIntent intent() {
-                        return intent;
-                    }
-                }
-
-                final class P7ServerDispatchTask implements Runnable {
-                    private final P7QueuedCastIntent queuedIntent;
-                    private final P7ServerIntentDispatchPort dispatchPort;
-                    private final P7PendingPermit permit;
-
-                    P7ServerDispatchTask(
-                            P7QueuedCastIntent queuedIntent,
-                            P7ServerIntentDispatchPort dispatchPort,
-                            P7PendingPermit permit) {
-                        this.queuedIntent = queuedIntent;
-                        this.dispatchPort = dispatchPort;
-                        this.permit = permit;
-                    }
-
-                    P7QueuedCastIntent queuedIntent() {
-                        return queuedIntent;
-                    }
-
-                    @Override
-                    public void run() {
-                        try {
-                            dispatchPort.dispatch(queuedIntent);
-                        } finally {
-                            permit.release();
-                        }
-                    }
-                }
-
-                final class P7SemanticInvariantException extends RuntimeException {
-                    private static final long serialVersionUID = 1L;
-
-                    P7SemanticInvariantException(String message) {
-                        super(message);
-                    }
-                }
                 """);
 
         var compiler = ToolProvider.getSystemJavaCompiler();
@@ -671,16 +580,23 @@ final class P7CastIntentNetworkHandlerTest {
         boolean success;
         try (var files = compiler.getStandardFileManager(
                 diagnostics, java.util.Locale.ROOT, StandardCharsets.UTF_8)) {
-            var units = files.getJavaFileObjectsFromPaths(List.of(
+            var sources = new ArrayList<Path>(List.of(
                     HANDLER_SOURCE,
+                    connectionStub,
                     componentStub,
                     serverPlayerStub,
                     contextStub,
                     harness));
+            for (var name : List.of("P7SessionIdentity", "P7QueuedCastIntent", "P7ServerDispatchTask",
+                    "P7PendingPermitOwner", "P7PendingPermit", "PendingPermitAccounting",
+                    "P7NetworkBounds", "P7SemanticInvariantException", "P7ConnectionEpochSnapshotSource")) {
+                sources.add(HANDLER_SOURCE.resolveSibling(name + ".java"));
+            }
+            var units = files.getJavaFileObjectsFromPaths(sources);
             var options = List.of(
                     "--release", "21",
                     "-proc:none",
-                    "-Xlint:all,-auxiliaryclass",
+                    "-Xlint:all,-serial,-auxiliaryclass",
                     "-Werror",
                     "-classpath", outputRoot.toString(),
                     "-d", outputRoot.toString());
@@ -714,10 +630,10 @@ final class P7CastIntentNetworkHandlerTest {
 
     private static void assertBusyReplyFailureIsSameObject(Throwable failure) {
         var playerId = new UUID(0L, 207L);
-        var owner = new P7PendingPermitOwner();
+        var owner = runningOwner();
         var existingPermits = new ArrayList<P7PendingPermit>();
         for (var epoch = 1L; epoch <= 8L; epoch++) {
-            existingPermits.add(owner.acquire(playerId, epoch).permit().orElseThrow());
+            existingPermits.add(owner.acquire(playerId, epoch, 1L).permit().orElseThrow());
         }
         var dispatchCalls = new AtomicInteger();
         var context = new P7RecordingPayloadContext(
@@ -745,11 +661,41 @@ final class P7CastIntentNetworkHandlerTest {
     }
 
     private static P7NetworkComposition composition(
-            P7ConnectionEpochSnapshotSource epochSource,
+            java.util.function.Function<UUID, OptionalLong> epochSource,
             P7PendingPermitOwner owner,
             P7ServerIntentDispatchPort serverDispatchPort) {
+        // This is a scalar test fixture, not the production authenticated producer.
+        // The real owner/binding tests separately prove publication and matching.
+        var capturedGeneration = owner.captureServerGeneration();
+        var source = new P7ConnectionEpochSnapshotSource() {
+            private net.minecraft.network.Connection capturedConnection;
+            private P7SessionIdentity capturedIdentity;
+
+            @Override
+            public CaptureResult captureAuthenticatedSession(UUID player,
+                    net.minecraft.network.Connection connection) {
+                var epoch = epochSource.apply(player);
+                if (epoch.isEmpty()) { return CaptureResult.rejected(CaptureOutcome.NO_SESSION); }
+                capturedConnection = connection;
+                capturedIdentity = new P7SessionIdentity(player, epoch.getAsLong(), capturedGeneration);
+                return CaptureResult.captured(capturedIdentity);
+            }
+
+            @Override
+            public boolean isCurrentCapture(P7SessionIdentity identity,
+                    net.minecraft.network.Connection connection) {
+                return identity.equals(capturedIdentity) && connection == capturedConnection
+                        && owner.captureServerGeneration() == capturedGeneration;
+            }
+        };
         return new P7NetworkComposition(
-                epochSource, owner, serverDispatchPort, new NoOpClientDispatchPort());
+                source, owner, serverDispatchPort, new NoOpClientDispatchPort());
+    }
+
+    private static P7PendingPermitOwner runningOwner() {
+        var owner = new P7PendingPermitOwner();
+        owner.startServer();
+        return owner;
     }
 
     private static Path projectRoot() {

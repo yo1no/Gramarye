@@ -926,6 +926,7 @@ verify_changed_paths() {
                 src/p11OnlineHarness/resources/gramarye-p11-l1-harness.mixins.json | \
                 src/p11GameTestHarness/resources/gramarye-p11-gametest-harness.mixins.json | \
                 src/p11OnlineHarness/resources/gramarye-p11-cooldown-harness.mixins.json | \
+                src/p11OnlineHarness/resources/gramarye-p11-d3-harness.mixins.json | \
                 src/p11OnlineHarness/fixtures/l1/advancement/l1_first_kill.json | \
                 src/p11OnlineHarness/fixtures/l1/advancement/l1_late_kill.json | \
                 src/p11OnlineHarness/fixtures/l1/advancement/l1_partial_kill.json | \
@@ -1001,6 +1002,7 @@ self_regression() {
     for resource in \
         'src/main/resources/gramarye.p11.mixins.json.extra' \
         'src/main/resources/gramarye.p11.foreign.json' \
+        'src/p11OnlineHarness/resources/gramarye-p11-d3-foreign.mixins.json' \
         'docs/codex-spec/19_P11持久化與多人修正案.md' \
         'gradle.properties'; do
         if is_allowed_changed_path "${resource}"; then
@@ -1032,6 +1034,7 @@ self_regression() {
         'src/p11GameTestHarness/fixtures/startup.toml' \
         'src/p11GameTestHarness/resources/gramarye-p11-gametest-harness.mixins.json' \
         'src/p11OnlineHarness/resources/gramarye-p11-cooldown-harness.mixins.json' \
+        'src/p11OnlineHarness/resources/gramarye-p11-d3-harness.mixins.json' \
         'src/p11OnlineHarness/resources/gramarye-p11-l1-harness.mixins.json' \
         'src/p11OnlineHarness/fixtures/l1/advancement/l1_first_kill.json' \
         'src/p11OnlineHarness/fixtures/l1/advancement/l1_late_kill.json' \

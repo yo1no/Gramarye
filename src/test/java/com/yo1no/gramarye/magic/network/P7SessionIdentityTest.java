@@ -12,40 +12,44 @@ final class P7SessionIdentityTest {
 
     @Test
     void retainsOnlyAuthenticatedUuidAndPositiveEpoch() {
-        var identity = new P7SessionIdentity(PLAYER_ID, 1L);
+        var identity = new P7SessionIdentity(PLAYER_ID, 1L, 1L);
 
         assertEquals(PLAYER_ID, identity.authenticatedPlayerId());
         assertEquals(1L, identity.connectionEpoch());
+        assertEquals(1L, identity.serverGeneration());
     }
 
     @Test
     void acceptsMaximumPositiveEpoch() {
         assertEquals(
                 Long.MAX_VALUE,
-                new P7SessionIdentity(PLAYER_ID, Long.MAX_VALUE).connectionEpoch());
+                new P7SessionIdentity(PLAYER_ID, Long.MAX_VALUE, Long.MAX_VALUE).connectionEpoch());
     }
 
     @Test
     void rejectsNullPlayerAndNonpositiveEpoch() {
-        assertThrows(P7SemanticInvariantException.class, () -> new P7SessionIdentity(null, 1L));
+        assertThrows(P7SemanticInvariantException.class, () -> new P7SessionIdentity(null, 1L, 1L));
         assertThrows(
                 P7SemanticInvariantException.class,
-                () -> new P7SessionIdentity(PLAYER_ID, 0L));
+                () -> new P7SessionIdentity(PLAYER_ID, 0L, 1L));
         assertThrows(
                 P7SemanticInvariantException.class,
-                () -> new P7SessionIdentity(PLAYER_ID, -1L));
+                () -> new P7SessionIdentity(PLAYER_ID, -1L, 1L));
+        assertThrows(P7SemanticInvariantException.class, () -> new P7SessionIdentity(PLAYER_ID, 1L, 0L));
+        assertThrows(P7SemanticInvariantException.class, () -> new P7SessionIdentity(PLAYER_ID, 1L, -1L));
     }
 
     @Test
     void equalityUsesBothUuidAndEpoch() {
-        var same = new P7SessionIdentity(PLAYER_ID, 7L);
+        var same = new P7SessionIdentity(PLAYER_ID, 7L, 1L);
 
-        assertEquals(same, new P7SessionIdentity(PLAYER_ID, 7L));
-        assertEquals(same.hashCode(), new P7SessionIdentity(PLAYER_ID, 7L).hashCode());
-        assertNotEquals(same, new P7SessionIdentity(PLAYER_ID, 8L));
+        assertEquals(same, new P7SessionIdentity(PLAYER_ID, 7L, 1L));
+        assertEquals(same.hashCode(), new P7SessionIdentity(PLAYER_ID, 7L, 1L).hashCode());
+        assertNotEquals(same, new P7SessionIdentity(PLAYER_ID, 8L, 1L));
+        assertNotEquals(same, new P7SessionIdentity(PLAYER_ID, 7L, 2L));
         assertNotEquals(
                 same,
                 new P7SessionIdentity(
-                        UUID.fromString("a527e901-fd78-459c-9303-a4b210873c49"), 7L));
+                        UUID.fromString("a527e901-fd78-459c-9303-a4b210873c49"), 7L, 1L));
     }
 }

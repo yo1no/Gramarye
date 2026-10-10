@@ -210,7 +210,19 @@ final class P7ClientPayloadHandlersTest {
 
     private static P7NetworkComposition composition(P7ClientMirrorDispatchPort dispatchPort) {
         return new P7NetworkComposition(
-                ignored -> OptionalLong.empty(),
+                new P7ConnectionEpochSnapshotSource() {
+                    @Override
+                    public CaptureResult captureAuthenticatedSession(java.util.UUID id,
+                            net.minecraft.network.Connection connection) {
+                        throw new AssertionError("client handler must not capture a server session");
+                    }
+
+                    @Override
+                    public boolean isCurrentCapture(P7SessionIdentity identity,
+                            net.minecraft.network.Connection connection) {
+                        throw new AssertionError("client handler must not validate a server session");
+                    }
+                },
                 new P7PendingPermitOwner(),
                 ignored -> {},
                 dispatchPort);

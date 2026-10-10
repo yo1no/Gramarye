@@ -14,7 +14,9 @@ import java.util.UUID;
 final class P7PendingPermitOwner {
     enum AcquireOutcome {
         GRANTED,
-        SERVER_BUSY
+        SERVER_BUSY,
+        STALE_GENERATION,
+        SERVER_UNAVAILABLE
     }
 
     static final class AcquireResult {
@@ -41,12 +43,18 @@ final class P7PendingPermitOwner {
             new HashMap<>();
     private int serverPending;
     private long serverGeneration = 1L;
+    private boolean accepting;
+    private boolean exhausted;
 
-    AcquireResult acquire(UUID authenticatedPlayerId, long connectionEpoch) {
-        return acquire(
-                authenticatedPlayerId,
-                connectionEpoch,
-                captureServerGeneration());
+    long startServer() {
+        synchronized (monitor) {
+            if (accepting || exhausted || serverPending != 0
+                    || !perPlayerPending.isEmpty() || !activePermitsByPlayer.isEmpty()) {
+                throw new P7SemanticInvariantException("pending permit lifetime cannot start");
+            }
+            accepting = true;
+            return serverGeneration;
+        }
     }
 
     AcquireResult acquire(
@@ -61,8 +69,11 @@ final class P7PendingPermitOwner {
             throw new P7SemanticInvariantException("server generation is invalid");
         }
         synchronized (monitor) {
+            if (!accepting || exhausted) {
+                return new AcquireResult(AcquireOutcome.SERVER_UNAVAILABLE, null);
+            }
             if (expectedServerGeneration != serverGeneration) {
-                return new AcquireResult(AcquireOutcome.SERVER_BUSY, null);
+                return new AcquireResult(AcquireOutcome.STALE_GENERATION, null);
             }
             var playerPending = perPlayerPending.getOrDefault(authenticatedPlayerId, 0);
             var accounting = new PendingPermitAccounting(playerPending, serverPending);
@@ -71,22 +82,62 @@ final class P7PendingPermitOwner {
                 return new AcquireResult(AcquireOutcome.SERVER_BUSY, null);
             }
             var nextState = decision.nextState();
-            perPlayerPending.put(authenticatedPlayerId, nextState.playerPending());
-            serverPending = nextState.serverPending();
             var permit = new P7PendingPermit(
                     this,
                     authenticatedPlayerId,
                     connectionEpoch,
                     serverGeneration,
                     decision.permit().orElseThrow());
-            var playerPermits = activePermitsByPlayer.computeIfAbsent(
-                    authenticatedPlayerId,
-                    ignored -> Collections.newSetFromMap(new IdentityHashMap<>()));
-            if (!playerPermits.add(permit)) {
-                throw new P7SemanticInvariantException(
-                        "pending permit identity was already active");
+            var playerPermits = activePermitsByPlayer.get(authenticatedPlayerId);
+            boolean newPlayer = playerPermits == null;
+            if (newPlayer) {
+                playerPermits = Collections.newSetFromMap(new IdentityHashMap<>());
+                playerPermits.add(permit);
             }
-            return new AcquireResult(AcquireOutcome.GRANTED, permit);
+            var result = new AcquireResult(AcquireOutcome.GRANTED, permit);
+            int previousServerPending = serverPending;
+            try {
+                if (newPlayer) {
+                    activePermitsByPlayer.put(authenticatedPlayerId, playerPermits);
+                } else if (!playerPermits.add(permit)) {
+                    throw new P7SemanticInvariantException(
+                            "pending permit identity was already active");
+                }
+                perPlayerPending.put(authenticatedPlayerId, nextState.playerPending());
+                serverPending = nextState.serverPending();
+                return result;
+            } catch (RuntimeException | Error primary) {
+                try {
+                    // Only this unpublished permit is rolled back; existing work is untouched.
+                    try {
+                        if (playerPending == 0) {
+                            perPlayerPending.remove(authenticatedPlayerId);
+                        } else {
+                            perPlayerPending.replace(authenticatedPlayerId, playerPending);
+                        }
+                    } finally {
+                        try {
+                            playerPermits.remove(permit);
+                        } finally {
+                            if (newPlayer) {
+                                activePermitsByPlayer.remove(authenticatedPlayerId, playerPermits);
+                            }
+                        }
+                    }
+                } catch (RuntimeException | Error secondary) {
+                    exhausted = true;
+                    if (secondary != primary) {
+                        try {
+                            primary.addSuppressed(secondary);
+                        } catch (RuntimeException | Error suppressionFailure) {
+                            // Failed diagnostic suppression cannot replace the acquire primary.
+                        }
+                    }
+                } finally {
+                    serverPending = previousServerPending;
+                }
+                throw primary;
+            }
         }
     }
 
@@ -107,8 +158,11 @@ final class P7PendingPermitOwner {
         Objects.requireNonNull(permit, "permit");
         synchronized (monitor) {
             requireOwned(permit);
-            if (permit.lifecycleStateUnderOwnerLock()
-                    == P7PendingPermit.LifecycleState.LIFECYCLE_TERMINATED) {
+            var state = permit.lifecycleStateUnderOwnerLock();
+            if (state == P7PendingPermit.LifecycleState.LIFECYCLE_TERMINATED
+                    || state == P7PendingPermit.LifecycleState.TASK_STARTED
+                    || state == P7PendingPermit.LifecycleState.TASK_FINISHED) {
+                // Actual task start transfers ownership, including inline enqueue execution.
                 return;
             }
             if (permit.lifecycleStateUnderOwnerLock()
@@ -116,7 +170,7 @@ final class P7PendingPermitOwner {
                 throw new P7SemanticInvariantException("enqueue failure no longer owns pending permit");
             }
             releaseActive(
-                    permit, P7PendingPermit.LifecycleState.EXPLICITLY_RELEASED);
+                    permit, P7PendingPermit.LifecycleState.SUBMISSION_RELEASED);
         }
     }
 
@@ -133,7 +187,7 @@ final class P7PendingPermitOwner {
                 throw new P7SemanticInvariantException("pending permit was released twice");
             }
             releaseActive(
-                    permit, P7PendingPermit.LifecycleState.EXPLICITLY_RELEASED);
+                    permit, P7PendingPermit.LifecycleState.TASK_FINISHED);
         }
     }
 
@@ -142,7 +196,10 @@ final class P7PendingPermitOwner {
         synchronized (monitor) {
             requireOwned(permit);
             if (permit.lifecycleStateUnderOwnerLock()
-                    == P7PendingPermit.LifecycleState.LIFECYCLE_TERMINATED) {
+                            == P7PendingPermit.LifecycleState.LIFECYCLE_TERMINATED
+                    || permit.lifecycleStateUnderOwnerLock()
+                            == P7PendingPermit.LifecycleState.SUBMISSION_RELEASED) {
+                // A failed submission may have queued this task before reporting failure.
                 return false;
             }
             if (permit.lifecycleStateUnderOwnerLock()
@@ -152,24 +209,26 @@ final class P7PendingPermitOwner {
                 throw new P7SemanticInvariantException(
                         "pending permit task was started twice");
             }
+            if (!accepting || exhausted) {
+                // Failed cleanup can leave a tracked token, but cannot leave it executable.
+                return false;
+            }
             permit.markTaskStartedUnderOwnerLock();
             return true;
         }
     }
 
-    int invalidateSession(UUID authenticatedPlayerId, long connectionEpoch) {
-        Objects.requireNonNull(authenticatedPlayerId, "authenticatedPlayerId");
-        if (connectionEpoch <= 0) {
-            throw new P7SemanticInvariantException("connection epoch is invalid");
-        }
+    int invalidateSession(P7SessionIdentity identity) {
+        Objects.requireNonNull(identity, "identity");
         synchronized (monitor) {
             var invalidated = 0;
-            var playerPermits = activePermitsByPlayer.get(authenticatedPlayerId);
+            var playerPermits = activePermitsByPlayer.get(identity.authenticatedPlayerId());
             if (playerPermits == null) {
                 return 0;
             }
             for (var permit : List.copyOf(playerPermits)) {
-                if (permit.connectionEpoch() == connectionEpoch) {
+                if (permit.connectionEpoch() == identity.connectionEpoch()
+                        && permit.serverGeneration() == identity.serverGeneration()) {
                     releaseActive(
                             permit,
                             P7PendingPermit.LifecycleState.LIFECYCLE_TERMINATED);
@@ -182,10 +241,14 @@ final class P7PendingPermitOwner {
 
     int stopAll() {
         synchronized (monitor) {
-            if (serverGeneration == Long.MAX_VALUE) {
-                throw new P7SemanticInvariantException(
-                        "pending permit server generation is exhausted");
+            if (!accepting) {
+                if (serverPending != 0 || !perPlayerPending.isEmpty()
+                        || !activePermitsByPlayer.isEmpty()) {
+                    throw new P7SemanticInvariantException("pending permit prior stop is incomplete");
+                }
+                return 0;
             }
+            accepting = false;
             var activePermits = new ArrayList<P7PendingPermit>(serverPending);
             activePermitsByPlayer.values().forEach(activePermits::addAll);
             var stopped = activePermits.size();
@@ -199,6 +262,11 @@ final class P7PendingPermitOwner {
                     || !activePermitsByPlayer.isEmpty()) {
                 throw new P7SemanticInvariantException(
                         "pending permit stop cleanup is incomplete");
+            }
+            if (serverGeneration == Long.MAX_VALUE) {
+                exhausted = true;
+                throw new P7SemanticInvariantException(
+                        "pending permit server generation is exhausted");
             }
             serverGeneration++;
             return stopped;
@@ -255,7 +323,7 @@ final class P7PendingPermitOwner {
                                 != P7PendingPermit.LifecycleState.TASK_STARTED)
                 || permit.accountingPermitUnderOwnerLock().released()
                 || permit.serverGeneration() != serverGeneration
-                || !removeActive(permit)) {
+                || !containsActive(permit)) {
             throw new P7SemanticInvariantException("pending permit accounting mismatch");
         }
         var playerId = permit.authenticatedPlayerId();
@@ -266,6 +334,9 @@ final class P7PendingPermitOwner {
             throw new P7SemanticInvariantException("pending permit accounting mismatch");
         }
         var nextState = decision.nextState();
+        if (!removeActive(permit)) {
+            throw new P7SemanticInvariantException("pending permit accounting mismatch");
+        }
         if (nextState.playerPending() == 0) {
             perPlayerPending.remove(playerId);
         } else {

@@ -40,38 +40,70 @@ final class P7CastIntentNetworkHandler {
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(composition, "composition");
         var permitOwner = composition.pendingPermitOwner();
-        var serverGeneration = permitOwner.captureServerGeneration();
-        var epochSnapshot = composition
-                .connectionEpochSource()
-                .currentEpoch(authenticatedPlayerId);
-        if (epochSnapshot.isEmpty()) {
+        var connection = Objects.requireNonNull(context.connection(), "authenticated connection");
+        var source = composition.connectionEpochSource();
+        var captured = source.captureAuthenticatedSession(authenticatedPlayerId, connection);
+        if (captured.outcome() != P7ConnectionEpochSnapshotSource.CaptureOutcome.CAPTURED) {
             return;
         }
-        var connectionEpoch = epochSnapshot.getAsLong();
-        if (connectionEpoch <= 0) {
-            throw new P7SemanticInvariantException(
-                    "connection epoch source returned an invalid value");
+        var identity = captured.identity().orElseThrow();
+        if (!authenticatedPlayerId.equals(identity.authenticatedPlayerId())) {
+            throw new P7SemanticInvariantException("captured session belongs to another sender");
         }
         var acquisition = permitOwner.acquire(
-                authenticatedPlayerId, connectionEpoch, serverGeneration);
+                authenticatedPlayerId, identity.connectionEpoch(), identity.serverGeneration());
+        if (acquisition.outcome() == P7PendingPermitOwner.AcquireOutcome.SERVER_UNAVAILABLE
+                || acquisition.outcome() == P7PendingPermitOwner.AcquireOutcome.STALE_GENERATION) {
+            return;
+        }
         if (acquisition.outcome() == P7PendingPermitOwner.AcquireOutcome.SERVER_BUSY) {
-            context.reply(new IntentAckPayload(new IntentAcknowledgement(
-                    payload.intent().sequence(),
-                    IntentAcknowledgement.Disposition.SERVER_BUSY,
-                    0,
-                    null)));
+            if (source.isCurrentCapture(identity, connection)) {
+                context.reply(new IntentAckPayload(new IntentAcknowledgement(
+                        payload.intent().sequence(),
+                        IntentAcknowledgement.Disposition.SERVER_BUSY,
+                        0,
+                        null)));
+            }
             return;
         }
         var permit = acquisition.permit().orElseThrow();
-        var queuedIntent = new P7QueuedCastIntent(
-                authenticatedPlayerId, connectionEpoch, payload.intent());
-        var task = new P7ServerDispatchTask(
-                queuedIntent, composition.serverIntentDispatchPort(), permit);
+        boolean submissionReturned = false;
+        Throwable primary = null;
         try {
+            // This verifies only the original capture, never refreshes its authority.
+            if (!source.isCurrentCapture(identity, connection)) {
+                return;
+            }
+            var queuedIntent = new P7QueuedCastIntent(identity, payload.intent());
+            var task = new P7ServerDispatchTask(
+                    queuedIntent, composition.serverIntentDispatchPort(), permit);
             context.enqueueWork(task);
+            submissionReturned = true;
         } catch (RuntimeException | Error failure) {
-            permit.releaseAfterEnqueueFailure();
+            primary = failure;
             throw failure;
+        } finally {
+            if (!submissionReturned) {
+                if (primary == null) {
+                    permit.releaseAfterEnqueueFailure();
+                } else {
+                    try {
+                        permit.releaseAfterEnqueueFailure();
+                    } catch (RuntimeException | Error secondary) {
+                        suppress(primary, secondary);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void suppress(Throwable primary, Throwable secondary) {
+        if (primary != secondary) {
+            try {
+                primary.addSuppressed(secondary);
+            } catch (RuntimeException | Error suppressionFailure) {
+                // Diagnostic failure cannot replace the original submission/dispatch primary.
+            }
         }
     }
 }

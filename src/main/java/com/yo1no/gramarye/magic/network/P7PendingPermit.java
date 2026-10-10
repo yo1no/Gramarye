@@ -7,6 +7,8 @@ final class P7PendingPermit {
     enum LifecycleState {
         ACTIVE,
         TASK_STARTED,
+        TASK_FINISHED,
+        SUBMISSION_RELEASED,
         EXPLICITLY_RELEASED,
         LIFECYCLE_TERMINATED
     }

@@ -34,6 +34,53 @@ is_p10_path() {
     esac
 }
 
+# Exact D3 source-bound capture and direct consumers; no package/prefix admission.
+is_p11_d3_slice_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ConnectionEpochSnapshotSource.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermit.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7QueuedCastIntent.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAccess.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationDispatcher.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7ServerDispatchTask.java | \
+        src/main/java/com/yo1no/gramarye/magic/network/P7SessionIdentity.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11D3ClientHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11D3HostClientProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11D3HostProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11D3ServerHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3ClientInputMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3ClientMirrorMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3ClientPacketMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3FoundationMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3LoginMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3NetworkMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3PermitCostMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3ResultMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3RuntimeMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3SessionCostMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3SessionMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11D3TaskMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/magic/network/P11D3ClientObservation.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/magic/network/P11D3Observation.java | \
+        src/p11OnlineHarness/resources/gramarye-p11-d3-harness.mixins.json | \
+        src/test/java/com/yo1no/gramarye/magic/definition/submission/P7D3MetadataContinuationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7AdmissionDispositionMapperTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7D3CoreOwnershipTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7D3LifecycleCleanupTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7NetworkCompositionS3Test.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7PendingPermitOwnerTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerAuthorizationDispatcherTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerIntentResultTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerSequenceRateIntegrationTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7ServerSessionServiceTest.java | \
+        src/test/java/com/yo1no/gramarye/magic/network/P7SessionIdentityTest.java)
+            return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Exact §11 cooldown after-set; no general package or future-source admission.
 # Includes exact source-equivalent test-fixture lifetime corrections.
 is_p11_cooldown_slice_path() {
@@ -1425,7 +1472,8 @@ case "${1:-}" in
             && { is_s4_path "$2" || is_p9_s3_path "$2" \
                 || is_p9_s3_dc1_path "$2" || is_p9_s4_path "$2" \
                 || is_p9_s4_wc1_path "$2" || is_p9_s5_path "$2" || is_p10_path "$2" \
-                || is_p11_native_slice_path "$2" || is_p11_cooldown_slice_path "$2"; } ;;
+                || is_p11_native_slice_path "$2" || is_p11_cooldown_slice_path "$2" \
+                || is_p11_d3_slice_path "$2"; } ;;
     --is-p9-s5-path)
         [[ "$#" -eq 2 ]] && is_p9_s5_path "$2" ;;
     --check-game-test-worker-source)

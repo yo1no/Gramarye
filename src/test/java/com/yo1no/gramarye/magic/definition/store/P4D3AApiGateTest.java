@@ -131,11 +131,11 @@ final class P4D3AApiGateTest {
                         .allMatch(field -> Modifier.isPrivate(field.getModifiers()))),
                 () -> assertEquals(Set.of("authorizesRetention", "reconciliationStarted",
                                 "reconciliationCompleted", "resumeAuthorized", "reconciliationDone",
-                                "openedSession", "loginActor", "sessionStarted", "sessionOpened",
+                                "openedSession", "openedServerGeneration", "loginActor", "sessionStarted", "sessionOpened",
                                 "legacyLoginStarted", "manaObservationFailed", "matchesSession",
                                 "observeInitialSync", "resume"),
                         publicDeclaredMethodNames(metadata)),
-                () -> assertEquals(14, Arrays.stream(metadata.getDeclaredMethods())
+                () -> assertEquals(15, Arrays.stream(metadata.getDeclaredMethods())
                         .filter(method -> Modifier.isPublic(method.getModifiers())).count()),
                 () -> assertTrue(Arrays.stream(metadata.getDeclaredMethods())
                         .noneMatch(method -> Modifier.isProtected(method.getModifiers()))),

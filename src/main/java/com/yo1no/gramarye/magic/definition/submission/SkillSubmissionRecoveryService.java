@@ -851,6 +851,7 @@ public final class SkillSubmissionRecoveryService {
         private RecoveryProjection projection;
         private P7ServerAuthorizationBoundary.LoginReadyPort loginPort;
         private long sessionEpoch;
+        private long sessionGeneration;
         private boolean resuming;
 
         private MetadataContinuation(SkillSubmissionRecoveryService owner,
@@ -908,6 +909,11 @@ public final class SkillSubmissionRecoveryService {
             return stages.session == MetadataStage.DONE ? sessionEpoch : 0;
         }
 
+        public long openedServerGeneration(P7ServerAuthorizationBoundary.LoginReadyPort port) {
+            requireLoginPort(port);
+            return stages.session == MetadataStage.DONE ? sessionGeneration : 0;
+        }
+
         public boolean loginActor(P7ServerAuthorizationBoundary.LoginReadyPort port, ServerPlayer actor) {
             return port == loginPort && actor == player && !stages.blocked
                     && P11NativeStorageBoundary.metadataCurrent(lease);
@@ -918,13 +924,14 @@ public final class SkillSubmissionRecoveryService {
             stages.sessionStarted();
         }
 
-        public void sessionOpened(P7ServerAuthorizationBoundary.LoginReadyPort port, long epoch) {
+        public void sessionOpened(P7ServerAuthorizationBoundary.LoginReadyPort port, long epoch, long generation) {
             requireLoginPort(port);
-            if (epoch < 1) {
+            if (epoch < 1 || generation < 1) {
                 throw new IllegalStateException("P11_METADATA_SESSION_NOT_RUNNING");
             }
-            sessionEpoch = epoch;
             stages.sessionOpened();
+            sessionEpoch = epoch;
+            sessionGeneration = generation;
         }
 
         public void legacyLoginStarted(P7ServerAuthorizationBoundary.LoginReadyPort port) {
@@ -940,15 +947,16 @@ public final class SkillSubmissionRecoveryService {
             if (candidate != null && candidate == lease) { stages.blocked = true; }
         }
 
-        public boolean matchesSession(P11NativeStorageBoundary.MetadataLease candidate, long epoch) {
+        public boolean matchesSession(P11NativeStorageBoundary.MetadataLease candidate, long epoch, long generation) {
             return candidate != null && candidate == lease && epoch == sessionEpoch
+                    && generation == sessionGeneration
                     && stages.session == MetadataStage.DONE && !stages.blocked;
         }
 
         /** Non-throwing observation from the root's exact-lease P7 submission dispatcher. */
         public void observeInitialSync(P11NativeStorageBoundary.MetadataLease candidate,
-                long epoch, MetadataInitialStage stage) {
-            if (candidate == null || candidate != lease || epoch != sessionEpoch
+                long epoch, long generation, MetadataInitialStage stage) {
+            if (candidate == null || candidate != lease || epoch != sessionEpoch || generation != sessionGeneration
                     || stages.session != MetadataStage.DONE || stage == null) { return; }
             // Native play operations may advance v after this exact P7 session opened.
             // Observing its real submissions only retires this existing obligation; it

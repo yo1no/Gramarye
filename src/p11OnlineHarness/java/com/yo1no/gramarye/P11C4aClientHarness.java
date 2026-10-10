@@ -138,6 +138,11 @@ public final class P11C4aClientHarness {
                     serverOutput == null ? P11C4aEvidence.root().resolve("server") : serverOutput, "abort.ready")) {
                 fail(minecraft, "OWNED_COOLDOWN_HOST_ABORT"); return;
             }
+            if ("d3-c4a-baseline".equals(System.getProperty("gramarye.p11.online.case", ""))
+                    && P11C4aEvidence.cuePresent(serverOutput == null
+                            ? P11C4aEvidence.root().resolve("server") : serverOutput, "abort.ready")) {
+                fail(minecraft, "OWNED_D3_C4A_BASELINE_ABORT"); return;
+            }
             P11C4aNativeObservations.requireHealthy();
             if (P11C4aTerminalStatusProbe.selected() && phase == Phase.PLAY) {
                 nativeCall = true;

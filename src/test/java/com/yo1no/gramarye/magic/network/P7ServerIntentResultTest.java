@@ -46,7 +46,7 @@ final class P7ServerIntentResultTest {
     @Test
     void acceptedAdmissionRequiresAttemptAndMatchingAckSequence() {
         var identity = new P7SessionIdentity(
-                UUID.fromString("00000000-0000-0000-0000-000000000704"), 4L);
+                UUID.fromString("00000000-0000-0000-0000-000000000704"), 4L, 1L);
         var acknowledgement = new IntentAcknowledgement(
                 5L,
                 IntentAcknowledgement.Disposition.ACCEPTED,
@@ -82,7 +82,7 @@ final class P7ServerIntentResultTest {
     @Test
     void internalFaultHasNoAcknowledgementCandidate() {
         var identity = new P7SessionIdentity(
-                UUID.fromString("00000000-0000-0000-0000-000000000705"), 5L);
+                UUID.fromString("00000000-0000-0000-0000-000000000705"), 5L, 1L);
         var result = P7AdmissionDispositionMapper.fromRootDisposition(
                 identity,
                 9L,

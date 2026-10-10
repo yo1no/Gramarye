@@ -7,6 +7,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
@@ -25,6 +26,12 @@ final class P7ServerLifecycleEvents {
 
     @SubscribeEvent
     static void stopping(ServerStoppingEvent event) {
+        LIFECYCLE.stop(event.getServer());
+    }
+
+    @SubscribeEvent
+    static void stopped(ServerStoppedEvent event) {
+        // runServer's exceptional exit can skip Stopping; the same owner is idempotent.
         LIFECYCLE.stop(event.getServer());
     }
 

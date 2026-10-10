@@ -41,7 +41,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 /** Excluded true R/formal-submit/native-add experiment. Does not set cooldown/work/clock facts. */
 @EventBusSubscriber(modid = Gramarye.MOD_ID)
 public final class P11CooldownServerHarness {
-    private enum Stage { CONNECT, STARTER, FIRST_ARM, ACTIVE_RETRY, RECONNECT, EXPIRY, SECOND_ARM,
+    private enum Stage { CONNECT, STARTER, FIRST_ARM, ACTIVE_RETRY, RECONNECT, RECONNECT_ACTIVE_RETRY, EXPIRY, SECOND_ARM,
         RESTART_ACTIVE_RETRY, RESTART_EXPIRY, RESTART_NEW_ARM, FINISH }
     private static final Map<Connection, UUID> AUTH = new IdentityHashMap<>();
     private static PlayerSkillAttachmentService attachments;
@@ -64,6 +64,7 @@ public final class P11CooldownServerHarness {
     private static Stage stage = Stage.CONNECT;
     private static int ticks, logins, admissions, rejections, transfers, claims, logouts;
     private static int durabilityExpectedFailures = -1;
+    private static long reconnectRefusalGameTime = -1;
     private static boolean aCue, bCue, reconnectCue, finishing, sealed;
     private static volatile boolean authFailed;
     private static String failure;
@@ -81,6 +82,9 @@ public final class P11CooldownServerHarness {
             case "cooldown-d600", "cooldown-restart-write", "cooldown-restart-read" -> 600;
             default -> throw new IllegalStateException("COOLDOWN_CASE");
         };
+    }
+    static boolean reconnectActiveControlSelected() {
+        return "cooldown-d600".equals(System.getProperty("gramarye.p11.online.case", ""));
     }
 
     public static void composition(PlayerSkillAttachmentService a, SkillDefinitionSubmissionService s,
@@ -245,16 +249,34 @@ public final class P11CooldownServerHarness {
                     P11C4aEvidence.write(output, "reconnect-active.json", Map.of("status", "REAL_RECONNECT_SAME_ACTIVE_OBLIGATION",
                             "newActor", true, "newConnection", true, "expiresAt", entry.expiresAt,
                             "gameTime", gameTime(), "sameLogicalKey", true));
+                    if (reconnectActiveControlSelected()) {
+                        stage = Stage.RECONNECT_ACTIVE_RETRY; cue("a-cast-3.ready");
+                    } else { stage = Stage.EXPIRY; }
+                }
+                case RECONNECT_ACTIVE_RETRY -> {
+                    if (rejections != 2) return;
+                    require(reconnectActiveControlSelected() && logins == 2 && admissions == 1 && transfers == 1
+                            && claims == 0 && reconnectRefusalGameTime >= 0
+                            && reconnectRefusalGameTime < releases[0].expiresAt, "NEW_CONNECTION_ACTIVE_REFUSAL_OBLIGATION");
+                    P11C4aEvidence.write(output, "active-refusal-after-reconnect.json", Map.ofEntries(
+                            Map.entry("status", "REAL_NEW_CONNECTION_R_ACTIVE_ADMISSION_REFUSAL"),
+                            Map.entry("accepted", admissions), Map.entry("rejected", rejections),
+                            Map.entry("nativeTransfers", transfers), Map.entry("currentLogin", logins),
+                            Map.entry("resultKind", "CooldownRejected"), Map.entry("reason", "ACTIVE"),
+                            Map.entry("sameActiveObligation", true), Map.entry("rejectionHasNoWorkOrQueue", true),
+                            Map.entry("gameTime", reconnectRefusalGameTime), Map.entry("expiresAt", releases[0].expiresAt)));
                     stage = Stage.EXPIRY;
                 }
                 case EXPIRY -> {
                     if (gameTime() < releases[0].expiresAt || !terminal(0)) return;
                     require(claims == 0, "EMPTY_RAY_NO_CHILD");
-                    stage = Stage.SECOND_ARM; cue("a-cast-" + (duration() == 1 ? 2 : 3) + ".ready");
+                    stage = Stage.SECOND_ARM;
+                    cue("a-cast-" + (duration() == 1 ? 2 : reconnectActiveControlSelected() ? 4 : 3) + ".ready");
                 }
                 case SECOND_ARM -> {
                     if (transfers != 2 || !terminal(1)) return;
-                    require(admissions == 2 && rejections == (duration() == 1 ? 0 : 1) && claims == 0,
+                    require(admissions == 2 && rejections == (duration() == 1 ? 0 : reconnectActiveControlSelected() ? 2 : 1)
+                            && claims == 0,
                             "TWO_EXACT_RELEASES_AND_NO_CLAIMS");
                     writeRelease(1);
                     require(releases[1].acceptedAt >= releases[0].expiresAt
@@ -341,10 +363,26 @@ public final class P11CooldownServerHarness {
                 admittedRoots[admissions] = root;
                 instances[admissions++] = constructed;
             } else {
-                require((stage == Stage.ACTIVE_RETRY || stage == Stage.RESTART_ACTIVE_RETRY)
+                boolean reconnected = stage == Stage.RECONNECT_ACTIVE_RETRY;
+                require((stage == Stage.ACTIVE_RETRY || stage == Stage.RESTART_ACTIVE_RETRY
+                            || reconnected && reconnectActiveControlSelected())
                         && value instanceof RuntimeAdmissionResult.CooldownRejected rejected
-                        && rejected.reason() == CooldownRejectionReason.ACTIVE && rejections++ == 0
+                        && rejected.reason() == CooldownRejectionReason.ACTIVE && rejections == (reconnected ? 1 : 0)
                         && constructed.work == null && !slot.instances.containsKey(constructed.id), "EXACT_ACTIVE_REJECTION");
+                if (reconnected) {
+                    current(actor);
+                    require(logins == 2 && logouts == 1 && actor != originalActor
+                            && actor.connection.getConnection() != originalConnection && !originalConnection.isConnected()
+                            && admissions == 1 && transfers == 1 && claims == 0
+                            && gameTime() < releases[0].expiresAt && sameRelease(entry(), releases[0])
+                            && constructed.cooldownReceipt == null && constructed.cooldownPreparation == null
+                            && slot.queue.stream().noneMatch(event -> event.skillInstanceId().equals(constructed.id))
+                            && slot.eventIndex.values().stream().noneMatch(event -> event.skillInstanceId().equals(constructed.id)),
+                            "NEW_CONNECTION_ACTIVE_REFUSAL_NO_PUBLISHED_WORK");
+                    // Reconciliation may legally advance clockFloor; the exact ACTIVE obligation must not change.
+                    reconnectRefusalGameTime = gameTime();
+                }
+                rejections++;
             }
             constructed = null;
         } catch (Exception | LinkageError problem) { restoreDurability(problem); failScalar(problem); }
