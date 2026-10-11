@@ -20,7 +20,7 @@ final class P11L1SupplementalHarness {
     private static Path output;
     private static ServerSlot.InstanceState created, first, second;
     private static LivingEntity oldRevisionTarget;
-    private static boolean armed, finished, secondCue, reloadOverlap, ackLogoutObserved;
+    private static boolean armed, finished, secondCue, thirdCue, reloadOverlap, ackLogoutObserved;
     private static int accepted, ticks, originalTargetDiscards;
     private P11L1SupplementalHarness() {}
 
@@ -47,9 +47,17 @@ final class P11L1SupplementalHarness {
 
     static void accepted(MinecraftServer exact, ServerPlayer a, Object geometry, Object result) {
         if (!armed || finished || a != actor) { return; }
+        if (revision() && result instanceof RuntimeAdmissionResult.CooldownRejected) {
+            require(server == exact && server.isSameThread() && created != null
+                    && secondCue && !thirdCue && accepted == 1 && second == null, "SECOND_REAL_R_REJECTION_SCOPE");
+            var rejected = created; created = null;
+            P11L1RevisionProbe.refused(actor, rejected, result);
+            return;
+        }
         require(server == exact && server.isSameThread() && created != null
                 && result instanceof RuntimeAdmissionResult.AcceptedMemoryOnly
                 && geometry instanceof CastGeometryExecutionDataV0 && accepted < (revision() ? 2 : 1), "ORIGINAL_ACCEPTANCE");
+        if (revision() && accepted == 1) { require(thirdCue, "NEW_ZERO_REQUIRES_THIRD_REAL_R"); }
         var instance = created; created = null; accepted++;
         if (accepted == 1) { first = instance; } else { second = instance; }
         if (revision()) { P11L1RevisionProbe.accepted(actor, instance, result); }
@@ -114,6 +122,12 @@ final class P11L1SupplementalHarness {
                 oldRevisionTarget.discard(); originalTargetDiscards++;
                 actor.teleportTo(actor.serverLevel(), 0.5, 100, 0.5, java.util.Set.of(), 0, 0);
                 secondCue = true; P11C4aEvidence.cue(output, "a-cast-2.ready");
+            }
+            if (secondCue && !thirdCue && P11L1RevisionProbe.activeRefusalObserved()
+                    && P11L1RevisionProbe.originalExpiryReached()) {
+                require(first.work == null && first.lease.pin.isClosed() && second == null,
+                        "NATURAL_EXPIRY_WITHOUT_LIVE_WORK_OR_REPLAY");
+                thirdCue = true; P11C4aEvidence.cue(output, "a-cast-3.ready");
             }
             if (second == null || second.work != null) { return; }
             seal(P11L1RevisionProbe.finish());

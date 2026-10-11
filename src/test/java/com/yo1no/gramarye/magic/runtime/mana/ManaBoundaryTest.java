@@ -591,7 +591,7 @@ final class ManaBoundaryTest {
         var calls = Map.of(
                 "nativeGameTestAttachments", 2,
                 "runCooldownFixtureAfterTick", 1,
-                "assertNativeQuarantineBlocksRespawn", 1,
+                "requireNativeLocalQuarantineSettled", 3,
                 "requireCooldownLoginComplete", 1,
                 "respawnNativeGameTestPlayer", 1,
                 "completeEndGameTestPlayer", 1,

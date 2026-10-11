@@ -14,6 +14,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 /** Excluded bounded observations of original C6 calls. No clock, bucket, queue or control setter. */
+@net.neoforged.fml.common.EventBusSubscriber(modid = Gramarye.MOD_ID)
 public final class P11C4aC6NativeProbe {
     public interface EntryView {
         Connection c6$connection(); Object c6$control(); boolean c6$waiting();
@@ -27,6 +28,7 @@ public final class P11C4aC6NativeProbe {
     public record WaitSample(boolean started, boolean expired, boolean unavailable,
             long start, long last, long timeout) { }
     private static volatile Run active;
+    private static volatile CostWindow costs;
     private static final ThreadLocal<OfferCall> OFFER = new ThreadLocal<>();
     private P11C4aC6NativeProbe() { }
 
@@ -38,12 +40,14 @@ public final class P11C4aC6NativeProbe {
                 && server.getPlayerList().getPlayer(b.getUUID()) == b,
                 "C6_OBSERVER_REAL_TWO_ACTORS");
         active = new Run(server, a.connection.getConnection(), b.connection.getConnection(), output);
+        startCosts(server, a.connection.getConnection(), b.connection.getConnection());
         P11C4aC6ExpiryProbe.start(server, a.connection.getConnection(), output);
     }
 
     /** Values copied under the real entries monitor; this observer runs after releasing it. */
     public static void live(MinecraftServer server, Object owner, Object suppliedLimits,
             int k, List<EntrySample> entries) {
+        observeCostEntries(server, owner, entries);
         var run = active;
         if (run == null || run.server != server) { return; }
         try {
@@ -145,6 +149,7 @@ public final class P11C4aC6NativeProbe {
 
     public static void polled(Object dispatcher, long tick, List<Long> before, int used,
             Object supplied) {
+        observeCostPoll(dispatcher, tick, before, supplied);
         var run = active;
         if (run == null || !run.server.isSameThread()) { return; }
         try {
@@ -170,6 +175,11 @@ public final class P11C4aC6NativeProbe {
     }
 
     public static void completed(Object dispatcher, Object value, boolean more, boolean result, List<Long> after) {
+        var cost = costs;
+        if (cost != null && cost.server.isSameThread() && cost.dispatcher == dispatcher) {
+            try { observeReady(cost, after, System.nanoTime()); }
+            catch (RuntimeException | Error observerFailure) { cost.failure = true; }
+        }
         var run = active;
         if (run == null || run.dispatcher != dispatcher) { return; }
         try {
@@ -239,15 +249,168 @@ public final class P11C4aC6NativeProbe {
             values.put("acceptedTryStatusByRole", run.accepted.clone()); values.put("limitedTryStatusByRole", run.limited.clone());
             values.put("firstRefusalStarts", run.starts.clone()); values.put("lastWaiting", run.lastWaiting.clone());
             values.put("firstExpiry", run.expiredAt.clone()); values.put("fullC4aAcceptance", false);
+            values.put("controlCost", costSnapshot(run.server));
             report = java.util.Collections.unmodifiableMap(values);
         }
         P11C4aEvidence.write(run.output, leaf, report);
+        requireCosts(run.server);
     }
 
     static void release() { var run = active; if (run != null) {
         P11C4aEvidence.require(run.server.isSameThread() && OFFER.get() == null, "C6_RELEASE_OWNER");
-        P11C4aC6ExpiryProbe.release(); active = null;
+        P11C4aC6ExpiryProbe.release(); releaseCosts(run.server); active = null;
     } }
+
+    /** Cost-only RF use never activates the C6 expiry/limit fixture or changes a native queue. */
+    static void startCosts(MinecraftServer server, Connection a, Connection b) {
+        P11C4aEvidence.require(server.isSameThread() && costs == null && a != b, "C6_COST_OWNER");
+        costs = new CostWindow(server, a, b);
+    }
+
+    public static Object beginDispatchCost(MinecraftServer server, Object owner) {
+        var cost = costs;
+        if (cost == null || cost.server != server) { return null; }
+        if (!server.isSameThread() || cost.owner != owner) { cost.failure = true; return null; }
+        cost.depth++;
+        cost.peakDepth = Math.max(cost.peakDepth, cost.depth);
+        return new CostCall(cost, System.nanoTime());
+    }
+
+    /** This finally observer cannot replace the identical original native Throwable. */
+    public static void endDispatchCost(Object token, boolean normal) {
+        if (!(token instanceof CostCall call)) { return; }
+        var cost = call.cost();
+        try {
+            long elapsed = System.nanoTime() - call.started();
+            if (elapsed < 0 || !cost.server.isSameThread() || cost.depth <= 0) { cost.failure = true; }
+            else {
+                cost.calls = Math.addExact(cost.calls, 1);
+                cost.nanos = Math.addExact(cost.nanos, elapsed);
+                cost.maxNanos = Math.max(cost.maxNanos, elapsed);
+                if (normal) { cost.normal++; } else { cost.thrown++; }
+            }
+        } catch (RuntimeException | Error observerFailure) { cost.failure = true; }
+        finally { cost.depth--; }
+    }
+
+    private static void observeCostEntries(MinecraftServer server, Object owner, List<EntrySample> entries) {
+        var cost = costs;
+        if (cost == null || cost.server != server) { return; }
+        try {
+            if (!server.isSameThread() || cost.owner != null && cost.owner != owner) { cost.failure = true; return; }
+            cost.owner = owner;
+            for (var entry : entries) {
+                int role = entry.connection() == cost.a ? 0 : entry.connection() == cost.b ? 1 : -1;
+                if (role < 0) { continue; }
+                var control = (P11TransitionControl) entry.control();
+                synchronized (control) {
+                    var state = control.state().orElse(null);
+                    if (state == null) { continue; }
+                    long epoch = state.connectionEpoch();
+                    if (cost.epochs[role] != 0 && cost.epochs[role] != epoch) { cost.failure = true; }
+                    cost.epochs[role] = epoch;
+                }
+            }
+        } catch (RuntimeException | Error observerFailure) { cost.failure = true; }
+    }
+
+    private static void observeCostPoll(Object dispatcher, long tick, List<Long> before, Object supplied) {
+        var cost = costs;
+        if (cost == null || !cost.server.isSameThread()) { return; }
+        try {
+            var result = (java.util.Optional<?>) supplied;
+            long now = System.nanoTime();
+            if (cost.dispatcher != null && cost.dispatcher != dispatcher) { cost.failure = true; return; }
+            cost.dispatcher = dispatcher;
+            if (result.isPresent() && tick != cost.lastServiceTick) {
+                cost.serviceableTicks++;
+                cost.lastServiceTick = tick;
+            }
+            observeReady(cost, before, now);
+            if (result.isEmpty()) { return; }
+            long selected = ((P11ControlBudgets.FairDispatcher.Dispatch) result.orElseThrow()).connectionId();
+            int role = selected == cost.epochs[0] ? 0 : selected == cost.epochs[1] ? 1 : -1;
+            if (role < 0) { return; }
+            if (!cost.ready[role] || tick != Integer.toUnsignedLong(cost.server.getTickCount())) {
+                cost.failure = true; return;
+            }
+            long age = now - cost.observedNanos[role];
+            long nativeTicks = tick - cost.observedTick[role];
+            long opportunities = cost.serviceableTicks - cost.observedOpportunity[role];
+            if (age < 0 || nativeTicks < 0 || opportunities < 0) { cost.failure = true; return; }
+            cost.serviced[role]++;
+            cost.ageNanos[role] += age;
+            cost.maxAgeNanos[role] = Math.max(cost.maxAgeNanos[role], age);
+            cost.maxNativeTicks[role] = Math.max(cost.maxNativeTicks[role], nativeTicks);
+            cost.maxServiceableTicks[role] = Math.max(cost.maxServiceableTicks[role], opportunities);
+            cost.ready[role] = false;
+        } catch (RuntimeException | Error observerFailure) { cost.failure = true; }
+    }
+
+    private static void observeReady(CostWindow cost, List<Long> queue, long now) {
+        for (int role = 0; role < 2; role++) {
+            boolean present = cost.epochs[role] > 0 && queue.contains(cost.epochs[role]);
+            if (present && !cost.ready[role]) {
+                cost.observedNanos[role] = now;
+                cost.observedTick[role] = Integer.toUnsignedLong(cost.server.getTickCount());
+                cost.observedOpportunity[role] = cost.serviceableTicks;
+            }
+            cost.ready[role] = present;
+        }
+    }
+
+    static Map<String, Object> costSnapshot(MinecraftServer server) {
+        var cost = costs;
+        P11C4aEvidence.require(cost != null && cost.server == server && server.isSameThread(), "C6_COST_REPORT_OWNER");
+        var out = new LinkedHashMap<String, Object>();
+        out.put("scope", "ORIGINAL_PREPARE_AND_DISPATCH_INCLUSIVE_INSTRUMENTED_NOT_LOCK_WAIT");
+        out.put("failure", cost.failure ? "OBSERVER_FAILURE" : "NONE");
+        out.put("calls", cost.calls); out.put("normalReturns", cost.normal); out.put("exceptionalReturns", cost.thrown);
+        out.put("totalNanos", cost.nanos); out.put("maxNanos", cost.maxNanos);
+        out.put("liveDepth", cost.depth); out.put("peakDepth", cost.peakDepth);
+        out.put("nativeWindowTicks", Integer.toUnsignedLong(server.getTickCount()) - cost.startedTick);
+        out.put("windowNanos", System.nanoTime() - cost.startedNanos);
+        out.put("queueAgeOrigin", "FIRST_ORIGINAL_READY_LIST_OBSERVATION_LOWER_BOUND_NOT_ENQUEUE_TIME");
+        out.put("serviceableTickDefinition", "DISTINCT_ORIGINAL_POLL_TICKS_WITH_A_PRESENT_DISPATCH");
+        out.put("servicedByRole", cost.serviced.clone()); out.put("observedAgeNanosTotalByRole", cost.ageNanos.clone());
+        out.put("maxObservedAgeNanosByRole", cost.maxAgeNanos.clone());
+        out.put("maxObservedNativeTicksByRole", cost.maxNativeTicks.clone());
+        out.put("maxObservedServiceableTicksByRole", cost.maxServiceableTicks.clone());
+        out.put("performanceThresholdOrCapacityClaim", false);
+        return java.util.Collections.unmodifiableMap(out);
+    }
+
+    static void requireCosts(MinecraftServer server) {
+        var cost = costs;
+        P11C4aEvidence.require(cost != null && cost.server == server && server.isSameThread()
+                && !cost.failure && cost.depth == 0 && cost.calls > 0, "C6_COST_OBSERVATION_INCOMPLETE");
+    }
+    static void releaseCosts(MinecraftServer server) {
+        if (costs != null && costs.server == server) {
+            P11C4aEvidence.require(server.isSameThread() && costs.depth == 0, "C6_COST_RELEASE_OWNER");
+            costs = null;
+        }
+    }
+    @net.neoforged.bus.api.SubscribeEvent
+    static void stoppedCosts(net.neoforged.neoforge.event.server.ServerStoppedEvent event) {
+        if (costs != null && costs.server == event.getServer()) { costs = null; }
+    }
+
+    private static final class CostWindow {
+        final MinecraftServer server; final Connection a, b;
+        final long startedNanos = System.nanoTime(), startedTick;
+        final long[] epochs = new long[2], observedNanos = new long[2], observedTick = new long[2],
+                observedOpportunity = new long[2], serviced = new long[2], ageNanos = new long[2],
+                maxAgeNanos = new long[2], maxNativeTicks = new long[2], maxServiceableTicks = new long[2];
+        final boolean[] ready = new boolean[2];
+        Object owner, dispatcher; boolean failure; int depth, peakDepth;
+        long calls, normal, thrown, nanos, maxNanos, serviceableTicks, lastServiceTick = -1;
+        CostWindow(MinecraftServer server, Connection a, Connection b) {
+            this.server = server; this.a = a; this.b = b;
+            startedTick = Integer.toUnsignedLong(server.getTickCount());
+        }
+    }
+    private record CostCall(CostWindow cost, long started) { }
     private static long nativeTick(Run run) { return Integer.toUnsignedLong(run.server.getTickCount()); }
     private static int role(Run run, Connection connection) { return connection == run.connections[0] ? 0 : connection == run.connections[1] ? 1 : -1; }
     private static int controlRole(Run run, Object control) { return control == run.controls[0] ? 0 : control == run.controls[1] ? 1 : -1; }

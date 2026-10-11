@@ -2,14 +2,23 @@ package com.yo1no.gramarye;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mojang.serialization.Dynamic;
+import com.mojang.serialization.JsonOps;
 import com.yo1no.gramarye.magic.api.id.SkillId;
 import com.yo1no.gramarye.magic.api.id.SkillRevision;
 import com.yo1no.gramarye.magic.definition.document.SkillDocument;
+import com.yo1no.gramarye.magic.definition.document.DraftActionSlot;
+import com.yo1no.gramarye.magic.definition.document.DraftNode;
+import com.yo1no.gramarye.magic.definition.document.DraftTriggerSlot;
+import com.yo1no.gramarye.magic.definition.document.SkillDraft;
 import com.yo1no.gramarye.magic.definition.document.SkillDocumentStorePersistenceFacade;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
 import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
 import com.yo1no.gramarye.magic.definition.store.SkillSubsystemResult;
+import com.yo1no.gramarye.magic.definition.envelope.DefinitionEnvelope;
+import com.yo1no.gramarye.magic.definition.submission.SkillDefinitionSubmissionService;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionCompositionOutcome;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -40,6 +49,7 @@ public final class P11L1RestartProbe {
     private static final long FILE_BOUND = 32L * 1024 * 1024;
     private static final String REWARD = "gramarye_p11_engineering:l1_first_kill";
     private static PlayerSkillAttachmentService attachments;
+    private static SkillDefinitionSubmissionService submissions;
     private static SkillDefinitionStoreService store;
     private static MinecraftServer actualServer;
     private static SkillRuntimeService actualRuntime;
@@ -50,6 +60,8 @@ public final class P11L1RestartProbe {
     private static UUID ownerId;
     private static String scoreboardHolderHash;
     private static SkillReference reference;
+    private static SkillReference uncastReference;
+    private static String uncastDefinitionSha;
     private static ServerSlot.InstanceState stoppingInstance;
     private static RuntimeProjectileContinuationPermit stoppingPermit;
     private static P9StarterProjectile stoppingProjectile;
@@ -64,10 +76,12 @@ public final class P11L1RestartProbe {
     private static String selected() { return System.getProperty("gramarye.p11.online.case", ""); }
 
     /** Original P9StarterCommand composition only; no substitute service is constructed. */
-    public static void composition(PlayerSkillAttachmentService actualAttachments, SkillDefinitionStoreService actualStore) {
+    public static void composition(PlayerSkillAttachmentService actualAttachments,
+            SkillDefinitionSubmissionService actualSubmissions, SkillDefinitionStoreService actualStore) {
         if (!writeSelected() && !readSelected()) { return; }
-        require(attachments == null && store == null && actualAttachments != null && actualStore != null, "COMPOSITION_ONCE");
-        attachments = actualAttachments; store = actualStore;
+        require(attachments == null && submissions == null && store == null && actualAttachments != null
+                && actualSubmissions != null && actualStore != null, "COMPOSITION_ONCE");
+        attachments = actualAttachments; submissions = actualSubmissions; store = actualStore;
     }
 
     /** Original handleRuntimeStarted normal RETURN, receiving the exact slots.get(server) identity. */
@@ -92,6 +106,7 @@ public final class P11L1RestartProbe {
         require(reference.equals(instance.lease.reference), "FIRST_REAL_REFERENCE");
         ownerId = actor.getUUID(); scoreboardHolderHash = hashText(actor.getScoreboardName());
         world = exactWorld(server); output = serverOutput;
+        submitUncastSuccessor(actor);
         expected = logical(actor);
         require(expected.get("xp").getAsInt() == 10 && expected.get("bread").getAsInt() == 1
                 && expected.get("scoreboard").getAsInt() == 1 && expected.get("chicken").getAsInt() == 1
@@ -100,6 +115,41 @@ public final class P11L1RestartProbe {
         P11C4aEvidence.write(output, "l1-restart-first-work.json", Map.of("status", "FIRST_REAL_WORK_AND_NATIVE_SAVE_OBSERVED",
                 "ownerHash", hashText(ownerId.toString()), "definitionSha256", expected.get("definitionSha256").getAsString(),
                 "reference", reference.toString(), "nativePlayerScore", actor.getScore(), "p11_l1", 1));
+    }
+
+    private static void submitUncastSuccessor(ServerPlayer actor) throws IOException {
+        require(uncastReference == null && submissions != null, "UNCAST_FORMAL_SUBMISSION_ONCE");
+        emptyRuntime(false);
+        var canonical = P9StarterSkillContent.canonicalDraft(reference.skillId());
+        var root = canonical.nodes().getFirst(); var hit = canonical.nodes().get(1);
+        var trigger = P9ActiveCastTriggerType.INSTANCE.payloadCodec().codec()
+                .encodeStart(JsonOps.INSTANCE, new P9ActiveCastTriggerPayloadV1(0)).getOrThrow();
+        var damage = P9DamageActionType.INSTANCE.payloadCodec().codec()
+                .encodeStart(JsonOps.INSTANCE, new P9DamageActionPayloadV0(5_000L, 0L)).getOrThrow();
+        var nextRoot = new DraftNode(DraftTriggerSlot.present(new DefinitionEnvelope(
+                P9StarterSkillContent.ACTIVE_CAST_ID, 1, new Dynamic<>(JsonOps.INSTANCE, trigger))),
+                root.action(), root.appearanceOverride());
+        var nextHit = new DraftNode(hit.trigger(), DraftActionSlot.present(new DefinitionEnvelope(
+                P9StarterSkillContent.DAMAGE_ID, 1, new Dynamic<>(JsonOps.INSTANCE, damage))), hit.appearanceOverride());
+        var draft = new SkillDraft(canonical.draftSchemaVersion(), canonical.skillId(),
+                Optional.of(reference.revision()), List.of(nextRoot, nextHit), canonical.appearance());
+        var publication = attachments.putDraft(actor, draft);
+        require(publication instanceof PlayerSkillAttachmentService.Available<?> available
+                && available.value() == PlayerSkillAttachmentService.Applied.INSTANCE, "UNCAST_DRAFT_PUBLICATION");
+        var result = submissions.submit(actor, draft.skillId());
+        require(result instanceof SkillSubmissionCompositionOutcome.Committed, "UNCAST_FORMAL_COMMIT");
+        uncastReference = ((SkillSubmissionCompositionOutcome.Committed) result).reference();
+        require(uncastReference.skillId().equals(reference.skillId())
+                && uncastReference.revision().value() > reference.revision().value()
+                && equipped(actor).equals(reference), "UNCAST_SUCCESSOR_NOT_EQUIPPED");
+        uncastDefinitionSha = definitionHash(uncastReference);
+        require(!uncastDefinitionSha.equals(definitionHash()), "UNCAST_CONTENT_IS_DISTINCT");
+        emptyRuntime(false);
+        P11C4aEvidence.write(output, "l1-restart-uncast-submitted.json", Map.of(
+                "status", "FORMAL_UNCAST_REVISION_BEFORE_ORIGINAL_STOP",
+                "castReference", reference.toString(), "uncastReference", uncastReference.toString(),
+                "uncastDefinitionSha256", uncastDefinitionSha, "uncastAcceptedRoots", 0,
+                "equippedReferenceUnchanged", true));
     }
 
     /** Existing accepted observer passes the second genuine R's actual constructor-observed instance/result. */
@@ -203,6 +253,13 @@ public final class P11L1RestartProbe {
         reference = new SkillReference(new SkillId(UUID.fromString(input.get("skillId").getAsString())),
                 new SkillRevision(input.get("revision").getAsInt()));
         expected = input.getAsJsonObject("material").deepCopy();
+        uncastReference = new SkillReference(new SkillId(UUID.fromString(expected.get("uncastSkillId").getAsString())),
+                new SkillRevision(expected.get("uncastRevision").getAsInt()));
+        uncastDefinitionSha = expected.get("uncastDefinitionSha256").getAsString();
+        require(uncastReference.skillId().equals(reference.skillId())
+                && uncastReference.revision().value() > reference.revision().value()
+                && expected.get("uncastAcceptedRoots").getAsInt() == 0
+                && definitionHash(uncastReference).equals(uncastDefinitionSha), "NEW_SERVER_EXACT_UNCAST_REVISION");
         require(physicalHashes().equals(input.getAsJsonObject("fileSha256")), "SAME_STOPPED_PHYSICAL_BYTES_BEFORE_LOGIN");
         require(definitionHash().equals(expected.get("definitionSha256").getAsString()), "ORIGINAL_NEW_STORE_LOADED_EXACT_DOCUMENT");
         physical(expected, true); noProjectiles();
@@ -210,6 +267,11 @@ public final class P11L1RestartProbe {
         stoppedDimension = input.get("dimension").getAsString();
         stoppedPosition = new BlockPos(input.get("chunkX").getAsInt() << 4, 64, input.get("chunkZ").getAsInt() << 4);
         readPrepared = true;
+        P11C4aEvidence.write(output, "l1-restart-uncast-readback.json", Map.of(
+                "status", "NEW_SERVER_LOADED_FORMAL_UNCAST_REVISION_BEFORE_ANY_LOGIN_OR_R",
+                "uncastReference", uncastReference.toString(), "uncastDefinitionSha256", uncastDefinitionSha,
+                "eventSequence", actualSlot.eventSequenceHighWater,
+                "instanceSequence", actualSlot.skillInstanceSequenceHighWater, "sameStoppedWorldBytes", true));
         return Map.of("status", "ACTUAL_NEW_RUNTIME_EMPTY_AND_SAME_WORLD_FILES_BEFORE_ANY_R",
                 "runtimeTick", actualSlot.runtimeTick, "eventSequence", actualSlot.eventSequenceHighWater,
                 "instanceSequence", actualSlot.skillInstanceSequenceHighWater, "work", 0,
@@ -276,6 +338,12 @@ public final class P11L1RestartProbe {
         var advancement = actualServer.getAdvancements().get(ResourceLocation.parse(REWARD));
         require(score != null && advancement != null && actor.getAdvancements().getOrStartProgress(advancement).isDone(), "ACTUAL_SCORE_AND_PA");
         var value = new JsonObject(); value.addProperty("definitionSha256", definitionHash());
+        require(uncastReference != null && definitionHash(uncastReference).equals(uncastDefinitionSha),
+                "UNCAST_REVISION_STILL_EXACT");
+        value.addProperty("uncastSkillId", uncastReference.skillId().value().toString());
+        value.addProperty("uncastRevision", uncastReference.revision().value());
+        value.addProperty("uncastDefinitionSha256", uncastDefinitionSha);
+        value.addProperty("uncastAcceptedRoots", 0);
         value.addProperty("xp", actor.totalExperience); value.addProperty("bread", actor.getInventory().countItem(Items.BREAD));
         value.addProperty("recipe", actor.getRecipeBook().contains(ResourceLocation.withDefaultNamespace("bread")));
         value.addProperty("advancement", true); value.addProperty("scoreboard", score.value());
@@ -289,11 +357,15 @@ public final class P11L1RestartProbe {
         return ((PlayerSkillAttachmentService.Available<Optional<SkillReference>>) result).value().orElseThrow();
     }
     private static String definitionHash() {
-        var found = store.find(actualServer, reference);
+        return definitionHash(reference);
+    }
+    private static String definitionHash(SkillReference exactReference) {
+        var found = store.find(actualServer, exactReference);
         require(found instanceof SkillSubsystemResult.Available<?> available
                 && available.value() instanceof Optional<?> option && option.isPresent(), "EXACT_DOCUMENT_AVAILABLE");
         var document = ((SkillSubsystemResult.Available<Optional<SkillDocument>>) found).value().orElseThrow();
-        require(document.skillId().equals(reference.skillId()) && document.revision().equals(reference.revision()), "DOCUMENT_ROUTE");
+        require(document.skillId().equals(exactReference.skillId())
+                && document.revision().equals(exactReference.revision()), "DOCUMENT_ROUTE");
         var encoded = SkillDocumentStorePersistenceFacade.encodeCurrent(document);
         require(encoded instanceof SkillDocumentStorePersistenceFacade.Encoded, "FORMAL_DOCUMENT_ENCODING");
         return P11C4aEvidence.hash(((SkillDocumentStorePersistenceFacade.Encoded) encoded).document().copyBytes());

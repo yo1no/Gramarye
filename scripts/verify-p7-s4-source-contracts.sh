@@ -432,6 +432,11 @@ is_p11_native_slice_path() {
         src/p11OnlineHarness/java/com/yo1no/gramarye/P11C4aBossProducerProbe.java | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ServerHarness.java | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1ClientHarness.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1P8FallbackProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1P8FallbackClientProbe.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1P8FallbackExecutionMixin.java | \
+        src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1P8FallbackBackendMixin.java | \
+        src/p11OnlineHarness/resources/data/gramarye_p11_engineering/gramarye/presentation_profiles/missing_sound.json | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/magic/network/P11L1InputObservation.java | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1RuntimeMixin.java | \
         src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1InstanceMixin.java | \
@@ -587,6 +592,7 @@ is_p11_native_slice_path() {
         src/p9S5ClientHarness/java/com/yo1no/gramarye/P11SourceWriterClientHarness.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/P11AssociationFaultProbe.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeCanonicalProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeIoProbe.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeCleanupProbe.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeCloneProbe.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeEndProbe.java | \
@@ -597,6 +603,10 @@ is_p11_native_slice_path() {
         src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeMetadataProbe.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativePresenceProbe.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeRewardProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/P11NativeRewardStopProbe.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11RewardGenerationHolderObservationMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11RewardChunkMapObservationMixin.java | \
+        src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11RewardStopObservationMixin.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11CanonicalSendFaultMixin.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11CanonicalCopyFaultMixin.java | \
         src/p9S5ClientHarness/java/com/yo1no/gramarye/harnessmixin/P11CanonicalPacketMeasurementMixin.java | \

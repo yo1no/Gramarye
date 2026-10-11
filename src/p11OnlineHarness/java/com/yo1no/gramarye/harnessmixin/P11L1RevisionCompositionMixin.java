@@ -18,6 +18,7 @@ abstract class P11L1RevisionCompositionMixin {
             SkillDefinitionSubmissionService submissions, SkillDefinitionStoreService store,
             @Coerce Object templates, @Coerce Object validation, CallbackInfo callback) {
         P11L1RevisionProbe.composition(attachments, submissions, store);
+        com.yo1no.gramarye.P11L1P8FallbackProbe.composition(attachments, submissions, store);
         com.yo1no.gramarye.P11CooldownL1Probe.composition(attachments, submissions, store);
     }
 }

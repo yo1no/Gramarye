@@ -40,13 +40,23 @@ public final class P11NativeMetadataProbe {
         var diagnostic = P11NativeStorageBoundary.diagnostics(actor.getServer(), actor.getUUID());
         require(diagnostic.bodyComplete() && !diagnostic.candidatePresent() && diagnostic.sourceFault().equals("NONE"),
                 "metadata fault needs complete qualified source, not partial B");
-        observation = new Observation(owner, actor, selected);
+        var source = P11NativeStorageBoundary.nativeSourceOwner(actor);
+        var body = source == null ? null : source.body(actor);
+        long enteredRoots = transitionRoots(diagnostic);
+        // The outer original CONFIG -> PLAY body still owns its separate control H.
+        require(body != null && body.account.metadata == null && enteredRoots == 1,
+                "metadata owner entry lacks the sole original control root or already has metadata");
+        observation = new Observation(owner, actor, selected, source, body, enteredRoots);
         updateDiagnostic(observation, "ORIGINAL_OWNER_ENTERED");
         return true;
     }
 
     /** Called after the real production stage recorded its result; never records a receipt itself. */
     public static void completed(MetadataContinuation exact, String stage, long openedEpoch) {
+        completed(exact, stage, openedEpoch, 0);
+    }
+
+    public static void completed(MetadataContinuation exact, String stage, long openedEpoch, long openedGeneration) {
         var value = observation;
         if (value == null) { return; }
         if (exact == null) {
@@ -55,12 +65,19 @@ public final class P11NativeMetadataProbe {
             updateDiagnostic(value, "NULL_RECEIPT_AT_" + stage);
             return;
         }
-        if (value.receipt == null) { value.receipt = exact; }
+        if (value.receipt == null) {
+            require(stage.equals("recovery"), "first real metadata receipt did not complete recovery");
+            requireRetainedMetadata(value, true);
+            value.receipt = exact;
+        }
         if (value.receipt != exact) { return; }
         switch (stage) {
             case "recovery" -> value.recovery++;
             case "reconciliation" -> value.reconciliation++;
-            case "session" -> { value.session++; value.sessionEpoch = openedEpoch; }
+            case "session" -> {
+                require(openedEpoch > 0 && openedGeneration > 0, "actual session coordinates are not positive");
+                value.session++; value.sessionEpoch = openedEpoch; value.sessionGeneration = openedGeneration;
+            }
             default -> throw new IllegalArgumentException("unknown native metadata stage");
         }
         // Retired-receipt replay remains observable after the first phase has finished.
@@ -81,11 +98,12 @@ public final class P11NativeMetadataProbe {
 
     /** Read-only observation of the same real receipt entering/leaving the original P7 stage. */
     public static void initialSync(MetadataContinuation exact, P11NativeStorageBoundary.MetadataLease lease,
-            long epoch, MetadataInitialStage stage, boolean returned) {
+            long epoch, long generation, MetadataInitialStage stage, boolean returned) {
         var value = observation;
         if (value == null || ready || failure != null || !value.resumed || value.receipt != exact) { return; }
         try {
-            require(epoch == value.sessionEpoch && stage != null, "initial sync changed exact P7 session");
+            require(epoch == value.sessionEpoch && generation == value.sessionGeneration && stage != null,
+                    "initial sync changed exact P7 session or server generation");
             if (!returned) {
                 var owner = P11NativeStorageBoundary.nativeSourceOwner(value.actor);
                 var body = owner == null ? null : owner.body(value.actor);
@@ -121,13 +139,10 @@ public final class P11NativeMetadataProbe {
         value.intercepted = true;
         updateDiagnostic(value, "ORIGINAL_FINALLY_UNWOUND");
         var before = diagnostic(value);
-        require(transitionRoots(before) == 1, "actual retained metadata transition root missing after failure");
+        requireRetainedMetadata(value, false);
+        value.failedTransitionRoots = transitionRoots(before);
+        value.sameLeaseAfterFault = true;
         value.epoch = before.sourceEpoch(); value.version = before.sourceVersion();
-        var source = P11NativeStorageBoundary.nativeSourceOwner(value.actor);
-        var body = source == null ? null : source.body(value.actor);
-        value.lease = body == null ? null : body.account.metadata;
-        value.connection = value.actor.connection.getConnection();
-        require(value.lease != null, "actual failed owner did not retain its exact lease");
         require(!P11NativeStorageBoundary.resumeMetadataAfterCauseRemoved(null),
                 "null actor unexpectedly resumed a retained continuation");
         if (value.selected.equals("metadata-source-change")) {
@@ -145,7 +160,8 @@ public final class P11NativeMetadataProbe {
                 "same exact owner refused known missing stages after original finally");
         value.resumed = true;
         updateDiagnostic(value, "SAME_OWNER_RESUME_RETURNED");
-        require(value.recovery == 1 && value.reconciliation == 1 && value.session == 1 && value.sessionEpoch > 0,
+        require(value.recovery == 1 && value.reconciliation == 1 && value.session == 1
+                        && value.sessionEpoch > 0 && value.sessionGeneration > 0,
                 "completed recovery/reconciliation/session was repeated or omitted");
         require(value.consume == (value.selected.equals("metadata-recovery") ? 0 : 1),
                 "resume consumed the original one-shot continuation again");
@@ -182,12 +198,16 @@ public final class P11NativeMetadataProbe {
                 + "\nentry=GENUINE_QUALIFIED_LOGGED_IN_OWNER\n"
                 + "fault=EXACT_POST_STAGE_SENTINEL_AFTER_REAL_STAGE_RECEIPT\n"
                 + "originalFinallyObservedFailure=true\n"
+                + "entryControlTransitionRoots=" + value.enteredTransitionRoots
+                + "\nfailedOwnerAggregateTransitionRoots=" + value.failedTransitionRoots
+                + "\nsameMetadataLeaseRetainedAcrossFault=" + value.sameLeaseAfterFault + "\n"
                 + "fixtureInterceptsOriginalFault=true\n"
                 + "nativeF1DisconnectBehaviorQualified=false\n"
                 + "resume=EXCLUDED_SAME_OWNER_AFTER_ORIGINAL_METHOD_UNWOUND\n"
                 + "syntheticActor=false\nfabricatedReceipt=false\npublicRepair=false\n"
                 + "recoveryCompleted=" + value.recovery + "\nreconciliationCompleted=" + value.reconciliation
                 + "\nsessionOpened=" + value.session + "\nsessionEpoch=" + value.sessionEpoch
+                + "\nsessionServerGeneration=" + value.sessionGeneration
                 + "\noriginalConsumeCalls=" + value.consume + "\noutcome=" + outcome
                 + "\nsourceVersionChangedBeforeInitial=" + value.versionChangedBeforeInitial
                 + "\nstrictResumeRejectedWhileRetained=" + value.strictResumeRejected
@@ -252,6 +272,10 @@ public final class P11NativeMetadataProbe {
                 + ";nullReceiptObservations=" + value.nullReceipts
                 + ";recovery=" + value.recovery + ";reconciliation=" + value.reconciliation
                 + ";session=" + value.session + ";thrown=" + value.thrown
+                + ";sessionEpoch=" + value.sessionEpoch + ";sessionServerGeneration=" + value.sessionGeneration
+                + ";entryControlRoots=" + value.enteredTransitionRoots
+                + ";failedAggregateRoots=" + value.failedTransitionRoots
+                + ";sameLeaseAfterFault=" + value.sameLeaseAfterFault
                 + ";intercepted=" + value.intercepted + ";resumed=" + value.resumed
                 + ";preResumeEpoch=" + value.epoch + ";preResumeVersion=" + value.version
                 + ";initialStages=" + java.util.Arrays.toString(value.initialStages)
@@ -266,6 +290,24 @@ public final class P11NativeMetadataProbe {
     private static P11QualifiedSourceOwner.Diagnostics diagnostic(Observation value) {
         return P11NativeStorageBoundary.diagnostics(value.actor.getServer(), value.actor.getUUID());
     }
+    private static void requireRetainedMetadata(Observation value, boolean firstReceipt) {
+        var source = P11NativeStorageBoundary.nativeSourceOwner(value.actor);
+        var body = source == null ? null : source.body(value.actor);
+        var lease = body == null ? null : body.account.metadata;
+        require(source == value.source && body == value.body && lease != null
+                        && value.actor.connection != null && value.actor.connection.player == value.actor
+                        && value.actor.connection.getConnection() == value.connection
+                        && P11NativeStorageBoundary.metadataCurrent(lease)
+                        && value.enteredTransitionRoots == 1
+                        && transitionRoots(diagnostic(value)) == Math.addExact(value.enteredTransitionRoots, 1),
+                "exact metadata lease and independent original control root were not both retained");
+        if (firstReceipt) {
+            require(value.lease == null, "metadata lease was already captured before its first receipt");
+            value.lease = lease;
+        } else {
+            require(value.lease == lease, "failed finally replaced the original retained metadata lease");
+        }
+    }
     private static long transitionRoots(P11QualifiedSourceOwner.Diagnostics diagnostic) {
         return diagnostic.nativeResponsibilities().roots().stream().filter(root -> root.kind().equals("TRANSITION"))
                 .findFirst().orElseThrow().count();
@@ -276,16 +318,22 @@ public final class P11NativeMetadataProbe {
         final SkillSubmissionRecoveryService owner;
         final ServerPlayer actor;
         final String selected;
+        final P11QualifiedSourceOwner source;
+        final P11QualifiedSourceOwner.Body body;
+        final long enteredTransitionRoots;
         MetadataContinuation receipt;
         P11NativeStorageBoundary.MetadataLease lease;
-        net.minecraft.network.Connection connection;
+        final net.minecraft.network.Connection connection;
         final int[] initialStages = new int[MetadataInitialStage.values().length];
         int recovery, reconciliation, session, consume, nullReceipts;
-        long epoch, version, sessionEpoch;
+        long epoch, version, sessionEpoch, sessionGeneration, failedTransitionRoots;
         boolean thrown, intercepted, resumed;
-        boolean versionChangedBeforeInitial, strictResumeRejected, releaseAtFinalSubmission;
-        Observation(SkillSubmissionRecoveryService owner, ServerPlayer actor, String selected) {
+        boolean versionChangedBeforeInitial, strictResumeRejected, releaseAtFinalSubmission, sameLeaseAfterFault;
+        Observation(SkillSubmissionRecoveryService owner, ServerPlayer actor, String selected,
+                P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body, long enteredTransitionRoots) {
             this.owner = owner; this.actor = actor; this.selected = selected;
+            this.source = source; this.body = body; this.enteredTransitionRoots = enteredTransitionRoots;
+            this.connection = actor.connection.getConnection();
         }
     }
 }

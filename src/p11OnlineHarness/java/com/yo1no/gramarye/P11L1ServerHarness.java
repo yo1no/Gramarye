@@ -49,7 +49,7 @@ public final class P11L1ServerHarness {
         return java.util.List.of("l1-pre-spawn", "l1-open", "l1-claimed",
                         "cooldown-l1-pre-spawn", "cooldown-l1-open", "cooldown-l1-claimed",
                         "l1-impact-close-custody", "l1-two-work-reload", "l1-two-work-stop",
-                        "l1-revision", "l1-p8-send-fault", "l1-ack-fault", "l1-work-death", "l1-work-dimension", "l1-work-config",
+                        "l1-revision", "l1-p8-send-fault", "l1-p8-missing-asset", "l1-ack-fault", "l1-work-death", "l1-work-dimension", "l1-work-config",
                         "l1-partial-reward-function", "l1-work-multi-uuid-qctx", "l1-stats-write-fault-memory",
                         "l1-work-deadline", "l1-spawn-callback-remove", "l1-logout-cleanup-fault", "l1-tracking-retirement", "l1-work-capacity",
                         "l1-natural-unload", "l1-online-peer", "l1-work-context-refusal", "l1-restart-write", "l1-restart-read")
@@ -200,6 +200,7 @@ public final class P11L1ServerHarness {
                 if (facts.equippedSlot0().equals("ABSENT") || facts.equippedSlot0().equals("UNAVAILABLE")) { return; }
                 episode = 1; run = new Run(current, ticks);
                 P11CooldownL1Probe.prepareEpisode(server, current, output, episode);
+                P11L1P8FallbackProbe.prepare(server, current, peer);
                 if (workReward()) {
                     if (multiWorkReward()) {
                         require(!peer.getTags().contains("p11_l1_qctx_peer") && peer.addTag("p11_l1_qctx_peer"), "FRESH_QCTX_PEER_TAG");
@@ -294,7 +295,7 @@ public final class P11L1ServerHarness {
     static boolean workReward() { return java.util.List.of("l1-partial-reward-function", "l1-work-multi-uuid-qctx", "l1-work-context-refusal").contains(selected()); }
     static boolean multiWorkReward() { return selected().equals("l1-work-multi-uuid-qctx") || P11L1ContextRefusalProbe.selected(); }
     static boolean statsMemory() { return selected().equals("l1-stats-write-fault-memory"); }
-    static boolean singleNatural() { return workReward() || statsMemory() || P11L1ImpactCustodyProbe.selected(); }
+    static boolean singleNatural() { return workReward() || statsMemory() || P11L1ImpactCustodyProbe.selected() || P11L1P8FallbackProbe.selected(); }
     static boolean tracking() { return selected().equals("l1-tracking-retirement"); }
     static boolean naturalUnload() { return selected().equals("l1-natural-unload"); }
     static boolean onlinePeer() { return selected().equals("l1-online-peer"); }
@@ -370,6 +371,7 @@ public final class P11L1ServerHarness {
 
     private static void finishSingleNatural() throws IOException {
         if (P11L1ContextRefusalProbe.selected() && !P11L1ContextRefusalProbe.finish(current)) { return; }
+        if (P11L1P8FallbackProbe.selected() && !P11L1P8FallbackProbe.clientReady()) { return; }
         require(run.killScoreReturns == 1 && run.fatalSourceObservations == 1 && run.instanceState.work == null
                 && run.instanceState.lease.pin.isClosed() && run.instanceState.activeProjectileContinuation == null
                 && current != run.actor && current.totalExperience == 10
@@ -385,7 +387,7 @@ public final class P11L1ServerHarness {
             require(run.statsWorkSealed, "STATS_WORK_BEFORE_RECONNECT");
             P11C4aEvidence.write(output, "stats-memory-reconnected.json", P11L1StatsMemoryProbe.reconnected(current));
             P11L1StatsMemoryProbe.restoreBeforeOriginalSave();
-        } else if (P11L1ImpactCustodyProbe.selected()) {
+        } else if (P11L1ImpactCustodyProbe.selected() || P11L1P8FallbackProbe.selected()) {
             var objective = server.getScoreboard().getObjective("p11_l1");
             var score = objective == null ? null : server.getScoreboard().getPlayerScoreInfo(current, objective);
             require(run.rewardReturns == 1 && run.functionReturns == 1 && score != null && score.value() == 1,
@@ -399,6 +401,9 @@ public final class P11L1ServerHarness {
         if (workReward()) { readbackWorkReward(); }
         if (P11L1ImpactCustodyProbe.selected()) {
             P11C4aEvidence.write(output, "impact-custody-result.json", P11L1ImpactCustodyProbe.finish(current));
+        }
+        if (P11L1P8FallbackProbe.selected()) {
+            P11C4aEvidence.write(output, "p8-fallback-result.json", P11L1P8FallbackProbe.finish(current, run.victim.getId()));
         }
         writeEpisode(); finishing = true;
         P11C4aEvidence.cue(output, "a-finish.ready"); P11C4aEvidence.cue(output, "b-finish.ready");
@@ -535,6 +540,7 @@ public final class P11L1ServerHarness {
             require(run.instanceState != null && run.instanceState.id.value().equals(run.instance)
                     && run.instanceState.work != null && !run.instanceState.lease.pin.isClosed(), "ACTUAL_INSTANCE_WORK_AND_PIN");
             P11CooldownL1Probe.accepted(actor, run.instanceState, result);
+            P11L1P8FallbackProbe.accepted(actor, run.instanceState);
             if (workReward()) { P11L1WorkRewardProbe.accepted(actor, run.instanceState, result); }
             if (statsMemory()) { P11L1StatsMemoryProbe.accepted(actor, run.instanceState, result); }
             run.acceptedAt = ticks; run.initialNative = nativeRoots();

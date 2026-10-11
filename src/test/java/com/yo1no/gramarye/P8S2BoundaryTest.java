@@ -895,10 +895,10 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
-                // P11 §11: native CONFIG/STATE→TRY fixture migration; authority prefixes stay unchanged.
-                () -> assertEquals(150_523L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
+                // P11 §6: local-quarantine native copy fixture; authority prefixes stay unchanged.
+                () -> assertEquals(149_692L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
                 () -> assertEquals(
-                        "d5a5e26880dcf06ce23905abc33fa8c5e3437b1b7d502fc727d176ce41b67676",
+                        "af96ea9a00b1bcbba7fe8f6534b8052ff2ed4526ad32b3eef5f1d0692af117cf",
                         sha256(P7_LOGIN_ISOLATION_SOURCE)));
     }
 

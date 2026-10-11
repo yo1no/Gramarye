@@ -11,6 +11,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import net.minecraft.advancements.AdvancementRewards;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.WinScreen;
+import net.minecraft.core.BlockPos;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.ExecutionCommandSource;
@@ -24,11 +27,11 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundRecipePacket;
-import net.minecraft.network.protocol.game.ServerboundClientCommandPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -38,6 +41,9 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
@@ -46,6 +52,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.AdvancementEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerXpEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
 /** Excluded companion: actual native calls on the authenticated host, never receipt fabrication. */
 @EventBusSubscriber(modid = Gramarye.MOD_ID, value = Dist.CLIENT)
@@ -61,7 +68,7 @@ public final class P11NativeRewardProbe {
     private static final String PARTIAL_COMMAND = "experience add @s 4 points";
     private static final String FUNCTION_TAG = "p11_native_reward_function";
     private static final String PREPARED_TAG = "p11_native_prepared_function";
-    private static State active;
+    private static volatile State active;
 
     private P11NativeRewardProbe() {}
 
@@ -70,9 +77,10 @@ public final class P11NativeRewardProbe {
         @Override public String toString() {
             return "P11-NATIVE-REWARD-PROBE-V1\n"
                     + "scope=REAL_NATIVE_INTEGRATED_HOST_COMPONENTS\n"
-                    + "respawnEntry=ORIGINAL_SERVER_HANDLER_OWNED_WON_GAME_PRECONDITION\n"
-                    + "newClientRespawnPacket=false\nendTravelQualified=false\n"
-                    + "generalExtendedAdmission=CLOSED_PENDING_C4A\np5L1=false\n"
+                    + "respawnEntry=ACTUAL_OWNED_END_PORTALS_AND_ORIGINAL_WINSCREEN_CALLBACK_THROUGH_C4A\n"
+                    + "rawRespawnHandlerInvocation=false\nwonGameAssignedByFixture=false\n"
+                    + "firstEndRouteObserved=true\nfullEndParityClaimed=false\n"
+                    + "generalExtendedAdmission=ORIGINAL_C4A_ONLY\np5L1=false\n"
                     + "syntheticPlayer=false\nsourceReceiptsFabricated=false\n"
                     + "creditDeferralConsumer=EXACT_TRANSFORMED_FIELD_ENGINEERING_ORDER_INSIDE_REAL_DIE\n"
                     + "differentAuthenticatedUuidContext=NOT_PROVEN_SINGLE_INTEGRATED_HOST_CONNECTION\n"
@@ -83,23 +91,142 @@ public final class P11NativeRewardProbe {
         }
     }
 
-    static Report run(MinecraftServer server, ServerPlayer actor, Path output) {
+    static void start(MinecraftServer server, ServerPlayer actor, Path output) {
+        require(active == null && "native-reward".equals(System.getProperty("gramarye.p11.sourceWriter.case"))
+                        && System.getProperty(P11SourceWriterClientHarness.OUTPUT_PROPERTY) != null,
+                "reward probe requires its exact excluded case");
+        require(server.isSameThread() && actor.getServer() == server && !actor.isFakePlayer()
+                        && server.isSingleplayerOwner(actor.getGameProfile())
+                        && server.getPlayerList().getPlayer(actor.getUUID()) == actor
+                        && actor.connection != null && actor.connection.player == actor
+                        && actor.connection.getConnection().isConnected()
+                        && actor.connection.getConnection().getPacketListener() == actor.connection
+                        && actor.level().dimension() == Level.OVERWORLD && !actor.seenCredits && !actor.wonGame,
+                "reward fixture needs the exact fresh native integrated host");
+        require(output.isAbsolute() && output.equals(output.normalize()) && output.getParent() != null
+                        && Files.isDirectory(output.getParent(), LinkOption.NOFOLLOW_LINKS),
+                "probe evidence must be a fresh child of the owned output directory");
         var state = new State(actor, output);
-        String failureDetail = "NONE";
         try {
-            require(active == null && server.isSameThread() && actor.getServer() == server
-                            && !actor.isFakePlayer() && server.isSingleplayerOwner(actor.getGameProfile())
-                            && server.getPlayerList().getPlayer(actor.getUUID()) == actor
-                            && actor.connection != null && actor.connection.player == actor
-                            && actor.connection.getConnection().isConnected(),
-                    "probe needs the exact authenticated integrated host");
-            require(output.isAbsolute() && output.equals(output.normalize()) && output.getParent() != null
-                            && Files.isDirectory(output.getParent(), LinkOption.NOFOLLOW_LINKS),
-                    "probe evidence must be a fresh child of the owned output directory");
             Files.createDirectory(output);
             active = state;
+            placeOwnedPortal(state);
+        } catch (IOException | RuntimeException | Error primary) {
+            try { restoreOwnedPortal(state); }
+            catch (RuntimeException | Error cleanup) { if (cleanup != primary) { primary.addSuppressed(cleanup); } }
+            active = null;
+            if (primary instanceof RuntimeException runtime) { throw runtime; }
+            if (primary instanceof Error error) { throw error; }
+            throw new java.io.UncheckedIOException((IOException) primary);
+        }
+    }
+
+    /** Only the original client-created screen callback supplies END intent. */
+    static void clientObserve(Minecraft minecraft) {
+        var state = active;
+        if (state == null) { return; }
+        require(minecraft.isSameThread(), "reward client observer is off thread");
+        if (minecraft.level != null && minecraft.level.dimension() == Level.END
+                && minecraft.player != null && minecraft.screen == null) { state.clientEndReady = true; }
+        if (state.creditsObserved && !state.screenClosed && minecraft.getOverlay() == null
+                && minecraft.screen instanceof WinScreen screen) {
+            require(minecraft.level != null && minecraft.level.dimension() == Level.END
+                            && minecraft.getConnection() != null,
+                    "reward credits lost the actual End PLAY connection");
+            state.screenClosed = true;
+            screen.onClose();
+        }
+    }
+
+    /** One real Post at a time; no native loop, manual ticket, clock or lifetime mutation. */
+    static Report serverStep(MinecraftServer server) {
+        var state = active;
+        if (state == null) { return null; }
+        try {
+            var original = state.original;
+            require(server == original.getServer() && server.isSameThread(), "reward step owner changed");
+            if (state.stage == EndStage.WAIT_END && original.level().dimension() == Level.END) {
+                require(state.dimensionEvents == 1 && state.clones == 0 && !original.isRemoved()
+                                && server.getPlayerList().getPlayer(original.getUUID()) == original,
+                        "original End travel did not retain the same A");
+                restoreOwnedPortal(state);
+                state.stage = EndStage.WAIT_CLIENT_END;
+            }
+            if (state.stage == EndStage.WAIT_CLIENT_END && state.clientEndReady) {
+                P11NativeOperationBoundary.engineering(original, () -> {
+                    prepareNativeCreditAndReward(server, state);
+                    return null;
+                });
+                placeOwnedPortal(state);
+                state.stage = EndStage.WAIT_CREDITS;
+            }
+            if (state.stage == EndStage.WAIT_CREDITS && original.wonGame) {
+                require(original.seenCredits && original.isRemoved() && original.level().dimension() == Level.END
+                                && state.clones == 0, "original End portal did not produce first credits");
+                restoreOwnedPortal(state);
+                state.creditsObserved = true;
+                state.stage = EndStage.WAIT_RETURN;
+            }
+            if (state.stage != EndStage.WAIT_RETURN || state.next == null || state.respawns != 1) { return null; }
+            require(state.screenClosed && state.dimensionEvents == 1 && state.clones == 1
+                            && state.next == server.getPlayerList().getPlayer(original.getUUID())
+                            && state.next != original && state.next.connection == original.connection
+                            && original.connection.player == state.next
+                            && state.next.level().dimension() == Level.OVERWORLD
+                            && state.next.seenCredits && !state.next.wonGame,
+                    "original C4a END handler did not install exactly one nondeath B");
+            state.preparedArmed = false;
+            state.observations.add("transition=ACTUAL_END_ENTRY1_WINSCREEN_CALLBACK1_NONDEATH_CLONE1_RESPAWN1"
+                    + ";nativeCreditElapsedTicks=" + (server.getTickCount() - state.creditTick));
+            return finish(server, state);
+        } catch (RuntimeException | Error primary) {
+            return failed(state, primary);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void rewardDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        var state = active;
+        if (state == null || event.getEntity() != state.original) { return; }
+        require(event.getFrom() == Level.OVERWORLD && event.getTo() == Level.END && state.dimensionEvents++ == 0,
+                "reward fixture saw an unexpected native dimension transition");
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void rewardClone(PlayerEvent.Clone event) {
+        var state = active;
+        if (state == null || event.getOriginal() != state.original) { return; }
+        require(state.stage == EndStage.WAIT_RETURN && !event.isWasDeath()
+                        && event.getEntity() instanceof ServerPlayer && state.clones++ == 0,
+                "reward fixture did not observe exactly one original nondeath copy");
+        state.next = (ServerPlayer) event.getEntity();
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void rewardRespawn(PlayerEvent.PlayerRespawnEvent event) {
+        var state = active;
+        if (state == null || event.getEntity() != state.next) { return; }
+        require(event.isEndConquered() && state.clones == 1 && state.respawns++ == 0,
+                "reward fixture saw the wrong original respawn completion");
+    }
+
+    private static Report failed(State state, Throwable primary) {
+        String detail = primary.getClass().getName() + ": " + primary.getMessage();
+        String failureDetail = detail.length() > 768 ? detail.substring(0, 768) : detail;
+        active = null;
+        cleanup(state);
+        return new Report(false, state.expectedFailures, state.observations, failureDetail);
+    }
+
+    private static Report finish(MinecraftServer server, State state) {
+        String failureDetail = "NONE";
+        try {
+            var actor = server.getPlayerList().getPlayer(state.original.getUUID());
+            require(actor == state.next && actor.connection.player == actor
+                            && actor.connection.getConnection().isConnected(),
+                    "reward completion lost the actual current B");
             P11NativeOperationBoundary.engineering(actor, () -> {
-                nativeCreditAndReward(server, state);
+                completeNativeCreditAndReward(server, state);
                 nestedRewards(server, state);
                 commandTargets(server, state);
                 creditConsumerDeferral(server, state);
@@ -116,26 +243,29 @@ public final class P11NativeRewardProbe {
             failureDetail = detail.length() > 768 ? detail.substring(0, 768) : detail;
         } finally {
             active = null;
-            // Removal is the real entity lifecycle terminal; no token release is called by the probe.
-            if (state.victim != null && !state.victim.isRemoved()) {
-                try { state.victim.remove(Entity.RemovalReason.DISCARDED); }
-                catch (RuntimeException | Error cleanupFailure) {
-                    state.observations.add("cleanup=FAILED_NATIVE_REMOVAL_" + cleanupFailure.getClass().getName());
-                    if ("NONE".equals(failureDetail)) { failureDetail = "native fixture removal failed"; }
-                }
-            }
-            if (state.marker != null && !state.marker.isRemoved()) {
-                try { state.marker.discard(); }
-                catch (RuntimeException | Error cleanupFailure) {
-                    state.observations.add("markerCleanup=FAILED_NATIVE_REMOVAL_" + cleanupFailure.getClass().getName());
-                    if ("NONE".equals(failureDetail)) { failureDetail = "native marker removal failed"; }
-                }
-            }
+            if (!cleanup(state) && "NONE".equals(failureDetail)) { failureDetail = "native fixture cleanup failed"; }
         }
         return new Report("NONE".equals(failureDetail), state.expectedFailures, state.observations, failureDetail);
     }
 
-    private static void nativeCreditAndReward(MinecraftServer server, State state) {
+    private static boolean cleanup(State state) {
+        boolean normal = true;
+        try { restoreOwnedPortal(state); }
+        catch (RuntimeException | Error cleanup) {
+            state.observations.add("portalCleanup=FAILED_" + cleanup.getClass().getName()); normal = false;
+        }
+        // Removal is the original lifecycle terminal; the probe calls no token release.
+        for (var entity : new Entity[] {state.victim, state.marker}) {
+            if (entity == null || entity.isRemoved()) { continue; }
+            try { entity.remove(Entity.RemovalReason.DISCARDED); }
+            catch (RuntimeException | Error cleanup) {
+                state.observations.add("entityCleanup=FAILED_" + cleanup.getClass().getName()); normal = false;
+            }
+        }
+        return normal;
+    }
+
+    private static void prepareNativeCreditAndReward(MinecraftServer server, State state) {
         var original = state.actor;
         var owner = P11NativeStorageBoundary.nativeSourceOwner(original);
         require(owner != null && owner.nativeRecipient(original) != null, "missing current native source");
@@ -166,15 +296,40 @@ public final class P11NativeRewardProbe {
                 "native damage fields do not retain exact A");
         require(count(diagnostic(server, original), "NATIVE_CREDIT") >= nativeBefore + 3,
                 "three actual native player-bearing fields did not retain N");
-        long epoch = before.sourceEpoch();
-        int preparedXp = original.totalExperience, preparedScore = original.getScore();
-        var connection = original.connection;
-        require(!original.wonGame, "unexpected prior wonGame precondition");
-        original.wonGame = true;
+        require(!original.wonGame && !original.seenCredits, "unexpected prior End completion");
+        state.creditEpoch = before.sourceEpoch();
+        state.nativeBefore = nativeBefore;
+        state.preparedXp = original.totalExperience; state.preparedScore = original.getScore();
+        state.creditTick = server.getTickCount();
         state.preparedArmed = true;
-        connection.handleClientCommand(new ServerboundClientCommandPacket(
-                ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
-        state.preparedArmed = false;
+    }
+
+    private static void completeNativeCreditAndReward(MinecraftServer server, State state) {
+        var original = state.original;
+        var owner = P11NativeStorageBoundary.nativeSourceOwner(original);
+        var victim = state.victim;
+        var mobCredit = victim == null ? null : victim.getLastHurtByMob();
+        var killCredit = victim == null ? null : victim.getKillCredit();
+        var damage = victim == null ? null : victim.getLastDamageSource();
+        var damageActor = damage == null ? null : damage.getEntity();
+        state.observations.add("nativeCreditBeforeReward=OBSERVED"
+                + ";sourceOwnerPresent=" + (owner != null) + ";victimPresent=" + (victim != null)
+                + ";victimRemoved=" + (victim != null && victim.isRemoved())
+                + ";originalRemoved=" + original.isRemoved() + ";originalAlive=" + original.isAlive()
+                + ";mobField=" + (mobCredit == original ? "ORIGINAL_A" : mobCredit == null ? "NULL" : "OTHER")
+                + ";killCredit=" + (killCredit == original ? "ORIGINAL_A" : killCredit == null ? "NULL" : "OTHER")
+                + ";damagePresent=" + (damage != null)
+                + ";damageCause=" + (damageActor == original ? "ORIGINAL_A" : damageActor == null ? "NULL" : "OTHER")
+                + ";nativeCreditElapsedTicks=" + (server.getTickCount() - state.creditTick));
+        // Native baseTick may retire mob credit as soon as End credits remove A; player credit is independent.
+        require(owner != null && victim != null && !victim.isRemoved()
+                        && (mobCredit == original || mobCredit == null) && killCredit == original
+                        && damage != null && damageActor == original,
+                "native A credit expired or changed during the real End return");
+        long nativeBefore = state.nativeBefore, epoch = state.creditEpoch;
+        int preparedXp = state.preparedXp, preparedScore = state.preparedScore;
+        var advancement = server.getAdvancements().get(REWARD);
+        var connection = original.connection;
         var recipient = server.getPlayerList().getPlayer(original.getUUID());
         require(recipient != null && recipient != original && recipient.connection == connection
                         && connection.player == recipient && connection.getConnection().isConnected()
@@ -774,6 +929,39 @@ public final class P11NativeRewardProbe {
         if (state != null && event.getEntity() == state.actor && state.levelThrow) { throw state.sentinel; }
     }
 
+    /** Fixed pre-assertion observation only; no reconciliation, lazy materialization or save retry. */
+    private static String callbackClock(MinecraftServer server, ServerPlayer actor) {
+        try {
+            if (server == null || !server.isSameThread() || actor.getServer() != server) { return "UNAVAILABLE"; }
+            var value = P11CastCooldownAttachments.existing(actor);
+            return "G=" + server.overworld().getGameTime()
+                    + ";cooldownKind=" + (value == null ? "ABSENT" : value.kind.name())
+                    + ";clockFloor=" + (value == null ? -1 : value.clockFloor)
+                    + ";entries=" + (value == null ? -1 : value.entries.size());
+        } catch (RuntimeException | Error observerFailure) { return "UNAVAILABLE"; }
+    }
+
+    private static void callbackSaveDiagnostic(State state, P11QualifiedSourceOwner.Diagnostics before,
+            P11QualifiedSourceOwner.Diagnostics saved, int prefixXp, int actualXp,
+            String clockBefore, String clockAfter) {
+        try {
+            String text = "P11-REWARD-CALLBACK-SAVE-DIAGNOSTIC-V1\n"
+                    + "scope=PRE_ASSERTION_SCALARS_NOT_SAVE_OR_ACCEPTANCE_PROOF\n"
+                    + "originalSaveReturned=true\n"
+                    + "sameSourceVersion=" + (saved.sourceVersion() == before.sourceVersion())
+                    + "\nzeroDirtyUuids=" + (saved.resources().dirtyUuids() == 0)
+                    + "\nxpUnchanged=" + (actualXp == prefixXp)
+                    + "\nxpBefore=" + prefixXp + "\nxpAfter=" + actualXp
+                    + "\nclockBefore=" + clockBefore + "\nclockAfter=" + clockAfter
+                    + "\nbefore=" + before + "\nsaved=" + saved + "\n";
+            if (text.length() > 32768) { return; }
+            write(state.output.resolve(state.reentrantQueued
+                    ? "reentrant-qctx-callback-save-check.txt" : "reentrant-fop-callback-save-check.txt"), text);
+        } catch (IOException | RuntimeException | Error observerFailure) {
+            // Diagnostic failure cannot suppress or replace the original unchanged assertion.
+        }
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     static void xp(PlayerXpEvent.XpChange event) {
         var state = active;
@@ -788,8 +976,11 @@ public final class P11NativeRewardProbe {
                             : count(before, "OPERATION") > 0 && count(before, "COMMAND_CONTEXT") == 0,
                     "XP callback did not run under the intended actual Fop/Qctx responsibility");
             int prefixXp = actor.totalExperience;
+            String callbackClockBefore = callbackClock(server, actor);
             require(server.saveEverything(true, false, false), "original save inside XP callback failed");
             var saved = diagnostic(server, actor);
+            callbackSaveDiagnostic(state, before, saved, prefixXp, actor.totalExperience,
+                    callbackClockBefore, callbackClock(server, actor));
             require(saved.sourceVersion() == before.sourceVersion() && saved.resources().dirtyUuids() == 0
                             && actor.totalExperience == prefixXp,
                     "callback save did not genuinely persist and clean the pre-XP prefix");
@@ -927,8 +1118,74 @@ public final class P11NativeRewardProbe {
         Files.writeString(path, text, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
     }
 
+    private static void placeOwnedPortal(State state) {
+        var actor = state.original;
+        var level = actor.serverLevel();
+        var pos = actor.blockPosition().above(4).offset(4, 0, 0);
+        require(state.portal == null && pos.getY() > level.getMinBuildHeight()
+                        && pos.getY() + 2 < level.getMaxBuildHeight(), "owned reward portal position is invalid");
+        var positions = List.of(pos.below(), pos, pos.above(), pos.above(2));
+        var previous = new ArrayList<BlockState>();
+        for (var target : positions) {
+            require(level.getBlockEntity(target) == null, "owned reward portal cannot overwrite a block entity");
+            previous.add(level.getBlockState(target));
+        }
+        var placed = List.of(Blocks.OBSIDIAN.defaultBlockState(), Blocks.END_PORTAL.defaultBlockState(),
+                Blocks.AIR.defaultBlockState(), Blocks.AIR.defaultBlockState());
+        var fixture = new PortalFixture(level, positions, List.copyOf(previous), placed);
+        state.portal = fixture;
+        for (int i = 0; i < positions.size(); i++) {
+            // Keep custody even if a native block callback throws after the actual mutation.
+            fixture.installed++;
+            require(level.setBlock(positions.get(i), placed.get(i), 3)
+                            || level.getBlockState(positions.get(i)).equals(placed.get(i)),
+                    "owned reward portal installation failed");
+        }
+        actor.connection.teleport(pos.getX() + 0.5, pos.getY() + 0.25, pos.getZ() + 0.5, actor.getYRot(), actor.getXRot());
+    }
+
+    private static void restoreOwnedPortal(State state) {
+        var fixture = state.portal;
+        if (fixture == null) { return; }
+        for (int i = 0; i < fixture.installed; i++) {
+            var current = fixture.level.getBlockState(fixture.positions.get(i));
+            require(current.equals(fixture.placed.get(i)) || current.equals(fixture.previous.get(i)),
+                    "owned reward portal changed; refusing unrelated restoration");
+        }
+        for (int i = fixture.installed - 1; i >= 0; i--) {
+            var current = fixture.level.getBlockState(fixture.positions.get(i));
+            require(current.equals(fixture.placed.get(i)) || current.equals(fixture.previous.get(i)),
+                    "owned reward portal changed during restoration");
+            if (!current.equals(fixture.previous.get(i))) {
+                require(fixture.level.setBlock(fixture.positions.get(i), fixture.previous.get(i), 3)
+                            || fixture.level.getBlockState(fixture.positions.get(i)).equals(fixture.previous.get(i)),
+                        "owned reward portal restoration failed");
+            }
+            fixture.installed--;
+        }
+        state.portal = null;
+    }
+
+    private enum EndStage { WAIT_END, WAIT_CLIENT_END, WAIT_CREDITS, WAIT_RETURN }
+    private static final class PortalFixture {
+        final ServerLevel level;
+        final List<BlockPos> positions;
+        final List<BlockState> previous, placed;
+        int installed;
+        PortalFixture(ServerLevel level, List<BlockPos> positions, List<BlockState> previous, List<BlockState> placed) {
+            this.level = level; this.positions = positions; this.previous = previous; this.placed = placed;
+        }
+    }
+
     private static final class State {
         ServerPlayer actor;
+        final ServerPlayer original;
+        ServerPlayer next;
+        EndStage stage = EndStage.WAIT_END;
+        PortalFixture portal;
+        volatile boolean clientEndReady, creditsObserved, screenClosed;
+        int dimensionEvents, clones, respawns, preparedXp, preparedScore, creditTick;
+        long creditEpoch, nativeBefore;
         final Path output;
         final List<String> observations = new ArrayList<>();
         final RuntimeException sentinel = new IllegalStateException("P11_NATIVE_OWNED_CALLBACK_THROW");
@@ -952,6 +1209,6 @@ public final class P11NativeRewardProbe {
         Object functionCaught;
         ExecutionContext<?> functionContext;
         AdvancementEvent.AdvancementProgressEvent.ProgressType progressThrow;
-        State(ServerPlayer actor, Path output) { this.actor = actor; this.output = output; }
+        State(ServerPlayer actor, Path output) { this.actor = actor; this.original = actor; this.output = output; }
     }
 }

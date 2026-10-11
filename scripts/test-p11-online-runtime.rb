@@ -414,7 +414,7 @@ class P11OnlineRuntimeTest < Minitest::Test
         File.write(file, original)
         frozen = export(manifest)
         assert P11OnlineRuntime.stub(:verify_jar!, true) { P11OnlineRuntime.verify_frozen!(frozen) }
-        assert_equal 10, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
+        assert_equal 11, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
       end
     end
   end
@@ -513,7 +513,7 @@ class P11OnlineRuntimeTest < Minitest::Test
   end
 
   def test_l1_cases_are_closed_and_do_not_reuse_an_old_product_pin
-    assert_equal %w[l1-pre-spawn l1-open l1-claimed l1-impact-close-custody l1-two-work-reload l1-two-work-stop l1-revision l1-p8-send-fault l1-ack-fault l1-work-death l1-work-dimension l1-work-config l1-partial-reward-function l1-work-multi-uuid-qctx l1-stats-write-fault-memory l1-work-deadline l1-spawn-callback-remove l1-logout-cleanup-fault l1-tracking-retirement l1-work-capacity l1-natural-unload l1-online-peer l1-work-context-refusal l1-restart-write l1-restart-read], P11OnlineRuntime::L1_CASES
+    assert_equal %w[l1-pre-spawn l1-open l1-claimed l1-impact-close-custody l1-two-work-reload l1-two-work-stop l1-revision l1-p8-send-fault l1-p8-missing-asset l1-ack-fault l1-work-death l1-work-dimension l1-work-config l1-partial-reward-function l1-work-multi-uuid-qctx l1-stats-write-fault-memory l1-work-deadline l1-spawn-callback-remove l1-logout-cleanup-fault l1-tracking-retirement l1-work-capacity l1-natural-unload l1-online-peer l1-work-context-refusal l1-restart-write l1-restart-read], P11OnlineRuntime::L1_CASES
     P11OnlineRuntime::L1_CASES.each do |name|
       assert_equal ['gramarye-p11-l1-harness.mixins.json'], P11OnlineRuntime.mixin_configs(name)
       assert_equal %w[server a b], P11OnlineRuntime.roles_for(name)
@@ -1583,7 +1583,7 @@ class P11OnlineRuntimeTest < Minitest::Test
 
   def test_current_context_build_admission_is_exact_without_widening_scenario_selection
     build = File.binread(File.join(P11OnlineRuntime::REPO, 'build.gradle'))
-    names = "['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward', 'l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'l1-qctx', 'l1-capacity', 'cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual', 'cooldown-l1-pre-spawn', 'cooldown-l1-open', 'cooldown-l1-claimed']"
+    names = "['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward', 'l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-p8-missing-asset', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'l1-qctx', 'l1-capacity', 'cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual', 'cooldown-l1-pre-spawn', 'cooldown-l1-open', 'cooldown-l1-claimed']"
     valid = lambda do |source|
       source.scan(/!p11OnlineJar\.isFile\(\) \|\| !\(p11OnlineCase in \((\[[^\n]+\]) \+ p11D3Cases \+ \['d3-c4a-baseline'\]\)\)/).flatten == [names] &&
         source.scan(/def p11D3Cases = (\[[^\n]+\])/).flatten ==
@@ -1657,7 +1657,32 @@ class P11OnlineRuntimeTest < Minitest::Test
     end
   end
 
-  def test_companion_resource_inventory_is_exact_ten_and_rejects_near_names_or_missing_resource
+  def test_missing_asset_case_and_profile_resource_remain_closed_and_byte_bound
+    name = 'l1-p8-missing-asset'
+    assert_includes P11OnlineRuntime::L1_CASES, name
+    assert_equal P11OnlineRuntime::L1_JAR_SHA, P11OnlineRuntime.product_pin(name)
+    assert_equal P11OnlineRuntime.mixin_configs('l1-open'), P11OnlineRuntime.mixin_configs(name)
+    %w[l1-p8-missing-asset.extra l1-p8-missing-profile l1-p8-missing-asset/../single].each do |bad|
+      failure('INVALID_CASE') { prepare(case: bad) }
+    end
+    manifest = prepare(case: name)
+    generated_fixture(manifest)
+    relative = P11OnlineRuntime::L1_P8_RESOURCE
+    roots = ['build/resources/p11OnlineHarness', 'src/p11OnlineHarness/resources']
+    roots.each do |root|
+      path = File.join(manifest.fetch('repo'), root, relative)
+      original = File.binread(path)
+      assert_equal P11OnlineRuntime::L1_P8_RESOURCE_SHA, Digest::SHA256.hexdigest(original)
+      File.binwrite(path, original.sub('absent_sound_asset', 'different_absent_sound'))
+      failure('L1_P8_RESOURCE_MISMATCH') { export(manifest) }
+      refute File.exist?(File.join(manifest.fetch('runtime'), 'launch-bundle'))
+      File.binwrite(path, original)
+    end
+    frozen = export(manifest)
+    assert P11OnlineRuntime.stub(:verify_jar!, true) { P11OnlineRuntime.verify_frozen!(frozen) }
+  end
+
+  def test_companion_resource_inventory_is_exact_eleven_and_rejects_near_names_or_missing_resource
     assert_equal ['gramarye-p11-online-private-console.xml', 'gramarye-p11-online-harness.mixins.json',
                   'gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-c6-observers.mixins.json',
                   'gramarye-p11-l1-harness.mixins.json',
@@ -1665,7 +1690,8 @@ class P11OnlineRuntimeTest < Minitest::Test
                   'gramarye-p11-d3-harness.mixins.json',
                   'data/gramarye_p11_engineering/advancement/l1_first_kill.json',
                   'data/gramarye_p11_engineering/loot_table/l1_loot.json',
-                  'data/gramarye_p11_engineering/function/l1_reward.mcfunction'].sort,
+                  'data/gramarye_p11_engineering/function/l1_reward.mcfunction',
+                  'data/gramarye_p11_engineering/gramarye/presentation_profiles/missing_sound.json'].sort,
                  P11OnlineRuntime::COMPANION_RESOURCES
     manifest = prepare(case: 'c4a-dedicated')
     generated_fixture(manifest)
@@ -1689,7 +1715,7 @@ class P11OnlineRuntimeTest < Minitest::Test
     failure('UNEXPECTED_COMPANION_RESOURCE') { export(manifest) }
     File.unlink(extra)
     frozen = export(manifest)
-    assert_equal 10, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
+    assert_equal 11, frozen['bundleFiles'].keys.count { |path| path.start_with?('resources/') }
   end
 
   def test_l1_host_stop_is_prepare_only_exact_case_pin_fixture_and_frozen_mode
@@ -2517,7 +2543,7 @@ tasks\.named\(name, JavaExec\)\.configure \{\s*standardInput = System\.in\s*doFi
       File.write(File.join(dir, 'gramarye-p11-l1-harness.mixins.json'), '{"required":true}')
       File.write(File.join(dir, 'gramarye-p11-cooldown-harness.mixins.json'), '{"required":true}')
       File.write(File.join(dir, 'gramarye-p11-d3-harness.mixins.json'), '{"required":true}')
-      P11OnlineRuntime::L1_HOST_RESOURCES.each_key do |relative|
+      (P11OnlineRuntime::L1_HOST_RESOURCES.keys + [P11OnlineRuntime::L1_P8_RESOURCE]).each do |relative|
         target = File.join(dir, relative)
         FileUtils.mkdir_p(File.dirname(target))
         File.binwrite(target, File.binread(File.join(P11OnlineRuntime::REPO, 'src/p11OnlineHarness/resources', relative)))

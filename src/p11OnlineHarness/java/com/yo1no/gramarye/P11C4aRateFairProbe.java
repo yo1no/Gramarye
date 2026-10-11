@@ -40,6 +40,7 @@ public final class P11C4aRateFairProbe {
             require(server.isSameThread() && server.isDedicatedServer() && a != b
                     && !a.isFakePlayer() && !b.isFakePlayer() && !a.getUUID().equals(b.getUUID()), "RF_REAL_PAIR");
             active = new Run(server, a, b, output);
+            P11C4aC6NativeProbe.startCosts(server, a.connection.getConnection(), b.connection.getConnection());
             server.getGameRules().getRule(GameRules.RULE_KEEPINVENTORY).set(true, server);
             server.getGameRules().getRule(GameRules.RULE_DO_IMMEDIATE_RESPAWN).set(false, server);
         }
@@ -92,6 +93,7 @@ public final class P11C4aRateFairProbe {
                 else { P11C4aC6EarlyGateProbe.abort(); }
                 run.rate = false;
                 write(run, "rf-result.json", "BOUNDED_EPISODE_FINISHED_QUALIFIED_ROWS_EXPLICIT_OTHERWISE_UNPROVEN");
+                P11C4aC6NativeProbe.releaseCosts(server);
                 server.getGameRules().getRule(GameRules.RULE_KEEPINVENTORY).set(run.keepInventory, server);
                 server.getGameRules().getRule(GameRules.RULE_DO_IMMEDIATE_RESPAWN).set(run.immediate, server);
                 run.stage = 9; cue(run, "b", "finish");
@@ -299,9 +301,11 @@ public final class P11C4aRateFairProbe {
                     ? "QUALIFIED" : "UNPROVEN_RATE_WINDOW");
             values.put("engineeringFutureTryNotUserRetry", true); values.put("fullC4aAcceptance", false);
             values.put("normalFiveScenesClaimed", false);
+            values.put("controlCost", P11C4aC6NativeProbe.costSnapshot(run.server));
             result = java.util.Collections.unmodifiableMap(values);
         }
         P11C4aEvidence.write(run.output, leaf, result);
+        P11C4aC6NativeProbe.requireCosts(run.server);
     }
     static boolean fairnessQualified(int windows, int inbox, int notification, int pairs) {
         return windows >= 4 && inbox > 0 && notification > 0 && pairs > 0;

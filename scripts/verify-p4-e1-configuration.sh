@@ -940,6 +940,7 @@ verify_changed_paths() {
                 src/p11OnlineHarness/fixtures/l1/stats-memory-startup.toml | \
                 src/p11OnlineHarness/resources/data/gramarye_p11_engineering/advancement/l1_first_kill.json | \
                 src/p11OnlineHarness/resources/data/gramarye_p11_engineering/loot_table/l1_loot.json | \
+                src/p11OnlineHarness/resources/data/gramarye_p11_engineering/gramarye/presentation_profiles/missing_sound.json | \
                 src/p11OnlineHarness/resources/data/gramarye_p11_engineering/function/l1_reward.mcfunction)
                     [ ! -x "$candidate" ] \
                         || fail "allowed P11 L1 companion resource is executable: $path"
@@ -1049,6 +1050,7 @@ self_regression() {
         'src/p11OnlineHarness/fixtures/l1/stats-memory-startup.toml' \
         'src/p11OnlineHarness/resources/data/gramarye_p11_engineering/advancement/l1_first_kill.json' \
         'src/p11OnlineHarness/resources/data/gramarye_p11_engineering/loot_table/l1_loot.json' \
+        'src/p11OnlineHarness/resources/data/gramarye_p11_engineering/gramarye/presentation_profiles/missing_sound.json' \
         'src/p11OnlineHarness/resources/data/gramarye_p11_engineering/function/l1_reward.mcfunction' \
         'src/p9S5ClientHarness/resources/gramarye-p11-native-harness.mixins.json' \
         'src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/advancement/delivery_root.json' \
@@ -1074,6 +1076,7 @@ self_regression() {
     for resource in \
         'src/p11OnlineHarness/resources/data/gramarye_p11_engineering/advancement/foreign.json' \
         'src/p11OnlineHarness/resources/data/gramarye_p11_engineering/loot_table/foreign.json' \
+        'src/p11OnlineHarness/resources/data/gramarye_p11_engineering/gramarye/presentation_profiles/foreign.json' \
         'src/p11OnlineHarness/resources/data/gramarye_p11_engineering/function/foreign.mcfunction'; do
         if is_allowed_changed_path "${resource}"; then
             fail 'self-test accepted a foreign excluded L1 host resource'

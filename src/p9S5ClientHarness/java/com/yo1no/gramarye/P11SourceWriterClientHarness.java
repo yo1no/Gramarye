@@ -83,6 +83,7 @@ final class P11SourceWriterClientHarness {
     private static volatile int stopWriterSnapshots;
     private static boolean disconnectInProgress;
     private static volatile boolean serverWorkComplete;
+    private static boolean ownedCopyFinishScheduled;
     private static volatile String equippedReference;
     private static MinecraftServer firstServer;
     private static Connection firstTransport;
@@ -106,9 +107,13 @@ final class P11SourceWriterClientHarness {
     private static volatile boolean playerReplaceFaultInjected;
     private static volatile boolean materialMismatchObserved;
     private static volatile P11NativeCanonicalProbe.Report canonicalReport;
+    private static volatile P11NativeRewardProbe.Report nativeRewardReport;
+    private static boolean nativeRewardReportWritten;
     private static volatile ServerPlayer cleanupActor;
     private static volatile String cleanupPrimaryHash;
     private static boolean heapObservationTaken;
+    private static StatsLoad statsLoad;
+    private static volatile boolean statsLoadComplete;
     private static volatile int expectedSlotFailures;
     private static String malformedStatsSha256;
     private static final long P4_OBSERVATION_CASE = 0xB11L;
@@ -142,6 +147,14 @@ final class P11SourceWriterClientHarness {
     private P11SourceWriterClientHarness() {}
 
     private static boolean enabled() { return System.getProperty(OUTPUT_PROPERTY) != null; }
+
+    static P11NativeRewardStopProbe.Target nativeRewardStopTarget(MinecraftServer server) {
+        if (!enabled() || cohortCase != CohortCase.NATIVE_REWARD || server != activeServer
+                || !server.isSameThread() || output == null
+                || (phase != Phase.FIRST_STOP && phase != Phase.SECOND_STOP)
+                || shutdownOrdinal < 1 || shutdownOrdinal > 2) { return null; }
+        return new P11NativeRewardStopProbe.Target(output, shutdownOrdinal);
+    }
 
     /** Arms only the existing observation cell before the ordinary NORMAL recovery listener. */
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -370,7 +383,8 @@ final class P11SourceWriterClientHarness {
             require(minecraft.isSameThread() && (phase == Phase.RESPAWN_PLAY || phase == Phase.NATIVE_REWARD
                             || phase == Phase.CLONE_NATIVE || phase == Phase.NATIVE_END
                             || (ownedCopy && phase == Phase.REOPEN_READY))
-                            && clientRespawns < (cohortCase == CohortCase.NATIVE_END ? 2 : 1)
+                            && clientRespawns < ((cohortCase == CohortCase.NATIVE_END
+                                    || cohortCase == CohortCase.NATIVE_REWARD) ? 2 : 1)
                             && event.getOldPlayer() == latestLoginPlayer
                             && event.getNewPlayer() != event.getOldPlayer()
                             && event.getNewPlayer() == minecraft.player
@@ -429,7 +443,15 @@ final class P11SourceWriterClientHarness {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     static void finalNativeWriters(ServerStoppedEvent event) {
-        if (!enabled() || terminal || event.getServer() != activeServer) { return; }
+        if (!enabled() || event.getServer() != activeServer) { return; }
+        if (statsLoad != null) {
+            var abandoned = statsLoad;
+            statsLoad = null;
+            try { restoreStatsBlocker(abandoned); }
+            catch (IOException | RuntimeException | Error failure) { recordFailure(failure); }
+            recordFailure(new IllegalStateException("finite stats workload stopped before its original recovery writes"));
+        }
+        if (terminal) { return; }
         try {
             // Root registers its slot retirement at NORMAL. This excluded observer reads the
             // final original stop writers first; it neither changes nor delays their outcome.
@@ -734,13 +756,8 @@ final class P11SourceWriterClientHarness {
         }
         if (cohortCase == CohortCase.NATIVE_REWARD) {
             transition(Phase.NATIVE_REWARD);
-            scheduleServerWork(() -> {
-                var report = P11NativeRewardProbe.run(activeServer, currentActor(activeServer),
-                        output.resolve("native-reward"));
-                writeArtifact("03-native-reward.txt", report.toString());
-                require(report.passed(), "actual native reward probe failed: " + report.failure());
-                expectedSlotFailures = Math.addExact(expectedSlotFailures, report.expectedFailures());
-            });
+            scheduleServerWork(() -> P11NativeRewardProbe.start(activeServer, currentActor(activeServer),
+                    output.resolve("native-reward")));
             return;
         }
         if (cohortCase == CohortCase.NATIVE_END) {
@@ -905,7 +922,11 @@ final class P11SourceWriterClientHarness {
         try {
             server.getPlayerList().respawn(stale, true,
                     net.minecraft.world.entity.Entity.RemovalReason.CHANGED_DIMENSION);
-        } catch (P11QualifiedSourceOwner.SourceUnavailable expected) { rejections.add("STALE_A_RESPAWN"); }
+        } catch (IllegalStateException expected) {
+            if (expected.getClass() != IllegalStateException.class
+                    || !"P11_NATIVE_TICKET_REQUIRED".equals(expected.getMessage())) { throw expected; }
+            rejections.add("STALE_A_RESPAWN_NO_NATIVE_TICKET");
+        }
         require(rejections.size() == 1, "managed stale A reached original destructive respawn");
         try { server.getPlayerList().remove(stale); }
         catch (P11QualifiedSourceOwner.SourceUnavailable expected) { rejections.add("STALE_A_REMOVE"); }
@@ -928,7 +949,8 @@ final class P11SourceWriterClientHarness {
                 "rejected stale lifecycle mutated B, its source responsibility, or native owners");
         writeArtifact("03-managed-stale-lifecycle-rejections.txt",
                 "P11-NATIVE-STALE-LIFECYCLE-REJECTION-V1\nfixture=ACTUAL_RETAINED_HANDOFF_A\n"
-                        + "manualActorOrBoundaryFacts=false\nrejections=" + rejections
+                        + "manualActorOrBoundaryFacts=false\nrespawnQualification=NATIVE_CONTROL_TICKET_MISSING\n"
+                        + "staleActorSourceGuardReached=false\nrejections=" + rejections
                         + "\nbefore=" + before + "\nafter=" + after + "\n");
     }
 
@@ -1058,9 +1080,25 @@ final class P11SourceWriterClientHarness {
         finish(minecraft, null);
     }
 
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void nativeRewardServerStep(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+        if (!enabled() || terminal || phase != Phase.NATIVE_REWARD || !serverWorkComplete
+                || event.getServer() != activeServer || nativeRewardReport != null) { return; }
+        nativeRewardReport = P11NativeRewardProbe.serverStep(activeServer);
+    }
+
     private static void nativeRewardComplete(Minecraft minecraft) {
-        if (!serverWorkComplete || clientRespawns != 1) { return; }
+        P11NativeRewardProbe.clientObserve(minecraft);
+        var report = nativeRewardReport;
+        if (report == null) { return; }
+        if (!nativeRewardReportWritten) {
+            writeArtifact("03-native-reward.txt", report.toString());
+            nativeRewardReportWritten = true;
+        }
+        require(report.passed(), "actual native reward probe failed: " + report.failure());
+        if (!serverWorkComplete || clientRespawns != 2 || !playReady(minecraft)) { return; }
         verifyClientTransport(minecraft);
+        expectedSlotFailures = Math.addExact(expectedSlotFailures, report.expectedFailures());
         transition(Phase.FIRST_SAVE);
         scheduleSave("04-first-save-diagnostics.txt");
     }
@@ -1127,7 +1165,7 @@ final class P11SourceWriterClientHarness {
     }
 
     private static void statsIoFaultComplete(Minecraft minecraft) {
-        if (!serverWorkComplete) { return; }
+        if (!serverWorkComplete || !statsLoadComplete) { return; }
         require(failedStatsAttempt > 0, "real stats failure had no captured physical attempt");
         event("REAL_STATS_IO_FAILURE_RETAINED_DIRTY_AND_OTHER_WRITERS_COMPLETED");
         transition(Phase.FIRST_SAVE);
@@ -1205,6 +1243,7 @@ final class P11SourceWriterClientHarness {
         } catch (RuntimeException failure) { setupIssue = heapIssue(failure); }
 
         long nativeStart = System.nanoTime();
+        long nativeAllocatedBefore = P11NativeIoProbe.allocatedNow();
         Boolean actualReturn = null;
         Throwable primary = null;
         try {
@@ -1215,6 +1254,8 @@ final class P11SourceWriterClientHarness {
             throw failure;
         } finally {
             long nativeEnd = System.nanoTime();
+            long nativeAllocatedBytes = P11NativeIoProbe.allocatedDelta(
+                    nativeAllocatedBefore, P11NativeIoProbe.allocatedNow());
             try {
                 for (var pool : pools) {
                     if (!"NONE".equals(pool.issue)) { continue; }
@@ -1238,6 +1279,9 @@ final class P11SourceWriterClientHarness {
                         .append("scope=WHOLE_VM_HEAP_POOLS_AROUND_EXISTING_SYNCHRONOUS_NATIVE_SAVE\n")
                         .append("includesOtherVmThreadsGcAndObserverOverhead=true\n")
                         .append("serializerExclusiveAllocationBytes=NOT_ISOLATED\n")
+                        .append("sameThreadSaveAllocatedBytes=").append(nativeAllocatedBytes).append('\n')
+                        .append("allocationScope=INCLUSIVE_ORIGINAL_SAVE_CALLEES_NOT_RETAINED_OR_PEAK_HEAP\n")
+                        .append("allocationUnavailable=-1\nmonitoringEnabledByProbe=false\n")
                         .append("simultaneousHeapPeak=NOT_DERIVED_FROM_INDEPENDENT_POOL_MAXIMA\n")
                         .append("universalMemoryBound=false\nforcedGc=false\nextraSaveOrSerializerCalls=0\n")
                         .append("peakResetAndReadsAreSequential=true\nundefinedInitOrMax=-1\n")
@@ -1274,8 +1318,12 @@ final class P11SourceWriterClientHarness {
     }
 
     private static String heapIssue(Throwable failure) {
-        var text = (failure.getClass().getName() + ": " + failure.getMessage()).replace('\n', ' ').replace('\r', ' ');
-        return text.length() <= 256 ? text : text.substring(0, 256);
+        if (failure instanceof IllegalStateException) { return "ILLEGAL_STATE"; }
+        if (failure instanceof SecurityException) { return "SECURITY"; }
+        if (failure instanceof IllegalArgumentException) { return "ILLEGAL_ARGUMENT"; }
+        if (failure instanceof RuntimeException) { return "RUNTIME_EXCEPTION"; }
+        if (failure instanceof Error) { return "ERROR"; }
+        return "OTHER";
     }
 
     private static final class HeapPoolWindow {
@@ -1426,9 +1474,7 @@ final class P11SourceWriterClientHarness {
             if (P11NativeOwnedCopyProbe.selected()) {
                 require(diagnostic.equippedSlot0().equals("UNAVAILABLE"),
                         "owned quarantined native read became Ready");
-                var report = P11NativeOwnedCopyProbe.run(server, actor, output.resolve("native-owned-copy"));
-                writeArtifact("06-native-owned-copy.txt", report.toString());
-                require(report.passed(), "actual native owned-copy probe failed: " + report.failure());
+                P11NativeOwnedCopyProbe.start(server, actor, output.resolve("native-owned-copy"));
             } else {
                 require(equippedReference.equals(requireReference(diagnostic)),
                         "native restart did not recover the same equipped revision");
@@ -1447,7 +1493,23 @@ final class P11SourceWriterClientHarness {
 
     private static void reopenReady(Minecraft minecraft) {
         if (!serverWorkComplete) { return; }
-        if (P11NativeOwnedCopyProbe.selected() && (clientRespawns != 1 || !playReady(minecraft))) { return; }
+        if (P11NativeOwnedCopyProbe.selected()) {
+            P11NativeOwnedCopyProbe.clientObserve(minecraft);
+            if (clientRespawns != 1 || !playReady(minecraft)) { return; }
+            if (!ownedCopyFinishScheduled) {
+                require(serverWorkScheduled && serverWorkComplete,
+                        "owned-copy finish requires the completed original death-entry task");
+                ownedCopyFinishScheduled = true;
+                serverWorkScheduled = false;
+                serverWorkComplete = false;
+                scheduleServerWork(() -> {
+                    var report = P11NativeOwnedCopyProbe.finish(activeServer);
+                    writeArtifact("06-native-owned-copy.txt", report.toString());
+                    require(report.passed(), "actual native owned-copy probe failed: " + report.failure());
+                });
+                return;
+            }
+        }
         event("SAME_WORLD_NATIVE_READBACK_WITHOUT_REPROVISION");
         transition(Phase.SECOND_SAVE);
         if (cohortCase == CohortCase.MALFORMED_STATS) {
@@ -1709,54 +1771,148 @@ final class P11SourceWriterClientHarness {
         var actor = currentActor(server);
         require(actor.getStats() instanceof P11IndependentMaterialWitness witness && witness.p11$materialComplete(),
                 "I/O fault fixture did not start with complete canonical stats");
-        var path = statsPath();
-        var backup = output.resolve("04-original-stats-before-io-fault.json");
-        boolean displaced = false;
-        boolean blockerOwned = false;
-        Throwable primaryFailure = null;
+        require(statsLoad == null && !statsLoadComplete, "finite stats workload duplicated");
+        statsLoad = new StatsLoad(server.getTickCount(), actor.getStats().getValue(
+                net.minecraft.stats.Stats.CUSTOM.get(net.minecraft.stats.Stats.JUMP)));
+    }
+
+    /** Nine separate real Post ticks; no sleep, synthetic tick, timer reset, or added gameplay grant. */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void finiteStatsWriterStep(net.neoforged.neoforge.event.tick.ServerTickEvent.Post event) {
+        var load = statsLoad;
+        if (!enabled() || terminal || asynchronousFailure != null || load == null || statsLoadComplete
+                || phase != Phase.STATS_IO_FAULT || event.getServer() != activeServer) { return; }
         try {
-            Files.createDirectories(path.getParent());
-            if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-                require(Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS), "stats I/O target is not a regular owned file");
-                Files.move(path, backup);
-                displaced = true;
+            var server = event.getServer();
+            require(server.isSameThread(), "finite stats workload requires actual server thread");
+            int tick = server.getTickCount();
+            if (tick == load.lastTick) { return; }
+            require(tick > load.lastTick && load.steps < 9, "finite stats workload tick/order bound");
+            load.lastTick = tick;
+            String window = load.steps < 3 ? "STEADY" : load.steps < 6 ? "FAULT" : "RECOVERY";
+            if (load.steps == 3) { installStatsBlocker(load); }
+            if (load.steps == 6) {
+                restoreStatsBlocker(load);
+                writeArtifact("04-stats-restored-before-drain.txt", statsFacts(
+                        P11NativeStorageBoundary.diagnostics(server, playerId)));
             }
-            Files.createDirectory(path);
-            blockerOwned = true;
-            statisticsFaultInjected = true;
-            expectedSlotFailures = 1;
-            writeArtifact("04-io-fault-input.txt", "path=" + path + "\nblocker=OWNED_EMPTY_DIRECTORY\n"
-                    + "originalDisplaced=" + displaced + "\n");
-            server.saveEverything(true, false, false);
+            var actor = currentActor(server);
+            actor.awardStat(net.minecraft.stats.Stats.CUSTOM.get(net.minecraft.stats.Stats.JUMP), 1);
+            var before = P11NativeStorageBoundary.diagnostics(server, playerId);
+            if (window.equals("FAULT")) { expectedSlotFailures++; }
+            long allocated = P11NativeIoProbe.allocatedNow();
+            long started = System.nanoTime();
+            boolean saved = server.saveEverything(true, false, false);
+            long nanos = System.nanoTime() - started;
+            long bytes = P11NativeIoProbe.allocatedDelta(allocated, P11NativeIoProbe.allocatedNow());
             var diagnostic = P11NativeStorageBoundary.diagnostics(server, playerId);
-            writeArtifact("04-stats-io-failure-diagnostics.txt", diagnostic.toString() + "\n");
-            requireIndependentStatsFault(diagnostic, true);
+            writeArtifact(String.format(java.util.Locale.ROOT, "04-stats-load-%02d.txt", load.steps + 1),
+                    "P11-FINITE-NATIVE-WRITER-SAMPLE-V1\nscope=INTEGRATED_HOST_NOT_REMOTE_AUTH\n"
+                    + "window=" + window + "\nstep=" + (load.steps + 1) + "\nnativeTick=" + tick
+                    + "\noriginalStatMutations=1\noriginalSaveCalls=1\noriginalSaveReturn=" + saved
+                    + "\nnativeSaveNanos=" + nanos + "\nsameThreadAllocatedBytes=" + bytes
+                    + "\nallocationScope=INCLUSIVE_SAVE_CALLEES_NOT_RETAINED_OR_PEAK_HEAP\nunavailableAllocation=-1\n"
+                    + "before:\n" + statsFacts(before) + "after:\n" + statsFacts(diagnostic));
+            if (window.equals("FAULT")) {
+                requireIndependentStatsFault(diagnostic, true);
+                if (load.steps == 3) { writeArtifact("04-stats-io-failure-diagnostics.txt", diagnostic + "\n"); }
+            } else {
+                requireSource(diagnostic, false);
+                requireWriters(diagnostic);
+                require(diagnostic.resources().dirtyUuids() == 0,
+                        "original successful finite writer step retained dirty backlog");
+            }
+            require(diagnostic.sourceEpoch() == before.sourceEpoch()
+                            && diagnostic.sourceVersion() >= before.sourceVersion()
+                            && diagnostic.serializations() > before.serializations()
+                            && diagnostic.writes() > before.writes(),
+                    "finite load did not execute original serializers/writers on the same source");
+            load.saveNanos += nanos;
+            if (bytes < 0) { load.allocationUnavailable++; } else { load.allocatedBytes += bytes; }
+            load.steps++;
             require(commandCount == 1 && commandCompletions == 1,
                     "native I/O fault retriggered the original gameplay command");
-        } catch (IOException failure) {
-            var wrapped = new IllegalStateException("owned stats I/O fixture failed", failure);
-            primaryFailure = wrapped;
-            throw wrapped;
-        } catch (RuntimeException | Error failure) {
-            primaryFailure = failure;
-            throw failure;
-        }
-        finally {
-            try {
-                if (blockerOwned) {
-                    require(Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS), "owned stats blocker identity changed");
-                    try (var entries = Files.list(path)) {
-                        require(entries.findAny().isEmpty(), "owned stats blocker gained unknown content");
-                    }
-                    Files.delete(path); // Only the exact, just-created, still-empty fixture directory.
-                }
-                if (displaced) { Files.copy(backup, path); } // Retain the original evidence backup.
-            } catch (IOException | RuntimeException | Error failure) {
-                if (primaryFailure != null) { primaryFailure.addSuppressed(failure); }
-                else if (failure instanceof RuntimeException runtimeFailure) { throw runtimeFailure; }
-                else if (failure instanceof Error error) { throw error; }
-                else { throw new IllegalStateException("owned stats fixture restore failed", failure); }
+            if (load.steps == 9) {
+                require(Files.isRegularFile(statsPath(), LinkOption.NOFOLLOW_LINKS)
+                                && Files.size(statsPath()) <= FIXTURE_FILE_BOUND, "stats workload readback path/bound");
+                var json = JsonParser.parseString(Files.readString(statsPath())).getAsJsonObject();
+                int savedJump = json.getAsJsonObject("stats").getAsJsonObject("minecraft:custom")
+                        .get("minecraft:jump").getAsInt();
+                require(savedJump == load.initialJump + 9
+                                && actor.getStats().getValue(net.minecraft.stats.Stats.CUSTOM.get(
+                                        net.minecraft.stats.Stats.JUMP)) == savedJump
+                                && expectedSlotFailures == 3 && !load.blockerOwned,
+                        "finite stats recovery did not persist latest native material without replay");
+                writeArtifact("04-stats-load-result.txt", "P11-FINITE-NATIVE-WRITER-RESULT-V1\n"
+                        + "status=NINE_ORIGINAL_WRITES_LATEST_STATS_READBACK_AND_DIRTY_DRAIN\n"
+                        + "scope=INTEGRATED_HOST_NOT_REMOTE_AUTH\nsteadyTicks=3\nfaultTicks=3\nrecoveryTicks=3\n"
+                        + "originalStatMutations=9\noriginalSaveCalls=9\nexpectedWriterFailures=3\n"
+                        + "startTick=" + load.startTick + "\nendTick=" + tick
+                        + "\nwindowNanos=" + (System.nanoTime() - load.started)
+                        + "\nsaveNanosTotal=" + load.saveNanos + "\nallocatedBytesObservedSum=" + load.allocatedBytes
+                        + "\nallocationUnavailableSamples=" + load.allocationUnavailable
+                        + "\ninitialJump=" + load.initialJump + "\nphysicalJump=" + savedJump
+                        + "\nstatsFileBytes=" + Files.size(statsPath()) + "\nstatsSha256=" + hashFile(statsPath())
+                        + "\nTIsNotClaimedZero=true\n" + statsFacts(diagnostic));
+                statsLoadComplete = true;
+                statsLoad = null;
             }
+        } catch (IOException | RuntimeException | Error failure) {
+            try { restoreStatsBlocker(load); }
+            catch (IOException | RuntimeException | Error secondary) {
+                if (secondary != failure) { failure.addSuppressed(secondary); }
+            }
+            statsLoad = null;
+            recordFailure(failure);
+        }
+    }
+
+    private static void installStatsBlocker(StatsLoad load) throws IOException {
+        var path = statsPath();
+        require(!load.blockerOwned && !load.displaced && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS),
+                "finite fault requires the prior three original successful stats writes");
+        Files.move(path, output.resolve("04-original-stats-before-io-fault.json"));
+        load.displaced = true;
+        Files.createDirectory(path);
+        load.blockerOwned = true;
+        statisticsFaultInjected = true;
+        writeArtifact("04-io-fault-input.txt", "blocker=OWNED_EMPTY_DIRECTORY\n"
+                + "originalDisplaced=true\nplannedFaultTicks=3\nplannedRecoveryTicks=3\n");
+    }
+
+    private static void restoreStatsBlocker(StatsLoad load) throws IOException {
+        var path = statsPath();
+        if (load.blockerOwned) {
+            require(Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS), "owned stats blocker identity changed");
+            try (var entries = Files.list(path)) {
+                require(entries.findAny().isEmpty(), "owned stats blocker gained unknown content");
+            }
+            Files.delete(path); // Exact owned empty directory only, never recursive.
+            load.blockerOwned = false;
+        }
+        if (load.displaced) {
+            Files.copy(output.resolve("04-original-stats-before-io-fault.json"), path);
+            load.displaced = false;
+        }
+    }
+
+    private static String statsFacts(P11QualifiedSourceOwner.Diagnostics value) {
+        return "sourceEpoch=" + value.sourceEpoch() + "\nsourceVersion=" + value.sourceVersion()
+                + "\nsourceFault=" + value.sourceFault() + "\nresources=" + value.resources()
+                + "\ndirtyAge=" + value.dirtyAge() + "\nserializations=" + value.serializations()
+                + "\nserializerNanos=" + value.serializerNanos() + "\nwrites=" + value.writes()
+                + "\nwriteNanos=" + value.writeNanos() + "\nsaveProgress=" + value.saveProgress()
+                + "\nnativeResponsibilities=" + value.nativeResponsibilities() + "\nwriters=" + value.writers() + "\n";
+    }
+
+    private static final class StatsLoad {
+        final int startTick, initialJump;
+        final long started = System.nanoTime();
+        int lastTick, steps, allocationUnavailable;
+        long saveNanos, allocatedBytes;
+        boolean displaced, blockerOwned;
+        StatsLoad(int tick, int jump) {
+            startTick = tick; lastTick = tick; initialJump = jump;
         }
     }
 

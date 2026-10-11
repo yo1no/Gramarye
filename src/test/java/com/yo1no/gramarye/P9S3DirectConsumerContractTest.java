@@ -28,6 +28,13 @@ final class P9S3DirectConsumerContractTest {
             "src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java";
     private static final String LOGICAL_DC1_TEST =
             "src/test/java/com/yo1no/gramarye/P9S3DirectConsumerContractTest.java";
+    private static final List<String> P8_FALLBACK_ONLINE_PATHS = List.of(
+            "src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1P8FallbackProbe.java",
+            "src/p11OnlineHarness/java/com/yo1no/gramarye/P11L1P8FallbackClientProbe.java",
+            "src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1P8FallbackExecutionMixin.java",
+            "src/p11OnlineHarness/java/com/yo1no/gramarye/harnessmixin/P11L1P8FallbackBackendMixin.java",
+            "src/p11OnlineHarness/resources/data/gramarye_p11_engineering/gramarye/"
+                    + "presentation_profiles/missing_sound.json");
     private static final List<String> COOLDOWN_ONLINE_PATHS = List.of(
             "src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownClientHarness.java",
             "src/p11OnlineHarness/java/com/yo1no/gramarye/P11CooldownServerHarness.java",
@@ -304,6 +311,17 @@ final class P9S3DirectConsumerContractTest {
                 "--is-s4-path", LOGICAL_DC1_TEST + ".extra"));
         assertEquals(1, nearCorrectionPath.exitCode(), nearCorrectionPath.output());
 
+        for (var exact : P8_FALLBACK_ONLINE_PATHS) {
+            assertEquals(0, runVerifier(List.of("--is-s4-path", exact)).exitCode(), exact);
+            for (var rejected : List.of(exact + ".extra",
+                    exact.replace("P11L1P8Fallback", "P11L1P8FallbackExtra")
+                            .replace("missing_sound.json", "missing_sound_extra.json"),
+                    exact.replace("src/p11OnlineHarness/", "src/foreignHarness/"),
+                    exact.replace("src/p11OnlineHarness/", "src/main/"))) {
+                assertFalse(rejected.equals(exact), "negative must change the exact input path");
+                assertEquals(1, runVerifier(List.of("--is-s4-path", rejected)).exitCode(), rejected);
+            }
+        }
         for (var exact : COOLDOWN_ONLINE_PATHS) {
             assertEquals(0, runVerifier(List.of("--is-s4-path", exact)).exitCode(), exact);
             for (var rejected : List.of(exact + ".extra", exact.replace("P11Cooldown", "P11CooldownExtra")

@@ -30,15 +30,51 @@ final class P7D3MetadataContinuationTest {
         var enumsAndStages = source.substring(source.indexOf("    enum MetadataStage"),
                 source.indexOf("    /**\n     * One exact account-root retained continuation."));
         var receipt = declaration(source, "public static final class MetadataContinuation");
+        var recoveryCompleted = declaration(source, "private void recoveryCompleted(RecoveryOutcome outcome)");
+        var finished = declaration(source, "private void finished(boolean normal)");
+        var kinds = declaration(Files.readString(projectRoot().resolve(
+                "src/main/java/com/yo1no/gramarye/magic/definition/store/P4E2OnlineReconciliationDependency.java")),
+                "enum RecoveryKind");
         var unit = temporary.resolve("SkillSubmissionRecoveryService.java");
         Files.writeString(unit, """
-                import java.util.Objects;
+                import java.util.*;
                 public final class SkillSubmissionRecoveryService {
+                    final Dependencies dependencies = new Dependencies();
                 %s
                 %s
-                    private static final class RecoveryContinuation {}
-                    private record RecoveryProjection(Object kind, int entriesCleared,
-                            int stepsReplayed, Object exceptionClass) {}
+                    private static final class RecoveryContinuation {
+                        MetadataContinuation metadata;
+                        %s
+                        %s
+                    }
+                    private record RecoveryOutcome(P4E2OnlineReconciliationDependency.RecoveryKind e2Kind,
+                            int e2EntriesCleared, int e2StepsReplayed, Optional<String> e2ExceptionClass) {}
+                    private record RecoveryProjection(P4E2OnlineReconciliationDependency.RecoveryKind kind,
+                            int entriesCleared, int stepsReplayed, Optional<String> exceptionClass) {}
+                    static final class Dependencies {
+                        Object observation;
+                        Runnable duringRead;
+                        Object observeLatestStates(ServerPlayer actor) {
+                            if (duringRead != null) { duringRead.run(); }
+                            return observation;
+                        }
+                    }
+                    static MetadataContinuation isolated(PlayerSkillAttachmentService.UnavailableReason reason) {
+                        var continuation = new RecoveryContinuation();
+                        var result = new MetadataContinuation(new SkillSubmissionRecoveryService(),
+                                new P4E2OnlineReconciliationDependency(), new ServerPlayer(), continuation);
+                        continuation.metadata = result;
+                        result.lease = new P11NativeStorageBoundary.MetadataLease();
+                        result.owner.dependencies.observation = new PlayerSkillAttachmentService.Unavailable<Object>(reason);
+                        result.stages.recoveryStarted();
+                        continuation.recoveryCompleted(new RecoveryOutcome(
+                                P4E2OnlineReconciliationDependency.RecoveryKind.NO_PENDING, 0, 0, Optional.empty()));
+                        return result;
+                    }
+                    static void isolate(MetadataContinuation r, PlayerSkillAttachmentService.UnavailableReason reason) {
+                        r.reconciliationStarted(r.dependency);
+                        r.reconciliationQuarantined(r.dependency, reason, new P7ServerAuthorizationBoundary.LoginReadyPort());
+                    }
                     static MetadataContinuation ready() {
                         var result = new MetadataContinuation(new SkillSubmissionRecoveryService(),
                                 new P4E2OnlineReconciliationDependency(), new ServerPlayer(), new RecoveryContinuation());
@@ -105,6 +141,68 @@ final class P7D3MetadataContinuationTest {
                                 r.observeInitialSync(r.lease, 7, 11, MetadataInitialStage.MANA_SUBMITTED);
                                 check(r.stages.blocked && r.stages.mana == MetadataStage.RUNNING && r.lease.releases == 0);
                             }
+                            case "local-isolation" -> {
+                                for (var reason : PlayerSkillAttachmentService.UnavailableReason.values()) {
+                                    var r = isolated(reason);
+                                    isolate(r, reason);
+                                    check(r.stages.localQuarantineTerminal() && !r.stages.complete() && !r.stages.resumable());
+                                    check(r.sessionEpoch == 0 && r.sessionGeneration == 0 && r.lease.releases == 0);
+                                    check(r.stages.session == MetadataStage.NOT_STARTED && r.stages.mana == MetadataStage.NOT_STARTED
+                                            && r.stages.cooldown == MetadataStage.NOT_STARTED);
+                                    r.continuation.finished(true);
+                                    check(r.lease.closed && r.lease.releases == 1 && r.lease.otherRoots == 3);
+                                    r.continuation.finished(true);
+                                    check(r.lease.releases == 1 && !r.resume(r.lease));
+
+                                    r = isolated(reason); r.reconciliationStarted(r.dependency);
+                                    r.reconciliationCompleted(r.dependency, false, new P7ServerAuthorizationBoundary.LoginReadyPort());
+                                    r.continuation.finished(true); check(r.lease.releases == 0);
+                                    r = isolated(reason); r.lease.current = false; isolate(r, reason);
+                                    r.continuation.finished(true); check(!r.lease.current && r.lease.releases == 0);
+                                    r = isolated(reason); r.stages.recovery = MetadataStage.RUNNING; r.lease.current = false;
+                                    r.continuation.recoveryCompleted(new RecoveryOutcome(
+                                            P4E2OnlineReconciliationDependency.RecoveryKind.NO_PENDING, 0, 0, Optional.empty()));
+                                    check(r.lease.current && !r.localQuarantineSourceUnchanged);
+                                    isolate(r, reason); r.continuation.finished(true); check(r.lease.releases == 0);
+                                    r = isolated(reason); var drift = r;
+                                    r.owner.dependencies.duringRead = () -> drift.lease.current = false;
+                                    isolate(r, reason); r.continuation.finished(true); check(r.lease.releases == 0);
+                                    r = isolated(reason); r.manaObservationFailed(r.lease);
+                                    isolate(r, reason); r.continuation.finished(true); check(r.lease.releases == 0);
+                                    r = isolated(reason); isolate(r, reason); r.lease.sessionCurrent = false;
+                                    r.continuation.finished(true); check(r.lease.releases == 0);
+                                }
+                            }
+                            case "local-resume" -> {
+                                for (var reason : PlayerSkillAttachmentService.UnavailableReason.values()) {
+                                    for (boolean throwAfterProof : new boolean[] {false, true}) {
+                                        var r = isolated(reason); r.continuation.finished(false);
+                                        check(r.stages.resumable());
+                                        var primary = new IllegalStateException("owned late caller failure");
+                                        r.dependency.callback = () -> {
+                                            isolate(r, reason); check(r.lease.releases == 0 && r.stages.failed);
+                                            if (throwAfterProof) { throw primary; }
+                                        };
+                                        boolean returned = false;
+                                        try { returned = r.resume(r.lease); }
+                                        catch (IllegalStateException failure) { check(throwAfterProof && failure == primary); }
+                                        check(returned != throwAfterProof && r.stages.failed);
+                                        check(r.lease.releases == (throwAfterProof ? 0 : 1));
+                                        check(!r.stages.complete() && !r.resume(r.lease));
+                                        if (throwAfterProof) { check(!r.stages.localQuarantineTerminal()); }
+                                    }
+                                    var stale = isolated(reason); stale.continuation.finished(false);
+                                    stale.lease.current = false; check(!stale.resume(stale.lease) && stale.lease.releases == 0);
+                                    var wrongConnection = isolated(reason); wrongConnection.continuation.finished(false);
+                                    wrongConnection.lease.sessionCurrent = false;
+                                    check(!wrongConnection.resume(wrongConnection.lease) && wrongConnection.lease.releases == 0);
+                                    var blocked = isolated(reason); blocked.continuation.finished(false); blocked.stages.blocked = true;
+                                    check(!blocked.resume(blocked.lease) && blocked.lease.releases == 0);
+                                    var unknown = isolated(reason); unknown.reconciliationStarted(unknown.dependency);
+                                    unknown.continuation.finished(false);
+                                    check(!unknown.resume(unknown.lease) && unknown.lease.releases == 0);
+                                }
+                            }
                             default -> throw new AssertionError("unknown scenario");
                         }
                         return "PASS";
@@ -112,25 +210,34 @@ final class P7D3MetadataContinuationTest {
                     static void check(boolean condition) { if (!condition) { throw new AssertionError("receipt contract"); } }
                 }
                 final class ServerPlayer {}
+                final class PlayerSkillAttachmentService {
+                    enum UnavailableReason { PRESERVED_RAW_QUARANTINE, OVERSIZE_QUARANTINE }
+                    record Unavailable<T>(UnavailableReason reason) {}
+                }
                 final class P7ServerAuthorizationBoundary { static final class LoginReadyPort {} }
                 final class P4E2OnlineReconciliationDependency {
+                    %s
+                    Runnable callback;
                     void resumeMissingStages(ServerPlayer actor, Object continuation, Object kind,
-                            int cleared, int replayed, Object failure) {}
+                            int cleared, int replayed, Object failure) { if (callback != null) { callback.run(); } }
                 }
                 final class P11NativeStorageBoundary {
-                    static final class MetadataLease { boolean current = true, sessionCurrent = true, closed; int releases; }
+                    static final class MetadataLease { boolean current = true, sessionCurrent = true, closed; int releases, otherRoots = 3; }
                     static boolean metadataCurrent(MetadataLease lease) {
                         return metadataSessionCurrent(lease) && lease.current;
                     }
                     static boolean metadataSessionCurrent(MetadataLease lease) {
                         return lease != null && !lease.closed && lease.sessionCurrent;
                     }
-                    static boolean refreshMetadata(MetadataLease lease) { return metadataCurrent(lease); }
+                    static boolean refreshMetadata(MetadataLease lease) {
+                        if (!metadataSessionCurrent(lease)) { return false; }
+                        lease.current = true; return true;
+                    }
                     static void releaseMetadata(MetadataLease lease) {
                         if (lease != null && !lease.closed) { lease.closed = true; lease.releases++; }
                     }
                 }
-                """.formatted(enumsAndStages, receipt));
+                """.formatted(enumsAndStages, receipt, recoveryCompleted, finished, kinds));
         var compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler);
         var diagnostics = new DiagnosticCollector<JavaFileObject>();
@@ -151,6 +258,8 @@ final class P7D3MetadataContinuationTest {
     @Test void originalReceiptRequiresBothPositiveCoordinatesAndCannotBeRelabelled() throws Exception { run("coordinates"); }
     @Test void oldGenerationCannotCompleteOrReleaseOriginalInitialFamilies() throws Exception { run("completion"); }
     @Test void exactLeaseActorAndSourceCompletionRulesRemainDistinct() throws Exception { run("source"); }
+    @Test void knownRawAndMarkerTerminalNeverMintReadinessOrRefreshStaleSource() throws Exception { run("local-isolation"); }
+    @Test void onlyActualAuthorizedMissingStageResumeCanSettleKnownLocalIsolation() throws Exception { run("local-resume"); }
 
     private static void run(String scenario) throws Exception {
         assertEquals("PASS", harness.getMethod("run", String.class).invoke(null, scenario));

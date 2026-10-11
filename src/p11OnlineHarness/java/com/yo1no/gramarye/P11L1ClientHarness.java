@@ -44,6 +44,7 @@ public final class P11L1ClientHarness {
             }
             require(minecraft.isSameThread() && ++ticks <= 30_000 && ++phaseTicks <=
                     (phase == Phase.BOOTSTRAP || phase == Phase.WAIT_CONNECT ? 24_000 : 2400), "CLIENT_DEADLINE_OR_THREAD");
+            P11L1P8FallbackClientProbe.tick(minecraft);
             switch (phase) {
                 case BOOTSTRAP -> bootstrap(minecraft);
                 case WAIT_CONNECT -> { if (cue(role + "-connect.ready")) { connect(minecraft); } }
@@ -309,7 +310,8 @@ public final class P11L1ClientHarness {
     private static boolean twoWork() { return P11C4aEvidence.property("case").equals("l1-two-work-reload") || twoWorkStop(); }
     private static boolean twoWorkStop() { return P11C4aEvidence.property("case").equals("l1-two-work-stop"); }
     private static int castLimit() { return P11L1RestartProbe.readSelected() ? 0
-            : P11L1RestartProbe.writeSelected() || twoWork() || P11L1SupplementalHarness.revision() ? 2
+            : P11L1SupplementalHarness.revision() ? 3
+            : P11L1RestartProbe.writeSelected() || twoWork() ? 2
             : P11L1SupplementalHarness.selected() || P11L1ServerHarness.lifecycle()
                     || P11L1ServerHarness.singleNatural() || P11L1ServerHarness.terminalBoundary()
                     || P11L1ServerHarness.naturalUnload() || P11L1ServerHarness.onlinePeer()

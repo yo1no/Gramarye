@@ -115,7 +115,12 @@ final class P4E2OnlineReconciliationCoordinator
                 stepsReplayed,
                 existingExceptionClass);
         if (metadata != null) {
-            metadata.reconciliationCompleted(this, isLoginReadyTerminal(result), loginReadyPort);
+            var quarantine = localQuarantineReason(kind, result);
+            if (quarantine.isPresent()) {
+                metadata.reconciliationQuarantined(this, quarantine.orElseThrow(), loginReadyPort);
+            } else {
+                metadata.reconciliationCompleted(this, isLoginReadyTerminal(result), loginReadyPort);
+            }
         }
         if (observing) {
             P4E2QualificationFacade.ReconciliationVariant variant;
@@ -239,6 +244,29 @@ final class P4E2OnlineReconciliationCoordinator
         var metadata = continuation.metadata(this);
         if (metadata == null) { loginReadyPort.onLoginReady(server, exactPlayer); }
         else { loginReadyPort.onLoginReady(server, exactPlayer, metadata); }
+    }
+
+    private static Optional<PlayerSkillAttachmentService.UnavailableReason> localQuarantineReason(
+            RecoveryKind kind, P4E2ReconciliationResult result) {
+        if (!(result instanceof P4E2ReconciliationResult.Deferred deferred)
+                || deferred.summary().recoveryEntriesCleared() != 0
+                || deferred.summary().recoveryStepsReplayed() != 0) { return Optional.empty(); }
+        return switch (deferred.reason()) {
+            case ATTACHMENT_PRESERVED_RAW -> kind == RecoveryKind.NO_PENDING
+                    ? Optional.of(PlayerSkillAttachmentService.UnavailableReason.PRESERVED_RAW_QUARANTINE)
+                    : Optional.empty();
+            case ATTACHMENT_OVERSIZE -> kind == RecoveryKind.NO_PENDING
+                    ? Optional.of(PlayerSkillAttachmentService.UnavailableReason.OVERSIZE_QUARANTINE)
+                    : Optional.empty();
+            case RECOVERY_OPERATIONAL_UNAVAILABLE -> switch (kind) {
+                case ATTACHMENT_PRESERVED_RAW_QUARANTINE ->
+                        Optional.of(PlayerSkillAttachmentService.UnavailableReason.PRESERVED_RAW_QUARANTINE);
+                case ATTACHMENT_OVERSIZE_QUARANTINE ->
+                        Optional.of(PlayerSkillAttachmentService.UnavailableReason.OVERSIZE_QUARANTINE);
+                default -> Optional.empty();
+            };
+            default -> Optional.empty();
+        };
     }
 
     static boolean isLoginReadyTerminal(P4E2ReconciliationResult result) {

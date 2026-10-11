@@ -4,6 +4,7 @@ import com.yo1no.gramarye.P11C4aC6NativeProbe;
 import com.yo1no.gramarye.P11C4aC6ExpiryProbe;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import java.util.ArrayList;
 import java.util.Map;
 import net.minecraft.network.Connection;
@@ -31,10 +32,15 @@ abstract class P11C4aC6LiveMixin {
             @Coerce Object identities, @Coerce Object sources, CallbackInfo ci) {
         c6$limits = limits;
     }
-    @Inject(method = "prepareAndDispatch()V", at = @At("HEAD"), require = 1, expect = 1, allow = 1)
-    private void c6$before(CallbackInfo ci) { c6$sample(); }
-    @Inject(method = "prepareAndDispatch()V", at = @At("TAIL"), require = 1, expect = 1, allow = 1)
-    private void c6$after(CallbackInfo ci) { c6$sample(); }
+    @WrapMethod(method = "prepareAndDispatch()V", require = 1, expect = 1, allow = 1)
+    private void c6$dispatchCost(Operation<Void> original) {
+        c6$sample();
+        Object cost = P11C4aC6NativeProbe.beginDispatchCost(server, this);
+        boolean normal = false;
+        try { original.call(); normal = true; }
+        finally { P11C4aC6NativeProbe.endDispatchCost(cost, normal); }
+        c6$sample(); // Same normal-return-only observation as the former TAIL hook.
+    }
     @WrapOperation(method = "disconnect(Lcom/yo1no/gramarye/P11LiveTransitionService$Entry;Ljava/lang/String;)V",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/server/network/ServerCommonPacketListenerImpl;disconnect(Lnet/minecraft/network/chat/Component;)V"),
             require = 1, expect = 1, allow = 1)

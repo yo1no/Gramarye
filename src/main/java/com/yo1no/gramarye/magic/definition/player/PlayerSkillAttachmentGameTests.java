@@ -569,9 +569,8 @@ public final class PlayerSkillAttachmentGameTests {
                     assertVariant(helper, service, current, loadedState, fixture, variant);
                     if (variant == LifecycleVariant.PRESERVED_BYTE || variant == LifecycleVariant.PRESERVED_LIST
                             || variant == LifecycleVariant.MARKER) {
-                        com.yo1no.gramarye.P7S4LoginManaGameTests.assertNativeQuarantineBlocksRespawn(current);
-                        // A managed successful transition is forbidden by the real H gate.
-                        // Exercise the unchanged native serialized-copy callback separately;
+                        com.yo1no.gramarye.P7S4LoginManaGameTests.requireNativeLocalQuarantineSettled(current);
+                        // Preserve the separate native serialized-copy component assertions;
                         // these unplaced holders never become source bodies or online actors.
                         var deathCopy = componentCopy(server, current, true);
                         var deathState = deathCopy.getData(PlayerSkillAttachments.type());
@@ -584,7 +583,6 @@ public final class PlayerSkillAttachmentGameTests {
                                 "native non-death copy component must rebuild a fresh state");
                         assertCopiedComponent(helper, service, nonDeathCopy, nonDeathState, fixture, deathState);
                         assertVariant(helper, service, current, loadedState, fixture, variant);
-                        return;
                     }
                     com.yo1no.gramarye.P7S4LoginManaGameTests.requireCooldownLoginComplete(current);
                     if (variant == LifecycleVariant.READY_GENERATION_BOUNDARY) {
@@ -600,12 +598,20 @@ public final class PlayerSkillAttachmentGameTests {
                     helper.assertTrue(deathState != loadedState,
                             "copyOnDeath must rebuild a fresh Attachment state");
                     assertVariant(helper, service, afterDeath, deathState, fixture, variant);
+                    if (variant == LifecycleVariant.PRESERVED_BYTE || variant == LifecycleVariant.PRESERVED_LIST
+                            || variant == LifecycleVariant.MARKER) {
+                        com.yo1no.gramarye.P7S4LoginManaGameTests.requireNativeLocalQuarantineSettled(afterDeath);
+                    }
 
                     var afterEnd = com.yo1no.gramarye.P7S4LoginManaGameTests.completeEndGameTestPlayer(afterDeath);
                     var endState = afterEnd.getData(PlayerSkillAttachments.type());
                     helper.assertTrue(endState != deathState,
                             "End-equivalent non-death clone must rebuild a fresh state");
                     assertVariant(helper, service, afterEnd, endState, fixture, variant);
+                    if (variant == LifecycleVariant.PRESERVED_BYTE || variant == LifecycleVariant.PRESERVED_LIST
+                            || variant == LifecycleVariant.MARKER) {
+                        com.yo1no.gramarye.P7S4LoginManaGameTests.requireNativeLocalQuarantineSettled(afterEnd);
+                    }
                 } finally {
                     removeOnlinePlayer(server, playerId);
                     connected.channel().finishAndReleaseAll();

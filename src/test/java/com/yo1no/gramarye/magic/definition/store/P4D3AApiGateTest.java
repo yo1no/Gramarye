@@ -130,17 +130,22 @@ final class P4D3AApiGateTest {
                 () -> assertTrue(Arrays.stream(metadata.getDeclaredFields())
                         .allMatch(field -> Modifier.isPrivate(field.getModifiers()))),
                 () -> assertEquals(Set.of("authorizesRetention", "reconciliationStarted",
-                                "reconciliationCompleted", "resumeAuthorized", "reconciliationDone",
+                                "reconciliationCompleted", "reconciliationQuarantined", "resumeAuthorized", "reconciliationDone",
                                 "openedSession", "openedServerGeneration", "loginActor", "sessionStarted", "sessionOpened",
                                 "legacyLoginStarted", "manaObservationFailed", "matchesSession",
                                 "observeInitialSync", "resume"),
                         publicDeclaredMethodNames(metadata)),
-                () -> assertEquals(15, Arrays.stream(metadata.getDeclaredMethods())
+                () -> assertEquals(16, Arrays.stream(metadata.getDeclaredMethods())
                         .filter(method -> Modifier.isPublic(method.getModifiers())).count()),
                 () -> assertTrue(Arrays.stream(metadata.getDeclaredMethods())
                         .noneMatch(method -> Modifier.isProtected(method.getModifiers()))),
                 () -> assertEquals(void.class, metadata.getDeclaredMethod("manaObservationFailed",
                         com.yo1no.gramarye.P11NativeStorageBoundary.MetadataLease.class).getReturnType()),
+                () -> assertEquals(void.class, metadata.getDeclaredMethod("reconciliationQuarantined",
+                        P4E2OnlineReconciliationDependency.class,
+                        com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService.UnavailableReason.class,
+                        com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary.LoginReadyPort.class)
+                        .getReturnType()),
                 () -> assertEquals(List.of("MANA_STARTED", "MANA_SUBMITTED", "MANA_FAILED",
                                 "COOLDOWN_STARTED", "COOLDOWN_SUBMITTED", "COOLDOWN_FAILED"),
                         Arrays.stream(SkillSubmissionRecoveryService.MetadataInitialStage.values())

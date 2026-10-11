@@ -11,12 +11,15 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.UUID;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
-import net.minecraft.network.protocol.game.ServerboundClientCommandPacket;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,6 +30,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.attachment.AttachmentHolder;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 
 /** Excluded owned stopped-input fixture, followed only by authenticated native read/copy/writers. */
@@ -36,7 +40,7 @@ public final class P11NativeOwnedCopyProbe {
     private static final String MANA = "gramarye:player_mana";
     private static final long READ_QUOTA = 32L * 1024 * 1024;
     private static Prepared prepared;
-    private static Observation active;
+    private static volatile Observation active;
     private static boolean used;
 
     private P11NativeOwnedCopyProbe() {}
@@ -97,8 +101,7 @@ public final class P11NativeOwnedCopyProbe {
         } catch (IOException failure) { throw new IllegalStateException("owned-copy stopped fixture IO", failure); }
     }
 
-    static Report run(MinecraftServer server, ServerPlayer actor, Path output) {
-        var observation = new Observation(actor);
+    static void start(MinecraftServer server, ServerPlayer actor, Path output) {
         try {
             require(selected() && prepared != null && !used && active == null
                             && server != prepared.stopped && actor.getUUID().equals(prepared.player),
@@ -122,39 +125,156 @@ public final class P11NativeOwnedCopyProbe {
             long observers = P11NativeStorageBoundary.observerFailureCount();
             long cleanup = P11NativeCleanup.secondaryFailures();
             var connection = actor.connection;
+            var observation = new Observation(actor, output, before, originalSkills, originalMana,
+                    owner, observers, cleanup);
             active = observation;
             actor.kill();
             require(actor.isDeadOrDying() && actor.getHealth() <= 0, "native kill did not reach death precondition");
-            connection.handleClientCommand(new ServerboundClientCommandPacket(
-                    ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
+            require(observation.next == null && observation.clones == 0 && observation.respawns == 0
+                            && connection.player == actor, "death entry unexpectedly fabricated a successor");
+            observation.deathReady = true;
+        } catch (IOException failure) {
+            active = null;
+            throw new IllegalStateException("owned-copy native start observation", failure);
+        } catch (RuntimeException | Error failure) {
+            active = null;
+            throw failure;
+        }
+    }
+
+    /** Original native button callback; its LocalPlayer.respawn bridge sends the real C4a TRY. */
+    static void clientObserve(Minecraft minecraft) {
+        var observation = active;
+        if (observation == null || !observation.deathReady) { return; }
+        require(selected() && minecraft == Minecraft.getInstance() && minecraft.isSameThread()
+                        && minecraft.player != null && minecraft.player.getUUID().equals(prepared.player)
+                        && minecraft.getConnection() != null && minecraft.getConnection().getConnection().isConnected(),
+                "owned-copy native button lost its current client");
+        clientDiagnostic(observation, minecraft, 0, "client-first-observation.txt");
+        var transition = P11ClientTransitions.view();
+        if (transition != null) {
+            switch (transition.outcome()) {
+                case NOT_STARTED -> clientDiagnostic(observation, minecraft, 1, "client-first-not-started.txt");
+                case FAULT, EXPIRED, UNKNOWN -> clientDiagnostic(observation, minecraft, 2, "client-first-terminal-refusal.txt");
+                case COMPLETED -> clientDiagnostic(observation, minecraft, 3, "client-first-completed.txt");
+                default -> { }
+            }
+        }
+        if (observation.clientPressed) { return; }
+        if (!(minecraft.screen instanceof DeathScreen screen)) { return; }
+        clientDiagnostic(observation, minecraft, 4, "client-first-death-screen.txt");
+        Button button = null;
+        for (var child : screen.children()) {
+            if (child instanceof Button candidate && candidate.active && candidate.visible
+                    && candidate.getMessage().getContents() instanceof TranslatableContents text
+                    && text.getKey().equals("deathScreen.respawn")) {
+                require(button == null, "owned-copy native respawn button is ambiguous");
+                button = candidate;
+            }
+        }
+        if (button == null) { return; }
+        clientDiagnostic(observation, minecraft, 5, "client-before-button.txt");
+        observation.clientPressed = true;
+        button.onPress();
+        clientDiagnostic(observation, minecraft, 6, "client-after-button.txt");
+    }
+
+    /** Fixed scalar observations only; neither this observer nor its receipts authorize a retry. */
+    private static void clientDiagnostic(Observation observation, Minecraft minecraft, int bit, String leaf) {
+        int flag = 1 << bit;
+        if ((observation.clientDiagnosticMask & flag) != 0) { return; }
+        observation.clientDiagnosticMask |= flag;
+        var state = P11ClientTransitions.view();
+        String screen = minecraft.screen == null ? "NONE"
+                : minecraft.screen instanceof DeathScreen ? "DEATH"
+                : minecraft.screen instanceof P11ClientTransitionScreen ? "TRANSITION"
+                : minecraft.screen instanceof P11ClientLeaveScreen ? "LEAVE"
+                : "OTHER";
+        String facts = "layer=CLIENT_SCALAR_DIAGNOSTIC_NOT_ACCEPTANCE\nscreen=" + screen
+                + "\nbuttonCalled=" + observation.clientPressed + "\ntransitionPresent=" + (state != null)
+                + "\n";
+        if (state != null) {
+            facts += "scope=" + state.scope() + "\nkind=" + state.kind() + "\noutcome=" + state.outcome()
+                    + "\navailability=" + state.availability() + "\nreason=" + state.reason()
+                    + "\nconnectionEpoch=" + state.connectionEpoch() + "\nsceneSerial=" + state.sceneSerial()
+                    + "\nactorGeneration=" + state.actorGeneration() + "\nrequestSequence=" + state.requestSeq()
+                    + "\nstatusVersion=" + state.statusVersion() + "\n";
+        }
+        try { write(observation.output.resolve(leaf), facts); }
+        catch (IOException failure) { throw new IllegalStateException("owned-copy client diagnostic IO", failure); }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    static void diagnosticPost(ServerTickEvent.Post event) {
+        var observation = active;
+        if (observation == null || !observation.deathReady
+                || event.getServer() != observation.original.getServer() || observation.serverDiagnosticTicks >= 60) { return; }
+        var server = event.getServer();
+        require(server.isSameThread(), "owned-copy diagnostic is not on its exact server thread");
+        int tick = ++observation.serverDiagnosticTicks;
+        if (tick != 1 && tick != 60) { return; }
+        var actor = observation.original;
+        var body = observation.owner.body(actor);
+        var source = P11NativeStorageBoundary.diagnostics(server, actor.getUUID());
+        String facts = "layer=SERVER_SCALAR_DIAGNOSTIC_NOT_ACCEPTANCE\nobservedPost=" + tick
+                + "\nexactRoster=" + (server.getPlayerList().getPlayer(actor.getUUID()) == actor)
+                + "\nexactListener=" + (actor.connection != null && actor.connection.player == actor)
+                + "\nactorRemoved=" + actor.isRemoved() + "\nactorDead=" + actor.isDeadOrDying()
+                + "\nbodyPresent=" + (body != null) + "\nbodyComplete=" + (body != null && body.complete)
+                + "\nmetadataPresent=" + (body != null && body.account.metadata != null)
+                + "\ncontrolGate=" + observation.owner.controlGate(actor.getUUID(), actor)
+                + "\nsourceEpoch=" + source.sourceEpoch() + "\nsourceVersion=" + source.sourceVersion() + "\n";
+        for (var root : source.nativeResponsibilities().roots()) {
+            facts += "root_" + root.kind() + '=' + root.count() + '\n';
+        }
+        try { write(observation.output.resolve(tick == 1 ? "server-first-post.txt" : "server-sixtieth-post.txt"), facts); }
+        catch (IOException failure) { throw new IllegalStateException("owned-copy server diagnostic IO", failure); }
+    }
+
+    /** A later original server task, after the real client clone event and original handler return. */
+    static Report finish(MinecraftServer server) {
+        var observation = active;
+        try {
+            require(observation != null && observation.deathReady && observation.clientPressed
+                            && server.isSameThread() && observation.original.getServer() == server,
+                    "owned-copy finish lacks original client action and server lifetime");
+            var actor = observation.original;
+            var connection = actor.connection;
             var next = observation.next;
             require(next != null && next != actor && observation.clones == 1 && observation.respawns == 1
                             && actor.isRemoved() && connection.player == next && next.connection == connection,
                     "original native death/clone caller did not install exactly one B");
             exactActor(server, next);
             assertMaterials(next);
-            require(next.getExistingDataOrNull(skillsType) != originalSkills
-                            && next.getExistingDataOrNull(manaType) != originalMana,
+            var skillsType = NeoForgeRegistries.ATTACHMENT_TYPES.get(ResourceLocation.parse(SKILLS));
+            var manaType = NeoForgeRegistries.ATTACHMENT_TYPES.get(ResourceLocation.parse(MANA));
+            require(skillsType != null && manaType != null
+                            && next.getExistingDataOrNull(skillsType) != observation.originalSkills
+                            && next.getExistingDataOrNull(manaType) != observation.originalMana,
                     "native owned copy aliased original attachment state");
             var after = P11NativeStorageBoundary.diagnostics(server, next.getUUID());
             requireHealthyUnavailable(after);
+            var owner = P11NativeStorageBoundary.nativeSourceOwner(next);
+            require(owner == observation.owner, "owned-copy changed the source owner");
             var body = owner.body(next);
             require(body != null && body.complete && body.fault == P11QualifiedSourceOwner.Fault.NONE
                             && owner.body(actor) == null && owner.canSerialize(body)
-                            && after.sourceEpoch() > before.sourceEpoch() && after.sourceInput().equals("MEMORY")
+                            && after.sourceEpoch() > observation.before.sourceEpoch() && after.sourceInput().equals("MEMORY")
                             && next.getAdvancements() == actor.getAdvancements() && next.getStats() == actor.getStats()
                             && owner.canonicalAdvancements(next.getAdvancements()) == body
                             && owner.canonicalStats(next.getStats()) == body,
                     "legal quarantined datum was mistaken for an incomplete native B");
-            require(P11NativeStorageBoundary.observerFailureCount() == observers
-                            && P11NativeCleanup.secondaryFailures() == cleanup,
+            require(P11NativeStorageBoundary.observerFailureCount() == observation.observers
+                            && P11NativeCleanup.secondaryFailures() == observation.cleanup,
                     "owned-copy hid an observer or cleanup failure");
             String details = "case=" + variant() + "\nentry=AUTHENTICATED_HOST_READ_NATIVE_DEATH_CLONE\n"
                     + "syntheticActor=false\nmanualListenerAssignment=false\nmanualProof=false\n"
+                    + "respawnEntry=ORIGINAL_DEATH_SCREEN_BUTTON_THROUGH_C4A\noriginalButtonCalls=1\n"
+                    + "directServerRespawnPacket=false\nphysicalOsInputClaim=false\n"
                     + "cloneEvents=1\nrespawnEvents=1\nbodyComplete=true\nskillsCapability=UNAVAILABLE\n"
                     + "manaCapability=UNAVAILABLE\nmanaEncoding=CANONICAL_MINUS_ONE_NOT_RAW_PRESERVING\n"
                     + "freshSkillAndManaObjects=true\noriginalRequiredCopyFailurePolicy=UNCHANGED\nsource=" + after + '\n';
-            write(output.resolve("native-copy.txt"), details);
+            write(observation.output.resolve("native-copy.txt"), details);
             return new Report(true, details, "NONE");
         } catch (IOException | RuntimeException | Error failure) {
             String text = failure.getClass().getName() + ": " + failure.getMessage();
@@ -296,8 +416,20 @@ public final class P11NativeOwnedCopyProbe {
     private record Prepared(MinecraftServer stopped, Path world, UUID player, Tag skills, CompoundTag mana) {}
     private static final class Observation {
         final ServerPlayer original;
+        final Path output;
+        final P11QualifiedSourceOwner.Diagnostics before;
+        final Object originalSkills, originalMana;
+        final P11QualifiedSourceOwner owner;
+        final long observers, cleanup;
+        volatile boolean deathReady, clientPressed;
+        int clientDiagnosticMask, serverDiagnosticTicks;
         ServerPlayer next;
         int clones, respawns;
-        Observation(ServerPlayer original) { this.original = original; }
+        Observation(ServerPlayer original, Path output, P11QualifiedSourceOwner.Diagnostics before,
+                Object originalSkills, Object originalMana, P11QualifiedSourceOwner owner, long observers, long cleanup) {
+            this.original = original; this.output = output; this.before = before;
+            this.originalSkills = originalSkills; this.originalMana = originalMana; this.owner = owner;
+            this.observers = observers; this.cleanup = cleanup;
+        }
     }
 }

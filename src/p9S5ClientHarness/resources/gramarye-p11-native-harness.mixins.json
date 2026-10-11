@@ -6,7 +6,9 @@
   "mixins": ["P11ConstructorFaultMixin", "P11CanonicalSendFaultMixin",
     "P11MetadataOwnerFaultMixin", "P11MetadataRecoveryFaultMixin", "P11MetadataStageFaultMixin",
     "P11CloneLoadObserverMixin", "P11CanonicalCopyFaultMixin", "P11CanonicalPacketMeasurementMixin",
-    "P11RewardLootFaultMixin", "P11RewardFunctionFaultMixin", "P11RewardFunctionCatchMixin"],
+    "P11RewardLootFaultMixin", "P11RewardFunctionFaultMixin", "P11RewardFunctionCatchMixin",
+    "P11RewardGenerationHolderObservationMixin", "P11RewardChunkMapObservationMixin",
+    "P11RewardStopObservationMixin"],
   "client": ["P11ClientDeliveryObservationMixin"],
   "injectors": {"defaultRequire": 1}
 }

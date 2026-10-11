@@ -26,11 +26,11 @@ module P11OnlineRuntime
   JAR_SHA = '4d79086f628daa137281f71312596d4dda861bafbaa9b62a65cd70e5257d248b'.freeze
   # A new cohort cannot inherit the historical online acceptance artifact.
   # Set this exact engineering pin only after the coordinated product build is accepted.
-  C4A_JAR_SHA = '9f499356841f302b04d3846d85640ed273ec3104dbc0e743f8cea452243b4c97'.freeze
+  C4A_JAR_SHA = '3ecb53e95200287038d94908671a9b838eab3b15289a1bcb92f391b2b7918a7a'.freeze
   C4A_CASES = %w[c4a-dedicated c4a-host-lan c4a-reward].freeze
-  L1_CASES = %w[l1-pre-spawn l1-open l1-claimed l1-impact-close-custody l1-two-work-reload l1-two-work-stop l1-revision l1-p8-send-fault l1-ack-fault l1-work-death l1-work-dimension l1-work-config l1-partial-reward-function l1-work-multi-uuid-qctx l1-stats-write-fault-memory l1-work-deadline l1-spawn-callback-remove l1-logout-cleanup-fault l1-tracking-retirement l1-work-capacity l1-natural-unload l1-online-peer l1-work-context-refusal l1-restart-write l1-restart-read].freeze
+  L1_CASES = %w[l1-pre-spawn l1-open l1-claimed l1-impact-close-custody l1-two-work-reload l1-two-work-stop l1-revision l1-p8-send-fault l1-p8-missing-asset l1-ack-fault l1-work-death l1-work-dimension l1-work-config l1-partial-reward-function l1-work-multi-uuid-qctx l1-stats-write-fault-memory l1-work-deadline l1-spawn-callback-remove l1-logout-cleanup-fault l1-tracking-retirement l1-work-capacity l1-natural-unload l1-online-peer l1-work-context-refusal l1-restart-write l1-restart-read].freeze
   L1_CONTEXT_CASES = %w[l1-qctx l1-capacity].freeze
-  L1_JAR_SHA = 'fc15bf045905285c4b8dfe661b41d34e890f628c3399c5824070194ae395aeb8'.freeze
+  L1_JAR_SHA = '3ecb53e95200287038d94908671a9b838eab3b15289a1bcb92f391b2b7918a7a'.freeze
   COOLDOWN_CASES = %w[cooldown-d1 cooldown-d120 cooldown-d600 cooldown-restart-write cooldown-restart-read cooldown-prepared-reentry cooldown-add-false cooldown-add-remove cooldown-clone cooldown-before-arm-throw cooldown-after-arm-throw cooldown-unarmed-stop cooldown-save-active cooldown-save-clear cooldown-dual].freeze
   COOLDOWN_L1_CASES = %w[cooldown-l1-pre-spawn cooldown-l1-open cooldown-l1-claimed].freeze
   # No launch is authorized by an old phase's pin. Filled only after this product build.
@@ -75,10 +75,12 @@ module P11OnlineRuntime
   C6_MIXIN_CONFIG = 'gramarye-p11-c6-observers.mixins.json'.freeze
   L1_HOST_RESOURCES = %w[advancement/l1_first_kill.json loot_table/l1_loot.json function/l1_reward.mcfunction]
                       .to_h { |leaf| ['data/gramarye_p11_engineering/' + leaf, L1_FIXTURE_HASHES.fetch(leaf)] }.freeze
+  L1_P8_RESOURCE = 'data/gramarye_p11_engineering/gramarye/presentation_profiles/missing_sound.json'.freeze
+  L1_P8_RESOURCE_SHA = '403e8a84c0d2a2faaf119527c612222f2c98909c06352ceffa96deb4907b92fe'.freeze
   COMPANION_RESOURCES = [CONSOLE_XML, 'gramarye-p11-online-harness.mixins.json',
                          'gramarye-p11-c4a-harness.mixins.json', 'gramarye-p11-l1-harness.mixins.json',
                          'gramarye-p11-cooldown-harness.mixins.json', 'gramarye-p11-d3-harness.mixins.json', C6_MIXIN_CONFIG,
-                         *L1_HOST_RESOURCES.keys].sort.freeze
+                         *L1_HOST_RESOURCES.keys, L1_P8_RESOURCE].sort.freeze
   DIAGNOSTIC_CLASS = 'com/yo1no/gramarye/P11OnlineLaunchDiagnostic'.freeze
   # D3 measured source/class/resource inventory needs 1043 frozen files (no diagnostics).
   # This bounds an excluded immutable launch bundle, not any gameplay capacity.
@@ -569,6 +571,9 @@ module P11OnlineRuntime
     check(class_files.map { |name| name.delete_suffix('.class').split('$').first }.uniq.sort == source_classes.sort, 'COMPANION_CLASS_MISSING')
     resource_files = tree_files!(resources, manifest.fetch('privateRoot'))
     check(resource_files == COMPANION_RESOURCES, 'UNEXPECTED_COMPANION_RESOURCE')
+    check(Digest::SHA256.file(File.join(resources, L1_P8_RESOURCE)).hexdigest == L1_P8_RESOURCE_SHA &&
+          Digest::SHA256.file(File.join(repo, 'src/p11OnlineHarness/resources', L1_P8_RESOURCE)).hexdigest == L1_P8_RESOURCE_SHA,
+          'L1_P8_RESOURCE_MISMATCH')
     L1_HOST_RESOURCES.each do |name, hash|
       check(Digest::SHA256.file(File.join(resources, name)).hexdigest == hash &&
             Digest::SHA256.file(File.join(repo, 'src/p11OnlineHarness/resources', name)).hexdigest == hash,

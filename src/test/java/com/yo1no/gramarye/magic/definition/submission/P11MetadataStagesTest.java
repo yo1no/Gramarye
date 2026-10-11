@@ -89,6 +89,36 @@ final class P11MetadataStagesTest {
         assertFalse(duplicate.resumable());
     }
 
+    @Test
+    void normalTypedIsolationIsTerminalWithoutAnyReadyFamily() {
+        var isolated = recovered();
+        isolated.reconciliationStarted();
+        isolated.reconciliationCompleted(false);
+        assertFalse(isolated.localQuarantineTerminal());
+        isolated.localQuarantineCompleted(false);
+        assertTrue(isolated.localQuarantineTerminal());
+        assertFalse(isolated.complete());
+        assertFalse(isolated.resumable());
+        assertThrows(IllegalStateException.class, () -> isolated.localQuarantineCompleted(false));
+    }
+
+    @Test
+    void isolationCannotRelabelUnfinishedStagesOrUnprovenFailure() {
+        var unfinished = recovered();
+        assertThrows(IllegalStateException.class, () -> unfinished.localQuarantineCompleted(false));
+        unfinished.reconciliationStarted();
+        assertThrows(IllegalStateException.class, () -> unfinished.localQuarantineCompleted(false));
+        unfinished.reconciliationCompleted(false);
+        unfinished.finishAttempt(false);
+        assertThrows(IllegalStateException.class, () -> unfinished.localQuarantineCompleted(false));
+        assertFalse(unfinished.localQuarantineTerminal());
+
+        var alreadyOpened = session();
+        assertThrows(IllegalStateException.class, () -> alreadyOpened.localQuarantineCompleted(false));
+        assertFalse(alreadyOpened.localQuarantineTerminal());
+        assertFalse(alreadyOpened.complete());
+    }
+
     private static MetadataStages recovered() {
         var stages = new MetadataStages();
         stages.recoveryStarted();

@@ -47,7 +47,8 @@ final class P11NativeIoProbe {
     /** Scalar observations only; neither resources nor live/native object graphs escape. */
     record Observation(Case probe, Outcome outcome, long fileBytes, long delegatedBytes,
             int nativeCloseCalls, String primaryType, int suppressedCount, boolean identityPreserved,
-            boolean nativeBodyWriteFrame, boolean readbackMatched) { }
+            boolean nativeBodyWriteFrame, boolean readbackMatched, long nativeWriteNanos,
+            long nativeWriteThreadAllocatedBytes) { }
 
     record Report(List<Observation> observations) {
         Report { observations = List.copyOf(observations); }
@@ -56,7 +57,9 @@ final class P11NativeIoProbe {
         public String toString() {
             var text = new StringBuilder("P11-UNMANAGED-NATIVE-IO-V1\n"
                     + "scope=UNMANAGED_PRIMITIVE_IO\nmanagedConsumerProof=false\n"
-                    + "manualBoundaryCallbacks=false\ninjectionHitCountProof=false\n");
+                    + "manualBoundaryCallbacks=false\ninjectionHitCountProof=false\n"
+                    + "allocationScope=SAME_THREAD_ORIGINAL_NBT_WRITE_COMPRESSED_NORMAL_CASES_ONLY\n"
+                    + "allocationIsNotRetainedHeapOrPeak=true\nunavailableAllocationOrUnmeasured=-1\n");
             for (var observation : observations) { text.append(observation).append('\n'); }
             text.append("verifiedPrimitiveCases=").append(observations.size());
             return text.toString();
@@ -135,16 +138,21 @@ final class P11NativeIoProbe {
                     "closed filesystem failure did not pass through native replacement");
             return new Observation(Case.REPLACE_THROW, Outcome.THREW_RUNTIME, Files.size(archive),
                     0, 0, expected.getClass().getName(), expected.getSuppressed().length,
-                    false, false, false);
+                    false, false, false, -1, -1);
         }
     }
 
     private static Observation nbtNormal(Path directory) throws IOException {
         var root = payload();
         Path output = Files.createFile(directory.resolve("nbt-normal.dat"));
+        long allocated = allocatedNow();
+        long started = System.nanoTime();
         NbtIo.writeCompressed(root, output);
+        long nanos = System.nanoTime() - started;
+        long allocation = allocatedDelta(allocated, allocatedNow());
         require(root.equals(read(output)), "normal native NBT readback differed");
-        return plain(Case.NBT_NORMAL, Outcome.RETURN_NORMAL, Files.size(output), true);
+        return new Observation(Case.NBT_NORMAL, Outcome.RETURN_NORMAL, Files.size(output),
+                0, 0, "NONE", 0, false, false, true, nanos, allocation);
     }
 
     private static Observation nbtFault(Path directory, Case probe, boolean failWrite,
@@ -184,7 +192,7 @@ final class P11NativeIoProbe {
         }
         return new Observation(probe, useError ? Outcome.THREW_ERROR : Outcome.THREW_IO,
                 Files.size(output), stream.written, stream.closeCalls, observed.getClass().getName(),
-                suppressed.length, true, bodyFrame, readback);
+                suppressed.length, true, bodyFrame, readback, -1, -1);
     }
 
     private static Observation nbtFallback(Path directory) throws IOException {
@@ -194,13 +202,18 @@ final class P11NativeIoProbe {
         root.putString("oversized", oversized);
         root.putInt("marker", 11);
         Path output = Files.createFile(directory.resolve("nbt-string-fallback.dat"));
+        long allocated = allocatedNow();
+        long started = System.nanoTime();
         NbtIo.writeCompressed(root, output);
+        long nanos = System.nanoTime() - started;
+        long allocation = allocatedDelta(allocated, allocatedNow());
         var readback = read(output);
         require(readback.contains("oversized", 8) && readback.getString("oversized").isEmpty()
                         && readback.getInt("marker") == 11
                         && root.getString("oversized").equals(oversized),
                 "native oversized-string fallback did not exhibit its actual lossy normal return");
-        return plain(Case.NBT_STRING_FALLBACK, Outcome.RETURN_NORMAL_LOSSY, Files.size(output), false);
+        return new Observation(Case.NBT_STRING_FALLBACK, Outcome.RETURN_NORMAL_LOSSY,
+                Files.size(output), 0, 0, "NONE", 0, false, false, false, nanos, allocation);
     }
 
     private static CompoundTag payload() {
@@ -221,7 +234,24 @@ final class P11NativeIoProbe {
     }
 
     private static Observation plain(Case probe, Outcome outcome, long bytes, boolean readback) {
-        return new Observation(probe, outcome, bytes, 0, 0, "NONE", 0, false, false, readback);
+        return new Observation(probe, outcome, bytes, 0, 0, "NONE", 0, false, false, readback, -1, -1);
+    }
+
+    /** Read-only JDK counter. Never enables monitoring, forces GC, or reads another thread. */
+    static long allocatedNow() {
+        try {
+            var bean = java.lang.management.ManagementFactory.getThreadMXBean();
+            if (bean instanceof com.sun.management.ThreadMXBean allocation
+                    && allocation.isThreadAllocatedMemorySupported()
+                    && allocation.isThreadAllocatedMemoryEnabled()) {
+                return allocation.getThreadAllocatedBytes(Thread.currentThread().threadId());
+            }
+        } catch (RuntimeException | Error unavailable) { return -1; }
+        return -1;
+    }
+
+    static long allocatedDelta(long before, long after) {
+        return before < 0 || after < before ? -1 : after - before;
     }
 
     private static boolean hasFrame(Throwable failure, String owner, String method) {

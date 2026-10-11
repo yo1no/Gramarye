@@ -681,6 +681,7 @@ public final class SkillSubmissionRecoveryService {
                 metadata.projection = new RecoveryProjection(outcome.e2Kind(), outcome.e2EntriesCleared(),
                         outcome.e2StepsReplayed(), outcome.e2ExceptionClass());
                 metadata.stages.recoveryCompleted();
+                metadata.localQuarantineSourceUnchanged = P11NativeStorageBoundary.metadataCurrent(metadata.lease);
                 metadata.refresh();
             }
         }
@@ -688,7 +689,7 @@ public final class SkillSubmissionRecoveryService {
         private void finished(boolean normal) {
             if (metadata != null) {
                 metadata.stages.finishAttempt(normal);
-                if (metadata.stages.complete()) { metadata.release(); }
+                if (metadata.stages.complete() || metadata.localQuarantineSettled(normal)) { metadata.release(); }
             }
         }
 
@@ -745,7 +746,7 @@ public final class SkillSubmissionRecoveryService {
         private MetadataStage session = MetadataStage.NOT_STARTED;
         private MetadataStage mana = MetadataStage.NOT_STARTED;
         private MetadataStage cooldown = MetadataStage.NOT_STARTED;
-        private boolean failed, blocked;
+        private boolean failed, blocked, localQuarantine;
 
         void recoveryStarted() {
             require(recovery, MetadataStage.NOT_STARTED);
@@ -767,6 +768,25 @@ public final class SkillSubmissionRecoveryService {
             require(reconciliation, MetadataStage.RUNNING);
             reconciliation = MetadataStage.DONE;
             blocked |= !ready;
+        }
+
+        void localQuarantineCompleted(boolean resumed) {
+            require(recovery, MetadataStage.DONE);
+            require(reconciliation, MetadataStage.DONE);
+            require(session, MetadataStage.NOT_STARTED);
+            require(mana, MetadataStage.NOT_STARTED);
+            require(cooldown, MetadataStage.NOT_STARTED);
+            if (!blocked || (failed && !resumed) || localQuarantine) {
+                throw new IllegalStateException("P11_METADATA_LOCAL_QUARANTINE_NOT_PROVEN");
+            }
+            localQuarantine = true;
+        }
+
+        boolean localQuarantineTerminal() {
+            return localQuarantine && blocked
+                    && recovery == MetadataStage.DONE && reconciliation == MetadataStage.DONE
+                    && session == MetadataStage.NOT_STARTED && mana == MetadataStage.NOT_STARTED
+                    && cooldown == MetadataStage.NOT_STARTED;
         }
 
         void sessionStarted() {
@@ -853,6 +873,7 @@ public final class SkillSubmissionRecoveryService {
         private long sessionEpoch;
         private long sessionGeneration;
         private boolean resuming;
+        private boolean localQuarantineSourceUnchanged;
 
         private MetadataContinuation(SkillSubmissionRecoveryService owner,
                 P4E2OnlineReconciliationDependency dependency, ServerPlayer player,
@@ -885,6 +906,47 @@ public final class SkillSubmissionRecoveryService {
             stages.reconciliationCompleted(ready);
             loginPort = Objects.requireNonNull(port, "login port");
             refresh();
+        }
+
+        /** Normal local skill isolation is a terminal duty, never P4/P7 readiness. */
+        public void reconciliationQuarantined(P4E2OnlineReconciliationDependency candidate,
+                PlayerSkillAttachmentService.UnavailableReason reason,
+                P7ServerAuthorizationBoundary.LoginReadyPort port) {
+            requireCoordinator(candidate);
+            Objects.requireNonNull(reason, "quarantine reason");
+            if (reason != PlayerSkillAttachmentService.UnavailableReason.PRESERVED_RAW_QUARANTINE
+                    && reason != PlayerSkillAttachmentService.UnavailableReason.OVERSIZE_QUARANTINE) {
+                throw new IllegalArgumentException("P11_METADATA_NOT_LOCAL_QUARANTINE");
+            }
+            boolean previouslyUnblocked = !stages.blocked;
+            stages.reconciliationCompleted(false);
+            loginPort = Objects.requireNonNull(port, "login port");
+            // This exact no-publication route cannot refresh a stale source witness.
+            if (!previouslyUnblocked || !localQuarantineSourceUnchanged || projection == null
+                    || projection.entriesCleared() != 0 || projection.stepsReplayed() != 0
+                    || projection.exceptionClass().isPresent() || !localQuarantineKind(reason)
+                    || !P11NativeStorageBoundary.metadataCurrent(lease)) { return; }
+            var observed = owner.dependencies.observeLatestStates(player);
+            if (observed instanceof PlayerSkillAttachmentService.Unavailable<?> unavailable
+                    && unavailable.reason() == reason && P11NativeStorageBoundary.metadataCurrent(lease)) {
+                stages.localQuarantineCompleted(resuming);
+            }
+        }
+
+        private boolean localQuarantineKind(PlayerSkillAttachmentService.UnavailableReason reason) {
+            return projection.kind() == P4E2OnlineReconciliationDependency.RecoveryKind.NO_PENDING
+                    || (reason == PlayerSkillAttachmentService.UnavailableReason.PRESERVED_RAW_QUARANTINE
+                        && projection.kind() == P4E2OnlineReconciliationDependency.RecoveryKind
+                                .ATTACHMENT_PRESERVED_RAW_QUARANTINE)
+                    || (reason == PlayerSkillAttachmentService.UnavailableReason.OVERSIZE_QUARANTINE
+                        && projection.kind() == P4E2OnlineReconciliationDependency.RecoveryKind
+                                .ATTACHMENT_OVERSIZE_QUARANTINE);
+        }
+
+        private boolean localQuarantineSettled(boolean normal) {
+            if (!normal) { stages.localQuarantine = false; return false; }
+            return stages.localQuarantineTerminal()
+                    && P11NativeStorageBoundary.metadataCurrent(lease);
         }
 
         private void requireCoordinator(P4E2OnlineReconciliationDependency candidate) {
@@ -983,7 +1045,7 @@ public final class SkillSubmissionRecoveryService {
             } finally {
                 resuming = false;
                 stages.finishAttempt(normal);
-                if (stages.complete()) { release(); }
+                if (stages.complete() || localQuarantineSettled(normal)) { release(); }
             }
         }
     }

@@ -2444,39 +2444,31 @@ public final class P7S4LoginManaGameTests {
         }
     }
 
-    /** Real negative only: a nonnormal E2 account cannot manufacture a completed respawn. */
-    public static void assertNativeQuarantineBlocksRespawn(ServerPlayer actor) {
+    /** Normal local quarantine retires H without manufacturing P4/P7 readiness. */
+    public static void requireNativeLocalQuarantineSettled(ServerPlayer actor) {
         var server = actor.getServer();
+        if (!server.isSameThread()) {
+            throw new AssertionError("local quarantine observation requires the server thread");
+        }
         var connection = actor.connection.getConnection();
         var fixture = connection.channel().attr(COOLDOWN_PLAYER).get();
-        var observer = (CooldownStateObserver) connection.channel().pipeline().get(COOLDOWN_STATE_OBSERVER);
+        if (fixture == null || fixture.current() != actor
+                || server.getPlayerList().getPlayer(actor.getUUID()) != actor
+                || connection.getPacketListener() != actor.connection || !connection.isConnected()) {
+            throw new AssertionError("local quarantine requires the exact owned current mock");
+        }
         var source = P11NativeStorageBoundary.nativeSourceOwner(actor);
         var body = source == null ? null : source.body(actor);
-        if (!server.isSameThread() || fixture == null || fixture.current() != actor || observer == null
-                || body == null || !source.canCopy(body) || body.account.metadata == null
-                || source.controlGate(actor.getUUID(), actor) != P11QualifiedSourceOwner.ControlGate.ACTIVE_TRANSITION) {
-            throw new AssertionError("quarantine negative requires the real blocked metadata owner");
+        if (body == null || !source.canCopy(body) || body.account.metadata != null
+                || source.controlGate(actor.getUUID(), actor) != P11QualifiedSourceOwner.ControlGate.CLEAR) {
+            throw new AssertionError("normal local quarantine has not retired its real H responsibility");
         }
-        var previous = observer.state;
-        actor.kill();
-        awaitNative(server, connection, () -> freshDeathState(previous, observer.state),
-                "quarantine negative did not observe the original fresh DEATH state");
-        var state = observer.state;
-        long sequence = fixture.nextControlSequence(state);
-        actor.connection.handleCustomPayload(new ServerboundCustomPayloadPacket(new P11TransitionRequestPayload(
-                new P11TransitionProtocol.Request(state.scope(), state.connectionEpoch(), state.sceneSerial(),
-                        state.actorGeneration(), sequence, P11TransitionProtocol.Command.TRY, state.kind()))));
-        awaitNative(server, connection, () -> observer.state != null && observer.state.requestSeq() == sequence
-                && observer.state.outcome() == P11TransitionProtocol.Outcome.NOT_STARTED,
-                "quarantine negative did not observe original refusal");
-        var refused = observer.state;
-        if (refused.reason() != P11TransitionProtocol.Reason.ACTIVE_TRANSITION
-                || refused.availability() != P11TransitionProtocol.Availability.WAIT_NOTIFY
-                || refused.connectionEpoch() != state.connectionEpoch() || refused.sceneSerial() != state.sceneSerial()
-                || refused.actorGeneration() != state.actorGeneration() || refused.statusVersion() <= state.statusVersion()
-                || server.getPlayerList().getPlayer(actor.getUUID()) != actor || source.body(actor) != body
-                || body.account.metadata == null || !actor.isDeadOrDying()) {
-            throw new AssertionError("blocked original C4a request must not install a successful replacement");
+        var observed = cooldownAttachments(server).draftCount(actor);
+        if (!(observed instanceof PlayerSkillAttachmentService.Unavailable<?> unavailable)
+                || (unavailable.reason() != PlayerSkillAttachmentService.UnavailableReason.PRESERVED_RAW_QUARANTINE
+                    && unavailable.reason() != PlayerSkillAttachmentService.UnavailableReason.OVERSIZE_QUARANTINE)
+                || com.yo1no.gramarye.magic.network.P7S4NetworkGameTests.hasNativeSession(actor.getUUID())) {
+            throw new AssertionError("local quarantine must remain unavailable without a native P7 session");
         }
     }
 

@@ -12,10 +12,10 @@ import java.util.jar.JarFile;
 /** Checks only the explicitly supplied public product artifact, never any authentication input. */
 final class P11OnlineInputs {
     private static final String HISTORICAL_PRODUCT_PIN = "4d79086f628daa137281f71312596d4dda861bafbaa9b62a65cd70e5257d248b";
-    // Frozen only after the coordinated C4a product build. No property can substitute a pin.
-    private static final String C4A_PRODUCT_PIN = "9f499356841f302b04d3846d85640ed273ec3104dbc0e743f8cea452243b4c97";
-    // Local development candidate e22a5cde; this pin is not a runtime acceptance claim.
-    private static final String L1_PRODUCT_PIN = "fc15bf045905285c4b8dfe661b41d34e890f628c3399c5824070194ae395aeb8";
+    // Combined final qualification uses the actual local-quarantine corrected product build.
+    // A pin is an immutable input, never a runtime acceptance claim or property override.
+    private static final String C4A_PRODUCT_PIN = "3ecb53e95200287038d94908671a9b838eab3b15289a1bcb92f391b2b7918a7a";
+    private static final String L1_PRODUCT_PIN = "3ecb53e95200287038d94908671a9b838eab3b15289a1bcb92f391b2b7918a7a";
     // D3 affected cooldown/L1 regression uses this actual current product, not old acceptance.
     private static final String COOLDOWN_PRODUCT_PIN = "3e1960fdc37bca113f8e9d9569241e65192c5eb7ee119b64cadef8f3a97059d2";
     // Filled only from the coordinated D3 product build; old acceptance pins never authorize D3.

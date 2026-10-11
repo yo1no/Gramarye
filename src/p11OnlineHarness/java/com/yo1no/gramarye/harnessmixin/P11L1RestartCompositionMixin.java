@@ -16,6 +16,6 @@ abstract class P11L1RestartCompositionMixin {
             at = @At("RETURN"), require = 1, expect = 1, allow = 1)
     private void p11$l1ActualComposition(PlayerSkillAttachmentService attachments, SkillDefinitionSubmissionService submissions,
             SkillDefinitionStoreService store, @Coerce Object templates, @Coerce Object validation, CallbackInfo callback) {
-        P11L1RestartProbe.composition(attachments, store);
+        P11L1RestartProbe.composition(attachments, submissions, store);
     }
 }

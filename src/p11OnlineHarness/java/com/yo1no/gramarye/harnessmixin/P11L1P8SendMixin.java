@@ -19,5 +19,6 @@ abstract class P11L1P8SendMixin {
             Operation<Void> original, @Local(argsOnly = true) ServerPlayer recipient) {
         P11L1PacketProbe.beforeP8Send(recipient, payload);
         original.call(listener, payload);
+        com.yo1no.gramarye.P11L1P8FallbackProbe.sent(recipient, payload);
     }
 }

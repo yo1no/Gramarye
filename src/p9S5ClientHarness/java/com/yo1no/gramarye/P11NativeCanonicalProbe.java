@@ -63,6 +63,7 @@ public final class P11NativeCanonicalProbe {
         @Override public String toString() {
             return "P11-NATIVE-CANONICAL-PROBE-V1\n"
                     + "scope=NATIVE_PA_SUBSYSTEM_AND_REAL_CLIENT_PACKET_HANDLERS\n"
+                    + "topology=INTEGRATED_HOST_NOT_REMOTE_AUTH\n"
                     + "wholeServerDatapackReload=false\nsyntheticPlayer=false\nreflection=false\n"
                     + "manualSourceReceipts=false\n" + String.join("\n", observations) + '\n'
                     + "failure=" + failure + '\n' + "RESULT=" + (passed ? "PASS" : "FAIL") + '\n';
@@ -76,7 +77,7 @@ public final class P11NativeCanonicalProbe {
                         && server.getPlayerList().getPlayer(actor.getUUID()) == actor
                         && P11NativeStorageBoundary.isManagedCanonicalAdvancements(actor.getAdvancements(), actor)
                         && P11NativeStorageBoundary.nativeDeliveryEligible(actor),
-                "canonical probe requires exact managed authenticated integrated host");
+                "canonical probe requires exact managed integrated host (not remote authentication)");
         require(output.isAbsolute() && output.equals(output.normalize())
                         && Files.isDirectory(output.getParent(), LinkOption.NOFOLLOW_LINKS),
                 "canonical evidence must be a fresh owned child");
@@ -388,6 +389,9 @@ public final class P11NativeCanonicalProbe {
                 - (state.copySizeNanos - measurement.sizeNanosBefore));
         state.copyNanos += elapsed;
         state.copyMaxNanos = Math.max(state.copyMaxNanos, elapsed);
+        long allocated = P11NativeIoProbe.allocatedDelta(measurement.allocatedBefore, P11NativeIoProbe.allocatedNow());
+        if (allocated < 0) { state.copyAllocationUnavailable++; }
+        else { state.copyAllocatedBytes += allocated; }
         if (!normal) { state.copyFailures++; }
         state.copyScopes--;
     }
@@ -427,6 +431,9 @@ public final class P11NativeCanonicalProbe {
         if (scope == null) { return; }
         var state = scope.state;
         state.reloadNanos += Math.max(0, System.nanoTime() - scope.started);
+        long allocated = P11NativeIoProbe.allocatedDelta(scope.allocatedBefore, P11NativeIoProbe.allocatedNow());
+        if (allocated < 0) { state.reloadAllocationUnavailable++; }
+        else { state.reloadAllocatedBytes += allocated; }
         state.liveCopyBytes -= scope.bytes;
         state.reloadScopes--;
         state.reloadMeasurement = scope.previous;
@@ -453,6 +460,7 @@ public final class P11NativeCanonicalProbe {
     public static final class CopyMeasurement {
         private final State state;
         private final long started = System.nanoTime();
+        private final long allocatedBefore = P11NativeIoProbe.allocatedNow();
         private final long sizeNanosBefore;
         private CopyMeasurement(State state) { this.state = state; sizeNanosBefore = state.copySizeNanos; }
     }
@@ -461,6 +469,7 @@ public final class P11NativeCanonicalProbe {
         private final State state;
         private final ReloadMeasurement previous;
         private final long started = System.nanoTime();
+        private final long allocatedBefore = P11NativeIoProbe.allocatedNow();
         private long bytes;
         private ReloadMeasurement(State state, ReloadMeasurement previous) { this.state = state; this.previous = previous; }
     }
@@ -545,6 +554,12 @@ public final class P11NativeCanonicalProbe {
     private static Report finish(State state, Throwable failure) {
         state.finished = true;
         state.observations.add("measurementScope=EXACT_PROBE_ACTOR_NATIVE_RELOAD_COPY_RESET_UNTIL_REPORT");
+        state.observations.add("allocationScope=SAME_THREAD_INCLUSIVE_COPY_OR_RELOAD_INCLUDING_COUNTER_OBSERVER_NESTED_SCOPES_NOT_ADDITIVE");
+        state.observations.add("allocationIsNotRetainedHeapOrPeak=true;monitoringEnabledByProbe=false");
+        state.observations.add("copyAllocatedBytesObservedSum=" + state.copyAllocatedBytes
+                + ";unavailableSamples=" + state.copyAllocationUnavailable);
+        state.observations.add("reloadAllocatedBytesObservedSum=" + state.reloadAllocatedBytes
+                + ";unavailableSamples=" + state.reloadAllocationUnavailable);
         state.observations.add("copyBytesMeaning=ACTUAL_INTERMEDIATE_JSON_COMPACT_UTF8_REPRESENTATION_NOT_HEAP_CAP");
         state.observations.add("copyCalls=" + state.copyCalls + ";failures=" + state.copyFailures
                 + ";encodedUtf8BytesTotal=" + state.copyEncodedBytes + ";max=" + state.copyMaxEncodedBytes
@@ -635,6 +650,7 @@ public final class P11NativeCanonicalProbe {
         int polls, automaticEvents, oldTickEvents, newTickEvents, sendFaults, copyFaults;
         long copyCalls, copyFailures, copyScopes, copyPeakScopes, copyNanos, copyMaxNanos, copySizeNanos;
         long copyEncodedBytes, copyMaxEncodedBytes, liveCopyBytes, peakLiveCopyBytes;
+        long copyAllocatedBytes, copyAllocationUnavailable, reloadAllocatedBytes, reloadAllocationUnavailable;
         long reloadScopes, reloadPeakScopes, reloadNanos;
         long resetBuildAttempts, resetBuilds, resetBuildFailures, resetBuildNanos;
         long resetBuiltAdded, resetBuiltRemoved, resetBuiltProgress;
