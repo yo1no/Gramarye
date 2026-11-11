@@ -2,11 +2,16 @@
 ## Minecraft 1.21.1 / NeoForge 21.1.x 魔法 Node 系統
 
 > 使用方式：將本檔與 `19_P11持久化與多人修正案.md`、`18_P4持久化與組合修正案.md`、`17_P3資料模型修正案.md`、
-> `16_骨架定案清單_NeoForge1.21.1_凍結版.md` 一起交給 Codex。
+> `16_骨架定案清單_NeoForge1.21.1_凍結版.md` 與 `20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md` 一起交給 Codex。
 >
-> 本檔是實作契約；19號修正案只在明示的P11取代範圍內優先；18號修正案只在明示的P4 persistence／Attachment／composition範圍內
-> 優先，17號修正案只在明示的P3範圍內優先，其他範圍以凍結版骨架為架構真相。若文件
+> 本檔是實作契約。20 號 DP-2 Scope D、19 號 P11、18 號 P4、17 號 P3 修正案各在其明示範圍內優先。
+> 其他範圍以凍結版骨架為架構真相。若文件
 > 尚未同步而存在實質衝突，停止實作並回報，不得自行選邊或改變骨架。
+>
+> [DP-2 Scope D 1.0（2026-11-11）](20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md) 採用已確認的 D-01R2、D-02～D-09 與 M-DUP，僅在正文逐條列明的 definition／data／compiler contract 範圍替換或擴充。
+> 獨立、owner-private 的 `SpellDefinition` 為核心，`SkillManifest` 為可選高階定義。17／18／19 號修正案的 legacy 契約與 P11 `COMPLETE—PASS` 保持。
+> 施工順序為 A 文件限定採用 → B M1 data foundation（另授權）→ C resolver／compiler（另授權）→ Scope V／E／UI（另授權）。
+> 整批 catalog generation 耐久提交與恢復仍須由 M1 證成，frontend 相容性仍須由 C 證成。A 只建立文件權威。Production 實作、M1、C、runtime 與 P12 均未開始。
 
 ---
 

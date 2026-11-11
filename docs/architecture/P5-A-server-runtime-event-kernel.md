@@ -27655,3 +27655,13 @@ P11+
 文件採用與直接一致性之後，首個可實作slice是正文§12的配置／exact身份／finite state與初始TRY基礎；先qualified source/provenance/writer，再native lifecycle/canonical reward/reload/full sync/F1，再C4a，最後在這些保護到位後接P5已接受工作離線。冷卻policy/state/schema可依owner依賴先行，ARM/save/sync整合與真非零工程資料端到端驗收不得使用假通路。正式內容與selection不再占P11切片或啟用前置。
 
 前件文件採用停於工作樹與必要直接檢查，當時未提交、未推送。後續規範發布僅依§69.1閉合文件效力，不啟動以上實作。P11 production implementation／runtime qualification = NOT_STARTED_BY_THIS_WORK／UNVERIFIED；P11 = INCOMPLETE。P9／P9-Q1／P10歷史完成保留；發布回歸不冒稱重新完成全部原接受。
+
+---
+
+## §70 DP-2 Scope D — 定義、資料與 compiler 採用登錄
+
+正式正文為 [20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md](../codex-spec/20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md)（Scope D 1.0，2026-11-11）。D-01R2、D-02～D-09 與 M-DUP 只在正文列明的 definition／data／compiler contract 範圍生效。D-01R2 以 owner-private `SpellDefinition` 為獨立核心，`SkillManifest` 為可選高階定義。一般作者引用只保存 Spell 身分；未來接受新 root 時才由一致的 owner catalog 固定完整 exact closure，已接受工作、program、instance 及 child 沿用該 closure。M-DUP 限同一 Manifest revision，每個 Spell identity 最多一個 entry；Draft 可保重複材料並具名診斷，正式發布拒絕重複，禁止靜默去重。
+
+§69 的保留與替換仍依原範圍。C4a 的獨立非斷線轉換控制、configuration／parking／handoff 與正常首次 TRY 契約保持；D3 的認證連線 exact capture、server generation 與舊工作的隔離保持；C6 的原配置 owner、分層 bounds／backpressure、已受理責任與保存負載契約保持。P11 維持 `COMPLETE—PASS / PRESERVED`。原 P5／P6 runtime authority 與 §47.3／§47.4 production vocabulary 保持，17／18／19 未明列替換之條款維持。
+
+本輪為文件限定採用。M1 data foundation、resolver／compiler implementation 與 runtime 尚未開始；Scope V／E／UI／P12 未授。Canonical 發布效力依適用的直接檢查、candidate required checks、fast-forward 整合及 main CI 結果確認；檢查與實際發布身分留於本輪採用紀錄。

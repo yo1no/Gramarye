@@ -25,12 +25,13 @@ Do not use `java.example.gramarye`, `com.example.gramarye`, or another placehold
 
 Read these files before planning or editing architecture:
 
-1. `docs/codex-spec/19_P11持久化與多人修正案.md`
-2. `docs/codex-spec/18_P4持久化與組合修正案.md`
-3. `docs/codex-spec/17_P3資料模型修正案.md`
-4. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
-5. `docs/codex-spec/Codex_實作總規格Prompt.md`
-6. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
+1. `docs/codex-spec/20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md`
+2. `docs/codex-spec/19_P11持久化與多人修正案.md`
+3. `docs/codex-spec/18_P4持久化與組合修正案.md`
+4. `docs/codex-spec/17_P3資料模型修正案.md`
+5. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
+6. `docs/codex-spec/Codex_實作總規格Prompt.md`
+7. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
 
 Priority:
 
@@ -54,6 +55,16 @@ all requirements not explicitly replaced remain effective. Historical external p
 references, not authority merely because they are newer, more detailed, or use mandatory wording.
 Worktree specification adoption does not establish published authority closure or implemented,
 runtime-qualified P11 capability.
+
+[DP-2 Scope D 1.0 (2026-11-11)](docs/codex-spec/20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md) adopts the confirmed
+D-01R2, D-02–D-09, and M-DUP decisions within its explicit definition, data, and compiler
+contract scope. The standalone, owner-private `SpellDefinition` is the core family, with
+an optional high-level `SkillManifest`. The legacy contracts in amendments 17, 18, and 19
+and P11 `COMPLETE—PASS` are preserved. The order is A document-only adoption, B M1 data
+foundation, C resolver/compiler, then Scope V/E/UI. Each step after A requires separate
+authorization. M1 must establish durable catalog generation commit and recovery. C must
+establish compiler frontend compatibility. A establishes document authority only.
+Production implementation, M1, C, runtime, and P12 have not started under this amendment.
 
 If the P4 amendment and another authoritative document have not been synchronized and still
 contain a substantive conflict, stop the affected work and report the exact conflict; do not choose
