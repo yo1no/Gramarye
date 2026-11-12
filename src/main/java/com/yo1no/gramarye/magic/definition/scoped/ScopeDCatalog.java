@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.definition.scoped;
 
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
+import com.yo1no.gramarye.magic.definition.scoped.ScopeDCompilerDiagnostics.Code;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -22,6 +23,8 @@ import static com.yo1no.gramarye.magic.definition.scoped.ScopeDLimits.*;
 
 /** Package-confined preparation and readback. No server composition installs this owner in M1. */
 final class ScopeDCatalog {
+    private static final int VERIFICATION_VERSION = 2;
+
     private final SkillOwnerId owner;
     private final ScopeDStorage storage;
     private ScopeDStorage.Image readback;
@@ -176,7 +179,7 @@ final class ScopeDCatalog {
         ScopeDGraph.validateCandidate(oldGraph, newGraph, !reservation.base.contextDigest().equals(contextDigest));
         byte[] bytes = candidate.encode();
         ProofBinding binding = new ProofBinding(storage.sourceId(), owner, base.generation(), next,
-                new PublicationId(reservation.serial), reservation.base.digest(), sha256(bytes), contextDigest, 1);
+                new PublicationId(reservation.serial), reservation.base.digest(), sha256(bytes), contextDigest, VERIFICATION_VERSION);
         return new Prepared(reservation.base, binding, bytes);
     }
 
@@ -197,15 +200,75 @@ final class ScopeDCatalog {
         return new RootInventory(readback, Set.copyOf(roots), context.fingerprint());
     }
 
-    /** The production entry is closed until a real frontend is adopted in C. */
-    synchronized ScopeDCatalogImage publish(Prepared prepared, Context currentContext, CompatibilityProof proof)
+    ScopeDCompiler.Result compile(ScopeDResolver.Root root, CatalogGeneration expected, ScopeDFrontend.Context context)
             throws IOException {
-        if (proof == null || !proof.binding.equals(prepared.binding)) {
-            throw new IOException("Compiler frontend compatibility proof required");
+        ScopeDCatalogImage image;
+        UUID source;
+        synchronized (this) {
+            image = current();
+            source = storage.sourceId();
+            if (image.generation().value() != 0
+                    && !readback.contextDigest().equals(context.identity().catalogFingerprint())) {
+                var diagnostics = new ScopeDCompilerDiagnostics();
+                diagnostics.error(ScopeDCompilerDiagnostics.Stage.RESOLVER, ScopeDCompilerDiagnostics.Code.STALE_CONTEXT,
+                        ScopeDCompilerDiagnostics.Location.at(root.exact(), "catalog_context"));
+                return new ScopeDCompiler.Rejected(diagnostics.report());
+            }
         }
-        ScopeDStorage.Image staged = stage(prepared, currentContext);
+        return ScopeDCompiler.compile(source, image, root, expected, context);
+    }
+
+    /** Rebuilds the exact candidate under the sole trusted frontend and runs full compatibility verification. */
+    synchronized CompatibilityResult verifyCompatibility(Prepared prepared, ScopeDFrontend.Context context)
+            throws IOException {
+        requireProofCandidate(prepared, context);
+        var binding = prepared.binding;
+        var candidate = ScopeDCatalogImage.decode(owner, binding.candidate().value(), prepared.bytes);
+        validateAllocatedMaterial(candidate, binding.transaction().value());
+        var report = ScopeDCompiler.verifyCandidate(binding.source(), candidate, context);
+        var proof = report.valid()
+                ? Optional.of(new CompatibilityProof(prepared, context.identity())) : Optional.<CompatibilityProof>empty();
+        return new CompatibilityResult(proof, report);
+    }
+
+    synchronized ScopeDCatalogImage publish(Prepared prepared, ScopeDFrontend.Context currentContext,
+                                           CompatibilityProof proof) throws IOException {
+        if (proof == null || proof.prepared != prepared || !proof.binding.equals(prepared.binding)
+                || !proof.context.equals(currentContext.identity())) {
+            throw new CompatibilityRejected(Code.PROOF_BINDING, "Matching compiler frontend compatibility proof required");
+        }
+        requireProofCandidate(prepared, currentContext);
+        ScopeDStorage.Image staged = stage(prepared, currentContext.catalogContext());
         storage.commitPreparedImage(prepared.base, staged);
         return current();
+    }
+
+    private void requireProofCandidate(Prepared prepared, ScopeDFrontend.Context context) throws IOException {
+        var base = current();
+        if (prepared == null || prepared.base != readback) {
+            throw new CompatibilityRejected(Code.STALE_GENERATION, "Stale compiler candidate base");
+        }
+        var binding = prepared.binding;
+        if (!binding.source().equals(storage.sourceId()) || !binding.owner().equals(owner)
+                || !binding.base().equals(base.generation())
+                || binding.candidate().value() != Math.incrementExact(base.generation().value())
+                || !binding.predecessorDigest().equals(readback.digest())
+                || !binding.contentDigest().equals(sha256(prepared.bytes))
+                || binding.verificationVersion() != VERIFICATION_VERSION) {
+            throw new CompatibilityRejected(Code.PROOF_BINDING, "Compiler candidate binding mismatch");
+        }
+        if (!binding.contextDigest().equals(context.identity().catalogFingerprint())) {
+            throw new CompatibilityRejected(Code.STALE_CONTEXT, "Compiler candidate context changed");
+        }
+        try {
+            storage.requirePublicationReservation(prepared.base, binding.transaction().value(), binding.contextDigest(),
+                    binding.contentDigest());
+        } catch (ScopeDStorage.Failure failure) {
+            if (failure.reason() == ScopeDStorage.Reason.STALE) {
+                throw new CompatibilityRejected(Code.PROOF_BINDING, "Compiler candidate reservation changed", failure);
+            }
+            throw failure;
+        }
     }
 
     /** A prepared image may be staged in isolation without authorizing current publication. */
@@ -255,7 +318,7 @@ final class ScopeDCatalog {
         var newGraph = ScopeDGraph.build(owner, candidate.generation(), context.descriptors, candidate.currentBodies());
         ScopeDGraph.validateCandidate(oldGraph, newGraph, !readback.contextDigest().equals(fingerprint));
         var binding = new ProofBinding(storage.sourceId(), owner, base.generation(), candidate.generation(),
-                new PublicationId(image.transaction()), readback.digest(), sha256(bytes), fingerprint, 1);
+                new PublicationId(image.transaction()), readback.digest(), sha256(bytes), fingerprint, VERIFICATION_VERSION);
         return Optional.of(new Prepared(readback, binding, bytes));
     }
 
@@ -304,7 +367,7 @@ final class ScopeDCatalog {
         }
     }
 
-    private static String sha256(byte[] bytes) {
+    static String sha256(byte[] bytes) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
         } catch (NoSuchAlgorithmException unavailable) {
@@ -334,12 +397,34 @@ final class ScopeDCatalog {
                         PublicationId transaction, String predecessorDigest, String contentDigest, String contextDigest,
                         int verificationVersion) {}
 
-    /** No issuer is installed or implemented in M1. The constructor remains closed to callers. */
-    static final class CompatibilityProof {
-        private final ProofBinding binding;
+    record CompatibilityResult(Optional<CompatibilityProof> proof, ScopeDCompilerDiagnostics.Report diagnostics) {}
 
-        private CompatibilityProof(ProofBinding binding) {
-            this.binding = binding;
+    static final class CompatibilityRejected extends IOException {
+        private static final long serialVersionUID = 1L;
+        private final Code code;
+
+        private CompatibilityRejected(Code code, String message) {
+            this(code, message, null);
+        }
+
+        private CompatibilityRejected(Code code, String message, IOException cause) {
+            super(message, cause);
+            this.code = code;
+        }
+
+        Code code() { return code; }
+    }
+
+    /** The sole issuer runs verification against immutable Prepared bytes and the current owner. */
+    static final class CompatibilityProof {
+        private final Prepared prepared;
+        private final ProofBinding binding;
+        private final ScopeDFrontend.ContextIdentity context;
+
+        private CompatibilityProof(Prepared prepared, ScopeDFrontend.ContextIdentity context) {
+            this.prepared = prepared;
+            this.binding = prepared.binding;
+            this.context = context;
         }
     }
 

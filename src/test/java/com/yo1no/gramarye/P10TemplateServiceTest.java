@@ -501,6 +501,34 @@ final class P10TemplateServiceTest {
         }
     }
 
+    static P10TemplateBody retainLegacyCompilerFixture(P10TemplateValidation validation,
+            P10TemplateBody current, P10TemplateBody invalid) {
+        var service = new P10TemplateService(validation);
+        var context = new com.yo1no.gramarye.magic.validation.ValidationContext(
+                com.yo1no.gramarye.magic.limits.MagicPolicyLimits.DEFAULTS);
+        Function<P10TemplateBody, P10TemplateValidation.Result> eligibility =
+                candidate -> validation.validate(candidate, context, ValidationResult.valid());
+
+        var resources = new Object();
+        stage(service, begin(service, resources), body(current));
+        pessimistic(service);
+        decide(service, resources, eligibility);
+        assertSame(current, field(service, "active"));
+        assertEquals(P10TemplateService.Origin.CURRENT, field(service, "origin"));
+        var publishedToken = field(service, "publicationToken");
+
+        var replacement = new Object();
+        stage(service, begin(service, replacement), body(invalid));
+        pessimistic(service);
+        decide(service, replacement, eligibility);
+        assertEquals(P10TemplateService.Origin.LKG, field(service, "origin"));
+        assertEquals(P10TemplateService.Classification.SEMANTIC_INVALID, status(service).classification());
+        assertSame(current, field(service, "active"));
+        assertSame(publishedToken, field(service, "publicationToken"));
+        assertNull(field(service, "staged"));
+        return (P10TemplateBody) field(service, "active");
+    }
+
     private static P10TemplateService service() {
         return new P10TemplateService(new P10TemplateValidation(
                 SkillSubmissionPolicyProvider.defaults(), P8ServerPresentationService.create()));

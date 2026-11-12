@@ -114,15 +114,26 @@ final class ScopeDGraph {
     }
 
     Closure closure(ExactReference root) {
+        return closure(root, ScopeDLimits.MAX_GRAPH_WORK);
+    }
+
+    Closure closure(ExactReference root, int workLimit) {
         requireExactRoot(root);
-        var budget = new WorkBudget();
-        var reachable = visit(Set.of(root.identity()), budget);
-        var exact = new LinkedHashMap<ExactReference, FormalDocument>();
-        reachable.forEach(identity -> {
-            var document = documents.get(identity);
-            exact.put(document.reference(), document);
-        });
-        return new Closure(root, Collections.unmodifiableMap(exact), cyclicComponents(reachable, budget));
+        var budget = new WorkBudget(workLimit);
+        try {
+            var reachable = visit(Set.of(root.identity()), budget);
+            var exact = new LinkedHashMap<ExactReference, FormalDocument>();
+            for (var identity : reachable) {
+                budget.consume();
+                var document = documents.get(identity);
+                exact.put(document.reference(), document);
+            }
+            var components = cyclicComponents(reachable, budget);
+            return new Closure(root, Collections.unmodifiableMap(exact), components, budget.edges, budget.work);
+        } catch (Rejected failure) {
+            failure.work = budget.work;
+            throw failure;
+        }
     }
 
     /** Captures exact material needed by roots from one view and one shared traversal budget. */
@@ -145,9 +156,9 @@ final class ScopeDGraph {
     }
 
     private void requireExactRoot(ExactReference root) {
-        var body = find(root.identity()).orElseThrow(() -> reject(Reason.EXACT_ROOT_UNAVAILABLE));
+        var body = find(root.identity()).orElseThrow(() -> reject(Reason.EXACT_ROOT_UNAVAILABLE, root.identity()));
         if (!body.reference().equals(root)) {
-            throw reject(Reason.EXACT_ROOT_UNAVAILABLE);
+            throw reject(Reason.EXACT_ROOT_UNAVAILABLE, root.identity());
         }
     }
 
@@ -237,17 +248,17 @@ final class ScopeDGraph {
             var route = queue.removeFirst();
             var edges = forward.get(route);
             if (edges == null) {
-                throw reject(Reason.MISSING_DEPENDENCY);
+                throw reject(Reason.MISSING_DEPENDENCY, route);
             }
             for (var target : edges) {
-                budget.consume();
+                budget.visitEdge();
                 requireOwner(target);
                 if (reached.add(target)) {
                     queue.addLast(target);
                 }
             }
             if (unavailable.contains(route)) {
-                throw reject(Reason.UNAVAILABLE_DOCUMENT);
+                throw reject(Reason.UNAVAILABLE_DOCUMENT, route);
             }
         }
         return reached;
@@ -318,16 +329,20 @@ final class ScopeDGraph {
 
     private void requireOwner(Identity identity) {
         if (!owner.equals(identity.owner())) {
-            throw reject(Reason.FOREIGN_SCOPE);
+            throw reject(Reason.FOREIGN_SCOPE, identity);
         }
     }
 
     private static Rejected reject(Reason reason) {
-        return new Rejected(reason);
+        return new Rejected(reason, null);
+    }
+
+    private static Rejected reject(Reason reason, Identity location) {
+        return new Rejected(reason, location);
     }
 
     record Closure(ExactReference root, Map<ExactReference, FormalDocument> documents,
-                   List<Set<SpellIdentity>> cyclicComponents) {
+                   List<Set<SpellIdentity>> cyclicComponents, int edges, int work) {
     }
 
     record CandidateValidation(Set<Identity> affected, Set<ExactReference> revalidated) {
@@ -341,14 +356,25 @@ final class ScopeDGraph {
 
     static final class Rejected extends IllegalArgumentException {
         private final Reason reason;
+        private final Identity location;
+        private int work;
 
-        private Rejected(Reason reason) {
+        private Rejected(Reason reason, Identity location) {
             super(reason.name());
             this.reason = reason;
+            this.location = location;
         }
 
         Reason reason() {
             return reason;
+        }
+
+        Optional<Identity> location() {
+            return Optional.ofNullable(location);
+        }
+
+        int work() {
+            return work;
         }
     }
 
@@ -356,12 +382,28 @@ final class ScopeDGraph {
     }
 
     private static final class WorkBudget {
-        private int remaining = ScopeDLimits.MAX_GRAPH_WORK;
+        private final int limit;
+        private int work;
+        private int edges;
+
+        private WorkBudget() {
+            this(ScopeDLimits.MAX_GRAPH_WORK);
+        }
+
+        private WorkBudget(int limit) {
+            this.limit = Math.min(limit, ScopeDLimits.MAX_GRAPH_WORK);
+        }
 
         void consume() {
-            if (remaining-- == 0) {
+            if (work >= limit) {
                 throw reject(Reason.WORK_LIMIT);
             }
+            work++;
+        }
+
+        void visitEdge() {
+            consume();
+            edges++;
         }
     }
 }

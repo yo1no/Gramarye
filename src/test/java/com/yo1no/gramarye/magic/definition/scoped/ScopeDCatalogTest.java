@@ -39,7 +39,9 @@ final class ScopeDCatalogTest {
             var batch = catalog.prepare(allocation, CONTEXT, List.of(spell(original, List.of()),
                     spell(caller, List.of(handler(1, original.identity()))), manifest(manifest, caller.identity())));
             binding = batch.binding();
-            assertThrows(IOException.class, () -> catalog.publish(batch, CONTEXT, null));
+            var emptyFrontend = new ScopeDFrontend.Snapshot(List.of());
+            assertThrows(IOException.class, () -> catalog.publish(batch,
+                    new ScopeDFrontend.Context(emptyFrontend, emptyFrontend.fullPolicy()), null));
             assertFalse(storage.hasPendingMaterial());
             catalog.stage(batch, CONTEXT);
             assertEquals(Set.of(), catalog.current().routes().keySet());
@@ -198,13 +200,12 @@ final class ScopeDCatalogTest {
                 Optional.empty());
     }
 
-    /** Exercises the same staging and physical commit without installing a production proof issuer. */
+    /** Exercises the M1 physical layer directly, without issuing a compatibility proof. */
     static void completeInIsolation(ScopeDCatalog catalog, ScopeDStorage storage, ScopeDCatalog.Prepared candidate)
             throws Exception {
         var expected = storage.current();
         var staged = catalog.stage(candidate, CONTEXT);
-        var proof = new TestProof(candidate.binding());
-        var binding = proof.binding();
+        var binding = candidate.binding();
         assertEquals(storage.owner(), binding.owner());
         assertEquals(storage.sourceId(), binding.source());
         assertEquals(expected.digest(), binding.predecessorDigest());
@@ -214,9 +215,7 @@ final class ScopeDCatalogTest {
         assertEquals(staged.contextDigest(), binding.contextDigest());
         assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(staged.payload())),
                 binding.contentDigest());
-        assertEquals(1, binding.verificationVersion());
+        assertEquals(2, binding.verificationVersion());
         storage.commitPreparedImage(expected, staged);
     }
-
-    private record TestProof(ScopeDCatalog.ProofBinding binding) {}
 }

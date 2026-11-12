@@ -223,6 +223,26 @@ final class ScopeDStorage implements AutoCloseable {
         return next;
     }
 
+    /** Checks the reservation or exact recovered prepare without installing or changing physical material. */
+    synchronized void requirePublicationReservation(Image expected, long transaction, String contextDigest,
+                                                    String contentDigest) throws IOException {
+        requireExpected(expected);
+        verifyWatermark();
+        if (transaction != watermark || transaction <= current.transaction()) {
+            throw failure(Reason.STALE, "compiler candidate reservation is stale");
+        }
+        Optional<Image> staged = pending();
+        if (staged.isPresent()) {
+            Image image = staged.orElseThrow();
+            if (image.transaction() != transaction || !image.contextDigest().equals(contextDigest)
+                    || !HEX.formatHex(digest(image.payload, image.payload.length)).equals(contentDigest)) {
+                throw failure(Reason.STALE, "pending image differs from compiler candidate");
+            }
+        } else if (reservedHere != transaction || exists(STAGE_WRITE)) {
+            throw failure(Reason.STALE, "compiler candidate has no current reservation");
+        }
+    }
+
     synchronized Image stage(Image expected, long transaction, String contextDigest, byte[] payload) throws IOException {
         requireExpected(expected);
         requireNoPending();
