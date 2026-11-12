@@ -12,6 +12,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -32,7 +33,6 @@ class ScopeDStorageTest {
     private static final String CONTEXT = "a5".repeat(32);
     private static final byte[] FIRST = {11, 12, 13};
     private static final byte[] NEXT = {21, 22, 23};
-    private static final int HALTED = 91;
 
     @TempDir
     private Path root;
@@ -48,7 +48,7 @@ class ScopeDStorageTest {
             publish(storage, FIRST);
         }
 
-        runChild(path, "partial-stage", HALTED);
+        runChild(path, "partial-stage", true);
         try (var recovered = ScopeDStorage.open(path, OWNER)) {
             assertEquals(1, recovered.current().generation());
             assertArrayEquals(FIRST, recovered.current().payload());
@@ -69,7 +69,7 @@ class ScopeDStorageTest {
             before = publish(storage, FIRST);
             source = storage.sourceId();
         }
-        runChild(path, "prepared", HALTED);
+        runChild(path, "prepared", true);
 
         try (var recovered = ScopeDStorage.open(path, OWNER)) {
             var base = recovered.current();
@@ -102,7 +102,7 @@ class ScopeDStorageTest {
             try (var storage = ScopeDStorage.open(path, OWNER)) {
                 publish(storage, FIRST);
             }
-            runChild(path, scenario, HALTED);
+            runChild(path, scenario, true);
 
             // Process exit is a real interruption, not a power-cut simulation. Opening re-forces directory metadata.
             try (var recovered = ScopeDStorage.open(path, OWNER)) {
@@ -121,14 +121,14 @@ class ScopeDStorageTest {
         try (storage) {
             var occupied = assertThrows(ScopeDStorage.Failure.class, () -> ScopeDStorage.open(path, OWNER));
             assertEquals(Reason.UNAVAILABLE, occupied.reason());
-            runChild(path, "locked", 0);
+            runChild(path, "locked", false);
             publish(storage, FIRST);
         }
         try (var replacement = ScopeDStorage.open(path, OWNER)) {
             storage.close();
             assertEquals(1, replacement.current().generation());
             assertThrows(ScopeDStorage.Failure.class, storage::current);
-            runChild(path, "locked", 0);
+            runChild(path, "locked", false);
         }
     }
 
@@ -138,7 +138,7 @@ class ScopeDStorageTest {
         try (var storage = ScopeDStorage.open(path, OWNER)) {
             publish(storage, FIRST);
         }
-        runChild(path, "failed-readback", HALTED);
+        runChild(path, "failed-readback", true);
         assertQuarantined(path, OWNER);
         assertTrue(Files.isRegularFile(path.resolve("catalog.current")));
         assertTrue(Files.isRegularFile(path.resolve("allocation.current")));
@@ -259,7 +259,7 @@ class ScopeDStorageTest {
     @Test
     void maxAndMaxPlusOnePhysicalBytesInFixedHeapChild() throws Exception {
         Path path = Files.createDirectory(root.resolve("owner"));
-        runChild(path, "max", 0);
+        runChild(path, "max", false);
         assertEquals(ScopeDLimits.MAX_CATALOG_BYTES, Files.size(path.resolve("catalog.current")));
         assertEquals(ScopeDLimits.MAX_DRAFT_BYTES, Files.size(path.resolve("draft.current")));
         assertFalse(Files.exists(path.resolve("catalog.prepare")));
@@ -270,23 +270,42 @@ class ScopeDStorageTest {
                 () -> ScopeDStorage.open(path, owner)).reason());
     }
 
-    private void runChild(Path path, String mode, int exitCode) throws Exception {
+    private void runChild(Path path, String mode, boolean interrupt) throws Exception {
         Path output = root.resolve("child-" + path.getFileName() + "-" + mode + "-" + UUID.randomUUID() + ".log");
+        Path checkpoint = output.resolveSibling(output.getFileName() + ".ready");
         var child = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-Xms24m", "-Xmx24m", "-XX:+ExitOnOutOfMemoryError", "-cp", System.getProperty("java.class.path"),
-                Child.class.getName(), path.toString(), mode).redirectErrorStream(true).redirectOutput(output.toFile()).start();
-        if (!child.waitFor(30, TimeUnit.SECONDS)) {
-            child.destroyForcibly();
-            assertTrue(child.waitFor(5, TimeUnit.SECONDS));
-            throw new AssertionError("physical storage child timed out: " + mode);
-        }
-        assertEquals(exitCode, child.exitValue(), () -> {
-            try (var input = Files.newInputStream(output)) {
-                return new String(input.readNBytes(8192), java.nio.charset.StandardCharsets.UTF_8);
-            } catch (IOException failure) {
-                throw new AssertionError(failure);
+                Child.class.getName(), path.toString(), mode, checkpoint.toString())
+                .redirectErrorStream(true).redirectOutput(output.toFile()).start();
+        try {
+            if (interrupt) {
+                long start = System.nanoTime();
+                while (child.isAlive() && !Files.exists(checkpoint)
+                        && System.nanoTime() - start < TimeUnit.SECONDS.toNanos(30)) {
+                    Thread.sleep(20);
+                }
+                assertTrue(child.isAlive() && Files.exists(checkpoint), () -> childOutput(output));
+                child.destroyForcibly();
+                assertTrue(child.waitFor(5, TimeUnit.SECONDS), mode);
+                assertNotEquals(0, child.exitValue(), mode);
+            } else {
+                assertTrue(child.waitFor(30, TimeUnit.SECONDS), mode);
+                assertEquals(0, child.exitValue(), () -> childOutput(output));
             }
-        });
+        } finally {
+            if (child.isAlive()) {
+                child.destroyForcibly();
+                assertTrue(child.waitFor(5, TimeUnit.SECONDS), mode);
+            }
+        }
+    }
+
+    private static String childOutput(Path output) {
+        try (var input = Files.newInputStream(output)) {
+            return new String(input.readNBytes(8192), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IOException failure) {
+            throw new AssertionError(failure);
+        }
     }
 
     private static ScopeDStorage.Image publish(ScopeDStorage storage, byte[] body) throws IOException {
@@ -336,7 +355,8 @@ class ScopeDStorageTest {
                         }
                     }
                 }
-                Runtime.getRuntime().halt(HALTED);
+                Files.createFile(Path.of(args[2]));
+                new CountDownLatch(1).await();
             }
         }
 

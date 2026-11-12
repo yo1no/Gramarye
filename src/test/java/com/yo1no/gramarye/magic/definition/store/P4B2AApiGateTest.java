@@ -365,7 +365,9 @@ class P4B2AApiGateTest {
                         "com/yo1no/gramarye/magic/definition/store/"
                                 + "P4E1FileSystemAccess.java",
                         "com/yo1no/gramarye/magic/definition/store/"
-                                + "SkillSavedDataPrimaryIngress.java"),
+                                + "SkillSavedDataPrimaryIngress.java",
+                        "com/yo1no/gramarye/magic/definition/scoped/ScopeDSource.java",
+                        "com/yo1no/gramarye/magic/definition/scoped/ScopeDStorage.java"),
                 filesContaining(productionSources(MAIN_JAVA), "FileChannel.open("));
         assertFalse(Pattern.compile("\\.\\s*position\\s*\\(")
                 .matcher(withoutCommentsAndLiterals(strict))
