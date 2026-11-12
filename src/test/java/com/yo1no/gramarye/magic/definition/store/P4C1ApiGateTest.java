@@ -184,7 +184,8 @@ class P4C1ApiGateTest {
                                 "com/yo1no/gramarye/magic/definition/document/StrictNbtTreeCodec.java",
                                 "com/yo1no/gramarye/magic/definition/migration/"
                                         + "OpaqueSkillDocumentMigrationFacade.java",
-                                "com/yo1no/gramarye/magic/definition/player/AttachmentTagSize.java"),
+                                "com/yo1no/gramarye/magic/definition/player/AttachmentTagSize.java",
+                                "com/yo1no/gramarye/magic/definition/scoped/RawEnvelope.java"),
                         relativeFilesContaining(production, "NbtIo.writeAnyTag(")),
                 // P11 documents the locked whole-root framing; this is not a new serializer call.
                 () -> assertEquals(Set.of("com/yo1no/gramarye/P11StrictNbtSize.java"),
