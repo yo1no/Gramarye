@@ -16,8 +16,11 @@
 >
 > [DP-2 Scope D 1.0（2026-11-11）](20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md) 採用已確認的 D-01R2、D-02～D-09 與 M-DUP，僅在正文逐條列明的 definition／data／compiler contract 範圍替換或擴充。
 > 獨立、owner-private 的 `SpellDefinition` 為核心，`SkillManifest` 為可選高階定義。17／18／19 號修正案的 legacy 契約與 P11 `COMPLETE—PASS` 保持。
-> 施工順序為 A 文件限定採用 → B M1 data foundation（另授權）→ C resolver／compiler（另授權）→ Scope V／E／UI（另授權）。
-> 整批 catalog generation 耐久提交與恢復仍須由 M1 證成，frontend 相容性仍須由 C 證成。A 只建立文件權威。Production 實作、M1、C、runtime 與 P12 均未開始。
+> Scope D 文件權威已發布整合，M1 data foundation 與 C resolver／compiler 均為 `COMPLETE—PASS`。
+>
+> [DP-2 Scope V 1.0](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md) 已採用 V-01～V-10、V-B／V0-PROJECTILE 與五項限定。新 Spell runtime 依 21 號正文的狹義邊界，Scope D、M1、C 與 legacy 階段及 P11 驗收保留。
+> V0 是 projectile qualification profile。生命週期、exact pins、P6／P9／P8 接合、工程 Mana／zero cooldown 依 21 號正文。
+> V0 工程契約、實作與 runtime qualification 均未開始。Element E、正常玩家入口與 UI、新 network、editor、renderer 與 P12 延後。
 
 ---
 

@@ -25,13 +25,14 @@ Do not use `java.example.gramarye`, `com.example.gramarye`, or another placehold
 
 Read these files before planning or editing architecture:
 
-1. `docs/codex-spec/20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md`
-2. `docs/codex-spec/19_P11持久化與多人修正案.md`
-3. `docs/codex-spec/18_P4持久化與組合修正案.md`
-4. `docs/codex-spec/17_P3資料模型修正案.md`
-5. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
-6. `docs/codex-spec/Codex_實作總規格Prompt.md`
-7. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
+1. `docs/codex-spec/21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md`
+2. `docs/codex-spec/20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md`
+3. `docs/codex-spec/19_P11持久化與多人修正案.md`
+4. `docs/codex-spec/18_P4持久化與組合修正案.md`
+5. `docs/codex-spec/17_P3資料模型修正案.md`
+6. `docs/codex-spec/16_骨架定案清單_NeoForge1.21.1_凍結版.md`
+7. `docs/codex-spec/Codex_實作總規格Prompt.md`
+8. `docs/codex-spec/NeoForge1.21.1_詳細實作步驟.md`
 
 Priority:
 
@@ -60,11 +61,17 @@ runtime-qualified P11 capability.
 D-01R2, D-02–D-09, and M-DUP decisions within its explicit definition, data, and compiler
 contract scope. The standalone, owner-private `SpellDefinition` is the core family, with
 an optional high-level `SkillManifest`. The legacy contracts in amendments 17, 18, and 19
-and P11 `COMPLETE—PASS` are preserved. The order is A document-only adoption, B M1 data
-foundation, C resolver/compiler, then Scope V/E/UI. Each step after A requires separate
-authorization. M1 must establish durable catalog generation commit and recovery. C must
-establish compiler frontend compatibility. A establishes document authority only.
-Production implementation, M1, C, runtime, and P12 have not started under this amendment.
+and P11 `COMPLETE—PASS` are preserved. Scope D document authority is published and integrated.
+M1 data foundation and C resolver/compiler are both `COMPLETE—PASS` within their accepted
+durable catalog and compiler frontend scopes, respectively.
+
+[DP-2 Scope V 1.0](docs/codex-spec/21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md) adopts V-01–V-10,
+V-B/V0-PROJECTILE, and the five confirmed limitations within its explicit runtime/V0 scope.
+Apply the scoped replacement and preservation ledger in §9 and the engineering prerequisites
+in §10. Scope D, M1, C, and P11 are preserved. Scope V document authority is adopted. The V0
+engineering contract, implementation, and runtime qualification have not started and require
+separate authorization. Element E, normal player entry, new network, editor, renderer, and P12
+have not started and require separate authorization.
 
 If the P4 amendment and another authoritative document have not been synchronized and still
 contain a substantive conflict, stop the affected work and report the exact conflict; do not choose

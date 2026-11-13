@@ -8,8 +8,17 @@ P3 相關工作包已依 `17_P3資料模型修正案.md` 同步；P4-A1～A3與P
 
 [DP-2 Scope D 1.0（2026-11-11）](20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md) 採用已確認的 D-01R2、D-02～D-09 與 M-DUP，僅在正文逐條列明的 definition／data／compiler contract 範圍替換或擴充。
 獨立、owner-private 的 `SpellDefinition` 為核心，`SkillManifest` 為可選高階定義。17／18／19 號修正案的 legacy 契約與 P11 `COMPLETE—PASS` 保持。
-施工順序為 A 文件限定採用 → B M1 data foundation（另授權）→ C resolver／compiler（另授權）→ Scope V／E／UI（另授權）。
-整批 catalog generation 耐久提交與恢復仍須由 M1 證成，frontend 相容性仍須由 C 證成。A 只建立文件權威。Production 實作、M1、C、runtime 與 P12 均未開始。
+Scope D 文件權威已發布整合，M1 data foundation 與 C resolver／compiler 均為 `COMPLETE—PASS`。
+
+[DP-2 Scope V 1.0](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md) 已採用 V-01～V-10、V-B／V0-PROJECTILE 與五項限定。Scope D、M1、C 與 P11 保留。
+
+1. Scope V-A 文件限定採用與發布（本輪）。
+2. V0 engineering-contract／limits slice，未開始。
+3. V0 implementation，未開始。
+4. V0 runtime qualification，未開始。
+
+後續工作須另行授權，實作前件與直接驗收依 [21 §10.1](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md#101-規範採用與實作前件) 與 [21 §10.2 V0 DoD](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md#102-v0-definition-of-done)。
+Element E、正常玩家入口、新 network、editor、renderer 與 P12 延後。
 
 ## 階段名稱映射
 

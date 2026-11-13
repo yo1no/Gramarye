@@ -27665,3 +27665,13 @@ P11+
 §69 的保留與替換仍依原範圍。C4a 的獨立非斷線轉換控制、configuration／parking／handoff 與正常首次 TRY 契約保持；D3 的認證連線 exact capture、server generation 與舊工作的隔離保持；C6 的原配置 owner、分層 bounds／backpressure、已受理責任與保存負載契約保持。P11 維持 `COMPLETE—PASS / PRESERVED`。原 P5／P6 runtime authority 與 §47.3／§47.4 production vocabulary 保持，17／18／19 未明列替換之條款維持。
 
 本輪為文件限定採用。M1 data foundation、resolver／compiler implementation 與 runtime 尚未開始；Scope V／E／UI／P12 未授。Canonical 發布效力依適用的直接檢查、candidate required checks、fast-forward 整合及 main CI 結果確認；檢查與實際發布身分留於本輪採用紀錄。
+
+---
+
+## §71 — DP-2 Scope V Spell runtime／V0-PROJECTILE scoped registration
+
+Scope V 1.0 的唯一正式正文為 [21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md](../codex-spec/21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md)。使用者確認的 V-01～V-10、V-B／V0-PROJECTILE 與五項限定，依正文列明的新 Spell runtime 與 V0 範圍採用。限定替換、保留與直接消費者依正文 §9，實作前件與直接接受依 §10。
+
+Scope D 1.0、M1、C 與 P11 的已發布契約及既有驗收保留。原 H6 前文、§§69–70 與 §47.3／§47.4 exact Java declarations 原樣保留。V0 implementation／runtime qualification 均未開始。Element E、正常玩家入口、新 network、editor、renderer 與 P12 均未開始。
+
+本節登錄文件權威。實際發布身分、前綴驗證及 required CI 結果留於本輪採用紀錄。
