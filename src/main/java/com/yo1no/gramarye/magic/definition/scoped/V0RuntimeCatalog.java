@@ -242,7 +242,20 @@ public final class V0RuntimeCatalog {
         writer.proof.proved = true;
     }
 
-    // Physical mutation entry for the eventual engineering-only assembly. No I/O on the RAM gate.
+    ScopeDCatalogImage engineeringReadback(V0CatalogAuthority exactAuthority, SkillOwnerId owner)
+            throws IOException {
+        if (!coldLane(exactAuthority) || retired || owner == null) {
+            return null;
+        }
+        Gate expected = gate.get();
+        if (expected.phase != PHASE_OPEN) {
+            return null;
+        }
+        var exact = writer(owner).catalog.captureRuntimeReadback(context);
+        return gate.get() == expected ? exact.image : null;
+    }
+
+    // Physical mutation entry for the engineering-only assembly. No I/O on the RAM gate.
     boolean publishFixture(V0CatalogAuthority exactAuthority, SkillOwnerId owner, PublicationPlan fixture)
             throws IOException {
         return write(exactAuthority, owner, fixture);

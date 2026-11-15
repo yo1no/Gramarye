@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.yo1no.gramarye.v0engineering.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "P9V0LoadedPositionMixin",
+    "V0OnlineSessionSuccessMixin",
+    "V0OnlineSessionVerificationMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

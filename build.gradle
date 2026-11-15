@@ -5,6 +5,11 @@ plugins {
     id 'idea'
 }
 
+abstract class V0EngineeringZip extends Zip {
+    @javax.inject.Inject
+    abstract org.gradle.api.file.ArchiveOperations getArchiveOperations()
+}
+
 @groovy.transform.CompileStatic
 @groovy.transform.stc.POJO
 class ProbeRuntimeWorkingDirectoryAction
@@ -240,6 +245,68 @@ p11OnlineHarnessSourceSet.output.dir(p11OnlineJar)
 configurations.named(p11OnlineHarnessSourceSet.runtimeClasspathConfigurationName) {
     exclude(group: 'org.apache.commons', module: 'commons-compress')
 }
+// V0 loads exactly one packaged Gramarye instead of any exploded mod output.
+def v0EngineeringSourceSet = sourceSets.create('v0Engineering')
+def v0PackagedEngineeringSourceSet = sourceSets.create('v0PackagedEngineering')
+def v0PackagedOrdinarySourceSet = sourceSets.create('v0PackagedOrdinary')
+def v0OrdinaryArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
+def v0EngineeringMetadataFile = layout.buildDirectory.file('v0/engineering-metadata/neoforge.mods.toml')
+def v0MixinConfig = 'gramarye.v0.engineering.mixins.json'
+def generateV0EngineeringMetadata = tasks.register('generateV0EngineeringMetadata') {
+    inputs.file(v0OrdinaryArchive)
+    inputs.property('engineeringMixinConfig', v0MixinConfig)
+    outputs.file(v0EngineeringMetadataFile)
+    doLast {
+        byte[] source = new java.util.zip.ZipFile(v0OrdinaryArchive.get().asFile).withCloseable { ordinary ->
+            def entry = ordinary.getEntry('META-INF/neoforge.mods.toml')
+            if (entry == null) {
+                throw new GradleException('Ordinary Gramarye archive is missing its NeoForge metadata')
+            }
+            ordinary.getInputStream(entry).withCloseable { it.readAllBytes() }
+        }
+        def output = v0EngineeringMetadataFile.get().asFile.toPath()
+        java.nio.file.Files.createDirectories(output.parent)
+        java.nio.file.Files.write(output, source)
+        java.nio.file.Files.writeString(output, "\n[[mixins]]\nconfig=\"" + v0MixinConfig + "\"\n",
+                java.nio.charset.StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND)
+    }
+}
+def v0EngineeringJar = tasks.register('v0EngineeringJar', V0EngineeringZip) {
+    dependsOn(generateV0EngineeringMetadata, tasks.named(v0EngineeringSourceSet.classesTaskName))
+    archiveBaseName = mod_id
+    archiveVersion = mod_version
+    archiveClassifier = 'v0-engineering'
+    archiveExtension = 'jar'
+    destinationDirectory = layout.buildDirectory.dir('v0/artifacts')
+    includeEmptyDirs = false
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+    // Copy the manifest, JarJar and all unchanged entries as files so their bytes agree.
+    def archives = archiveOperations
+    from(v0OrdinaryArchive.map { archives.zipTree(it.asFile) }) {
+        exclude 'com/yo1no/gramarye/V0Distribution.class', 'META-INF/neoforge.mods.toml'
+    }
+    from(v0EngineeringMetadataFile) { into 'META-INF' }
+    from(v0EngineeringSourceSet.output)
+}
+v0PackagedEngineeringSourceSet.output.dir([builtBy: v0EngineeringJar], v0EngineeringJar.flatMap { it.archiveFile })
+v0PackagedOrdinarySourceSet.output.dir([builtBy: tasks.named('jar')], v0OrdinaryArchive)
+[v0PackagedEngineeringSourceSet, v0PackagedOrdinarySourceSet].each { packaged ->
+    packaged.java.setSrcDirs([])
+    packaged.resources.setSrcDirs([])
+    configurations.named(packaged.runtimeClasspathConfigurationName) {
+        exclude(group: 'org.apache.commons', module: 'commons-compress')
+    }
+}
+def v0RuntimeRootText = providers.gradleProperty('gramaryeV0RuntimeRoot').orElse('').get()
+def v0DevLoginRootText = providers.gradleProperty('gramaryeV0DevLoginRoot').orElse('').get()
+def v0PackageRuns = [
+        v0EngineeringServer: 'server',
+        v0EngineeringHost: 'host',
+        v0EngineeringClientA: 'a',
+        v0EngineeringClientB: 'b',
+]
 // The existing actual-client cohort loads the production artifact, not exploded main output.
 // Only its excluded controller classes are joined with that unchanged JAR in the test mod.
 p9S5ClientHarnessSourceSet.output.dir(
@@ -739,6 +806,9 @@ neoForge {
     addModdingDependenciesTo(p9S3ClientHarnessSourceSet)
     addModdingDependenciesTo(p9S5ClientHarnessSourceSet)
     addModdingDependenciesTo(p11OnlineHarnessSourceSet)
+    addModdingDependenciesTo(v0EngineeringSourceSet)
+    addModdingDependenciesTo(v0PackagedEngineeringSourceSet)
+    addModdingDependenciesTo(v0PackagedOrdinarySourceSet)
 
     mods {
         // Production runs and the published JAR contain only main.
@@ -834,6 +904,12 @@ neoForge {
         p11OnlineHarness {
             sourceSet(p11OnlineHarnessSourceSet)
         }
+        v0PackagedEngineering {
+            sourceSet(v0PackagedEngineeringSourceSet)
+        }
+        v0PackagedOrdinary {
+            sourceSet(v0PackagedOrdinarySourceSet)
+        }
     }
 
     def productionMod = mods.named(project.mod_id).get()
@@ -850,6 +926,8 @@ neoForge {
     def p9S3ClientHarnessMod = mods.named('p9S3ClientRuntimeHarness').get()
     def p9S5ClientHarnessMod = mods.named('p9S5ClientRuntimeHarness').get()
     def p11OnlineHarnessMod = mods.named('p11OnlineHarness').get()
+    def v0PackagedEngineeringMod = mods.named('v0PackagedEngineering').get()
+    def v0PackagedOrdinaryMod = mods.named('v0PackagedOrdinary').get()
 
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
@@ -1452,6 +1530,27 @@ neoForge {
             }
         }
 
+        v0PackageRuns.each { runName, role ->
+            create(runName) {
+                def dedicated = role == 'server'
+                def engineering = dedicated || role == 'host'
+                if (dedicated) { server(); programArgument '--nogui' }
+                else { client(); devLogin = !v0DevLoginRootText.isBlank() }
+                sourceSet = engineering ? v0PackagedEngineeringSourceSet : v0PackagedOrdinarySourceSet
+                additionalRuntimeClasspathConfiguration.exclude(
+                        group: 'org.apache.commons', module: 'commons-compress')
+                gameDirectory = file(v0RuntimeRootText.isBlank()
+                        ? 'build/v0/explicit-isolated-runtime-required/' + role
+                        : v0RuntimeRootText + '/' + role)
+                if (!dedicated && !v0DevLoginRootText.isBlank()) {
+                    systemProperty 'devlogin.storage', v0DevLoginRootText + '/' + (role == 'host' ? 'a' : role)
+                    systemProperty 'devlogin.launch_profile', 'v0-local'
+                }
+                disableIdeRun()
+                taskBefore(engineering ? v0EngineeringJar : tasks.named('jar'))
+            }
+        }
+
         p4E0R2QFormalCaseIndices.each { formalCaseIndex ->
                 def formalCaseToken = String.format(
                         java.util.Locale.ROOT, '%02d', formalCaseIndex)
@@ -1561,7 +1660,11 @@ neoForge {
 
         // applies to all the run configs above
         configureEach {
-            loadedMods.set([name == 'gameTestServer' ? p11GameTestMod : name == 'p4A3HeapProbeServer'
+            if (v0PackageRuns.containsKey(name)) {
+                loadedMods.set([v0PackageRuns[name] in ['server', 'host']
+                        ? v0PackagedEngineeringMod : v0PackagedOrdinaryMod])
+            } else {
+                loadedMods.set([name == 'gameTestServer' ? p11GameTestMod : name == 'p4A3HeapProbeServer'
                     ? p4A3ProbeMod
                     : name.startsWith('p4B2') ? p4B2ProbeMod
                     : name.startsWith('p4C2') ? p4C2ProbeMod
@@ -1584,6 +1687,7 @@ neoForge {
                                                             ? p9S5ClientHarnessMod
                                                             : name in ['p11OnlineServer', 'p11OnlineClientA', 'p11OnlineClientB']
                                                                     ? p11OnlineHarnessMod : productionMod])
+            }
 
             // Recommended logging data for a userdev environment
             // The markers can be added/remove as needed separated by commas.
@@ -1649,6 +1753,33 @@ tasks.named('runServer', JavaExec).configure {
                     || normalized.any { a -> normalized.any { b -> a != b && (a.startsWith(b) || b.startsWith(a)) } }
                     || normalized.toSet().size() != 3) {
                 throw new GradleException('P11 online runtime, evidence and private auth paths must be disjoint outside the repository')
+            }
+        }
+    }
+}
+
+def v0RepositoryPath = layout.projectDirectory.asFile.toPath()
+def v0BuildPath = layout.buildDirectory.get().asFile.toPath()
+v0PackageRuns.each { runName, role ->
+    tasks.named('run' + runName.capitalize(), JavaExec).configure {
+        standardInput = System.in
+        doFirst {
+            if (v0RuntimeRootText.isBlank() || !java.nio.file.Path.of(v0RuntimeRootText).isAbsolute()
+                    || (role != 'server' && (v0DevLoginRootText.isBlank()
+                            || !java.nio.file.Path.of(v0DevLoginRootText).isAbsolute()))) {
+                throw new GradleException('V0 packaged runs require explicit isolated launch directories')
+            }
+            def runtime = java.nio.file.Path.of(v0RuntimeRootText).normalize()
+            if (v0RepositoryPath.startsWith(runtime)
+                    || (runtime.startsWith(v0RepositoryPath) && !runtime.startsWith(v0BuildPath))) {
+                throw new GradleException('V0 runtime inside the source checkout must be under the isolated build directory')
+            }
+            if (role != 'server') {
+                def privateAuth = java.nio.file.Path.of(v0DevLoginRootText).normalize()
+                if (privateAuth.startsWith(v0RepositoryPath) || v0RepositoryPath.startsWith(privateAuth)
+                        || runtime.startsWith(privateAuth) || privateAuth.startsWith(runtime)) {
+                    throw new GradleException('V0 runtime and private authentication directories must be disjoint')
+                }
             }
         }
     }
@@ -2151,6 +2282,7 @@ dependencies {
     add(p9S3ClientHarnessSourceSet.implementationConfigurationName, sourceSets.main.output)
     add(p9S5ClientHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)
     add(p11OnlineHarnessSourceSet.compileOnlyConfigurationName, sourceSets.main.output)
+    add(v0EngineeringSourceSet.compileOnlyConfigurationName, sourceSets.main.output)
     testImplementation p4A3ProbeSourceSet.output
     testImplementation p4B2ProbeSourceSet.output
     testImplementation p4C2ProbeSourceSet.output
@@ -4228,6 +4360,9 @@ tasks.named(p9S5ClientHarnessSourceSet.compileJavaTaskName, JavaCompile).configu
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p11OnlineHarnessSourceSet.compileJavaTaskName, JavaCompile).configure {
+    options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
+}
+tasks.named(v0EngineeringSourceSet.compileJavaTaskName, JavaCompile).configure {
     options.compilerArgs.addAll(['-Xlint:rawtypes', '-Xlint:unchecked'])
 }
 tasks.named(p4E0ResearchGameTestSourceSet.compileJavaTaskName, JavaCompile).configure {

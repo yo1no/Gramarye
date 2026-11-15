@@ -61,6 +61,13 @@ final class V0ColdMailbox {
         return true;
     }
 
+    synchronized void coldTerminated(V0CaptureRequest exact) {
+        if (exact.authority() == exactOwner && runningTicket == exact.ticket()
+                && coldThreadId == Thread.currentThread().threadId()) {
+            runningTicket = 0;
+        }
+    }
+
     synchronized Optional<V0CaptureCompletion> takeCompletion() {
         if (!exactOwner.isOwnerThread() || completion == null) {
             return Optional.empty();
