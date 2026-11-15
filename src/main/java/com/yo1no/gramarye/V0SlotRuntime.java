@@ -129,7 +129,9 @@ final class V0SlotRuntime {
         }
         var request = new V0CaptureRequest(authority, ticketHighWater + 1, owner, selection,
                 runtimeTick + PREPARATION_TICKS, limits.maxManifestEntries());
-        var captured = new PendingCapture(request, actor, actor.connection, witness, source, body, body.source, geometry);
+        long rootManaFee = binding.isZeroFeeSelection(selection) ? 0L : limits.positiveRootFee();
+        var captured = new PendingCapture(request, actor, actor.connection, witness, source, body, body.source,
+                geometry, rootManaFee);
         if (!mailbox.submit(request)) {
             return false;
         }
@@ -692,28 +694,31 @@ final class V0SlotRuntime {
     private void dispatchRelease(DispatchClaim claim, Lineage lineage, SkillRuntimeService.V0CarrierBinding carrier,
             V0P6StatementAdapter adapter) {
         var geometry = geometry(lineage, carrier.child);
+        long fee = carrier.child ? 0L : lineage.capture.rootManaFee;
         if (geometry == null || qualification(lineage) != V0WorkQualification.EXECUTABLE
-                || requestHighWater == Long.MAX_VALUE || (!carrier.child && onlineActor(lineage) == null)) {
-            nativeCarrierTerminal(carrier, V0TerminalReason.REJECTED_BEFORE_COMMIT);
+                || requestHighWater == Long.MAX_VALUE || (fee > 0L && onlineActor(lineage) == null)) {
+            closeCarrier(carrier, V0TerminalReason.REJECTED_BEFORE_COMMIT);
             return;
         }
         var origin = geometry.origin();
         var command = new P6RuntimeExecutionBridge.SpawnProjectileInvocation(SPAWN, ++requestHighWater,
                 claim.event.value(), geometry.level().dimension().location(), origin.x, origin.y, origin.z,
                 geometry.directionXQ15(), geometry.directionYQ15(), geometry.directionZQ15(), 0,
-                carrier.child ? 0 : limits.positiveRootFee());
+                fee);
         var frame = new V0NativeCallFrame(this, claim, carrier, lineage.work, lineage.capture.actor,
-                geometry, null, null, unit(lineage, carrier.child), command, 0, currentTick);
+                geometry, null, null, unit(lineage, carrier.child), command, -1, currentTick);
         var receipt = invoke(adapter, frame, command);
         if (receipt.terminal() == P6RuntimeExecutionBridge.V0Terminal.CONFIRMED_APPLIED
                 && carrier.opened() && publishNativeCreate(carrier, lineage)) {
             carrier.publishOpen();
             return;
         }
-        var reason = receipt.terminal() == P6RuntimeExecutionBridge.V0Terminal.OUTCOME_UNKNOWN
-                ? V0TerminalReason.OUTCOME_UNKNOWN : V0TerminalReason.CONFIRMED_NOT_APPLIED;
-        closeCarrier(carrier, reason);
-        nativeCarrierTerminal(carrier, reason);
+        closeCarrier(carrier, switch (receipt.terminal()) {
+            case REJECTED_BEFORE_COMMIT -> V0TerminalReason.REJECTED_BEFORE_COMMIT;
+            case CONFIRMED_NOT_APPLIED, COMPENSATED_NO_PRIMARY_MUTATION -> V0TerminalReason.CONFIRMED_NOT_APPLIED;
+            case CONFIRMED_APPLIED, CONFIRMED_APPLIED_WITH_FAILURE -> V0TerminalReason.FAULT;
+            case OUTCOME_UNKNOWN -> V0TerminalReason.OUTCOME_UNKNOWN;
+        });
     }
 
     private void dispatchHit(DispatchClaim claim, Lineage lineage, SkillRuntimeService.V0CarrierBinding carrier,
@@ -721,21 +726,35 @@ final class V0SlotRuntime {
         var unit = unit(lineage, carrier.child);
         var damage = unit.hitDamage().orElse(null);
         var geometry = geometry(lineage, carrier.child);
-        if (impact != null && damage != null && geometry != null && carrier.claimed()
-                && requestHighWater != Long.MAX_VALUE && qualification(lineage) == V0WorkQualification.EXECUTABLE
-                && eligibleTarget(carrier, impact.target)) {
-            var command = new P6RuntimeExecutionBridge.DamageInvocation(DAMAGE, ++requestHighWater, claim.event.value(),
-                    impact.target.getUUID(), Math.multiplyExact((long) damage.damageHp(), 1_000L), 0L);
-            var frame = new V0NativeCallFrame(this, claim, carrier, lineage.work, lineage.capture.actor,
-                    geometry, impact.target, impact.location, unit, command, 0, currentTick);
-            var receipt = invoke(adapter, frame, command);
-            if (!carrier.child && receipt.terminal() == P6RuntimeExecutionBridge.V0Terminal.CONFIRMED_APPLIED
-                    && unit.hitCreate().isPresent() && onlineActor(lineage) != null) {
-                scheduleChild(claim, lineage, impact, geometry);
-            }
+        if (impact == null || geometry == null || !carrier.claimed()
+                || qualification(lineage) != V0WorkQualification.EXECUTABLE
+                || !eligibleTarget(carrier, impact.target)) {
+            closeCarrier(carrier, V0TerminalReason.OWNER_INVALIDATED);
+            return;
         }
-        closeCarrier(carrier, V0TerminalReason.NATURAL_HIT);
-        nativeCarrierTerminal(carrier, V0TerminalReason.NATURAL_HIT);
+        if (damage == null) {
+            closeCarrier(carrier, V0TerminalReason.NATURAL_HIT);
+            return;
+        }
+        if (requestHighWater == Long.MAX_VALUE) {
+            closeCarrier(carrier, V0TerminalReason.REJECTED_BEFORE_COMMIT);
+            return;
+        }
+        var command = new P6RuntimeExecutionBridge.DamageInvocation(DAMAGE, ++requestHighWater, claim.event.value(),
+                impact.target.getUUID(), Math.multiplyExact((long) damage.damageHp(), 1_000L), 0L);
+        var frame = new V0NativeCallFrame(this, claim, carrier, lineage.work, lineage.capture.actor,
+                geometry, impact.target, impact.location, unit, command, 0, currentTick);
+        var receipt = invoke(adapter, frame, command);
+        if (!carrier.child && receipt.terminal() == P6RuntimeExecutionBridge.V0Terminal.CONFIRMED_APPLIED
+                && unit.hitCreate().isPresent() && onlineActor(lineage) != null) {
+            scheduleChild(claim, lineage, impact, geometry);
+        }
+        closeCarrier(carrier, switch (receipt.terminal()) {
+            case CONFIRMED_APPLIED, CONFIRMED_NOT_APPLIED -> V0TerminalReason.NATURAL_HIT;
+            case REJECTED_BEFORE_COMMIT -> V0TerminalReason.REJECTED_BEFORE_COMMIT;
+            case OUTCOME_UNKNOWN -> V0TerminalReason.OUTCOME_UNKNOWN;
+            case CONFIRMED_APPLIED_WITH_FAILURE, COMPENSATED_NO_PRIMARY_MUTATION -> V0TerminalReason.FAULT;
+        });
     }
 
     private void scheduleChild(DispatchClaim claim, Lineage lineage, Impact impact, V0SpawnGeometry parent) {
@@ -958,11 +977,12 @@ final class V0SlotRuntime {
         private final P11QualifiedSourceOwner.Body body;
         private final P11ReceiptLedger.Source sourceProof;
         private final RootGeometry geometry;
+        private final long rootManaFee;
 
         private PendingCapture(V0CaptureRequest request, ServerPlayer actor,
                 ServerGamePacketListenerImpl listener, V0PlayWitness witness,
                 P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body,
-                P11ReceiptLedger.Source sourceProof, RootGeometry geometry) {
+                P11ReceiptLedger.Source sourceProof, RootGeometry geometry, long rootManaFee) {
             this.request = request;
             this.actor = actor;
             this.listener = listener;
@@ -971,6 +991,7 @@ final class V0SlotRuntime {
             this.body = body;
             this.sourceProof = sourceProof;
             this.geometry = geometry;
+            this.rootManaFee = rootManaFee;
         }
     }
 

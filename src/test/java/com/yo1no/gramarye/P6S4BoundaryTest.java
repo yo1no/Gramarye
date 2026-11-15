@@ -3,8 +3,10 @@ package com.yo1no.gramarye;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.yo1no.gramarye.magic.definition.scoped.V0RuntimeCatalog;
 import com.yo1no.gramarye.magic.definition.validation.ValidatedNodeDefinition;
 import com.yo1no.gramarye.magic.definition.validation.ValidatedSkillDefinition;
 import com.yo1no.gramarye.magic.runtime.mana.ManaAttachmentDefinitionBridge;
@@ -14,6 +16,7 @@ import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -166,6 +169,50 @@ final class P6S4BoundaryTest {
                 assertEquals(0, occurrences(read(path), bridge), path.toString());
             }
         }
+    }
+
+    @Test
+    void v0P5ReleaseUsesTheBridgeOrdinalAndTheFeeCapturedBeforeColdPreparation() {
+        var slot = read(ROOT_MAIN.resolve("V0SlotRuntime.java"));
+        var release = slot.substring(slot.indexOf("private void dispatchRelease("),
+                slot.indexOf("private void dispatchHit("));
+        var hit = slot.substring(slot.indexOf("private void dispatchHit("),
+                slot.indexOf("private void scheduleChild("));
+        assertAll(
+                () -> assertTrue(slot.contains(
+                        "binding.isZeroFeeSelection(selection) ? 0L : limits.positiveRootFee()")),
+                () -> assertTrue(slot.indexOf("long rootManaFee =") < slot.indexOf("mailbox.submit(request)")),
+                () -> assertTrue(release.contains("carrier.child ? 0L : lineage.capture.rootManaFee")),
+                () -> assertTrue(release.contains("fee > 0L && onlineActor(lineage) == null")),
+                () -> assertTrue(release.contains("command, -1, currentTick)")),
+                () -> assertTrue(hit.contains("command, 0, currentTick)")),
+                () -> assertTrue(read(BRIDGE_SOURCE).contains("SpawnProjectileInvocation ? -1 : 0")));
+    }
+
+    @Test
+    void v0ZeroFeeIsSealedToTheExactFixtureRoutesAndRetiredWithTheSlot() throws Exception {
+        // This isolates the route binder from native/server custody. It cannot submit work.
+        var constructor = V0SlotBinding.class.getDeclaredConstructor();
+        assertTrue(constructor.trySetAccessible());
+        var binding = constructor.newInstance();
+        var zero = V0RuntimeCatalog.Selection.standalone(1L);
+        var sameSite = V0RuntimeCatalog.Selection.standalone(1L);
+        var positive = V0RuntimeCatalog.Selection.manifest(1L, 1L);
+        var trusted = new HashSet<>(Set.of(zero));
+        assertFalse(binding.isZeroFeeSelection(zero));
+        assertThrows(IllegalArgumentException.class, () -> binding.bindZeroFeeSelections(Set.of(
+                zero, sameSite, positive, V0RuntimeCatalog.Selection.standalone(2L),
+                V0RuntimeCatalog.Selection.manifest(2L, 1L))));
+        binding.bindZeroFeeSelections(trusted);
+        trusted.clear();
+        assertAll(
+                () -> assertTrue(binding.isZeroFeeSelection(zero)),
+                () -> assertFalse(binding.isZeroFeeSelection(sameSite)),
+                () -> assertFalse(binding.isZeroFeeSelection(positive)),
+                () -> assertThrows(IllegalStateException.class, () -> binding.bindZeroFeeSelections(Set.of(positive))));
+        binding.close();
+        assertFalse(binding.isZeroFeeSelection(zero));
+        assertThrows(IllegalStateException.class, () -> binding.bindZeroFeeSelections(Set.of(zero)));
     }
 
     @Test
