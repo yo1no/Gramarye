@@ -9,13 +9,15 @@ R1.1 的兩個受影響宣告系列由 Temurin 21.0.8 的獨立 source fixture �
 | R2 契約文件 | SHA-256 |
 |---|---|
 | [V0-P6-statement-terminal-receipt-contract.md](V0-P6-statement-terminal-receipt-contract.md) | 774012624b8946613df701396306a3bd5fe301fb6b60549ceb79554eed9abda2 |
-| [V0-P8-applied-fact-projection-contract.md](V0-P8-applied-fact-projection-contract.md) | 0b7290f066d2e705ef0778a7d6a959e2dba294c479ba6bb6aaca5002abc53753 |
+| [V0-P8-applied-fact-projection-contract.md](V0-P8-applied-fact-projection-contract.md) | 73dfd3ccbc7f19e51f213f594252aee302bf15f9c68ca84bb2a5ae95bd53283e |
 | [V0-P9-projectile-carrier-and-exact-A-contract.md](V0-P9-projectile-carrier-and-exact-A-contract.md) | cd05431bf090b9b835dc963b3d0bbe22f5d3d41b2d81c3a52edef3ddb2b1c4c1 |
 | [V0-direct-acceptance-plan.md](V0-direct-acceptance-plan.md) | 644e8f4fc58c0a86ba46f9addadfdcc468771e4afb84d61b003c89a593f77dc6 |
 | [V0-runtime-engineering-contract.md](V0-runtime-engineering-contract.md) | b9575bd48cac9bc42709056514579dbb4c70fa66c21bab6231430497af642dae |
 | [V0-engineering-entry-and-isolation-contract.md](V0-engineering-entry-and-isolation-contract.md) | 4aa7f62551c7391ed73712c3d3577796ada89d4413057b18f8e6e9916318e4fb |
 | [V0-limits-config-and-capacity-contract.md](V0-limits-config-and-capacity-contract.md) | e064aa06d77231dda5763c7b3f7f885bb556e22cf3c13c04a35c5a25822b3824 |
-| [V0-catalog-runtime-lease-and-admission-handoff.md](V0-catalog-runtime-lease-and-admission-handoff.md) | 407dd9be9fe1a40afdea8533e0c292e6e33203eab2a9800dc6b99aec6bb50806 |
+| [V0-catalog-runtime-lease-and-admission-handoff.md](V0-catalog-runtime-lease-and-admission-handoff.md) | 0389ba080e865cc0edbf177ea837d5a6ee18ffe850ed0ceb4659f6faed2096f1 |
 | [V0-java-surface-and-consumer-inventory.md](V0-java-surface-and-consumer-inventory.md) | 414c1ce1c763145e41f1016c3dfcc9c4b4896a9ad85d8db05feba3d6fa7b5d5d |
 | [V0-locked-platform-source-inventory.md](V0-locked-platform-source-inventory.md) | 32ae284440518904077521a7e4d21788de40af0c33ad3380261ce3fa1091df16 |
 | [V0-source-inventory.md](V0-source-inventory.md) | e5dd61428c922f4ce7c795c3cfe7e1febb6be852c4fd5a9f60cc9832c596d007 |
+
+Descriptor Namespace Correction 只同步上列 Catalog 與 P8 兩份契約的 category／capability。採用範圍和保留條款依 [22 號 §5](../codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md#5-v0-descriptor-namespace-correction)。

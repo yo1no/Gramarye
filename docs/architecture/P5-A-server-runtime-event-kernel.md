@@ -27683,3 +27683,9 @@ Scope D 1.0、M1、C 與 P11 的已發布契約及既有驗收保留。原 H6 �
 [22 號修正案](../codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md) 登錄 V0-PROJECTILE 前瞻性鎖版平台證據、R2 工程契約（含 R1.1 classfile surface correction）、config／limits 與直接驗收。H6 §65.9 歷史 Z 身分及原 P11、Scope D、M1、C 接受保持。V0 未來平台證據依 22 號具名 sealed bundle 查證。所列歷史 Z bytes 無原件可供等價證明。
 
 §71 採用的產品結果、§§47.3–47.4 既有 Java fence、§§69–71 歷史及原責任保持。後續 production implementation 以已通過 main required checks 的本 authority SHA 為基底，並接受 22 號的 exact surface、K1 與直接驗收門檻。此節不建立 runtime 驗收或新玩家入口。
+
+---
+
+## §73 — V0 Descriptor Namespace Correction
+
+[22 號 §5](../codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md#5-v0-descriptor-namespace-correction) 採用 V0 backend category `gramarye:projectile` 與 backend capability `gramarye:v0_projectile`，backend descriptor 保持 `gramarye:v0_projectile`。此修正限符合既有 Scope D `namespace:path` 資料與可信 frontend 規則。原 codec、產品語意、Java surface、config、limits、K1、P11 與驗收矩陣保持。原 §72 與此前全部 H6 bytes 保留。

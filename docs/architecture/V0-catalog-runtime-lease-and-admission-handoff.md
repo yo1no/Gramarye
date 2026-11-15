@@ -31,7 +31,7 @@ C 先驗同一 image，V0 冷 verifier 再縮成 typed immutable runtime project
 
 | Version 1 descriptor（僅隔離 variant 的可信 frontend） | 冷證明 |
 |---|---|
-| BACKEND `gramarye:v0_projectile`，category `projectile`，capability `v0_projectile` | 空 descriptor args、無 settings expressions、無 Phenomenon/raw gameplay。同一既有 entity type。唯一 required INTEGER creation input `launch_step_milli`，無 default，1..1000；fixture 是 server 供 1000，最高 1 block/tick。位置、target 和向量由 server native 接點獨立形成。 |
+| BACKEND `gramarye:v0_projectile`，category `gramarye:projectile`，capability `gramarye:v0_projectile` | 空 descriptor args、無 settings expressions、無 Phenomenon/raw gameplay。同一既有 entity type。唯一 required INTEGER creation input `launch_step_milli`，無 default，1..1000；fixture 是 server 供 1000，最高 1 block/tick。位置、target 和向量由 server native 接點獨立形成。 |
 | ACTIVATION `gramarye:v0_engineering` | 空 args，只給該 backend。Standalone 或 Manifest 所選 root 必有此 activation 與 server input；selected child 必為無 activation 的 V0 child unit，依 exact Create 目標與原 binder。其他 C 合法形狀保持可發布，V0 首片無法接受其不符的執行 unit。 |
 | EVENT `gramarye:on_create`，origin CREATION | 至多一 handler，空 blocks。 |
 | EVENT `gramarye:on_hit`，origin EXTERNAL | 至多一 handler，最多依序 Damage 和 Create。C scalar fact `launch_step_milli` 由親代已綁值提供，Create contract 以同名同型到 child。Native target 由 P5 call-local proof 給 P6，無 catalog UUID/entity id。Create 綁 exact closure child，須 root damage 已確認成功，depth 1 child 無 Create path。 |

@@ -118,9 +118,12 @@ final class P8S2BoundaryTest {
     private static final int ARCHITECTURE_DP2_V0_R2_PREFIX_LENGTH = 29_017_933;
     private static final String ARCHITECTURE_DP2_V0_R2_PREFIX_SHA256 =
             "bcc19072653a800f2a19f92ea2719ba7b32d9a173f437e3836c3f93b9f7967b0";
-    private static final int ARCHITECTURE_FINAL_LENGTH = 29_018_772;
-    private static final String ARCHITECTURE_FINAL_SHA256 =
+    private static final int ARCHITECTURE_V0_DESCRIPTOR_PREFIX_LENGTH = 29_018_772;
+    private static final String ARCHITECTURE_V0_DESCRIPTOR_PREFIX_SHA256 =
             "275fb17bc2419e55f32838bd28a227d2bba5a62e471a97d42fccc159402206eb";
+    private static final int ARCHITECTURE_FINAL_LENGTH = 29_019_328;
+    private static final String ARCHITECTURE_FINAL_SHA256 =
+            "c7fa78d63ff17cb61bf043835dd0c20e5b16de72df9af75dbcf8426131e29e83";
     private static final Path V0_AUTHORITY_SOURCE = PROJECT_ROOT.resolve(
             "docs/codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md");
     private static final Path P7_LOGIN_ISOLATION_SOURCE =
@@ -913,11 +916,14 @@ final class P8S2BoundaryTest {
                         ARCHITECTURE_DP2_V0_R2_PREFIX_SHA256,
                         sha256(architectureBytes, 0, ARCHITECTURE_DP2_V0_R2_PREFIX_LENGTH)),
                 () -> assertEquals(
+                        ARCHITECTURE_V0_DESCRIPTOR_PREFIX_SHA256,
+                        sha256(architectureBytes, 0, ARCHITECTURE_V0_DESCRIPTOR_PREFIX_LENGTH)),
+                () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
-                () -> assertEquals(5_628L, fileSize(V0_AUTHORITY_SOURCE)),
+                () -> assertEquals(6_656L, fileSize(V0_AUTHORITY_SOURCE)),
                 () -> assertEquals(
-                        "b7f1a7ae4e02ef5fb4225cb00a191c657f4120260fab4ba687ce9264f30475f2",
+                        "cc74a37f6c4be48171080dbc2d03156cb54fad40c47f511078914ad3c71bdbb4",
                         sha256(V0_AUTHORITY_SOURCE)),
                 // P11 §6: local-quarantine native copy fixture; authority prefixes stay unchanged.
                 () -> assertEquals(149_692L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),
