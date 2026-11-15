@@ -241,20 +241,69 @@ final class EffectExecutionEngine {
         Objects.requireNonNull(resolver, "resolver");
         Objects.requireNonNull(guard, "guard");
         Objects.requireNonNull(commitPort, "commitPort");
+        PreparationResult prepared = preparePlan(request, suppliedChildIntentCapacity,
+                resolver, guard, commitPort, null);
+        if (prepared.rejection != null) {
+            return terminal(prepared.rejection);
+        }
+        return new PreparedEffectExecution(request, prepared.plan, suppliedChildIntentCapacity,
+                guard, commitPort, prepared.trace);
+    }
+
+    V0EffectPreparation prepareV0(
+            EffectRequest request,
+            V0EffectResolver resolver,
+            EffectExecutionGuard guard,
+            V0EffectCommitPort commitPort) {
+        Objects.requireNonNull(resolver, "resolver");
+        Objects.requireNonNull(guard, "guard");
+        Objects.requireNonNull(commitPort, "commitPort");
+        PreparationResult prepared = preparePlan(request, 0, resolver, guard, null, commitPort);
+        if (prepared.rejection != null) {
+            return new V0EffectPreparationRejected(prepared.rejection);
+        }
+        return new PreparedV0EffectExecution(request, prepared.plan, guard, commitPort,
+                prepared.trace);
+    }
+
+    private static final class PreparationResult {
+        private final EffectCommitPlan plan;
+        private final List<EffectTraceEntry> trace;
+        private final EffectExecutionResult rejection;
+
+        private PreparationResult(EffectCommitPlan plan, List<EffectTraceEntry> trace,
+                EffectExecutionResult rejection) {
+            this.plan = plan;
+            this.trace = trace;
+            this.rejection = rejection;
+        }
+
+        private static PreparationResult rejected(EffectExecutionResult result) {
+            return new PreparationResult(null, List.of(), result);
+        }
+    }
+
+    private PreparationResult preparePlan(
+            EffectRequest request,
+            int suppliedChildIntentCapacity,
+            EffectResolver resolver,
+            EffectExecutionGuard guard,
+            EffectCommitPort legacyPort,
+            V0EffectCommitPort v0Port) {
         List<EffectTraceEntry> trace = new ArrayList<>();
 
         EffectGuardDecision entryDecision = checkGuard(guard, EffectGuardPoint.entry());
         if (entryDecision != EffectGuardDecision.ALLOWED) {
-            return terminal(rejected(guardRejectReason(entryDecision), 0, 0, trace));
+            return PreparationResult.rejected(rejected(guardRejectReason(entryDecision), 0, 0, trace));
         }
 
         if (!validRequestShape(request)) {
-            return terminal(rejected(EffectRejectReason.INVALID_REQUEST, 0, 0, trace));
+            return PreparationResult.rejected(rejected(EffectRejectReason.INVALID_REQUEST, 0, 0, trace));
         }
         if (suppliedChildIntentCapacity < 0
                 || suppliedChildIntentCapacity
                         > P6EffectBounds.MAX_CHILD_INTENTS_PER_EXECUTION) {
-            return terminal(rejected(EffectRejectReason.BOUND_EXCEEDED, 0, 0, trace));
+            return PreparationResult.rejected(rejected(EffectRejectReason.BOUND_EXCEEDED, 0, 0, trace));
         }
         appendWithoutStep(trace, EffectTraceStage.REQUEST_VALIDATED);
 
@@ -264,7 +313,7 @@ final class EffectExecutionEngine {
                     P6ExecutionInvariantCode.RESOLVER_RETURNED_NULL);
         }
         if (resolution instanceof RejectedEffectResolution rejected) {
-            return terminal(rejected(rejected.reason(), 0, 0, trace));
+            return PreparationResult.rejected(rejected(rejected.reason(), 0, 0, trace));
         }
 
         EffectCommitPlan plan = ((AcceptedEffectResolution) resolution).plan();
@@ -275,8 +324,8 @@ final class EffectExecutionEngine {
         appendWithoutStep(trace, EffectTraceStage.TARGET_RESOLVED);
         int plannedStepCount = plan.steps().size();
 
-        if (!commitPort.isAvailable()) {
-            return terminal(rejected(
+        if (!(legacyPort != null ? legacyPort.isAvailable() : v0Port.isAvailable())) {
+            return PreparationResult.rejected(rejected(
                     EffectRejectReason.COMMIT_PORT_UNAVAILABLE,
                     plannedStepCount,
                     0,
@@ -286,71 +335,79 @@ final class EffectExecutionEngine {
         EffectGuardDecision preCommitDecision = checkGuard(
                 guard, EffectGuardPoint.preCommit());
         if (preCommitDecision != EffectGuardDecision.ALLOWED) {
-            return terminal(rejected(
+            return PreparationResult.rejected(rejected(
                     guardRejectReason(preCommitDecision),
                     plannedStepCount,
                     0,
                     trace));
         }
 
-        return new PreparedEffectExecution(
-                request,
-                plan,
-                suppliedChildIntentCapacity,
-                guard,
-                commitPort,
-                trace);
+        return new PreparationResult(plan, trace, null);
     }
 
     EffectExecutionAttempt executePrepared(
             PreparedEffectExecution prepared, ManaTraceState manaTraceState) {
         Objects.requireNonNull(prepared, "prepared");
+        return ((V0KnownAttempt) executeSteps(prepared.request(), prepared.plan(),
+                prepared.guard(), prepared.commitPort(), null, prepared.tracePrefix(),
+                manaTraceState)).attempt();
+    }
+
+    V0EffectAttempt executePreparedV0(
+            PreparedV0EffectExecution prepared, ManaTraceState manaTraceState) {
+        Objects.requireNonNull(prepared, "prepared");
+        return executeSteps(prepared.request(), prepared.plan(), prepared.guard(), null,
+                prepared.commitPort(), prepared.tracePrefix(), manaTraceState);
+    }
+
+    private V0EffectAttempt executeSteps(
+            EffectRequest request,
+            EffectCommitPlan plan,
+            EffectExecutionGuard guard,
+            EffectCommitPort legacyPort,
+            V0EffectCommitPort v0Port,
+            List<EffectTraceEntry> tracePrefix,
+            ManaTraceState manaTraceState) {
         Objects.requireNonNull(manaTraceState, "manaTraceState");
-        List<EffectTraceEntry> trace = new ArrayList<>(prepared.tracePrefix());
+        List<EffectTraceEntry> trace = new ArrayList<>(tracePrefix);
         if (manaTraceState == ManaTraceState.DEBITED) {
             appendWithoutStep(trace, EffectTraceStage.MANA_DEBITED);
         }
 
-        int plannedStepCount = prepared.plan().steps().size();
+        int plannedStepCount = plan.steps().size();
         int executedStepCount = 0;
         int primaryMutationCount = 0;
-        for (EffectStep step : prepared.plan().steps()) {
+        for (EffectStep step : plan.steps()) {
             EffectGuardDecision stepDecision = checkGuard(
-                    prepared.guard(), EffectGuardPoint.beforeStep(step.index()));
+                    guard, EffectGuardPoint.beforeStep(step.index()));
             if (stepDecision != EffectGuardDecision.ALLOWED) {
                 EffectFailureReason reason = guardFailureReason(stepDecision);
                 if (primaryMutationCount == 0) {
-                    return zeroMutationFailure(
+                    return new V0KnownAttempt(zeroMutationFailure(
                             reason,
                             step.index(),
                             plannedStepCount,
                             executedStepCount,
-                            trace);
+                            trace));
                 }
-                return partial(
+                return new V0KnownAttempt(partial(
                         reason,
                         step.index(),
                         plannedStepCount,
                         executedStepCount,
                         primaryMutationCount,
-                        trace);
+                        trace));
             }
 
-            EffectStepOutcome outcome;
-            if (prepared.request() instanceof SpawnProjectileRequest spawnRequest
-                    && step instanceof SpawnProjectileStep spawnStep) {
-                outcome = prepared.commitPort().commitSpawn(spawnRequest, spawnStep);
-            } else if (prepared.request() instanceof DamageEffectRequest damageRequest
-                    && step instanceof DamageEffectStep damageStep) {
-                outcome = prepared.commitPort().commitDamage(damageRequest, damageStep);
-            } else {
-                throw new P6ExecutionInvariantException(
-                        P6ExecutionInvariantCode.UNSUPPORTED_COMMIT_STEP);
+            V0PrimaryOutcome primary = commit(request, step, legacyPort, v0Port);
+            if (primary == V0NativeUnknown.INSTANCE) {
+                return new V0UnresolvedAttempt(step.index(), primaryMutationCount);
             }
-            if (outcome == null) {
+            if (!(primary instanceof V0Confirmed confirmed) || confirmed.outcome() == null) {
                 throw new P6ExecutionInvariantException(
                         P6ExecutionInvariantCode.PORT_RETURNED_NULL);
             }
+            EffectStepOutcome outcome = confirmed.outcome();
             executedStepCount++;
             primaryMutationCount = EffectMutationAccumulator.add(
                     primaryMutationCount, step, outcome);
@@ -362,30 +419,48 @@ final class EffectExecutionEngine {
             EffectFailureReason failureReason = outcome.failureReason().orElseThrow();
             if (outcome.kind() == EffectStepOutcomeKind.NOT_APPLIED
                     && primaryMutationCount == 0) {
-                return zeroMutationFailure(
+                return new V0KnownAttempt(zeroMutationFailure(
                         failureReason,
                         step.index(),
                         plannedStepCount,
                         executedStepCount,
-                        trace);
+                        trace));
             }
-            return partial(
+            return new V0KnownAttempt(partial(
                     failureReason,
                     step.index(),
                     plannedStepCount,
                     executedStepCount,
                     primaryMutationCount,
-                    trace);
+                    trace));
         }
 
-        return new EffectExecutionAttempt(
+        return new V0KnownAttempt(new EffectExecutionAttempt(
                 EffectAttemptStatus.SUCCEEDED,
                 Optional.empty(),
                 EffectExecutionResult.NOT_APPLICABLE_STEP_INDEX,
                 plannedStepCount,
                 executedStepCount,
                 primaryMutationCount,
-                trace);
+                trace));
+    }
+
+    private static V0PrimaryOutcome commit(
+            EffectRequest request, EffectStep step,
+            EffectCommitPort legacyPort, V0EffectCommitPort v0Port) {
+        if (request instanceof SpawnProjectileRequest spawn
+                && step instanceof SpawnProjectileStep spawnStep) {
+            return legacyPort != null
+                    ? new V0Confirmed(legacyPort.commitSpawn(spawn, spawnStep))
+                    : v0Port.commitSpawn(spawn, spawnStep);
+        }
+        if (request instanceof DamageEffectRequest damage
+                && step instanceof DamageEffectStep damageStep) {
+            return legacyPort != null
+                    ? new V0Confirmed(legacyPort.commitDamage(damage, damageStep))
+                    : v0Port.commitDamage(damage, damageStep);
+        }
+        throw new P6ExecutionInvariantException(P6ExecutionInvariantCode.UNSUPPORTED_COMMIT_STEP);
     }
 
     EffectExecutionResult finalizeWithoutMana(EffectExecutionAttempt attempt) {

@@ -244,7 +244,12 @@ final class P8DeliveryAdmission {
     private P8DeliveryAdmission() {}
 
     static List<P8Delivery> admit(List<P8Delivery> candidates) {
+        return admit(candidates, List.of());
+    }
+
+    static List<P8Delivery> admit(List<P8Delivery> candidates, List<P8Delivery> priorAdmissions) {
         Objects.requireNonNull(candidates, "candidates");
+        Objects.requireNonNull(priorAdmissions, "priorAdmissions");
         if (candidates.size() > PresentationLimits.MAX_CANDIDATE_DELIVERIES_PER_TICK) {
             throw new IllegalArgumentException("candidate deliveries exceed the P8 tick bound");
         }
@@ -261,15 +266,31 @@ final class P8DeliveryAdmission {
                 PresentationOrdering.DeliveryCandidate, P8Delivery>();
         candidates.forEach(delivery -> byOrdering.put(delivery.ordering(), delivery));
 
-        var serverBudget = PresentationBudget.initial(
-                PresentationBudget.Scope.DELIVERIES_PER_SERVER);
-        var playerBudgets = new HashMap<UUID, PresentationBudget>();
+        var budget = new DeliveryBudget();
+        for (P8Delivery prior : priorAdmissions) {
+            if (!budget.admit(prior)) {
+                throw new IllegalArgumentException("prior P8 admissions exceed their original budget");
+            }
+        }
         var admitted = new ArrayList<P8Delivery>();
         for (PresentationOrdering.DeliveryCandidate retained : selectedOrder.retained()) {
             P8Delivery delivery = byOrdering.get(retained);
             if (delivery == null) {
                 throw new IllegalStateException("P8 delivery ordering lost its value");
             }
+            if (budget.admit(delivery)) {
+                admitted.add(delivery);
+            }
+        }
+        return List.copyOf(admitted);
+    }
+
+    private static final class DeliveryBudget {
+        private PresentationBudget serverBudget =
+                PresentationBudget.initial(PresentationBudget.Scope.DELIVERIES_PER_SERVER);
+        private final Map<UUID, PresentationBudget> playerBudgets = new HashMap<>();
+
+        private boolean admit(P8Delivery delivery) {
             var charge = new PresentationCost(1L, delivery.packetCharge());
             var nextServer = serverBudget.consume(charge);
             var playerBudget = playerBudgets.getOrDefault(
@@ -278,13 +299,12 @@ final class P8DeliveryAdmission {
             var nextPlayer = playerBudget.consume(charge);
             if (nextServer.outcome() != PresentationBudget.Outcome.ACCEPTED
                     || nextPlayer.outcome() != PresentationBudget.Outcome.ACCEPTED) {
-                continue;
+                return false;
             }
             serverBudget = nextServer.nextState();
             playerBudgets.put(delivery.identity().playerId(), nextPlayer.nextState());
-            admitted.add(delivery);
+            return true;
         }
-        return List.copyOf(admitted);
     }
 }
 
@@ -307,6 +327,29 @@ final class P8RecipientSelector {
             Optional<Entity> targetEntity,
             Optional<ServerPlayer> sourcePlayer,
             P8PresentationTransport transport) {
+        return select(server, material, event, targetEntity, sourcePlayer, transport,
+                PresentationLimits.MAX_SELECTED_RECIPIENTS);
+    }
+
+    static Optional<P8RecipientSelection> selectV0(
+            MinecraftServer server,
+            P8EventMaterial material,
+            PresentationEvent event,
+            Optional<Entity> exactTarget,
+            Optional<ServerPlayer> exactOnlineSource,
+            P8PresentationTransport transport,
+            int recipientLimit) {
+        return select(server, material, event, exactTarget, exactOnlineSource, transport, recipientLimit);
+    }
+
+    private static Optional<P8RecipientSelection> select(
+            MinecraftServer server,
+            P8EventMaterial material,
+            PresentationEvent event,
+            Optional<Entity> targetEntity,
+            Optional<ServerPlayer> sourcePlayer,
+            P8PresentationTransport transport,
+            int recipientLimit) {
         Objects.requireNonNull(server, "server");
         Objects.requireNonNull(material, "material");
         Objects.requireNonNull(event, "event");
@@ -351,8 +394,7 @@ final class P8RecipientSelector {
             }
         }
 
-        var eligible = new ArrayList<P8SelectedRecipient>(
-                Math.min(unique.size(), PresentationLimits.MAX_SELECTED_RECIPIENTS));
+        var eligible = new ArrayList<P8SelectedRecipient>(Math.min(unique.size(), recipientLimit));
         var evaluations = 0;
         for (ServerPlayer player : unique.values()) {
             evaluations++;
@@ -379,7 +421,7 @@ final class P8RecipientSelector {
                     identity, category(material, identity.playerId()), distance));
         }
 
-        return Optional.of(retainEligible(eligible, evaluations, event.sequence()));
+        return Optional.of(retainEligible(eligible, evaluations, event.sequence(), recipientLimit));
     }
 
     static boolean withinOnlineScanBound(int count) {
@@ -406,9 +448,15 @@ final class P8RecipientSelector {
 
     static P8RecipientSelection retainEligible(
             List<P8SelectedRecipient> eligible, int evaluations, long sequence) {
+        return retainEligible(eligible, evaluations, sequence, PresentationLimits.MAX_SELECTED_RECIPIENTS);
+    }
+
+    static P8RecipientSelection retainEligible(
+            List<P8SelectedRecipient> eligible, int evaluations, long sequence, int recipientLimit) {
         Objects.requireNonNull(eligible, "eligible");
-        if (eligible.size() > PresentationLimits.MAX_ONLINE_RECIPIENT_SCAN_PER_EVENT) {
-            throw new IllegalArgumentException("eligible recipients exceed the P8 scan bound");
+        if (eligible.size() > PresentationLimits.MAX_ONLINE_RECIPIENT_SCAN_PER_EVENT
+                || recipientLimit < 1 || recipientLimit > PresentationLimits.MAX_SELECTED_RECIPIENTS) {
+            throw new IllegalArgumentException("eligible recipients or limit exceed the P8 bound");
         }
         var orderInputs = eligible.stream()
                 .map(value -> new PresentationOrdering.DeliveryCandidate(
@@ -419,7 +467,7 @@ final class P8RecipientSelector {
                 .toList();
         var selectedOrder = PresentationOrdering.selectDeliveries(
                 orderInputs,
-                Math.min(PresentationLimits.MAX_SELECTED_RECIPIENTS, orderInputs.size()));
+                Math.min(recipientLimit, orderInputs.size()));
         var byOrdering = new HashMap<
                 PresentationOrdering.DeliveryCandidate, P8SelectedRecipient>();
         for (var index = 0; index < eligible.size(); index++) {
@@ -559,6 +607,11 @@ final class P8TickState {
 
     List<P8BufferedPresentation> buffer() {
         return buffer;
+    }
+
+    P8V0ResidualBudget residualAfter(int legacyCandidates, List<P8Delivery> legacyAdmissions) {
+        return new P8V0ResidualBudget(serverLogical, bufferBudget, sourceLogical, recipientEvaluations,
+                legacyCandidates, legacyAdmissions);
     }
 
     P8TickScratch scratch(long offeredTick) {

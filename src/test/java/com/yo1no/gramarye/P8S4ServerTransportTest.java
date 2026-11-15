@@ -269,6 +269,24 @@ final class P8S4ServerTransportTest {
     }
 
     @Test
+    void v0DispatchUsesOnlyTheLegacyRemainderAndTheSameTransport() {
+        var service = read(SERVICE_SOURCE);
+        var sharedDrain = between(service, "    private CatalogDrainResultForTesting drainPresentation(",
+                "    private CatalogDrainResultForTesting drainCatalogs(");
+        var v0Drain = between(service, "    private void drainV0Applied(", "    private boolean currentV0Stage(");
+        int legacySubmit = sharedDrain.indexOf("submitEvent(delivery.identity(), delivery.buffered().event())");
+        int v0Residual = sharedDrain.indexOf("shared.residualAfter(deliveries.size(), admitted)");
+        int eligibility = v0Drain.indexOf("P8RecipientSelector.remainsEligible(");
+        int measure = v0Drain.indexOf("transport.packetCharge(");
+        assertAll(
+                () -> assertTrue(legacySubmit >= 0 && legacySubmit < v0Residual),
+                () -> assertTrue(v0Drain.contains("residual.admitDeliveries(deliveries)")),
+                () -> assertTrue(eligibility >= 0 && eligibility < measure),
+                () -> assertEquals(1, occurrences(v0Drain, "submitEvent(")),
+                () -> assertEquals(0, occurrences(v0Drain, "transport.submit(")));
+    }
+
+    @Test
     void fanoutUsesOneMeasuredChargePerRecipientAndDeterministicPriorityOrder() {
         var target = new P8SelectedRecipient(
                 new P8RecipientIdentity(new UUID(0L, 3L), 1L),

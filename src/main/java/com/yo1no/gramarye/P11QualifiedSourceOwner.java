@@ -1220,6 +1220,13 @@ final class P11QualifiedSourceOwner {
         }
 
         boolean qualifies(ServerPlayer exactA) { return owner.workRecipient(this, exactA) != null; }
+
+        Optional<P11ReceiptLedger.Source> paymentSource(ServerPlayer exactA) {
+            var recipient = owner.workRecipient(this, exactA);
+            return recipient != null && recipient.actor == exactA && owner.canSerialize(recipient)
+                    ? Optional.of(recipient.source) : Optional.empty();
+        }
+
         void release() { owner.releaseWork(this); }
         P11NativeOperationBoundary.OperationScope beginNative(ServerPlayer exactA) {
             var recipient = owner.workRecipient(this, exactA);

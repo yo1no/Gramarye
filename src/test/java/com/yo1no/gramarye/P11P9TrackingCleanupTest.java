@@ -32,6 +32,8 @@ final class P11P9TrackingCleanupTest {
                 "package com.llamalad7.mixinextras.injector.wrapoperation; public interface Operation<T>{T call(Object...args);}",
                 "net/minecraft/world/level/ChunkPos.java",
                 "package net.minecraft.world.level; public record ChunkPos(long value){public long toLong(){return value;}}",
+                "net/minecraft/world/level/Level.java",
+                "package net.minecraft.world.level; public class Level {}",
                 "net/minecraft/world/level/entity/EntityAccess.java",
                 "package net.minecraft.world.level.entity; public interface EntityAccess{}",
                 "net/minecraft/world/level/entity/Visibility.java",
@@ -61,8 +63,11 @@ final class P11P9TrackingCleanupTest {
                   ServerPlayer authenticatedCasterIdentity=new ServerPlayer(server);
                   String dimension="overworld"; RuntimeProjectileContinuationPermit continuationPermit=new RuntimeProjectileContinuationPermit();
                   UUID id=continuationPermit.plannedProjectileId; boolean removed; int discards; Runnable removal=()->{};
+                  net.minecraft.world.level.Level v0Level; boolean v0Closed;
                   Object level(){return world;} UUID getUUID(){return id;} boolean isRemoved(){return removed;}
                   boolean hasContinuationPermitIdentity(RuntimeProjectileContinuationPermit p){return continuationPermit==p;}
+                  boolean v0ClosedForTrackingDiscard(){return v0Level!=null&&v0Closed&&!removed;}
+                  boolean guardV0PositionChunk(net.minecraft.world.level.Level world,int x,int z){return v0Level!=null&&v0Level==world&&x==2&&z==3;}
                   void discard(){removed=true;discards++;removal.run();}
                 """ + predicate + """
                 }
@@ -194,6 +199,7 @@ final class P11P9TrackingCleanupTest {
     private static final String FIXTURE = """
             package com.yo1no.gramarye;
             import net.minecraft.world.level.ChunkPos;
+            import net.minecraft.world.level.Level;
             import net.minecraft.world.level.entity.*;
             import static com.yo1no.gramarye.RuntimeProjectileContinuationPermit.State.*;
             public final class TrackingFixture {
@@ -205,6 +211,7 @@ final class P11P9TrackingCleanupTest {
               static void scopeEmpty()throws Exception{var f=P11P9TrackingCleanup.class.getDeclaredField("CURRENT");f.setAccessible(true);check(((ThreadLocal<?>)f.get(null)).get()==null);}
               static EntitySectionStorage<EntityAccess> storage(){var s=new EntitySectionStorage<EntityAccess>();s.sections.add(new EntitySectionStorage.Section<>());return s;}
               static P9StarterProjectile add(EntitySectionStorage<EntityAccess>s){var p=new P9StarterProjectile();s.sections.get(0).entities.add(p);p.removal=()->s.sections.get(0).entities.remove(p);return p;}
+              static P9StarterProjectile addV0(EntitySectionStorage<EntityAccess>s, Level level){var p=add(s);p.authenticatedCasterIdentity=null;p.v0Level=level;return p;}
               public static void run()throws Exception{
                 var s=storage();var p=add(s);var active=add(s);active.continuationPermit.state=OPEN;var claimed=add(s);claimed.continuationPermit.state=CLAIMED_PENDING_DAMAGE;
                 int[] calls={0};
@@ -226,6 +233,18 @@ final class P11P9TrackingCleanupTest {
                 var overflow=storage();var objects=new java.util.ArrayList<P9StarterProjectile>();for(int n=0;n<129;n++)objects.add(add(overflow));try{P11P9TrackingCleanup.chunkStatus(overflow,new ChunkPos(1),Visibility.HIDDEN,a->null);throw new AssertionError();}catch(IllegalStateException expected){}check(objects.stream().filter(x->x.removed).count()==128);scopeEmpty();
                 var overflowPrimary=storage();for(int n=0;n<129;n++)add(overflowPrimary);try{P11P9TrackingCleanup.chunkStatus(overflowPrimary,new ChunkPos(1),Visibility.HIDDEN,a->{throw primary;});throw new AssertionError();}catch(AssertionError seen){check(seen==primary);}scopeEmpty();
                 var ordinary=new EntityAccess(){};P11P9TrackingCleanup.moved(ordinary,a->{try{scopeEmpty();}catch(Exception e){throw new AssertionError(e);}return null;});scopeEmpty();
+                var v0Storage=storage();var world=new Level();var legacy=add(v0Storage);var openV0=addV0(v0Storage,world);var closedV0=addV0(v0Storage,world);
+                check(!P11P9TrackingCleanup.guardV0PositionChunk(ordinary,world,2,3));
+                check(!P11P9TrackingCleanup.guardV0PositionChunk(legacy,world,2,3));
+                check(!P11P9TrackingCleanup.guardV0PositionChunk(openV0,new Level(),2,3));
+                check(P11P9TrackingCleanup.guardV0PositionChunk(openV0,world,2,3));
+                var order=new java.util.ArrayList<P9StarterProjectile>();legacy.removal=()->order.add(legacy);closedV0.removal=()->order.add(closedV0);
+                P11P9TrackingCleanup.chunkStatus(v0Storage,new ChunkPos(1),Visibility.HIDDEN,a->{
+                  P11P9TrackingCleanup.discardClosedV0(openV0);closedV0.v0Closed=true;
+                  P11P9TrackingCleanup.moved(closedV0,b->{P11P9TrackingCleanup.discardClosedV0(closedV0);return null;});
+                  P11P9TrackingCleanup.discardClosedV0(closedV0);check(order.isEmpty());return null;
+                });
+                check(order.equals(java.util.List.of(legacy,closedV0))&&closedV0.discards==1&&!openV0.removed);scopeEmpty();
                 var server=new MinecraftServer();
                 for(var disposition:new RuntimePermitCloseDisposition[]{RuntimePermitCloseDisposition.CLOSED,RuntimePermitCloseDisposition.ALREADY_CLOSED}){loaded=new P9StarterProjectile();loaded.continuationPermit.state=OPEN;loaded.continuationPermit.disposition=disposition;var permit=loaded.continuationPermit;closeDetachedContinuation(server,new ChildReservation(permit),ProjectileClosureReason.RELOAD_INVALIDATED);check(permit.closes==1&&loaded.discards==1);}
                 loaded=new P9StarterProjectile();var wrongPermit=new RuntimeProjectileContinuationPermit();closeDetachedContinuation(server,new ChildReservation(wrongPermit),ProjectileClosureReason.RELOAD_INVALIDATED);check(wrongPermit.closes==1&&!loaded.removed);

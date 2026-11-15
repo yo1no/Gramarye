@@ -70,9 +70,13 @@ final class P6RuntimeExecutionBridgeTest {
                         "AppliedFact",
                         "AppliedStep",
                         "AppliedStepKind",
-                        "AppliedTerminal"),
+                        "AppliedTerminal",
+                        "V0NativeOutcome",
+                        "V0Terminal",
+                        "V0Reason",
+                        "V0TerminalReceipt"),
                 nested);
-        assertEquals(1, Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredMethods())
+        assertEquals(2, Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredMethods())
                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                 .count());
         assertEquals(1, P6RuntimeExecutionBridge.GuardPort.class

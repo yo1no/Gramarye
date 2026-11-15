@@ -3,6 +3,7 @@ package com.yo1no.gramarye;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.definition.scoped.V0RuntimeCatalog;
 import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary.V0PlayWitness;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Objects;
@@ -11,11 +12,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.ReloadableServerResources;
 import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -23,11 +26,16 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.dimension.LevelStem;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.EntityHitResult;
 
 /** Main-thread substate of the one P5 slot. The off-thread reload path only closes the RAM gate. */
 final class V0SlotRuntime {
     private static final int PREPARATION_TICKS = 8;
     private static final int MAX_LOGICAL_PROGRAM_BYTES = 1_089;
+    // The already-qualified V0 engineering profile provides this exact binder value to C.
+    private static final int LAUNCH_STEP_MILLI = 1_000;
+    private static final ResourceLocation SPAWN = ResourceLocation.fromNamespaceAndPath("gramarye", "spawn_projectile");
+    private static final ResourceLocation DAMAGE = ResourceLocation.fromNamespaceAndPath("gramarye", "damage");
 
     private final SkillRuntimeService runtime;
     private final V0CatalogAuthority authority;
@@ -56,10 +64,14 @@ final class V0SlotRuntime {
     private boolean accepting;
     private boolean retirementSent;
     private volatile boolean stopped;
+    private V0TerminalReason stopReason;
     private volatile V0RuntimeCatalog.Suspension suspended;
     private V0RuntimeCatalog.Suspension installedReload;
     private WeakReference<ReloadableServerResources> reloadSource;
     private long legacyEventOrder;
+    private long currentTick;
+    private long requestHighWater;
+    private int dispatchedThisTick;
 
     V0SlotRuntime(V0SlotStartup startup, V0SlotBinding binding) {
         Objects.requireNonNull(startup, "startup");
@@ -129,6 +141,10 @@ final class V0SlotRuntime {
     void maintain(long runtimeTick, long legacyEventOrder) {
         requireMain();
         this.legacyEventOrder = legacyEventOrder;
+        if (currentTick != runtimeTick) {
+            currentTick = runtimeTick;
+            dispatchedThisTick = 0;
+        }
         applyReopenAcknowledgment();
         if (pending != null && (runtimeTick > pending.request.inclusivePreparationDeadlineTick()
                 || suspended != null)) {
@@ -143,8 +159,14 @@ final class V0SlotRuntime {
         }
         for (int index = 0; index < lineages.length; index++) {
             var lineage = lineages[index];
-            if (lineage != null && (lineage.releasing || suspended != null || runtimeTick > lineage.deadline)) {
-                settleLineage(index, lineage);
+            if (lineage != null) {
+                reconcileCarrierTerminal(lineage.rootBinding);
+                reconcileCarrierTerminal(lineage.childBinding);
+                if (lineage.releasing || suspended != null || runtimeTick > lineage.deadline
+                        || lineage.logoutState == SkillRuntimeService.LogoutState.INVALID
+                        || lineage.rootDone && (!lineage.childPublished || lineage.childDone)) {
+                    settleLineage(index, lineage);
+                }
             }
         }
     }
@@ -215,7 +237,7 @@ final class V0SlotRuntime {
                     || !queue.claimCleanup(cell, nextLineage, V0P5Queue.ROOT_LEASE_CLEANUP)) {
                 throw new IllegalStateException("V0 root reservation could not reserve its fixed event/cleanup roles");
             }
-            var lineage = new Lineage(capture, lease, dueTick + limits.lineageDeadlineTicks(), nextLineage,
+            var lineage = new Lineage(this, cell, capture, lease, dueTick + limits.lineageDeadlineTicks(), nextLineage,
                     instanceHighWater + 1, carrierHighWater + 1);
             work = runtime.reserveV0Work(capture.actor, limits.maxLineagesPerServer());
             if (work == null) {
@@ -340,6 +362,401 @@ final class V0SlotRuntime {
         return true;
     }
 
+    void beginNormalLogout(SkillRuntimeService.NormalLogoutScope scope,
+            ServerGamePacketListenerImpl listener, ServerPlayer actor) {
+        requireMain();
+        Objects.requireNonNull(scope, "logout scope");
+        if (pending != null && pending.actor == actor && pending.listener == listener) {
+            // The original cold request still occupies its mailbox until its owner completes.
+            pending = null;
+        }
+        for (var lineage : lineages) {
+            if (lineage != null && lineage.logoutState == SkillRuntimeService.LogoutState.ONLINE
+                    && lineage.capture.actor == actor && lineage.capture.listener == listener
+                    && actor.connection == listener && listener.player == actor && usable(lineage)
+                    && lineage.work != null && lineage.work.qualifies(actor)) {
+                lineage.logoutScope = scope;
+                lineage.logoutState = SkillRuntimeService.LogoutState.IN_PROGRESS;
+            }
+        }
+    }
+
+    void endNormalLogout(SkillRuntimeService.NormalLogoutScope scope, boolean proved) {
+        requireMain();
+        if (scope == null) { return; }
+        for (var lineage : lineages) {
+            if (lineage != null && lineage.logoutScope == scope) {
+                lineage.logoutState = SkillRuntimeService.LogoutState.INVALID;
+            }
+        }
+        boolean evaluated = false;
+        try {
+            if (proved) {
+                for (var lineage : lineages) {
+                    if (lineage != null && lineage.logoutScope == scope && usable(lineage)
+                            && lineage.work != null && lineage.work.qualifies(lineage.capture.actor)) {
+                        lineage.logoutState = SkillRuntimeService.LogoutState.COMPLETE;
+                    }
+                }
+            }
+            evaluated = true;
+        } finally {
+            for (var lineage : lineages) {
+                if (lineage != null && lineage.logoutScope == scope) {
+                    if (!evaluated) { lineage.logoutState = SkillRuntimeService.LogoutState.INVALID; }
+                    lineage.logoutScope = null;
+                }
+            }
+        }
+    }
+
+    void resumeObservedHits(long tick) {
+        requireMain();
+        for (var lineage : lineages) {
+            if (lineage != null) {
+                resumeObservedHit(lineage, lineage.rootBinding, lineage.rootImpact, tick);
+                resumeObservedHit(lineage, lineage.childBinding, lineage.childImpact, tick);
+            }
+        }
+    }
+
+    private void resumeObservedHit(Lineage lineage, SkillRuntimeService.V0CarrierBinding carrier,
+            Impact impact, long tick) {
+        if (impact == null || carrier.claimed() || carrier.closing()) {
+            return;
+        }
+        var projectile = carrier.carrier();
+        var level = lineage.capture.geometry.level;
+        if (tick == impact.observedTick && tick == currentTick && projectile != null
+                && projectile.level() == level && projectile.isAddedToLevel() && !projectile.isRemoved()
+                && level.getEntity(projectile.getId()) == projectile
+                && P9V0LoadedBlocks.dryCell(level, BlockPos.containing(impact.location))
+                && qualification(lineage) == V0WorkQualification.EXECUTABLE
+                && eligibleTarget(carrier, impact.target) && publishImpact(carrier, lineage, tick)) {
+            carrier.resumeImpact();
+            return;
+        }
+        closeCarrier(carrier, V0TerminalReason.OWNER_INVALIDATED);
+    }
+
+    void nativeCarrierTerminal(SkillRuntimeService.V0CarrierBinding carrier, V0TerminalReason reason) {
+        requireMain();
+        var lineage = exactLineage(carrier);
+        if (lineage == null) { return; }
+        if (carrier.child) {
+            if (lineage.childTerminal != null) { return; }
+            lineage.childTerminal = reason;
+            lineage.childDone = true;
+            lineage.childImpact = null;
+        } else {
+            if (lineage.rootTerminal != null) { return; }
+            lineage.rootTerminal = reason;
+            lineage.rootDone = true;
+            lineage.rootImpact = null;
+        }
+    }
+
+    private void reconcileCarrierTerminal(SkillRuntimeService.V0CarrierBinding carrier) {
+        var lineage = exactLineage(carrier);
+        var projectile = carrier.carrier();
+        if (lineage == null || !carrier.closing() || projectile == null) { return; }
+        var dispatch = currentDispatch;
+        int releaseRole = carrier.child ? V0P5Queue.CHILD_RELEASE : V0P5Queue.ROOT_RELEASE;
+        if (dispatch != null && dispatch.lineage == carrier.lineage && dispatch.role == releaseRole) {
+            // Synchronous close during native add does not prove that insertion has finished.
+            return;
+        }
+        if (!projectile.isRemoved() && (projectile.v0EverInserted() || projectile.isAddedToLevel())) {
+            return;
+        }
+        int hitCleanup = carrier.child ? 3 : 0;
+        if (!queue.settleCleanup(carrier.cell, carrier.lineage.value(), hitCleanup)
+                || !queue.settleCleanup(carrier.cell, carrier.lineage.value(), hitCleanup + 1)) {
+            throw new IllegalStateException("V0 terminal carrier lost its exact cleanup ownership");
+        }
+        carrier.settleClosed();
+    }
+
+    private void closeCarrier(SkillRuntimeService.V0CarrierBinding carrier, V0TerminalReason reason) {
+        if (exactLineage(carrier) == null) { return; }
+        var projectile = carrier.carrier();
+        if (projectile == null) {
+            if (!carrier.closing()) {
+                nativeCarrierTerminal(carrier, reason);
+                carrier.settleClosed();
+            }
+            return;
+        }
+        projectile.closeV0(reason);
+        reconcileCarrierTerminal(carrier);
+    }
+
+    V0CatalogAuthority authority() { return authority; }
+    int presentationOfferLimit() { return 4 * limits.maxLineagesPerServer(); }
+    int presentationRecipientLimit() { return limits.presentationRecipientsPerOffer(); }
+    int maxCarrierAge() { return limits.projectileMaxAgeTicks(); }
+    int maxCarrierRange() { return limits.projectileMaxRangeBlocks(); }
+
+    private Lineage exactLineage(SkillRuntimeService.V0CarrierBinding carrier) {
+        if (!authority.isOwnerThread() || carrier.cell < 0 || carrier.cell >= lineages.length) { return null; }
+        var current = lineages[carrier.cell];
+        return current != null && current.lineage == carrier.lineage
+                && (carrier.child ? current.childBinding : current.rootBinding) == carrier ? current : null;
+    }
+
+    boolean ownsNativeCarrier(SkillRuntimeService.V0CarrierBinding carrier) {
+        var lineage = exactLineage(carrier);
+        return lineage != null && usable(lineage);
+    }
+
+    private boolean usable(Lineage lineage) {
+        var server = lineage.capture.geometry.level.getServer();
+        return !stopped && suspended == null && !lineage.releasing && currentTick <= lineage.deadline
+                && runtime.v0Active(this, server) && catalog.usable(authority, lineage.lease.exactLease());
+    }
+
+    private ServerPlayer onlineActor(Lineage lineage) {
+        var capture = lineage.capture;
+        return lineage.logoutState == SkillRuntimeService.LogoutState.ONLINE
+                && capture.actor.connection == capture.listener && capture.actor.serverLevel() == capture.geometry.level
+                && runtime.v0CurrentPlay(this, authority, capture.geometry.level.getServer(), capture.witness, capture.actor)
+                ? capture.actor : null;
+    }
+
+    ServerPlayer onlineActor(DispatchClaim claim, ServerPlayer exactActor) {
+        var lineage = lineages[claim.lineageSlot];
+        return currentDispatch == claim && lineage != null && lineage.capture.actor == exactActor
+                ? onlineActor(lineage) : null;
+    }
+
+    ServerPlayer qualifiedNativeActor(SkillRuntimeService.V0CarrierBinding carrier) {
+        var lineage = exactLineage(carrier);
+        return lineage != null && qualification(lineage) == V0WorkQualification.EXECUTABLE
+                ? lineage.capture.actor : null;
+    }
+
+    V0WorkQualification nativeQualification(SkillRuntimeService.V0CarrierBinding carrier) {
+        var lineage = exactLineage(carrier);
+        return lineage == null ? V0WorkQualification.INVALID : qualification(lineage);
+    }
+
+    private V0WorkQualification qualification(Lineage lineage) {
+        var capture = lineage.capture;
+        var actor = capture.actor;
+        var level = capture.geometry.level;
+        var server = level.getServer();
+        if (!usable(lineage) || lineage.work == null || actor.serverLevel() != level
+                || server.getLevel(level.dimension()) != level || actor.getHealth() <= 0.0F
+                || lineage.logoutState == SkillRuntimeService.LogoutState.INVALID) {
+            return V0WorkQualification.INVALID;
+        }
+        if (lineage.logoutState == SkillRuntimeService.LogoutState.IN_PROGRESS) {
+            return V0WorkQualification.PENDING_NATIVE_CLEANUP;
+        }
+        if (!lineage.work.qualifies(actor)) { return V0WorkQualification.INVALID; }
+        if (lineage.logoutState == SkillRuntimeService.LogoutState.COMPLETE || onlineActor(lineage) == actor) {
+            return V0WorkQualification.EXECUTABLE;
+        }
+        var connection = capture.listener.getConnection();
+        return actor.connection == capture.listener && !actor.hasDisconnected() && !actor.isRemoved()
+                && capture.listener.player == actor && connection.getPacketListener() == capture.listener
+                && server.getPlayerList().getPlayer(actor.getUUID()) == actor && !connection.isConnecting()
+                && !connection.isConnected() ? V0WorkQualification.PENDING_NATIVE_CLEANUP : V0WorkQualification.INVALID;
+    }
+
+    boolean presentationContextCurrent(DispatchClaim claim, long tick) {
+        var lineage = lineages[claim.lineageSlot];
+        return authority.isOwnerThread() && !stopped && suspended == null && currentDispatch == claim
+                && currentTick == tick && lineage != null && claim.lineage == lineage.lineage
+                && runtime.v0Active(this, lineage.capture.geometry.level.getServer());
+    }
+
+    boolean frameActive(DispatchClaim claim, SkillRuntimeService.V0CarrierBinding carrier,
+            long runtimeTick, ServerPlayer exactA) {
+        var lineage = exactLineage(carrier);
+        return currentDispatch == claim && currentTick == runtimeTick && lineage != null
+                && lineage.capture.actor == exactA && !carrier.closing()
+                && qualification(lineage) == V0WorkQualification.EXECUTABLE;
+    }
+
+    boolean eligibleTarget(SkillRuntimeService.V0CarrierBinding carrier, LivingEntity target) {
+        var lineage = exactLineage(carrier);
+        if (lineage == null || lineage.attribution.equals(target.getUUID())) { return false; }
+        var level = lineage.capture.geometry.level;
+        return P9StarterProjectile.eligibleV0Target(level, target)
+                && (!(target instanceof ServerPlayer player)
+                        || runtime.v0TargetPlay(this, authority, level.getServer(), player));
+    }
+
+    boolean reserveNativeCarrier(SkillRuntimeService.V0CarrierBinding carrier, P9StarterProjectile projectile) {
+        var lineage = exactLineage(carrier);
+        var claim = currentDispatch;
+        if (lineage == null || claim == null || claim.lineage != lineage.lineage
+                || claim.role != (carrier.child ? V0P5Queue.CHILD_RELEASE : V0P5Queue.ROOT_RELEASE)
+                || projectile.level() != lineage.capture.geometry.level || !usable(lineage)) {
+            return false;
+        }
+        int hitCleanup = carrier.child ? 3 : 0;
+        long exact = carrier.lineage.value();
+        if (!queue.claimCleanup(carrier.cell, exact, hitCleanup)) {
+            throw new IllegalStateException("V0 exact hit cleanup reservation was already assigned");
+        }
+        if (!queue.claimCleanup(carrier.cell, exact, hitCleanup + 1)) {
+            queue.settleCleanup(carrier.cell, exact, hitCleanup);
+            throw new IllegalStateException("V0 exact terminal cleanup reservation was already assigned");
+        }
+        return true;
+    }
+
+    private boolean publishNativeCreate(SkillRuntimeService.V0CarrierBinding carrier, Lineage lineage) {
+        if (!usable(lineage)) { return false; }
+        int role = carrier.child ? V0P5Queue.CHILD_CREATE : V0P5Queue.ROOT_CREATE;
+        return publishFollowUp(carrier.cell, carrier.lineage, role, currentTick, currentTick,
+                runtime.v0LastReservedRuntimeEvent(this, lineage.capture.geometry.level.getServer()));
+    }
+
+    V0ClaimDisposition captureNativeImpact(SkillRuntimeService.V0CarrierBinding carrier, EntityHitResult hit) {
+        var lineage = exactLineage(carrier);
+        if (lineage == null || currentTick >= lineage.deadline || !(hit.getEntity() instanceof LivingEntity target)
+                || !eligibleTarget(carrier, target) || (carrier.child ? lineage.childImpact : lineage.rootImpact) != null) {
+            return V0ClaimDisposition.REJECTED;
+        }
+        var permission = qualification(lineage);
+        if (permission != V0WorkQualification.PENDING_NATIVE_CLEANUP && permission != V0WorkQualification.EXECUTABLE) {
+            return V0ClaimDisposition.REJECTED;
+        }
+        var impact = new Impact(target, hit.getLocation(), currentTick);
+        if (permission == V0WorkQualification.EXECUTABLE && !publishImpact(carrier, lineage, currentTick)) {
+            return V0ClaimDisposition.REJECTED;
+        }
+        if (carrier.child) { lineage.childImpact = impact; } else { lineage.rootImpact = impact; }
+        return permission == V0WorkQualification.PENDING_NATIVE_CLEANUP
+                ? V0ClaimDisposition.PENDING : V0ClaimDisposition.QUEUED;
+    }
+
+    private boolean publishImpact(SkillRuntimeService.V0CarrierBinding carrier, Lineage lineage, long tick) {
+        int role = carrier.child ? V0P5Queue.CHILD_HIT : V0P5Queue.ROOT_HIT;
+        return tick < lineage.deadline && publishFollowUp(carrier.cell, carrier.lineage, role, tick + 1, tick,
+                runtime.v0LastReservedRuntimeEvent(this, lineage.capture.geometry.level.getServer()));
+    }
+
+    boolean hasDispatchBudget(long tick) {
+        return currentTick == tick && dispatchedThisTick < 6 * limits.maxLineagesPerServer();
+    }
+
+    void dispatch(int eventCell, long tick, V0P6StatementAdapter adapter) {
+        var claim = claimReadyEvent(eventCell, tick);
+        if (claim == null) { return; }
+        dispatchedThisTick++;
+        var lineage = lineages[claim.lineageSlot];
+        try {
+            switch (claim.role) {
+                case V0P5Queue.ROOT_RELEASE -> dispatchRelease(claim, lineage, lineage.rootBinding, adapter);
+                case V0P5Queue.CHILD_RELEASE -> dispatchRelease(claim, lineage, lineage.childBinding, adapter);
+                case V0P5Queue.ROOT_HIT -> dispatchHit(claim, lineage, lineage.rootBinding, lineage.rootImpact, adapter);
+                case V0P5Queue.CHILD_HIT -> dispatchHit(claim, lineage, lineage.childBinding, lineage.childImpact, adapter);
+                case V0P5Queue.ROOT_CREATE, V0P5Queue.CHILD_CREATE -> { /* adopted creation handlers are empty */ }
+                default -> throw new IllegalStateException("Unknown reserved V0 event role");
+            }
+        } catch (RuntimeException | Error primary) {
+            try {
+                lineage.releasing = true;
+                finishChecked(claim);
+            } catch (RuntimeException | Error cleanup) {
+                // Native/P6 original is the primary failure.
+            }
+            throw primary;
+        }
+        finishChecked(claim);
+        if (lineage.rootDone && (!lineage.childPublished || lineage.childDone)) {
+            settleLineage(claim.lineageSlot, lineage);
+        }
+    }
+
+    private void finishChecked(DispatchClaim claim) {
+        if (!finishClaim(claim)) { throw new IllegalStateException("V0 dispatch lost its exact claim"); }
+    }
+
+    private V0RuntimeCatalog.Unit unit(Lineage lineage, boolean child) {
+        var root = lineage.lease.exactLease().root();
+        return child ? root.hitCreate().orElseThrow().target() : root;
+    }
+
+    private V0SpawnGeometry geometry(Lineage lineage, boolean child) {
+        if (child) { return lineage.childSpawn; }
+        var root = lineage.capture.geometry;
+        return new V0SpawnGeometry(root.level, root.origin, root.directionXQ15, root.directionYQ15,
+                root.directionZQ15, LAUNCH_STEP_MILLI);
+    }
+
+    private void dispatchRelease(DispatchClaim claim, Lineage lineage, SkillRuntimeService.V0CarrierBinding carrier,
+            V0P6StatementAdapter adapter) {
+        var geometry = geometry(lineage, carrier.child);
+        if (geometry == null || qualification(lineage) != V0WorkQualification.EXECUTABLE
+                || requestHighWater == Long.MAX_VALUE || (!carrier.child && onlineActor(lineage) == null)) {
+            nativeCarrierTerminal(carrier, V0TerminalReason.REJECTED_BEFORE_COMMIT);
+            return;
+        }
+        var origin = geometry.origin();
+        var command = new P6RuntimeExecutionBridge.SpawnProjectileInvocation(SPAWN, ++requestHighWater,
+                claim.event.value(), geometry.level().dimension().location(), origin.x, origin.y, origin.z,
+                geometry.directionXQ15(), geometry.directionYQ15(), geometry.directionZQ15(), 0,
+                carrier.child ? 0 : limits.positiveRootFee());
+        var frame = new V0NativeCallFrame(this, claim, carrier, lineage.work, lineage.capture.actor,
+                geometry, null, null, unit(lineage, carrier.child), command, 0, currentTick);
+        var receipt = invoke(adapter, frame, command);
+        if (receipt.terminal() == P6RuntimeExecutionBridge.V0Terminal.CONFIRMED_APPLIED
+                && carrier.opened() && publishNativeCreate(carrier, lineage)) {
+            carrier.publishOpen();
+            return;
+        }
+        var reason = receipt.terminal() == P6RuntimeExecutionBridge.V0Terminal.OUTCOME_UNKNOWN
+                ? V0TerminalReason.OUTCOME_UNKNOWN : V0TerminalReason.CONFIRMED_NOT_APPLIED;
+        closeCarrier(carrier, reason);
+        nativeCarrierTerminal(carrier, reason);
+    }
+
+    private void dispatchHit(DispatchClaim claim, Lineage lineage, SkillRuntimeService.V0CarrierBinding carrier,
+            Impact impact, V0P6StatementAdapter adapter) {
+        var unit = unit(lineage, carrier.child);
+        var damage = unit.hitDamage().orElse(null);
+        var geometry = geometry(lineage, carrier.child);
+        if (impact != null && damage != null && geometry != null && carrier.claimed()
+                && requestHighWater != Long.MAX_VALUE && qualification(lineage) == V0WorkQualification.EXECUTABLE
+                && eligibleTarget(carrier, impact.target)) {
+            var command = new P6RuntimeExecutionBridge.DamageInvocation(DAMAGE, ++requestHighWater, claim.event.value(),
+                    impact.target.getUUID(), Math.multiplyExact((long) damage.damageHp(), 1_000L), 0L);
+            var frame = new V0NativeCallFrame(this, claim, carrier, lineage.work, lineage.capture.actor,
+                    geometry, impact.target, impact.location, unit, command, 0, currentTick);
+            var receipt = invoke(adapter, frame, command);
+            if (!carrier.child && receipt.terminal() == P6RuntimeExecutionBridge.V0Terminal.CONFIRMED_APPLIED
+                    && unit.hitCreate().isPresent() && onlineActor(lineage) != null) {
+                scheduleChild(claim, lineage, impact, geometry);
+            }
+        }
+        closeCarrier(carrier, V0TerminalReason.NATURAL_HIT);
+        nativeCarrierTerminal(carrier, V0TerminalReason.NATURAL_HIT);
+    }
+
+    private void scheduleChild(DispatchClaim claim, Lineage lineage, Impact impact, V0SpawnGeometry parent) {
+        if (!usable(lineage) || currentTick >= lineage.deadline || !authorizeChild(claim.lineageSlot, claim.lineage, claim.event)) {
+            return;
+        }
+        var direction = new Vec3(parent.directionXQ15(), parent.directionYQ15(), parent.directionZQ15()).normalize();
+        var origin = impact.location.add(direction.scale(0.10));
+        lineage.childSpawn = new V0SpawnGeometry(parent.level(), origin, parent.directionXQ15(), parent.directionYQ15(),
+                parent.directionZQ15(), parent.launchStepMilli());
+        lineage.childPublished = publishFollowUp(claim.lineageSlot, claim.lineage, V0P5Queue.CHILD_RELEASE,
+                currentTick + 1, currentTick, runtime.v0LastReservedRuntimeEvent(this, parent.level().getServer()));
+        if (!lineage.childPublished) { lineage.childSpawn = null; }
+    }
+
+    private static P6RuntimeExecutionBridge.V0TerminalReceipt invoke(V0P6StatementAdapter adapter,
+            V0NativeCallFrame frame, P6RuntimeExecutionBridge.Invocation command) {
+        return adapter.execute(frame.actor(), command, frame.statementOrdinal(), new V0P6StatementGuard(frame),
+                new P9V0WorldEffectHandoff(frame));
+    }
+
     synchronized void invalidateForReload() {
         if (!stopped) {
             suspended = catalog.suspend(authority);
@@ -390,6 +807,10 @@ final class V0SlotRuntime {
     }
 
     void stop() {
+        stop(V0TerminalReason.STOP);
+    }
+
+    void stop(V0TerminalReason reason) {
         requireMain();
         boolean firstClose;
         synchronized (this) {
@@ -398,6 +819,7 @@ final class V0SlotRuntime {
                 suspended = catalog.suspend(authority);
                 installedReload = null;
                 reloadSource = null;
+                stopReason = Objects.requireNonNull(reason, "stop reason");
                 stopped = true;
             }
         }
@@ -485,6 +907,20 @@ final class V0SlotRuntime {
         lineage.releasing = true;
         long exact = lineage.lineage.value();
         queue.fence(index, exact);
+        var reason = stopped ? stopReason : suspended != null ? V0TerminalReason.RELOAD
+                : currentTick > lineage.deadline ? V0TerminalReason.DEADLINE_EXPIRED
+                : V0TerminalReason.OWNER_INVALIDATED;
+        try {
+            closeCarrier(lineage.rootBinding, reason);
+        } catch (RuntimeException | Error primary) {
+            try {
+                closeCarrier(lineage.childBinding, reason);
+            } catch (RuntimeException | Error ignored) {
+                // The first native cleanup failure keeps its identity.
+            }
+            throw primary;
+        }
+        closeCarrier(lineage.childBinding, reason);
         if (!queue.onlyLeaseCleanupRemains(index, exact)) {
             return;
         }
@@ -552,7 +988,21 @@ final class V0SlotRuntime {
         private V0CatalogAuthority.ReleasePermit release;
         private boolean releasing;
 
-        private Lineage(PendingCapture capture, V0RuntimeCatalog.Lease lease, long deadline,
+        private final SkillRuntimeService.V0CarrierBinding rootBinding;
+        private final SkillRuntimeService.V0CarrierBinding childBinding;
+        private Impact rootImpact;
+        private Impact childImpact;
+        private V0SpawnGeometry childSpawn;
+        private boolean childPublished;
+        private boolean rootDone;
+        private boolean childDone;
+        private V0TerminalReason rootTerminal;
+        private V0TerminalReason childTerminal;
+        private SkillRuntimeService.NormalLogoutScope logoutScope;
+        private SkillRuntimeService.LogoutState logoutState = SkillRuntimeService.LogoutState.ONLINE;
+
+        private Lineage(V0SlotRuntime owner, int cell, PendingCapture capture,
+                V0RuntimeCatalog.Lease lease, long deadline,
                 long lineage, long instance, long carrier) {
             this.attribution = capture.actor.getUUID();
             this.capture = capture;
@@ -563,6 +1013,20 @@ final class V0SlotRuntime {
             this.child = new V0SpellInstanceId(instance + 1);
             this.rootCarrier = new V0CarrierBindingId(carrier);
             this.childCarrier = new V0CarrierBindingId(carrier + 1);
+            rootBinding = SkillRuntimeService.reserveV0Carrier(owner, cell, this.lineage, rootCarrier, false);
+            childBinding = SkillRuntimeService.reserveV0Carrier(owner, cell, this.lineage, childCarrier, true);
+        }
+    }
+
+    private static final class Impact {
+        private final LivingEntity target;
+        private final Vec3 location;
+        private final long observedTick;
+
+        private Impact(LivingEntity target, Vec3 location, long observedTick) {
+            this.target = target;
+            this.location = location;
+            this.observedTick = observedTick;
         }
     }
 

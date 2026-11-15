@@ -175,6 +175,11 @@ final class P8ServerConnectionAuthority {
                 : Optional.empty();
     }
 
+    Optional<P8RecipientIdentity> captureIdentity(UUID playerId) {
+        var record = records.get(Objects.requireNonNull(playerId, "playerId"));
+        return record == null ? Optional.empty() : Optional.of(new P8RecipientIdentity(playerId, record.epoch));
+    }
+
     boolean isCurrent(P8RecipientIdentity identity, long catalogGeneration) {
         Objects.requireNonNull(identity, "identity");
         var record = records.get(identity.playerId());

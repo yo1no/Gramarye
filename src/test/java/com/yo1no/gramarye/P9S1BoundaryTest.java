@@ -3,6 +3,8 @@ package com.yo1no.gramarye;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -28,6 +30,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 /** Exact S1 Java surface, bootstrap, isolation, and source-family guard. */
@@ -77,6 +80,8 @@ final class P9S1BoundaryTest {
             "P9StarterProjectileRegistration.java",
             "P9StarterSkillContent.java",
             "P9StarterSkillIdentityV0.java",
+            "P9V0LoadedBlocks.java",
+            "P9V0WorldEffectHandoff.java",
             "P9WorldEffectHandoff.java");
     private static final Map<String, Set<String>> TOP_LEVEL_TYPES = Map.ofEntries(
             Map.entry("P9ActiveCastTriggerPayloadV1.java", Set.of("P9ActiveCastTriggerPayloadV1")),
@@ -120,6 +125,8 @@ final class P9S1BoundaryTest {
             Map.entry(
                     "P9StarterSkillIdentityV0.java",
                     Set.of("P9StarterSkillIdentityV0")),
+            Map.entry("P9V0LoadedBlocks.java", Set.of("P9V0LoadedBlocks")),
+            Map.entry("P9V0WorldEffectHandoff.java", Set.of("P9V0WorldEffectHandoff")),
             Map.entry(
                     "P9WorldEffectHandoff.java",
                     Set.of("P9WorldEffectHandoff")));
@@ -173,6 +180,9 @@ final class P9S1BoundaryTest {
             "P9StarterSkillContent$2.class",
             "P9StarterSkillContent$3.class",
             "P9StarterSkillIdentityV0.class",
+            "P9V0LoadedBlocks.class",
+            "P9V0WorldEffectHandoff.class",
+            "P9V0WorldEffectHandoff$V0PresentationMaterial.class",
             "P9WorldEffectHandoff.class",
             "StarterGameplayFingerprintV0.class");
 
@@ -319,7 +329,8 @@ final class P9S1BoundaryTest {
                                 "ProjectileUtil.getHitResultOnMoveVector(this, this::canHitEntity)")),
                 () -> assertEquals(
                         1,
-                        occurrences(projectile, "EventHooks.onProjectileImpact(this, hit)")),
+                        occurrences(sourceBlock(projectile, "public void tick()"),
+                                "EventHooks.onProjectileImpact(this, hit)")),
                 () -> assertEquals(1, occurrences(projectile, "super.tick();")),
                 () -> assertFalse(projectile.contains("hitTargetOrDeflectSelf")),
                 () -> assertFalse(Pattern.compile("\\.onHit\\s*\\(")
@@ -332,15 +343,15 @@ final class P9S1BoundaryTest {
                 () -> assertTrue(projectile.indexOf("if (tickCount > 100)") < baseTick),
                 () -> assertTrue(projectile.contains(
                         "var remaining = 64.0 - accumulatedTravelDistance;")),
-                () -> assertEquals(6, occurrences(projectile, "@Override")),
-                () -> assertEquals(2, occurrences(projectile, "P9StarterProjectile(")),
+                () -> assertEquals(7, occurrences(projectile, "@Override")),
+                () -> assertEquals(3, occurrences(projectile, "P9StarterProjectile(")),
                 () -> assertEquals(
-                        5,
+                        13,
                         Arrays.stream(P9StarterProjectile.class.getDeclaredFields())
                                 .filter(field -> !field.isSynthetic())
                                 .filter(field -> !Modifier.isFinal(field.getModifiers()))
                                 .count()),
-                () -> assertEquals(2, P9StarterProjectile.class.getDeclaredConstructors().length),
+                () -> assertEquals(3, P9StarterProjectile.class.getDeclaredConstructors().length),
                 () -> assertEquals(
                         Set.of(
                                 "hasAuthenticatedCasterIdentity",
@@ -348,7 +359,10 @@ final class P9S1BoundaryTest {
                                 "closedForTrackingRemoval",
                                 "actorWitness",
                                 "hasObservedHit", "hasObservedTarget", "observeHitTick",
-                                "clearObservedHit", "resumeObservedHit"),
+                                "clearObservedHit", "resumeObservedHit", "v0InitialVelocity", "armV0InsertionWitness",
+                                "completeV0NativeAdd", "v0EverInserted", "guardV0PositionChunk",
+                                "v0ClosedForTrackingDiscard", "closeV0", "stepV0",
+                                "eligibleV0Target"),
                         Arrays.stream(P9StarterProjectile.class.getDeclaredMethods())
                                 .filter(method -> !method.isSynthetic())
                                 .filter(method -> !Modifier.isPrivate(method.getModifiers()))
@@ -373,8 +387,9 @@ final class P9S1BoundaryTest {
                 () -> assertTrue(handoff.contains(
                         "catch (Error failure) {\n            throw failure;\n        }")),
                 () -> assertEquals(
-                        List.of(Path.of(
-                                "src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java")),
+                        List.of(
+                                Path.of("src/main/java/com/yo1no/gramarye/P9V0WorldEffectHandoff.java"),
+                                Path.of("src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java")),
                         hurtOwners),
                 () -> assertEquals(1, occurrences(handoff, ".hurt(")),
                 () -> assertTrue(handoff.contains(
@@ -430,6 +445,47 @@ final class P9S1BoundaryTest {
     }
 
     @Test
+    void v0InitialVelocityUsesTheStableNativeMotionPacketLattice() {
+        for (int speed = 1; speed <= 1_000; speed++) {
+            var positive = P9StarterProjectile.v0InitialVelocity(32_767, 0, 0, speed);
+            var negative = P9StarterProjectile.v0InitialVelocity(-32_767, 0, 0, speed);
+            assertNotNull(positive);
+            assertNotNull(negative);
+            assertEquals(positive.x, -negative.x);
+            assertEquals(positive, new Vec3((int) (positive.x * 8_000.0) / 8_000.0, 0.0, 0.0));
+            assertEquals(negative, new Vec3((int) (negative.x * 8_000.0) / 8_000.0, 0.0, 0.0));
+            assertTrue(positive.x <= speed / 1_000.0);
+        }
+        var diagonal = P9StarterProjectile.v0InitialVelocity(-18_919, 18_918, 18_917, 1_000);
+        assertNotNull(diagonal);
+        assertEquals(diagonal, new Vec3((int) (diagonal.x * 8_000.0) / 8_000.0,
+                (int) (diagonal.y * 8_000.0) / 8_000.0, (int) (diagonal.z * 8_000.0) / 8_000.0));
+        assertTrue(diagonal.lengthSqr() <= 1.0);
+        assertNull(P9StarterProjectile.v0InitialVelocity(0, 0, 0, 1_000));
+        assertNull(P9StarterProjectile.v0InitialVelocity(32_768, 0, 0, 1_000));
+        assertNull(P9StarterProjectile.v0InitialVelocity(32_767, 0, 0, 1_001));
+    }
+
+    @Test
+    void v0FlightUsesOneLoadedNativeScanAndLeavesClientInterpolationInItsOriginalBranch() {
+        var projectile = read(PROJECTILE_SOURCE);
+        var entry = sourceBlock(projectile, "public void tick()");
+        var step = sourceBlock(projectile, "void stepV0(");
+        var commit = read(ROOT_MAIN.resolve("P9V0WorldEffectHandoff.java"));
+        assertTrue(entry.indexOf("super.tick();") < entry.indexOf("tickV0();"));
+        assertEquals(1, occurrences(step, "ProjectileUtil.getEntityHitResult("));
+        assertEquals(1, occurrences(step, "EventHooks.onProjectileImpact("));
+        assertTrue(step.indexOf("blocks.dryPath(") < step.indexOf("blocks.clip("));
+        assertTrue(step.indexOf("updateRotation();") < step.indexOf("movement.scale((double) 0.99F)"));
+        assertTrue(step.indexOf("movement.scale((double) 0.99F)") < step.indexOf("setPos(end);"));
+        assertFalse(step.contains("baseTick();") || step.contains("checkInsideBlocks();"));
+        var spawn = sourceBlock(commit, "V0NativeOutcome commitSpawn(");
+        assertTrue(spawn.indexOf("armV0InsertionWitness();") < spawn.indexOf(".addFreshEntity(projectile)"));
+        assertTrue(spawn.indexOf("projectile.v0EverInserted()") < spawn.indexOf("primaryConfirmed = true;"));
+        assertTrue(spawn.indexOf("primaryConfirmed = true;") < spawn.indexOf("frame.open(projectile)"));
+    }
+
+    @Test
     void l1PendingLogoutDoesNotCloseOrRewriteFlightAndSelfExclusionUsesAttributionUuid() {
         var projectile = read(PROJECTILE_SOURCE);
         var handoff = read(HANDOFF_SOURCE);
@@ -468,6 +524,9 @@ final class P9S1BoundaryTest {
                 public Entity getOwner() {
                         if (level().isClientSide()) {
                             return super.getOwner();
+                        }
+                        if (v0Binding != null) {
+                            return v0Closed ? null : v0Binding.qualifiedActor(this);
                         }
                         return level() instanceof ServerLevel serverLevel && continuationPermit != null
                                 ? continuationPermit.qualifiedActor(serverLevel.getServer(), this)

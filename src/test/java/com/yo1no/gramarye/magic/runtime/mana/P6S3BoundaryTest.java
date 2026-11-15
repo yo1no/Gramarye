@@ -276,13 +276,17 @@ final class P6S3BoundaryTest {
                 .collect(Collectors.joining("\n"));
 
         assertEquals(1, occurrences(
-                s1Source, "for (EffectStep step : prepared.plan().steps())"));
+                s1Source, "for (EffectStep step : plan.steps())"));
         assertEquals(1, occurrences(
                 s1Source,
-                "prepared.commitPort().commitDamage(damageRequest, damageStep)"));
+                "legacyPort.commitDamage(damage, damageStep)"));
         assertEquals(1, occurrences(
                 s1Source,
-                "prepared.commitPort().commitSpawn(spawnRequest, spawnStep)"));
+                "legacyPort.commitSpawn(spawn, spawnStep)"));
+        assertEquals(1, occurrences(s1Source, "v0Port.commitDamage(damage, damageStep)"));
+        assertEquals(1, occurrences(s1Source, "v0Port.commitSpawn(spawn, spawnStep)"));
+        assertEquals(1, occurrences(manaSource, "manaTransactions.debit("));
+        assertEquals(1, occurrences(manaSource, "manaTransactions.refund("));
         assertEquals(1, occurrences(
                 manaSource, "private static final AttachmentType<ManaState> PLAYER_MANA"));
         assertEquals(1, occurrences(manaSource, ".getData(PLAYER_MANA)"));

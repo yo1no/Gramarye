@@ -569,11 +569,26 @@ verify_p11_native_helper_error_catches() {
                 expect("handleRuntimePost", 1, preserved)
                 expect("handleRuntimePost", 2, preserved)
                 expect("submitProjectileHit", 1, preserved)
-                expect("beginNormalLogout", 1, "catch(RuntimeException|Errorprimary){scope.active=false;revokeLogoutScope(scope);throwprimary;}")
-                expect("endNormalLogout", 1, "catch(RuntimeException|Errorprimary){revokeLogoutScope(scope);throwprimary;}")
+                expect("beginNormalLogout", 1, "catch(RuntimeException|Errorprimary){scope.active=false;revokeLogoutScope(scope);endV0NormalLogoutPreservingFault(scope);throwprimary;}")
+                expect("endNormalLogout", 1, "catch(RuntimeException|Errorprimary){revokeLogoutScope(scope);endV0NormalLogoutPreservingFault(scope);throwprimary;}")
+                expect("endV0NormalLogoutPreservingFault", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
                 expect("acquireAndPublishRoot", 1, "catch(RuntimeException|Errorprimary){if(prospectiveInstance!=null){try{if(primaryinstanceofError){prospectiveInstance.releaseWorkAfterError();}else{prospectiveInstance.releaseWork();}}catch(RuntimeException|ErrorignoredCleanupFailure){}}closeProvisionalAfterRootFault(leaseAcquisition);throwprimary;}")
                 expect("acquireAndPublishRoot", 2, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
                 expect("P9InstanceErrorCleanup.accept", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
+                expect("clearSlotAndV0Normal", 1, "catch(RuntimeException|Errorprimary){try{clearSlotNormal(server,slot);}catch(RuntimeException|Errorignored){}throwprimary;}")
+                expect("clearSlotAndV0Normal", 2, "catch(RuntimeException|Errorignored){}")
+                expect("stopV0PreservingFault", 1, "catch(RuntimeException|Errorignored){}")
+            } else if (kind == "p5_v0") {
+                expect("acceptCompletion", 1, "catch(RuntimeException|Errorprimary){if(!committed){cleanupAttempted=true;try{undoReservation(reservedCell,reservedLineage,candidate,work);}catch(RuntimeException|ErrorignoredCleanupFailure){}}throwprimary;}")
+                expect("acceptCompletion", 2, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
+                expect("dispatch", 1, "catch(RuntimeException|Errorprimary){try{lineage.releasing=true;finishChecked(claim);}catch(RuntimeException|Errorcleanup){}throwprimary;}")
+                expect("dispatch", 2, "catch(RuntimeException|Errorcleanup){}")
+                expect("settleLineage", 1, "catch(RuntimeException|Errorprimary){try{closeCarrier(lineage.childBinding,reason);}catch(RuntimeException|Errorignored){}throwprimary;}")
+                expect("settleLineage", 2, "catch(RuntimeException|Errorignored){}")
+            } else if (kind == "v0_catalog") {
+                expect("prepare", 1, "catch(RuntimeException|Errorfailure){fenceWriter(writer,expected);throwfailure;}")
+                expect("write", 1, "catch(RuntimeException|Errorfailure){fenceWriter(writer,writing);throwfailure;}")
+                expect("Writer.open", 1, "catch(IOException|RuntimeException|Errorprimary){try{storage.close();}catch(IOExceptioncloseFailure){primary.addSuppressed(closeFailure);}throwprimary;}")
             } else if (kind == "p9_l1") {
                 preserved = "catch(Errorfailure){clearObservedHit();locallyClaimedOrTerminal=true;throwfailure;}"
                 expect("tick", 1, preserved)
@@ -588,6 +603,11 @@ verify_p11_native_helper_error_catches() {
                 expect("moved", 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
                 expect("moved", 2, "catch(RuntimeException|Errorfailure){cleanup=failure;}")
                 expect("leave", 1, "catch(RuntimeException|Errorfailure){if(cleanup==null){cleanup=failure;}}")
+            } else if (kind == "p9_v0") {
+                expect("commitSpawn", 1, "catch(RuntimeException|Errorprimary){closeAfterNativeFault(projectile,projectile.v0EverInserted()?V0TerminalReason.FAULT:V0TerminalReason.OUTCOME_UNKNOWN);throwprimary;}")
+                expect("moveCarrier", 1, "catch(RuntimeException|Errorprimary){closeAfterNativeFault(projectile,V0TerminalReason.FAULT);throwprimary;}")
+                expect("discardAfterV0Close", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
+                expect("closeAfterNativeFault", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
             } else if (kind == "mana_fixture") {
                 expect("queueConnected", 1, "catch(RuntimeException|Errorfailure){cleanupConnected(connected,failure);throwfailure;}")
                 expect("cleanupConnected", 1, "catch(RuntimeException|Errorcleanup){if(cleanup!=primary){primary.addSuppressed(cleanup);}}")
@@ -606,6 +626,11 @@ verify_p11_native_helper_error_catches() {
                 if (instanceCleanup && line ~ /^        public void accept\(/) method = "P9InstanceErrorCleanup.accept"
                 if (instanceCleanup && line == "    }") { instanceCleanup = 0; method = "" }
             }
+            if (kind == "v0_catalog") {
+                if (line == "    private static final class Writer {") catalogWriter = 1
+                if (catalogWriter && line ~ /^        private static Writer open\(/) method = "Writer.open"
+                if (catalogWriter && line == "    }") { catalogWriter = 0; method = "" }
+            }
             if (line ~ /^    ((public|private) )?(static )?.*\(/ && line !~ /^        /) {
                 method = line; sub(/\(.*/, "", method); sub(/^.*[ \t]/, "", method)
                 if (kind == "operation") {
@@ -618,7 +643,7 @@ verify_p11_native_helper_error_catches() {
                     gsub(/[[:space:]]/, "", method)
                 }
             }
-            if (kind == "p5_l1" && method != "handleRuntimePost" && method != "submitProjectileHit" && method != "beginNormalLogout" && method != "endNormalLogout" && method != "acquireAndPublishRoot" && method != "P9InstanceErrorCleanup.accept") next
+            if (kind == "p5_l1" && method != "handleRuntimePost" && method != "submitProjectileHit" && method != "beginNormalLogout" && method != "endNormalLogout" && method != "endV0NormalLogoutPreservingFault" && method != "acquireAndPublishRoot" && method != "P9InstanceErrorCleanup.accept" && method != "clearSlotAndV0Normal" && method != "stopV0PreservingFault") next
             gsub(/[[:space:]]/, "", line)
             source[method] = source[method] line
         }
@@ -1698,6 +1723,8 @@ verify_b2_sources_and_outputs() {
     local package_path='com/yo1no/gramarye/magic/definition/store'
     local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
     local runtime_service='src/main/java/com/yo1no/gramarye/SkillRuntimeService.java'
+    local v0_slot_runtime='src/main/java/com/yo1no/gramarye/V0SlotRuntime.java'
+    local v0_runtime_catalog='src/main/java/com/yo1no/gramarye/magic/definition/scoped/V0RuntimeCatalog.java'
     local p7_network_handler='src/main/java/com/yo1no/gramarye/magic/network/P7CastIntentNetworkHandler.java'
     local p7_dispatch_task='src/main/java/com/yo1no/gramarye/magic/network/P7ServerDispatchTask.java'
     local p7_pending_owner='src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java'
@@ -1711,6 +1738,7 @@ verify_b2_sources_and_outputs() {
     local p6_runtime_adapter='src/main/java/com/yo1no/gramarye/P6RuntimeExecutionPortAdapter.java'
     local p9_projectile='src/main/java/com/yo1no/gramarye/P9StarterProjectile.java'
     local p9_world_handoff='src/main/java/com/yo1no/gramarye/P9WorldEffectHandoff.java'
+    local p9_v0_world_handoff='src/main/java/com/yo1no/gramarye/P9V0WorldEffectHandoff.java'
     local p11_storage_boundary='src/main/java/com/yo1no/gramarye/P11NativeStorageBoundary.java'
     local p11_operation_boundary='src/main/java/com/yo1no/gramarye/P11NativeOperationBoundary.java'
     local p11_live_transition='src/main/java/com/yo1no/gramarye/P11LiveTransitionService.java'
@@ -1929,6 +1957,8 @@ verify_b2_sources_and_outputs() {
         fi
         if [[ "${source}" == "${store_service}" \
                 || "${source}" == "${runtime_service}" \
+                || "${source}" == "${v0_slot_runtime}" \
+                || "${source}" == "${v0_runtime_catalog}" \
                 || "${source}" == "${p7_network_handler}" \
                 || "${source}" == "${p7_dispatch_task}" \
                 || "${source}" == "${p7_pending_owner}" \
@@ -1942,6 +1972,7 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p6_runtime_adapter}" \
                 || "${source}" == "${p9_projectile}" \
                 || "${source}" == "${p9_world_handoff}" \
+                || "${source}" == "${p9_v0_world_handoff}" \
                 || "${source}" == "${p11_storage_boundary}" \
                 || "${source}" == "${p11_operation_boundary}" \
                 || "${source}" == "${p11_live_transition}" \
@@ -1973,8 +2004,11 @@ verify_b2_sources_and_outputs() {
     verify_p11_native_helper_error_catches "${p11_live_transition}" live_transition
     verify_p11_native_helper_error_catches "${p11_keep_alive}" keep_alive
     verify_p11_native_helper_error_catches "${runtime_service}" p5_l1
+    verify_p11_native_helper_error_catches "${v0_slot_runtime}" p5_v0
+    verify_p11_native_helper_error_catches "${v0_runtime_catalog}" v0_catalog
     verify_p11_native_helper_error_catches "${p9_projectile}" p9_l1
     verify_p11_native_helper_error_catches "${p11_p9_tracking}" p9_tracking
+    verify_p11_native_helper_error_catches "${p9_v0_world_handoff}" p9_v0
     require_ere_count "${p4_recovery_game_tests}" \
         'catch[[:space:]]*\([^)]*(Error|Throwable)' 1 \
         'the exact recovery GameTest must retain one primary-preserving Error catch'
@@ -2004,13 +2038,13 @@ verify_b2_sources_and_outputs() {
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
-        24 \
-        'SkillRuntimeService must contain exactly its twenty-four reviewed Error cleanup catches'
+        28 \
+        'SkillRuntimeService must contain exactly its twenty-eight reviewed Error cleanup catches'
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error[[:space:]]+primary[[:space:]]*\)' \
-        11 \
-        'SkillRuntimeService must contain exactly eleven same-identity primary Error catches'
+        12 \
+        'SkillRuntimeService must contain exactly twelve same-identity primary Error catches'
     require_ere_count \
         "${runtime_service}" \
         '^[[:space:]]*clearSlotAfterError\(slot\);$' \
@@ -2068,7 +2102,7 @@ verify_b2_sources_and_outputs() {
     require_ere_count "${p9_world_handoff}" \
         'catch[[:space:]]*\(RuntimeException \| Error ignoredCleanupFailure\)' 2 \
         'P9-S3 world handoff must isolate exactly two cleanup failures'
-    for source in "${p6_runtime_adapter}" "${p9_projectile}" "${p9_world_handoff}"; do
+    for source in "${p6_runtime_adapter}" "${p9_projectile}" "${p9_world_handoff}" "${p9_v0_world_handoff}"; do
         forbid_ere \
             "${source}" \
             'catch[[:space:]]*\([^)]*(java\.lang\.)?Throwable([^[:alnum:]_\$]|$)' \

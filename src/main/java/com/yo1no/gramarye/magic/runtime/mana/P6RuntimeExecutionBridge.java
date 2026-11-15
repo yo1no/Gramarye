@@ -59,6 +59,80 @@ public final class P6RuntimeExecutionBridge {
                 observer);
     }
 
+    public static V0TerminalReceipt executeV0(
+            P6RuntimeExecutionCapability.V0 capability,
+            ServerPlayer actor,
+            Invocation input,
+            int statementOrdinal,
+            P6RuntimeExecutionCapability.V0Call call) {
+        if (capability == null) {
+            throw invariant();
+        }
+        if (actor == null || input == null || call == null) {
+            throw invariant();
+        }
+        ActionInvocation action = invocation(input);
+        if (statementOrdinal != (input instanceof SpawnProjectileInvocation ? -1 : 0)) {
+            return receipt(action, statementOrdinal,
+                    V0Terminal.REJECTED_BEFORE_COMMIT, V0Reason.INVALID_REQUEST);
+        }
+        if (!actor.getServer().isSameThread()) {
+            return receipt(action, statementOrdinal,
+                    V0Terminal.REJECTED_BEFORE_COMMIT, V0Reason.ACTOR_OR_SOURCE_INVALID);
+        }
+        long magnitude = input instanceof DamageInvocation damage ? damage.magnitude() : 0;
+        V0TransactionOutcome outcome = PRODUCTION_ENGINE.executeV0(action,
+                new V0ManaAccountAccess(actor), adaptGuard(call),
+                new V0EffectResolver(action.manaCost(), magnitude), new V0NativeCommitAdapter(call),
+                new V0TransactionGuard(call));
+        if (outcome instanceof V0UnresolvedTransaction) {
+            return receipt(action, statementOrdinal,
+                    V0Terminal.OUTCOME_UNKNOWN, V0Reason.NATIVE_OUTCOME_UNCERTAIN);
+        }
+        ActionDamageTransactionResult transaction = ((V0KnownTransaction) outcome).result();
+        handleResult(transaction);
+        return projectV0(action, statementOrdinal, transaction.effectResult());
+    }
+
+    private static V0TerminalReceipt projectV0(
+            ActionInvocation input, int statementOrdinal, EffectExecutionResult result) {
+        return switch (result.status()) {
+            case REJECTED -> receipt(input, statementOrdinal, V0Terminal.REJECTED_BEFORE_COMMIT,
+                    switch (result.rejectReason().orElseThrow()) {
+                        case UNSUPPORTED_ACTION, INVALID_REQUEST, BOUND_EXCEEDED ->
+                                V0Reason.INVALID_REQUEST;
+                        case INVALID_TARGET, TARGET_UNAVAILABLE, COMMIT_PORT_UNAVAILABLE ->
+                                V0Reason.TARGET_OR_PORT_UNAVAILABLE;
+                        case INSUFFICIENT_MANA -> V0Reason.INSUFFICIENT_MANA;
+                        case MANA_STATE_UNAVAILABLE -> V0Reason.MANA_STATE_UNAVAILABLE;
+                        case CANCELLED -> V0Reason.ACTOR_OR_SOURCE_INVALID;
+                        case DEADLINE_EXCEEDED -> V0Reason.DEADLINE_EXCEEDED;
+                    });
+            case FAILED -> receipt(input, statementOrdinal,
+                    V0Terminal.CONFIRMED_NOT_APPLIED, V0Reason.NATIVE_NOT_APPLIED);
+            case SUCCEEDED -> receipt(input, statementOrdinal,
+                    V0Terminal.CONFIRMED_APPLIED, V0Reason.NONE);
+            case PARTIALLY_SUCCEEDED -> receipt(input, statementOrdinal,
+                    V0Terminal.CONFIRMED_APPLIED_WITH_FAILURE, V0Reason.APPLIED_POSTCONDITION_FAILED);
+            case COMPENSATED -> receipt(input, statementOrdinal,
+                    V0Terminal.COMPENSATED_NO_PRIMARY_MUTATION,
+                    switch (result.failureReason().orElseThrow()) {
+                        case PRIMARY_STEP_NOT_APPLIED -> V0Reason.NATIVE_NOT_APPLIED;
+                        case EXECUTION_CANCELLED -> V0Reason.ACTOR_OR_SOURCE_INVALID;
+                        case EXECUTION_DEADLINE_EXCEEDED -> V0Reason.DEADLINE_EXCEEDED;
+                        case PRIMARY_STEP_APPLIED_WITH_FAILURE, COMPENSATION_REFUND_FAILED ->
+                                throw invariant();
+                    });
+            case COMPENSATION_FAILED -> throw invariant();
+        };
+    }
+
+    private static V0TerminalReceipt receipt(
+            ActionInvocation input, int ordinal, V0Terminal terminal, V0Reason reason) {
+        return new V0TerminalReceipt(input.requestId().value(), input.sourceEventId().value(),
+                ordinal, terminal, reason);
+    }
+
     static ActionInvocation invocation(Invocation input) {
         if (input == null) {
             throw invariant();
@@ -550,5 +624,72 @@ public final class P6RuntimeExecutionBridge {
     public enum AppliedTerminal {
         SUCCEEDED,
         PARTIALLY_SUCCEEDED
+    }
+
+    public enum V0NativeOutcome {
+        CONFIRMED_NOT_APPLIED,
+        CONFIRMED_APPLIED,
+        APPLIED_WITH_FAILURE,
+        OUTCOME_UNKNOWN
+    }
+
+    public enum V0Terminal {
+        REJECTED_BEFORE_COMMIT,
+        CONFIRMED_NOT_APPLIED,
+        CONFIRMED_APPLIED,
+        CONFIRMED_APPLIED_WITH_FAILURE,
+        COMPENSATED_NO_PRIMARY_MUTATION,
+        OUTCOME_UNKNOWN
+    }
+
+    public enum V0Reason {
+        NONE,
+        INVALID_REQUEST,
+        ACTOR_OR_SOURCE_INVALID,
+        TARGET_OR_PORT_UNAVAILABLE,
+        DEADLINE_EXCEEDED,
+        INSUFFICIENT_MANA,
+        MANA_STATE_UNAVAILABLE,
+        NATIVE_NOT_APPLIED,
+        APPLIED_POSTCONDITION_FAILED,
+        NATIVE_OUTCOME_UNCERTAIN
+    }
+
+    public static final class V0TerminalReceipt {
+        private final long requestId;
+        private final long sourceEventId;
+        private final int statementOrdinal;
+        private final V0Terminal terminal;
+        private final V0Reason reason;
+
+        private V0TerminalReceipt(
+                long requestId, long sourceEventId, int statementOrdinal,
+                V0Terminal terminal, V0Reason reason) {
+            this.requestId = requestId;
+            this.sourceEventId = sourceEventId;
+            this.statementOrdinal = statementOrdinal;
+            this.terminal = terminal;
+            this.reason = reason;
+        }
+
+        public long requestId() {
+            return requestId;
+        }
+
+        public long sourceEventId() {
+            return sourceEventId;
+        }
+
+        public int statementOrdinal() {
+            return statementOrdinal;
+        }
+
+        public V0Terminal terminal() {
+            return terminal;
+        }
+
+        public V0Reason reason() {
+            return reason;
+        }
     }
 }

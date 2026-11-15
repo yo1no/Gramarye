@@ -32,7 +32,7 @@ final class ScopeDProductionIsolationTest {
     private static final String ROOT_SOURCE = "com/yo1no/gramarye/";
     private static final Set<String> FACADE_IMPORTERS = Set.of(
             "SkillRuntimeService.java", "V0CaptureCompletion.java", "V0CaptureRequest.java", "V0CatalogAuthority.java",
-            "V0ColdMailbox.java", "V0LeaseToken.java", "V0SlotBinding.java", "V0SlotRuntime.java");
+            "V0ColdMailbox.java", "V0LeaseToken.java", "V0NativeCallFrame.java", "V0SlotBinding.java", "V0SlotRuntime.java");
     private static final Pattern SNAPSHOT_CONSTRUCTION = Pattern.compile(
             "\\b(?:new\\s+(?:ScopeDFrontend\\.)?Snapshot\\s*\\(|Snapshot\\s*::\\s*new\\b)");
 

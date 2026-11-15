@@ -1,5 +1,9 @@
 package com.yo1no.gramarye.magic.runtime.mana;
 
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.DamageInvocation;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.Invocation;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.SpawnProjectileInvocation;
+import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.V0Reason;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -28,15 +32,39 @@ final class ActionDamageTransactionEngine {
             int suppliedChildIntentCapacity,
             EffectExecutionGuard guard,
             EffectCommitPort commitPort) {
+        return ((V0KnownTransaction) executeTransaction(input, account,
+                suppliedChildIntentCapacity, guard, commitPort, null, null, null)).result();
+    }
+
+    V0TransactionOutcome executeV0(
+            ActionInvocation input,
+            V0ManaAccountAccess account,
+            EffectExecutionGuard guard,
+            V0EffectResolver v0Resolver,
+            V0EffectCommitPort commitPort,
+            V0TransactionGuard transactionGuard) {
+        return executeTransaction(input, account, 0, guard, null, v0Resolver, commitPort,
+                transactionGuard);
+    }
+
+    private V0TransactionOutcome executeTransaction(
+            ActionInvocation input,
+            ManaAccountAccess account,
+            int suppliedChildIntentCapacity,
+            EffectExecutionGuard guard,
+            EffectCommitPort legacyPort,
+            V0EffectResolver v0Resolver,
+            V0EffectCommitPort v0Port,
+            V0TransactionGuard transactionGuard) {
         if (input == null) {
-            return withoutMana(effects.rejectBeforePreparation(
-                    EffectRejectReason.INVALID_REQUEST));
+            return known(withoutMana(effects.rejectBeforePreparation(
+                    EffectRejectReason.INVALID_REQUEST)));
         }
 
         Optional<ActionExecutor> executor = executors.find(input.actionRegistryKey());
         if (executor.isEmpty()) {
-            return withoutMana(effects.rejectBeforePreparation(
-                    EffectRejectReason.UNSUPPORTED_ACTION));
+            return known(withoutMana(effects.rejectBeforePreparation(
+                    EffectRejectReason.UNSUPPORTED_ACTION)));
         }
 
         ActionExecutorOutcome executorOutcome = executor.orElseThrow().execute(input);
@@ -45,8 +73,8 @@ final class ActionDamageTransactionEngine {
                     P6ExecutionInvariantCode.ACTION_EXECUTOR_RETURNED_NULL);
         }
         if (executorOutcome instanceof NoActionRequest) {
-            return withoutMana(effects.rejectBeforePreparation(
-                    EffectRejectReason.INVALID_REQUEST));
+            return known(withoutMana(effects.rejectBeforePreparation(
+                    EffectRejectReason.INVALID_REQUEST)));
         }
         if (!(executorOutcome instanceof ProducedActionRequest produced)
                 || !matchesInput(produced.request(), input)) {
@@ -55,43 +83,60 @@ final class ActionDamageTransactionEngine {
         }
 
         EffectRequest request = produced.request();
-        EffectExecutionPreparation preparation = effects.prepare(
-                request,
-                suppliedChildIntentCapacity,
-                resolver,
-                guard,
-                commitPort);
-        if (preparation instanceof TerminalEffectExecution terminal) {
-            return withoutMana(terminal.result());
+        PreparedEffectExecution legacy = null;
+        PreparedV0EffectExecution v0 = null;
+        if (transactionGuard == null) {
+            EffectExecutionPreparation preparation = effects.prepare(request,
+                    suppliedChildIntentCapacity, resolver, guard, legacyPort);
+            if (preparation instanceof TerminalEffectExecution terminal) {
+                return known(withoutMana(terminal.result()));
+            }
+            legacy = (PreparedEffectExecution) preparation;
+        } else {
+            V0EffectPreparation preparation = effects.prepareV0(request, v0Resolver, guard, v0Port);
+            if (preparation instanceof V0EffectPreparationRejected rejected) {
+                return known(withoutMana(rejected.result()));
+            }
+            v0 = (PreparedV0EffectExecution) preparation;
+            EffectRejectReason rejection = openV0(
+                    input, (V0ManaAccountAccess) account, transactionGuard);
+            if (rejection != null) {
+                return known(withoutMana(effects.rejectBeforePreparation(rejection)));
+            }
         }
-        PreparedEffectExecution prepared = (PreparedEffectExecution) preparation;
         ManaMutationBudget budget = new ManaMutationBudget();
 
         if (request.manaCost() == 0) {
-            EffectExecutionAttempt attempt = effects.executePrepared(
-                    prepared, ManaTraceState.NOT_DEBITED);
-            return withoutMana(effects.finalizeWithoutMana(attempt));
+            V0EffectAttempt outcome = executePrepared(legacy, v0, ManaTraceState.NOT_DEBITED);
+            if (outcome instanceof V0UnresolvedAttempt unresolved) {
+                return new V0UnresolvedTransaction(unresolved, false);
+            }
+            return known(withoutMana(effects.finalizeWithoutMana(
+                    ((V0KnownAttempt) outcome).attempt())));
         }
 
         ManaTransactionResult debitResult = manaTransactions.debit(
                 account, ManaReason.SKILL_COST, request.manaCost());
         if (debitResult instanceof ManaTransactionResult.Rejected rejected) {
-            return debitRejected(prepared, rejected, budget);
+            return known(debitRejected(legacy, rejected, budget));
         }
         ManaTransactionResult.Accepted debit =
                 (ManaTransactionResult.Accepted) debitResult;
         validateDebit(debit, request.manaCost());
         consumeMutation(budget);
 
-        EffectExecutionAttempt attempt = effects.executePrepared(
-                prepared, ManaTraceState.DEBITED);
+        V0EffectAttempt outcome = executePrepared(legacy, v0, ManaTraceState.DEBITED);
+        if (outcome instanceof V0UnresolvedAttempt unresolved) {
+            return new V0UnresolvedTransaction(unresolved, true);
+        }
+        EffectExecutionAttempt attempt = ((V0KnownAttempt) outcome).attempt();
         if (attempt.primaryMutationCount() > 0) {
             EffectExecutionResult effect = effects.finalizeDebited(attempt);
-            return new ActionDamageTransactionResult(
+            return known(new ActionDamageTransactionResult(
                     effect,
                     new ManaDebited(ManaReceiptSnapshot.from(debit.receipt())),
                     budget.consumed(),
-                    Optional.empty());
+                    Optional.empty()));
         }
         if (attempt.status() != EffectAttemptStatus.ZERO_MUTATION_FAILURE
                 || request.compensationPolicy()
@@ -102,32 +147,92 @@ final class ActionDamageTransactionEngine {
 
         ProvisionalEffectFailure provisional = new ProvisionalEffectFailure(
                 attempt.failureReason().orElseThrow(), attempt.failureStepIndex());
-        ManaTransactionResult refundResult = manaTransactions.refund(
-                account, debit.receipt());
+        ManaTransactionResult refundResult;
+        if (transactionGuard != null && (!((V0ManaAccountAccess) account).debitMaterialCurrent()
+                || !transactionGuard.checkCompensation(((V0ManaAccountAccess) account).exactActor))) {
+            refundResult = new ManaTransactionResult.Rejected(
+                    ManaOperationKind.REFUND, ManaRejectReason.INVALID_TRANSACTION_STATE);
+        } else {
+            refundResult = manaTransactions.refund(account, debit.receipt());
+        }
         if (refundResult instanceof ManaTransactionResult.Accepted refund) {
             validateRefund(debit, refund);
             consumeMutation(budget);
             EffectExecutionResult effect = effects.finalizeCompensated(attempt);
-            return new ActionDamageTransactionResult(
+            return known(new ActionDamageTransactionResult(
                     effect,
                     new ManaRefunded(
                             ManaReceiptSnapshot.from(debit.receipt()),
                             ManaReceiptSnapshot.from(refund.receipt())),
                     budget.consumed(),
-                    Optional.of(provisional));
+                    Optional.of(provisional)));
         }
 
         ManaTransactionResult.Rejected rejected =
                 (ManaTransactionResult.Rejected) refundResult;
         validateRefundRejection(rejected);
         EffectExecutionResult effect = effects.finalizeCompensationFailed(attempt);
-        return new ActionDamageTransactionResult(
+        return known(new ActionDamageTransactionResult(
                 effect,
                 new ManaRefundFailed(
                         ManaReceiptSnapshot.from(debit.receipt()),
                         rejected.rejectReason()),
                 budget.consumed(),
-                Optional.of(provisional));
+                Optional.of(provisional)));
+    }
+
+    private V0EffectAttempt executePrepared(
+            PreparedEffectExecution legacy, PreparedV0EffectExecution v0, ManaTraceState state) {
+        return v0 == null
+                ? new V0KnownAttempt(effects.executePrepared(legacy, state))
+                : effects.executePreparedV0(v0, state);
+    }
+
+    private static V0TransactionOutcome known(ActionDamageTransactionResult result) {
+        return new V0KnownTransaction(result);
+    }
+
+    private static EffectRejectReason openV0(
+            ActionInvocation input, V0ManaAccountAccess account, V0TransactionGuard guard) {
+        boolean positiveFee = input.manaCost() > 0;
+        if (positiveFee) {
+            if (!guard.checkDebit(account.exactActor)) {
+                return EffectRejectReason.CANCELLED;
+            }
+            if (account.availability() != ManaAvailability.AVAILABLE) {
+                return EffectRejectReason.MANA_STATE_UNAVAILABLE;
+            }
+            if (account.balance() < input.manaCost()) {
+                return EffectRejectReason.INSUFFICIENT_MANA;
+            }
+        }
+
+        V0Reason reason = guard.begin(account.exactActor, v0Invocation(input));
+        if (reason != V0Reason.NONE) {
+            return switch (reason) {
+                case ACTOR_OR_SOURCE_INVALID -> EffectRejectReason.CANCELLED;
+                case TARGET_OR_PORT_UNAVAILABLE -> EffectRejectReason.COMMIT_PORT_UNAVAILABLE;
+                case DEADLINE_EXCEEDED -> EffectRejectReason.DEADLINE_EXCEEDED;
+                case INVALID_REQUEST -> EffectRejectReason.INVALID_REQUEST;
+                default -> throw new P6ExecutionInvariantException(
+                        P6ExecutionInvariantCode.INVALID_TRANSACTION_RESULT);
+            };
+        }
+        return positiveFee && !guard.checkDebit(account.exactActor)
+                ? EffectRejectReason.CANCELLED : null;
+    }
+
+    private static Invocation v0Invocation(ActionInvocation input) {
+        return switch (input) {
+            case SpawnProjectileActionInvocation spawn -> new SpawnProjectileInvocation(
+                    spawn.actionRegistryKey(), spawn.requestId().value(), spawn.sourceEventId().value(),
+                    spawn.dimension(), spawn.originX(), spawn.originY(), spawn.originZ(),
+                    spawn.directionXQ15(), spawn.directionYQ15(), spawn.directionZQ15(),
+                    spawn.profileCode(), spawn.manaCost());
+            case DamageActionInvocation damage -> new DamageInvocation(
+                    damage.actionRegistryKey(), damage.requestId().value(), damage.sourceEventId().value(),
+                    damage.target().value(), damage.magnitude(), damage.manaCost());
+        };
     }
 
     private ActionDamageTransactionResult debitRejected(
@@ -151,7 +256,9 @@ final class ActionDamageTransactionEngine {
             throw new P6ExecutionInvariantException(
                     P6ExecutionInvariantCode.MANA_MUTATION_BUDGET_EXCEEDED);
         }
-        EffectExecutionResult effect = effects.rejectPrepared(prepared, effectReason);
+        EffectExecutionResult effect = prepared == null
+                ? effects.rejectBeforePreparation(effectReason)
+                : effects.rejectPrepared(prepared, effectReason);
         return new ActionDamageTransactionResult(
                 effect,
                 new ManaDebitRejected(rejected.rejectReason()),

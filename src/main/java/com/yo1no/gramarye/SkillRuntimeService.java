@@ -58,6 +58,7 @@ final class SkillRuntimeService {
     private final RuntimeExecutionPort executionPort;
     private final P11FoundationService foundation;
     private final P11CastCooldownService cooldowns;
+    private final V0P6StatementAdapter v0Statements;
     private final AtomicBoolean p9ReloadCloseRequested = new AtomicBoolean();
     private final IdentityHashMap<MinecraftServer, ServerSlot> slots = new IdentityHashMap<>(1);
     private long serverTokenHighWater;
@@ -82,6 +83,18 @@ final class SkillRuntimeService {
             RuntimeExecutionPort executionPort,
             P11FoundationService foundation,
             P11CastCooldownService cooldowns) {
+        this(storeService, policyProvider, projector, referenceResolver, executionPort, foundation, cooldowns, null);
+    }
+
+    private SkillRuntimeService(
+            SkillDefinitionStoreService storeService,
+            SkillSubmissionPolicyProvider policyProvider,
+            P5RuntimeProjector projector,
+            RuntimeReferenceResolver referenceResolver,
+            RuntimeExecutionPort executionPort,
+            P11FoundationService foundation,
+            P11CastCooldownService cooldowns,
+            V0P6StatementAdapter v0Statements) {
         this.storeService = Objects.requireNonNull(storeService, "storeService");
         this.policyProvider = Objects.requireNonNull(policyProvider, "policyProvider");
         this.projector = Objects.requireNonNull(projector, "projector");
@@ -89,6 +102,7 @@ final class SkillRuntimeService {
         this.executionPort = Objects.requireNonNull(executionPort, "executionPort");
         this.foundation = foundation;
         this.cooldowns = cooldowns;
+        this.v0Statements = v0Statements;
     }
 
     static SkillRuntimeService create(
@@ -111,7 +125,8 @@ final class SkillRuntimeService {
                 policyProvider,
                 new P5RuntimeProjector(profiles),
                 new P5LoadedReferenceResolver(),
-                new P6RuntimeExecutionPortAdapter(capability, presentationService), foundation, cooldowns);
+                new P6RuntimeExecutionPortAdapter(capability, presentationService), foundation, cooldowns,
+                new V0P6StatementAdapter(presentationService));
         gameBus.addListener(EventPriority.LOWEST, service::handleRuntimePost);
         gameBus.addListener(service::handleRuntimeStopping);
         gameBus.addListener(service::handleRuntimeStopped);
@@ -223,6 +238,27 @@ final class SkillRuntimeService {
 
     P11QualifiedSourceOwner.WorkReservation reserveV0Work(ServerPlayer actor, int maxLineages) {
         return foundation == null ? null : foundation.acquireV0Work(actor, maxLineages);
+    }
+
+    boolean v0Active(V0SlotRuntime v0, MinecraftServer server) {
+        if (!server.isSameThread() || !server.isRunning() || server.isStopped()) {
+            return false;
+        }
+        var slot = slots.get(server);
+        return slot != null && slot.v0 == v0 && slot.state == ServerSlot.State.RUNNING;
+    }
+
+    boolean v0CurrentPlay(V0SlotRuntime v0, V0CatalogAuthority authority, MinecraftServer server,
+            P7ServerAuthorizationBoundary.V0PlayWitness witness, ServerPlayer actor) {
+        return v0Active(v0, server) && P7ServerAuthorizationBoundary.currentV0Play(authority, witness, server, actor);
+    }
+
+    boolean v0TargetPlay(V0SlotRuntime v0, V0CatalogAuthority authority, MinecraftServer server, ServerPlayer target) {
+        return v0Active(v0, server) && P7ServerAuthorizationBoundary.captureV0Play(authority, server, target).isPresent();
+    }
+
+    long v0LastReservedRuntimeEvent(V0SlotRuntime v0, MinecraftServer server) {
+        return v0Active(v0, server) ? slots.get(server).eventSequenceHighWater : -1;
     }
 
     RuntimeAdmissionResult admitAuthenticatedPlayerCast(
@@ -1244,6 +1280,117 @@ final class SkillRuntimeService {
                 || qualification == WorkQualification.LOGOUT_IN_PROGRESS;
     }
 
+    static V0CarrierBinding reserveV0Carrier(V0SlotRuntime owner, int cell, V0LineageId lineage,
+            V0CarrierBindingId id, boolean child) {
+        return new V0CarrierBinding(owner, cell, lineage, id, child);
+    }
+
+    static final class V0CarrierBinding {
+        private enum Phase {
+            RESERVED, ADDING_INERT, OPEN, OBSERVED_PENDING_CLEANUP, CLAIMED, CLOSING, CLOSED
+        }
+
+        private final V0SlotRuntime owner;
+        final int cell;
+        final V0LineageId lineage;
+        final V0CarrierBindingId id;
+        final boolean child;
+        private Phase phase = Phase.RESERVED;
+        private P9StarterProjectile carrier;
+        private boolean openPublished;
+
+        private V0CarrierBinding(V0SlotRuntime owner, int cell, V0LineageId lineage,
+                V0CarrierBindingId id, boolean child) {
+            this.owner = owner;
+            this.cell = cell;
+            this.lineage = lineage;
+            this.id = id;
+            this.child = child;
+        }
+
+        boolean prepare(P9StarterProjectile supplied) {
+            if (phase != Phase.RESERVED || !owner.reserveNativeCarrier(this, supplied)) {
+                return false;
+            }
+            carrier = supplied;
+            phase = Phase.ADDING_INERT;
+            return true;
+        }
+
+        boolean adding(P9StarterProjectile supplied) {
+            return phase == Phase.ADDING_INERT && carrier == supplied && owner.ownsNativeCarrier(this);
+        }
+
+        boolean open(P9StarterProjectile supplied) {
+            if (!adding(supplied) || !supplied.v0EverInserted() || !supplied.isAddedToLevel()
+                    || supplied.isRemoved() || !owner.ownsNativeCarrier(this)) {
+                return false;
+            }
+            phase = Phase.OPEN;
+            return true;
+        }
+
+        ServerPlayer qualifiedActor(P9StarterProjectile supplied) {
+            if (supplied != carrier || phase == Phase.CLOSING || phase == Phase.CLOSED) {
+                return null;
+            }
+            return owner.qualifiedNativeActor(this);
+        }
+
+        V0WorkQualification qualification(P9StarterProjectile supplied) {
+            if (supplied != carrier || !owner.ownsNativeCarrier(this)) {
+                return V0WorkQualification.INVALID;
+            }
+            return switch (phase) {
+                case ADDING_INERT -> V0WorkQualification.ADDING;
+                case OPEN -> openPublished ? owner.nativeQualification(this) : V0WorkQualification.ADDING;
+                case OBSERVED_PENDING_CLEANUP -> V0WorkQualification.PENDING_NATIVE_CLEANUP;
+                case CLAIMED -> V0WorkQualification.CLAIMED;
+                default -> V0WorkQualification.INVALID;
+            };
+        }
+
+        V0ClaimDisposition observeImpact(P9StarterProjectile supplied, net.minecraft.world.phys.EntityHitResult hit) {
+            if (phase != Phase.OPEN || !openPublished || supplied != carrier) {
+                return V0ClaimDisposition.REJECTED;
+            }
+            var disposition = owner.captureNativeImpact(this, hit);
+            if (disposition == V0ClaimDisposition.QUEUED) {
+                phase = Phase.CLAIMED;
+            } else if (disposition == V0ClaimDisposition.PENDING) {
+                phase = Phase.OBSERVED_PENDING_CLEANUP;
+            }
+            return disposition;
+        }
+
+        void resumeImpact() {
+            if (phase == Phase.OBSERVED_PENDING_CLEANUP) {
+                phase = Phase.CLAIMED;
+                carrier.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+            }
+        }
+
+        void finish(P9StarterProjectile supplied, V0CarrierTerminal terminal) {
+            if (supplied == carrier && phase != Phase.CLOSING && phase != Phase.CLOSED && terminal != null) {
+                phase = Phase.CLOSING;
+                owner.nativeCarrierTerminal(this, terminal.reason());
+            }
+        }
+
+        boolean closing() { return phase == Phase.CLOSING || phase == Phase.CLOSED; }
+        boolean claimed() { return phase == Phase.CLAIMED; }
+        boolean opened() { return phase == Phase.OPEN && !openPublished; }
+        void publishOpen() { openPublished = true; }
+        P9StarterProjectile carrier() { return carrier; }
+        int maxAgeTicks() { return owner.maxCarrierAge(); }
+        int maxRangeBlocks() { return owner.maxCarrierRange(); }
+
+        void settleClosed() {
+            phase = Phase.CLOSED;
+            carrier = null;
+        }
+    }
+
     enum LogoutState { ONLINE, IN_PROGRESS, COMPLETE, INVALID }
 
     /** Actor-free permit inspection; the only actor is read from the actual entity witness. */
@@ -1412,10 +1559,12 @@ final class SkillRuntimeService {
                     instance.logoutState = LogoutState.IN_PROGRESS;
                 }
             }
+            if (slot.v0 != null) { slot.v0.beginNormalLogout(scope, listener, actor); }
             return scope;
         } catch (RuntimeException | Error primary) {
             scope.active = false;
             revokeLogoutScope(scope);
+            endV0NormalLogoutPreservingFault(scope);
             throw primary;
         }
     }
@@ -1442,13 +1591,24 @@ final class SkillRuntimeService {
                     instance.logoutState = LogoutState.COMPLETE;
                 }
             }
+            if (scope.slot.v0 != null) { scope.slot.v0.endNormalLogout(scope, complete); }
         } catch (RuntimeException | Error primary) {
             revokeLogoutScope(scope);
+            endV0NormalLogoutPreservingFault(scope);
             throw primary;
         } finally {
             for (var instance : scope.slot.instances.values()) {
                 if (instance.logoutScope == scope) { instance.logoutScope = null; }
             }
+        }
+    }
+
+    private static void endV0NormalLogoutPreservingFault(NormalLogoutScope scope) {
+        if (scope.slot.v0 == null) { return; }
+        try {
+            scope.slot.v0.endNormalLogout(scope, false);
+        } catch (RuntimeException | Error ignoredCleanupFailure) {
+            // Preserve the original exact logout failure.
         }
     }
 
@@ -2086,6 +2246,7 @@ final class SkillRuntimeService {
         }
         try {
             resumeObservedP9Hits(server, slot);
+            if (slot.v0 != null) { slot.v0.resumeObservedHits(slot.runtimeTick); }
         } catch (RuntimeException primary) {
             throw preserveRuntimeFault(slot, primary);
         } catch (Error primary) {
@@ -2393,6 +2554,14 @@ final class SkillRuntimeService {
                 }
             }
             while (true) {
+                if (slot.v0 != null && v0Statements != null) {
+                    int v0Next = readyV0QueueCell(slot, slot.v0.hasDispatchBudget(slot.runtimeTick));
+                    if (v0Next >= 0) {
+                        slot.v0.dispatch(v0Next, slot.runtimeTick, v0Statements);
+                        if (slot.state != ServerSlot.State.RUNNING) { return; }
+                        continue;
+                    }
+                }
                 if (slot.executionsThisTick == slot.limits.executionsPerServerPerTick()) {
                     reintegrateDeferred(slot);
                     observeDrainStop(
@@ -4527,7 +4696,7 @@ final class SkillRuntimeService {
         if (slot.v0 != null) {
             slot.state = ServerSlot.State.FAULTED;
             try {
-                slot.v0.stop();
+                slot.v0.stop(V0TerminalReason.FAULT);
             } catch (RuntimeException | Error ignored) {
                 // Existing P5 fault cleanup owns and preserves its original primary.
             }

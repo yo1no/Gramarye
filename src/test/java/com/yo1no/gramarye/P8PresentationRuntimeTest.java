@@ -251,6 +251,89 @@ final class P8PresentationRuntimeTest {
     }
 
     @Test
+    void v0ScansOnlyOffersThatFitLegacyResidualAndKeepsOfflineSourceAttribution() {
+        var source = new UUID(0L, 41L);
+        var other = new UUID(0L, 43L);
+        var instance = new V0SpellInstanceId(1L);
+        var scratch = P8TickState.empty().scratch(50L);
+        for (long id = 1; id <= 32; id++) {
+            assertTrue(scratch.admitLogical(skill(id), Optional.of(source)));
+        }
+        assertTrue(scratch.chargeRecipientEvaluations(
+                (int) (PresentationLimits.MAX_RECIPIENT_EVALUATIONS_PER_TICK - 512L)));
+        var residual = scratch.freeze().residualAfter(0, List.of());
+        assertFalse(residual.admitLogical(instance, source, 897));
+        assertTrue(residual.admitLogical(instance, other, 897));
+        var recipient = recipient(new P8RecipientIdentity(other, 1L), 1.0D);
+        assertTrue(residual.retainSelection(897, new P8RecipientSelection(List.of(recipient), 1)));
+        assertFalse(residual.admitLogical(instance, other, 897));
+
+        var saturatedCandidates = P8TickState.empty().residualAfter(4_096, List.of());
+        assertFalse(saturatedCandidates.admitLogical(instance, other, 897));
+        var lastCandidate = P8TickState.empty().residualAfter(4_095, List.of());
+        assertTrue(lastCandidate.admitLogical(instance, other, 897));
+        assertFalse(lastCandidate.retainSelection(897,
+                new P8RecipientSelection(List.of(recipient, recipient(
+                        new P8RecipientIdentity(source, 1L), 2.0D)), 2)));
+        assertTrue(lastCandidate.admitLogical(instance, other, 897));
+        assertTrue(lastCandidate.retainSelection(897, new P8RecipientSelection(List.of(recipient), 1)));
+        assertFalse(lastCandidate.admitLogical(instance, other, 897));
+    }
+
+    @Test
+    void v0NeverDisplacesLegacyServerOrRecipientPacketAdmission() {
+        var fullPlayer = new UUID(0L, 51L);
+        var sparePlayer = new UUID(0L, 53L);
+        var baseline = P8DeliveryAdmission.admit(java.util.stream.LongStream.rangeClosed(1L, 16L)
+                .mapToObj(sequence -> delivery(sequence, fullPlayer)).toList());
+        var extra = delivery(17L, sparePlayer);
+        var residual = P8TickState.empty().residualAfter(16, baseline);
+        assertEquals(List.of(extra),
+                residual.admitDeliveries(List.of(delivery(18L, fullPlayer), extra)));
+        assertEquals(16, baseline.size());
+
+        var fullServer = P8DeliveryAdmission.admit(java.util.stream.LongStream.rangeClosed(1L, 512L)
+                .mapToObj(sequence -> delivery(sequence, new UUID(0L, sequence))).toList());
+        assertTrue(P8TickState.empty().residualAfter(512, fullServer)
+                .admitDeliveries(List.of(delivery(513L, new UUID(0L, 513L)))).isEmpty());
+    }
+
+    @Test
+    void v0SelectionKeepsLegacyRecipientOrderAtBothConfiguredBounds() {
+        var source = new P8SelectedRecipient(new P8RecipientIdentity(new UUID(0L, 101L), 1L),
+                PresentationOrdering.RecipientCategory.SOURCE, 20.0D);
+        var target = new P8SelectedRecipient(new P8RecipientIdentity(new UUID(0L, 102L), 1L),
+                PresentationOrdering.RecipientCategory.TARGET_SELF, 30.0D);
+        var candidates = new java.util.ArrayList<>(java.util.stream.LongStream.rangeClosed(1L, 16L)
+                .map(index -> 17L - index)
+                .mapToObj(index -> recipient(new P8RecipientIdentity(new UUID(0L, index), 1L), 1.0D))
+                .toList());
+        candidates.add(source);
+        candidates.add(target);
+        var all = P8RecipientSelector.retainEligible(candidates, 18, 1L).recipients();
+        assertEquals(List.of(target, source), all.subList(0, 2));
+        for (int configuredLimit : new int[] {8, 16}) {
+            var selected = P8RecipientSelector.retainEligible(candidates, 18, 1L, configuredLimit);
+            assertEquals(18, selected.evaluations());
+            assertEquals(all.subList(0, configuredLimit), selected.recipients());
+        }
+    }
+
+    @Test
+    void v0IdentityCaptureReportsAChangedConnectionBeforeCatalogReadiness() {
+        var authority = new P8ServerConnectionAuthority();
+        var player = new UUID(0L, 61L);
+        var original = authority.open(player, 1, 0).orElseThrow();
+        assertTrue(authority.captureReady(player, 1).isEmpty());
+        assertEquals(original, authority.captureIdentity(player).orElseThrow());
+        authority.close(player);
+        assertTrue(authority.captureIdentity(player).isEmpty());
+        var current = authority.open(player, 1, 0).orElseThrow();
+        assertFalse(original.equals(current));
+        assertEquals(current, authority.captureIdentity(player).orElseThrow());
+    }
+
+    @Test
     void currentTickRetentionContainsOnlyCopiedValuesAndStableIds() {
         var prohibitedNames = List.of(
                 "MinecraftServer",
@@ -267,7 +350,8 @@ final class P8PresentationRuntimeTest {
                 P8EventMaterial.class,
                 P8BufferedPresentation.class,
                 P8Delivery.class,
-                P8TickState.class)) {
+                P8TickState.class,
+                P8V0ResidualBudget.class)) {
             for (var field : owner.getDeclaredFields()) {
                 String type = field.getGenericType().getTypeName();
                 for (String prohibited : prohibitedNames) {

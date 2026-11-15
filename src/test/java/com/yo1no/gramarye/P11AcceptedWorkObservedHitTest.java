@@ -130,6 +130,7 @@ final class P11AcceptedWorkObservedHitTest {
             ObservedHitModel owner;RuntimeProjectileContinuationPermit continuationPermit; Actor actor,authenticatedCasterIdentity;Object dimension="dimension";boolean locallyClaimedOrTerminal;
             ProjectileHitCandidateV0 observedHit; long observedHitRuntimeTick=-1; int observedTargetEntityId=-1;
             int tickCount=4,impactCalls,tailCalls,positionCalls,discardCalls,closeCalls;HitResult plannedHit;
+            Object v0Binding;
             Actor actorWitness(RuntimeProjectileContinuationPermit permit){return permit==continuationPermit?actor:null;}
             boolean hasAuthenticatedCasterIdentity(Actor value){return actor==value;}
             boolean hasContinuationPermitIdentity(RuntimeProjectileContinuationPermit permit){return permit==continuationPermit;}

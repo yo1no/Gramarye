@@ -92,7 +92,7 @@ final class P6S4BoundaryTest {
                         .filter(method -> Modifier.isPublic(method.getModifiers())
                                 || Modifier.isProtected(method.getModifiers()))
                         .count()),
-                () -> assertEquals(1, Arrays.stream(bridge.getDeclaredMethods())
+                () -> assertEquals(2, Arrays.stream(bridge.getDeclaredMethods())
                         .filter(method -> Modifier.isPublic(method.getModifiers())
                                 || Modifier.isProtected(method.getModifiers()))
                         .count()),
@@ -116,7 +116,11 @@ final class P6S4BoundaryTest {
                                 "AppliedFact",
                                 "AppliedStep",
                                 "AppliedStepKind",
-                                "AppliedTerminal"),
+                                "AppliedTerminal",
+                                "V0NativeOutcome",
+                                "V0Terminal",
+                                "V0Reason",
+                                "V0TerminalReceipt"),
                         nested),
                 () -> assertEquals(1, guardMethod.length),
                 () -> assertEquals(
@@ -125,6 +129,43 @@ final class P6S4BoundaryTest {
                 () -> assertEquals(
                         List.of(P6RuntimeExecutionBridge.GuardPoint.class, int.class),
                         List.of(guardMethod[0].getParameterTypes())));
+    }
+
+    @Test
+    void v0AddsOnlyTheClosedCapabilityAndTerminalCall() throws Exception {
+        var execute = P6RuntimeExecutionBridge.class.getDeclaredMethod("executeV0",
+                P6RuntimeExecutionCapability.V0.class, ServerPlayer.class,
+                P6RuntimeExecutionBridge.Invocation.class, int.class,
+                P6RuntimeExecutionCapability.V0Call.class);
+        var capability = P6RuntimeExecutionCapability.V0.class;
+        var call = P6RuntimeExecutionCapability.V0Call.class;
+        var adapter = ROOT_MAIN.resolve("V0P6StatementAdapter.java");
+        var issuer = "P6RuntimeExecutionCapability.forV0StatementAdapter(";
+        var bridge = "P6RuntimeExecutionBridge.executeV0(";
+        assertAll(
+                () -> assertEquals(Modifier.PUBLIC | Modifier.STATIC, execute.getModifiers()),
+                () -> assertEquals(P6RuntimeExecutionBridge.V0TerminalReceipt.class,
+                        execute.getReturnType()),
+                () -> assertEquals(0, execute.getExceptionTypes().length),
+                () -> assertEquals(1, capability.getDeclaredConstructors().length),
+                () -> assertTrue(Modifier.isPrivate(capability.getDeclaredConstructors()[0].getModifiers())),
+                () -> assertEquals(0, capability.getDeclaredMethods().length),
+                () -> assertEquals(List.of(P6RuntimeExecutionBridge.GuardPort.class),
+                        List.of(call.getInterfaces())),
+                () -> assertEquals(Set.of("begin", "check", "checkDebit", "checkCompensation",
+                                "commitDamage", "commitSpawn"),
+                        Arrays.stream(call.getDeclaredMethods())
+                                .filter(method -> Modifier.isPublic(method.getModifiers()))
+                                .map(method -> method.getName()).collect(Collectors.toUnmodifiableSet())),
+                () -> assertEquals(0, call.getConstructors().length),
+                () -> assertEquals(1, occurrences(read(adapter), issuer)),
+                () -> assertEquals(1, occurrences(read(adapter), bridge)));
+        for (Path path : javaSources(MAIN_JAVA)) {
+            if (!path.equals(adapter)) {
+                assertEquals(0, occurrences(read(path), issuer), path.toString());
+                assertEquals(0, occurrences(read(path), bridge), path.toString());
+            }
+        }
     }
 
     @Test
@@ -331,7 +372,7 @@ final class P6S4BoundaryTest {
                 () -> assertEquals(1, occurrences(
                         s4Source, "new ActionDamageTransactionEngine(")),
                 () -> assertEquals(1, occurrences(
-                        manaSource, "for (EffectStep step : prepared.plan().steps())")),
+                        manaSource, "for (EffectStep step : plan.steps())")),
                 () -> assertEquals(1, occurrences(
                         manaSource, "private static final AttachmentType<ManaState> PLAYER_MANA")),
                 () -> assertEquals(1, occurrences(manaSource, ".getData(PLAYER_MANA)")),
