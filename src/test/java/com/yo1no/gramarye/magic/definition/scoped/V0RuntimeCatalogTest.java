@@ -331,6 +331,66 @@ final class V0RuntimeCatalogTest {
     }
 
     @Test
+    void releaseDuringSameWriterPublicationCannotReleaseSuccessor() throws Exception {
+        var authority = V0CatalogTestAuthority.open(4);
+        var catalog = new V0RuntimeCatalog(authority, root, CONTEXT);
+        var fixtures = new Initial(2, 32);
+        try (var cold = new ColdLane()) {
+            assertTrue(cold.call(() -> catalog.publishFixture(authority, A, fixtures)));
+            var selection = Selection.manifest(fixtures.manifest.identity().id().value(), 1);
+            var original = assertInstanceOf(Candidate.class,
+                    cold.call(() -> catalog.prepare(authority, 1, A, selection, 4)));
+            assertEquals(Acceptance.COMMITTED,
+                    catalog.compareAndAccept(V0CatalogTestAuthority.reserve(authority, original), original));
+            assertTrue(cold.call(() -> catalog.publishFixture(authority, A, new Update(fixtures.child.identity(), 3))));
+            Path committed = root.resolve(A.value().toString()).resolve("catalog.current");
+            byte[] prior = Files.readAllBytes(committed);
+
+            var enteredAfterReserve = new CountDownLatch(1);
+            var continueMutation = new CountDownLatch(1);
+            var third = new Update(fixtures.child.identity(), 4);
+            var plan = new V0RuntimeCatalog.PublicationPlan() {
+                @Override
+                List<FormalDocument> material(ScopeDCatalog.Reservation reservation) throws IOException {
+                    enteredAfterReserve.countDown();
+                    awaitPublication(continueMutation);
+                    return third.material(reservation);
+                }
+            };
+            var publishing = cold.lane.submit(() -> catalog.publishFixture(authority, A, plan));
+            var oldPermit = V0CatalogTestAuthority.release(authority, original.lease());
+            try {
+                assertTrue(enteredAfterReserve.await(10, TimeUnit.SECONDS));
+                assertTrue(catalog.usable(authority, original.lease()));
+                assertEquals(2, childDamage(original));
+                assertEquals(Disposition.RELEASED, catalog.release(oldPermit, original.lease()));
+                assertEquals(Disposition.STALE_OR_RELEASED, catalog.release(oldPermit, original.lease()));
+                assertArrayEquals(prior, Files.readAllBytes(committed));
+            } finally {
+                continueMutation.countDown();
+            }
+            assertTrue(publishing.get(20, TimeUnit.SECONDS));
+            assertTrue(cold.call(() -> catalog.sweep(authority, A)));
+            var swept = readImage(root, A);
+            assertFalse(swept.revisions().containsKey(fixtures.child));
+            assertTrue(swept.revisions().containsKey(third.revision));
+            assertTrue(swept.externalRoots().isEmpty());
+
+            var successor = assertInstanceOf(Candidate.class,
+                    cold.call(() -> catalog.prepare(authority, 2, A, selection, 4)));
+            assertEquals(4, childDamage(successor));
+            assertEquals(Acceptance.COMMITTED,
+                    catalog.compareAndAccept(V0CatalogTestAuthority.reserve(authority, successor), successor));
+            assertEquals(Disposition.STALE_OR_RELEASED, catalog.release(oldPermit, original.lease()));
+            assertEquals(Disposition.STALE_OR_RELEASED, catalog.release(oldPermit, successor.lease()));
+            assertTrue(catalog.usable(authority, successor.lease()));
+            assertEquals(Disposition.RELEASED, catalog.release(
+                    V0CatalogTestAuthority.release(authority, successor.lease()), successor.lease()));
+            assertEquals(Disposition.RELEASED, cold.call(() -> catalog.retire(authority)));
+        }
+    }
+
+    @Test
     void reloadFenceBeforePhysicalReplacePreservesOriginalWriterAndCurrentBytes() throws Exception {
         var authority = V0CatalogTestAuthority.open(4);
         var catalog = new V0RuntimeCatalog(authority, root, CONTEXT);
@@ -347,14 +407,7 @@ final class V0RuntimeCatalogTest {
                 @Override
                 List<FormalDocument> material(ScopeDCatalog.Reservation reservation) throws IOException {
                     enteredAfterReserve.countDown();
-                    try {
-                        if (!continueMutation.await(10, TimeUnit.SECONDS)) {
-                            throw new IOException("Timed out waiting for the test's reload fence");
-                        }
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                        throw new IOException("Interrupted test publication", interrupted);
-                    }
+                    awaitPublication(continueMutation);
                     return update.material(reservation);
                 }
             };
@@ -385,6 +438,17 @@ final class V0RuntimeCatalogTest {
             assertEquals(3, childDamage(successor));
             assertEquals(Disposition.RELEASED, catalog.discard(authority, successor));
             assertEquals(Disposition.RELEASED, cold.call(() -> catalog.retire(authority)));
+        }
+    }
+
+    private static void awaitPublication(CountDownLatch continueMutation) throws IOException {
+        try {
+            if (!continueMutation.await(10, TimeUnit.SECONDS)) {
+                throw new IOException("Timed out waiting to continue test publication");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted test publication", interrupted);
         }
     }
 
