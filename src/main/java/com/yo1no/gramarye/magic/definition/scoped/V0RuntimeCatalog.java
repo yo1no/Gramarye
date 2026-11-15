@@ -589,21 +589,13 @@ public final class V0RuntimeCatalog {
                 if (root.hitCreate != null) {
                     selected.add(root.hitCreate.target.exact);
                 }
-                charge = Math.addExact(LINEAGE_HEADER, CREATION_INPUT);
                 if (manifest.isPresent()) {
                     var origin = manifest.orElseThrow();
                     manifestReference = origin.manifest();
                     stableEntry = origin.entry().value();
-                    charge = Math.addExact(charge, MANIFEST_PROVENANCE);
                 }
-                charge = Math.addExact(charge, unitCharge(root));
-                if (root.hitCreate != null) {
-                    charge = Math.addExact(charge, unitCharge(root.hitCreate.target));
-                }
-                if (charge > MAX_PROGRAM_BYTES) {
-                    refusal = Refusal.CAPACITY;
-                    return;
-                }
+                charge = programCharge(manifest.isPresent(), unitCharge(root),
+                        root.hitCreate == null ? 0 : unitCharge(root.hitCreate.target));
                 if (program.key().closure().size() != selected.size()
                         || !program.key().closure().stream().allMatch(binding -> selected.contains(binding.reference()))) {
                     refusal = Refusal.PROFILE_REJECTED;
@@ -787,6 +779,18 @@ public final class V0RuntimeCatalog {
                 }
             }
             return null;
+        }
+
+        private static int programCharge(boolean manifest, int rootBytes, int childBytes) {
+            if (rootBytes < 0 || childBytes < 0) {
+                throw new ArithmeticException("Negative V0 program charge component");
+            }
+            int lineageBytes = LINEAGE_HEADER + CREATION_INPUT + (manifest ? MANIFEST_PROVENANCE : 0);
+            int bytes = Math.addExact(lineageBytes, Math.addExact(rootBytes, childBytes));
+            if (bytes > MAX_PROGRAM_BYTES) {
+                throw new ArithmeticException("V0 program charge exceeds capacity");
+            }
+            return bytes;
         }
 
         private static int unitCharge(Unit unit) {

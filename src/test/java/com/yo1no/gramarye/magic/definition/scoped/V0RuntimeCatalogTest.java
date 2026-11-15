@@ -3,6 +3,8 @@ package com.yo1no.gramarye.magic.definition.scoped;
 import com.yo1no.gramarye.V0CatalogTestAuthority;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -139,6 +141,67 @@ final class V0RuntimeCatalogTest {
     }
 
     @Test
+    void rejectsSelectedThirdSpellAndDepthTwoFromDurableSources() throws Exception {
+        var authority = V0CatalogTestAuthority.open(8);
+        var catalog = new V0RuntimeCatalog(authority, root, CONTEXT);
+        var siblings = new OversizedClosure(false);
+        var chain = new OversizedClosure(true);
+        try (var cold = new ColdLane()) {
+            assertTrue(cold.call(() -> catalog.publishFixture(authority, A, siblings)));
+            assertTrue(cold.call(() -> catalog.publishFixture(authority, B, chain)));
+            var thirdSpell = Selection.standalone(siblings.root.identity().id().value());
+            var depthTwo = Selection.standalone(chain.root.identity().id().value());
+            assertEquals(Refusal.PROFILE_REJECTED, assertInstanceOf(Rejected.class,
+                    cold.call(() -> catalog.prepare(authority, 1, A, thirdSpell, 8))).reason());
+            assertEquals(Refusal.PROFILE_REJECTED, assertInstanceOf(Rejected.class,
+                    cold.call(() -> catalog.prepare(authority, 2, B, depthTwo, 8))).reason());
+            assertEquals(Disposition.RELEASED, cold.call(() -> catalog.retire(authority)));
+        }
+    }
+
+    @Test
+    void rejectsHardManifestMaxPlusOneAndMissingEntryIndependently() throws Exception {
+        var authority = V0CatalogTestAuthority.open(8);
+        var catalog = new V0RuntimeCatalog(authority, root, CONTEXT);
+        var maximum = new Initial(8, 128);
+        var oversized = new Initial(9, 128);
+        try (var cold = new ColdLane()) {
+            assertTrue(cold.call(() -> catalog.publishFixture(authority, A, maximum)));
+            assertTrue(cold.call(() -> catalog.publishFixture(authority, B, oversized)));
+            var missing = Selection.manifest(maximum.manifest.identity().id().value(), 9);
+            var ninth = Selection.manifest(oversized.manifest.identity().id().value(), 9);
+            assertEquals(Refusal.MANIFEST_UNAVAILABLE, assertInstanceOf(Rejected.class,
+                    cold.call(() -> catalog.prepare(authority, 1, A, missing, 8))).reason());
+            assertEquals(Refusal.CAPACITY, assertInstanceOf(Rejected.class,
+                    cold.call(() -> catalog.prepare(authority, 2, B, ninth, 8))).reason());
+            var eighth = Selection.manifest(maximum.manifest.identity().id().value(), 8);
+            var candidate = assertInstanceOf(Candidate.class,
+                    cold.call(() -> catalog.prepare(authority, 3, A, eighth, 8)));
+            assertEquals(Disposition.RELEASED, catalog.discard(authority, candidate));
+            assertEquals(Disposition.RELEASED, cold.call(() -> catalog.retire(authority)));
+        }
+    }
+
+    @Test
+    void rejectsSyntheticProgramCharge1090NegativeComponentsAndCheckedOverflow() throws Throwable {
+        // No valid projection has a 1090-byte charge. Use the production arithmetic without
+        // making a test-only entry point visible to other package members or caller code.
+        var lookup = MethodHandles.privateLookupIn(ProjectionCheck.class, MethodHandles.lookup());
+        var charge = lookup.findStatic(ProjectionCheck.class, "programCharge",
+                MethodType.methodType(int.class, boolean.class, int.class, int.class));
+        assertEquals(1089, (int) charge.invokeExact(true, 481, 470));
+        assertThrows(ArithmeticException.class, () -> {
+            int ignored = (int) charge.invokeExact(true, 482, 470);
+        });
+        assertThrows(ArithmeticException.class, () -> {
+            int ignored = (int) charge.invokeExact(false, 10, -1);
+        });
+        assertThrows(ArithmeticException.class, () -> {
+            int ignored = (int) charge.invokeExact(false, Integer.MAX_VALUE, 1);
+        });
+    }
+
+    @Test
     void acceptedAndProvisionalCapacityRemainIndependentWithSharedExactPins() throws Exception {
         var authority = V0CatalogTestAuthority.open(8);
         var catalog = new V0RuntimeCatalog(authority, root, CONTEXT);
@@ -219,6 +282,51 @@ final class V0RuntimeCatalogTest {
             assertEquals(Disposition.RELEASED, reopened.release(
                     V0CatalogTestAuthority.release(replacement, fresh.lease()), fresh.lease()));
             assertEquals(Disposition.RELEASED, cold.call(() -> reopened.retire(replacement)));
+        }
+    }
+
+    @Test
+    void refusesManifestWhenUnselectedEntryBecomesV0Ineligible() throws Exception {
+        var authority = V0CatalogTestAuthority.open(4);
+        var catalog = new V0RuntimeCatalog(authority, root, CONTEXT);
+        var fixtures = new Initial(2, 128);
+        try (var cold = new ColdLane()) {
+            assertTrue(cold.call(() -> catalog.publishFixture(authority, A, fixtures)));
+            var selected = Selection.manifest(fixtures.manifest.identity().id().value(), 1);
+            var initial = assertInstanceOf(Candidate.class,
+                    cold.call(() -> catalog.prepare(authority, 1, A, selected, 4)));
+            assertEquals(2, childDamage(initial));
+            assertEquals(Disposition.RELEASED, catalog.discard(authority, initial));
+
+            var unselected = readImage(root, A).routes().values().stream()
+                    .filter(SpellReference.class::isInstance).map(SpellReference.class::cast)
+                    .filter(spell -> !spell.equals(fixtures.root) && !spell.equals(fixtures.child))
+                    .findFirst().orElseThrow();
+            var overlongProfile = new PublicationPlan() {
+                @Override
+                List<FormalDocument> material(ScopeDCatalog.Reservation reservation) {
+                    return List.of(spell(reservation.nextSpell(unselected.identity()), true, null, 2, 129));
+                }
+            };
+            assertTrue(cold.call(() -> catalog.publishFixture(authority, A, overlongProfile)));
+            var current = readImage(root, A);
+            assertEquals(fixtures.manifest, current.routes().get(fixtures.manifest.identity()));
+            assertEquals(fixtures.root, current.routes().get(fixtures.root.identity()));
+            assertEquals(fixtures.child, current.routes().get(fixtures.child.identity()));
+            assertNotEquals(unselected, current.routes().get(unselected.identity()));
+
+            var unselectedStandalone = Selection.standalone(unselected.identity().id().value());
+            assertEquals(Refusal.PROFILE_REJECTED, assertInstanceOf(Rejected.class,
+                    cold.call(() -> catalog.prepare(authority, 2, A, unselectedStandalone, 4))).reason());
+            assertEquals(Refusal.MANIFEST_UNAVAILABLE, assertInstanceOf(Rejected.class,
+                    cold.call(() -> catalog.prepare(authority, 3, A, selected, 4))).reason());
+
+            var selectedStandalone = Selection.standalone(fixtures.root.identity().id().value());
+            var stillEligible = assertInstanceOf(Candidate.class,
+                    cold.call(() -> catalog.prepare(authority, 4, A, selectedStandalone, 4)));
+            assertEquals(2, childDamage(stillEligible));
+            assertEquals(Disposition.RELEASED, catalog.discard(authority, stillEligible));
+            assertEquals(Disposition.RELEASED, cold.call(() -> catalog.retire(authority)));
         }
     }
 
@@ -451,11 +559,16 @@ final class V0RuntimeCatalogTest {
 
     private static SpellDefinition spell(SpellReference reference, boolean activated, SpellIdentity child,
                                          int damage, int profileBytes) {
+        return spellWithChildren(reference, activated, child == null ? List.of() : List.of(child), damage, profileBytes);
+    }
+
+    private static SpellDefinition spellWithChildren(SpellReference reference, boolean activated,
+                                                     List<SpellIdentity> children, int damage, int profileBytes) {
         var steps = new ArrayList<Block>();
         steps.add(new EffectBlock(new BlockId(1), new Descriptor(DAMAGE.tag(), 1,
                 List.of(new Argument("damage_hp", new IntegerValue(damage))))));
-        if (child != null) {
-            steps.add(new CreateSpell(new BlockId(2), new SpellIdentityReference(child)));
+        for (SpellIdentity child : children) {
+            steps.add(new CreateSpell(new BlockId(steps.size() + 1L), new SpellIdentityReference(child)));
         }
         String profile = "gramarye:" + "c".repeat(profileBytes - 9);
         var appearance = new Descriptor(APPEARANCE.tag(), 1, List.of(
@@ -508,6 +621,26 @@ final class V0RuntimeCatalogTest {
 
     private static ManifestEntry entry(long id, SpellReference root) {
         return new ManifestEntry(new ManifestEntryId(id), new SpellIdentityReference(root.identity()), "", "");
+    }
+
+    private static final class OversizedClosure extends V0RuntimeCatalog.PublicationPlan {
+        private final boolean chained;
+        private SpellReference root;
+
+        private OversizedClosure(boolean chained) {
+            this.chained = chained;
+        }
+
+        @Override
+        List<FormalDocument> material(ScopeDCatalog.Reservation reservation) {
+            root = reservation.newSpell(1);
+            var child = reservation.newSpell(2);
+            var third = reservation.newSpell(3);
+            var rootChildren = chained ? List.of(child.identity()) : List.of(child.identity(), third.identity());
+            return List.of(spellWithChildren(root, true, rootChildren, 2, 16),
+                    spell(child, false, chained ? third.identity() : null, 2, 16),
+                    spell(third, false, null, 2, 16));
+        }
     }
 
     private static final class Update extends V0RuntimeCatalog.PublicationPlan {
