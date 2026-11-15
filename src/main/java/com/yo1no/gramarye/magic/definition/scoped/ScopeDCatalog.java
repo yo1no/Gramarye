@@ -104,6 +104,12 @@ final class ScopeDCatalog {
         return prepare(reservation, context, List.of(), Set.of(), Objects.requireNonNull(inventory));
     }
 
+    synchronized Prepared prepareRuntimeSweep(Reservation reservation, Context context,
+                                               Set<ExactReference> livePins) throws IOException {
+        RootInventory durable = captureRoots(context, List.of());
+        return prepare(reservation, context, List.of(), Set.of(), durable, livePins);
+    }
+
     /** The removal path is internal and has no production caller or user-facing delete operation. */
     synchronized Prepared prepare(
             Reservation reservation,
@@ -111,6 +117,12 @@ final class ScopeDCatalog {
             List<FormalDocument> changes,
             Set<Identity> removals,
             RootInventory inventory) throws IOException {
+        return prepare(reservation, context, changes, removals, inventory, Set.of());
+    }
+
+    private Prepared prepare(
+            Reservation reservation, Context context, List<FormalDocument> changes, Set<Identity> removals,
+            RootInventory inventory, Set<ExactReference> transientPins) throws IOException {
         ScopeDCatalogImage base = current();
         if (reservation == null || reservation != active || reservation.base != storage.current()) {
             throw new IOException("Stale catalog reservation");
@@ -162,6 +174,7 @@ final class ScopeDCatalog {
             external = inventory.exactRoots;
             Set<ExactReference> roots = new HashSet<>(routes.values());
             roots.addAll(external);
+            roots.addAll(transientPins);
             if (!retained.keySet().containsAll(roots)) {
                 throw new IOException("Required root material missing");
             }
@@ -200,6 +213,29 @@ final class ScopeDCatalog {
         return new RootInventory(readback, Set.copyOf(roots), context.fingerprint());
     }
 
+    synchronized RuntimeReadback captureRuntimeReadback(ScopeDFrontend.Context context) throws IOException {
+        ScopeDCatalogImage image = current();
+        ScopeDStorage.Image exactReadback = readback;
+        storage.requireRuntimeReadback(exactReadback);
+        if (image.generation().value() != 0
+                && !exactReadback.contextDigest().equals(context.identity().catalogFingerprint())) {
+            throw new CompatibilityRejected(Code.STALE_CONTEXT, "Runtime capture context differs from the durable image");
+        }
+        return new RuntimeReadback(image, exactReadback, storage.sourceId());
+    }
+
+    static final class RuntimeReadback {
+        final ScopeDCatalogImage image;
+        final ScopeDStorage.Image physical;
+        final UUID source;
+
+        private RuntimeReadback(ScopeDCatalogImage image, ScopeDStorage.Image physical, UUID source) {
+            this.image = image;
+            this.physical = physical;
+            this.source = source;
+        }
+    }
+
     ScopeDCompiler.Result compile(ScopeDResolver.Root root, CatalogGeneration expected, ScopeDFrontend.Context context)
             throws IOException {
         ScopeDCatalogImage image;
@@ -233,13 +269,30 @@ final class ScopeDCatalog {
 
     synchronized ScopeDCatalogImage publish(Prepared prepared, ScopeDFrontend.Context currentContext,
                                            CompatibilityProof proof) throws IOException {
+        return publishRuntime(prepared, currentContext, proof, null);
+    }
+
+    synchronized ScopeDCatalogImage publishRuntime(Prepared prepared, ScopeDFrontend.Context currentContext,
+                                                   CompatibilityProof proof,
+                                                   V0RuntimeCatalog.WriterMutation mutation) throws IOException {
         if (proof == null || proof.prepared != prepared || !proof.binding.equals(prepared.binding)
                 || !proof.context.equals(currentContext.identity())) {
             throw new CompatibilityRejected(Code.PROOF_BINDING, "Matching compiler frontend compatibility proof required");
         }
         requireProofCandidate(prepared, currentContext);
         ScopeDStorage.Image staged = stage(prepared, currentContext.catalogContext());
-        storage.commitPreparedImage(prepared.base, staged);
+        try {
+            storage.commitPreparedImage(prepared.base, staged, mutation);
+        } catch (ScopeDStorage.Failure stale) {
+            if (mutation != null && stale.reason() == ScopeDStorage.Reason.STALE && !mutation.current()) {
+                try {
+                    storage.discardPending(prepared.base, staged);
+                } catch (IOException cleanupFailure) {
+                    stale.addSuppressed(cleanupFailure);
+                }
+            }
+            throw stale;
+        }
         return current();
     }
 
@@ -292,6 +345,19 @@ final class ScopeDCatalog {
     }
 
     synchronized Optional<Prepared> revalidatePending(Context context) throws IOException {
+        return revalidatePending(context, Set.of());
+    }
+
+    synchronized Optional<Prepared> recoverRuntimePreparation(Context context, Set<ExactReference> livePins)
+            throws IOException {
+        var pending = revalidatePending(context, livePins);
+        if (pending.isEmpty() && storage.hasPendingMaterial()) {
+            storage.discardInterruptedStage(readback);
+        }
+        return pending;
+    }
+
+    synchronized Optional<Prepared> revalidatePending(Context context, Set<ExactReference> livePins) throws IOException {
         ScopeDCatalogImage base = current();
         Optional<ScopeDStorage.Image> pending = storage.pending();
         if (pending.isEmpty()) {
@@ -313,6 +379,9 @@ final class ScopeDCatalog {
         }
         if (!candidate.externalRoots().containsAll(base.externalRoots())) {
             throw new IOException("Pending image omits retained external roots");
+        }
+        if (!candidate.revisions().keySet().containsAll(livePins)) {
+            throw new IOException("Pending image omits live exact runtime pins");
         }
         var oldGraph = ScopeDGraph.build(owner, base.generation(), context.descriptors, base.currentBodies());
         var newGraph = ScopeDGraph.build(owner, candidate.generation(), context.descriptors, candidate.currentBodies());

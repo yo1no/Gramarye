@@ -483,7 +483,12 @@ final class P7S2BoundaryTest {
                 .count());
         var installProjection = boundary.getDeclaredMethod("install", P6RuntimeExecutionCapability.class,
                 rootIngress, P7ServerAuthorizationBoundary.SyncProjectionPort.class);
-        assertEquals(Set.of(install, installProjection, acquireLogin), Set.copyOf(publicOperations));
+        var captureV0Play = boundary.getDeclaredMethod("captureV0Play",
+                com.yo1no.gramarye.V0CatalogAuthority.class, MinecraftServer.class, ServerPlayer.class);
+        var currentV0Play = boundary.getDeclaredMethod("currentV0Play", com.yo1no.gramarye.V0CatalogAuthority.class,
+                P7ServerAuthorizationBoundary.V0PlayWitness.class, MinecraftServer.class, ServerPlayer.class);
+        assertEquals(Set.of(install, installProjection, acquireLogin, captureV0Play, currentV0Play),
+                Set.copyOf(publicOperations));
         assertTrue(java.lang.reflect.Modifier.isStatic(acquireLogin.getModifiers()));
         assertEquals(loginReadyPort, acquireLogin.getReturnType());
         assertEquals(1, Arrays.stream(boundary.getDeclaredMethods())
@@ -521,7 +526,7 @@ final class P7S2BoundaryTest {
                         "AdmissionDisposition",
                         "TargetDisposition",
                         "LoginReadyPort", "SyncProjectionPort", "SyncCapture", "SyncProjection", "SyncEntry",
-                        "SyncSourceState", "SyncEntryState", "SyncReason"),
+                        "SyncSourceState", "SyncEntryState", "SyncReason", "V0PlayWitness"),
                 nested.stream().map(Class::getSimpleName).collect(Collectors.toSet()));
         assertTrue(nested.stream().allMatch(type ->
                 java.lang.reflect.Modifier.isPublic(type.getModifiers())));

@@ -1,6 +1,7 @@
 package com.yo1no.gramarye.magic.network;
 
 import java.util.Objects;
+import java.util.Optional;
 import com.yo1no.gramarye.P6RuntimeExecutionCapability;
 import com.yo1no.gramarye.magic.runtime.mana.P7ManaSnapshotBridge;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation;
@@ -49,6 +50,27 @@ final class P7NetworkComposition {
     static void onLoginReady(MinecraftServer server, ServerPlayer actor,
             MetadataContinuation receipt, P7ServerAuthorizationBoundary.LoginReadyPort port) {
         ProductionHolder.LIFECYCLE.onLoginReady(server, actor, receipt, port);
+    }
+
+    static Optional<P7SessionIdentity> currentV0PlayIdentity(MinecraftServer server, ServerPlayer actor) {
+        if (server == null || actor == null || !server.isSameThread() || !server.usesAuthentication()
+                || actor.isRemoved() || !actor.isAlive() || actor.isFakePlayer()) {
+            return Optional.empty();
+        }
+        var sessions = ProductionHolder.SESSION_SERVICE;
+        if (!sessions.admissionOpen(server)) {
+            return Optional.empty();
+        }
+        var connection = ProductionHolder.SERVER_ACCESS.actorConnection(server, actor);
+        if (connection == null || connection.isMemoryConnection() || !connection.isConnected()) {
+            return Optional.empty();
+        }
+        var identity = sessions.currentIdentity(server, actor.getUUID());
+        if (identity.isEmpty() || !sessions.matchesCurrentActor(server, identity.orElseThrow(), actor)
+                || !sessions.admissionOpen(server)) {
+            return Optional.empty();
+        }
+        return identity;
     }
 
     static P7ServerLifecycleCoordinator lifecycle() {

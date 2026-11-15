@@ -346,6 +346,14 @@ final class P11QualifiedSourceOwner {
 
     /** Prepared before P5 publishes an accepted instance. The receipt never owns an actor. */
     WorkReservation acquireWork(ServerPlayer actor) {
+        return acquireWork(actor, 0);
+    }
+
+    WorkReservation acquireV0Work(ServerPlayer actor, int maxV0Lineages) {
+        return maxV0Lineages < 1 ? null : acquireWork(actor, maxV0Lineages);
+    }
+
+    private WorkReservation acquireWork(ServerPlayer actor, int maxV0Lineages) {
         if (actor == null || !owns(actor.getServer()) || stopping
                 || P11LiveTransitionBoundary.nativeContinuity(this) == null) { return null; }
         var body = body(actor);
@@ -357,16 +365,21 @@ final class P11QualifiedSourceOwner {
                 || actor.connection.getConnection().getPacketListener() != actor.connection) { return null; }
         var account = body.account;
         int index = P11ControlBudgets.Root.WORK.ordinal();
-        if (account.nativeCounts[index] == Long.MAX_VALUE || !resources.mayAdmitWork(account.resource)) {
+        if (account.nativeCounts[index] == Long.MAX_VALUE
+                || (maxV0Lineages == 0 && !resources.mayAdmitWork(account.resource))) {
             return null;
         }
         // Allocate the receipt before the aggregate reservation/count is changed.
         var work = new WorkReservation(this, account.resource, actor.getUUID());
-        if (account.nativeCounts[index] == 0) {
-            var reservation = resources.tryAcquireRoot(account.resource, P11ControlBudgets.Root.WORK, true);
+        if (maxV0Lineages != 0 || account.nativeCounts[index] == 0) {
+            var reservation = maxV0Lineages == 0
+                    ? resources.tryAcquireRoot(account.resource, P11ControlBudgets.Root.WORK, true)
+                    : resources.tryAcquireV0Work(account.resource, maxV0Lineages);
             if (reservation.isEmpty()) { return null; }
-            account.nativeRoots[index] = reservation.orElseThrow();
-            account.nativeSince[index] = now();
+            if (account.nativeCounts[index] == 0) {
+                account.nativeRoots[index] = reservation.orElseThrow();
+                account.nativeSince[index] = now();
+            }
         }
         account.nativeCounts[index]++;
         account.nativePeaks[index] = Math.max(account.nativePeaks[index], account.nativeCounts[index]);
@@ -573,6 +586,11 @@ final class P11QualifiedSourceOwner {
 
     boolean canCopy(Body body) {
         return currentMaterial(body) && body.account.constructing == null && !body.account.cleanupUnknown;
+    }
+
+    boolean qualifiedForV0Capture(Body body) {
+        return !stopping && P11LiveTransitionBoundary.nativeContinuity(this) != null
+                && canCopy(body) && canonicalInputComplete(body);
     }
 
     /** Only the closed comparison scope may inspect A after B construction, never save it. */

@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
@@ -27,6 +28,11 @@ final class ScopeDProductionIsolationTest {
             "net/neoforged/neoforge/network/", "com/yo1no/gramarye/client/", "com/yo1no/gramarye/magic/runtime/",
             "com/yo1no/gramarye/magic/network/", "com/yo1no/gramarye/magic/effect/",
             "com/yo1no/gramarye/magic/mana/", "java/lang/reflect/");
+    private static final String FACADE = "com.yo1no.gramarye.magic.definition.scoped.V0RuntimeCatalog";
+    private static final String ROOT_SOURCE = "com/yo1no/gramarye/";
+    private static final Set<String> FACADE_IMPORTERS = Set.of(
+            "SkillRuntimeService.java", "V0CaptureCompletion.java", "V0CaptureRequest.java", "V0CatalogAuthority.java",
+            "V0ColdMailbox.java", "V0LeaseToken.java", "V0SlotBinding.java", "V0SlotRuntime.java");
     private static final Pattern SNAPSHOT_CONSTRUCTION = Pattern.compile(
             "\\b(?:new\\s+(?:ScopeDFrontend\\.)?Snapshot\\s*\\(|Snapshot\\s*::\\s*new\\b)");
 
@@ -52,7 +58,14 @@ final class ScopeDProductionIsolationTest {
                 if (path.startsWith(MAIN.resolve(PACKAGE))) {
                     continue;
                 }
-                assertFalse(Files.readString(path).contains("magic.definition.scoped"), path.toString());
+                String source = Files.readString(path);
+                for (String line : source.lines().filter(text -> text.contains("magic.definition.scoped")).toList()) {
+                    assertEquals(MAIN.resolve(ROOT_SOURCE).resolve(path.getFileName()), path);
+                    assertTrue(FACADE_IMPORTERS.contains(path.getFileName().toString()), path.toString());
+                    String expected = path.getFileName().toString().equals("V0ColdMailbox.java")
+                            ? FACADE + ".Suspension" : FACADE;
+                    assertEquals("import " + expected + ";", line, path.toString());
+                }
             }
         }
     }
@@ -68,6 +81,8 @@ final class ScopeDProductionIsolationTest {
             assertNotNull(jar.getEntry(PACKAGE + "ScopeDCatalog.class"));
             assertNotNull(jar.getEntry(PACKAGE + "ScopeDStorage.class"));
             assertNotNull(jar.getEntry(PACKAGE + "ScopeDCatalog$CompatibilityProof.class"));
+            assertNotNull(jar.getEntry(PACKAGE + "V0RuntimeCatalog.class"));
+            assertNull(jar.getEntry(PACKAGE + "V0EngineeringCatalogAssembly.class"));
             for (Class<?> type : COMPILER_TYPES) {
                 assertNotNull(jar.getEntry(PACKAGE + type.getSimpleName() + ".class"), type.getName());
             }

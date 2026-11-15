@@ -387,6 +387,34 @@ final class P11ControlBudgetsTest {
     }
 
     @Test
+    void v0WorkChecksBothHeadroomBoundsWhenReusingTheExactAggregateRoot() {
+        var resources = new P11ControlBudgets.Resources(limits(4, 3, 2, 10, 3));
+        var first = resources.newAccountOwner(id(1));
+        var second = resources.newAccountOwner(id(2));
+        var third = resources.newAccountOwner(id(3));
+        assertTrue(resources.tryAcquireV0Work(first, 0).isEmpty());
+        assertTrue(resources.tryAcquireV0Work(first, 5).isEmpty());
+        var firstWork = resources.tryAcquireV0Work(first, 2).orElseThrow();
+        var secondWork = resources.tryAcquireV0Work(second, 2).orElseThrow();
+        assertEquals(2, resources.counts().retainedUuids());
+        assertSame(firstWork, resources.tryAcquireV0Work(first, 2).orElseThrow());
+        assertTrue(resources.tryAcquireV0Work(third, 2).isEmpty());
+        assertTrue(resources.tryAcquireV0Work(resources.newAccountOwner(id(1)), 2).isEmpty());
+        assertEquals(2, resources.counts().retainedUuids());
+
+        var dirty = resources.markDirty(first, 0).orElseThrow();
+        assertTrue(resources.tryAcquireV0Work(first, 2).isEmpty());
+        assertTrue(resources.tryAcquireV0Work(second, 2).isEmpty());
+        var thirdLegacyWork = resources.tryAcquireRoot(third, WORK, true).orElseThrow();
+        assertTrue(resources.releaseRoot(thirdLegacyWork));
+        assertTrue(resources.releaseDirty(dirty));
+        assertSame(secondWork, resources.tryAcquireV0Work(second, 2).orElseThrow());
+        assertTrue(resources.releaseRoot(firstWork));
+        assertTrue(resources.releaseRoot(secondWork));
+        assertEquals(0, resources.counts().retainedUuids());
+    }
+
+    @Test
     void newWorkChecksExactAccountCapacityRetirementAndNeverMintsMembership() {
         var resources = new P11ControlBudgets.Resources(limits(1, 1, 1, 10, 1));
         var owner = resources.newAccountOwner(id(1));

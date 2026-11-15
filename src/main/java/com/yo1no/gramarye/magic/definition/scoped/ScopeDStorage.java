@@ -265,6 +265,19 @@ final class ScopeDStorage implements AutoCloseable {
 
     synchronized Image commitPreparedImage(Image expected, Image staged) throws IOException {
         beginCatalogReplacement(expected, staged);
+        return installReadback(staged);
+    }
+
+    synchronized Image commitPreparedImage(Image expected, Image staged, V0RuntimeCatalog.WriterMutation mutation)
+            throws IOException {
+        if (mutation == null) {
+            return commitPreparedImage(expected, staged);
+        }
+        beginCatalogReplacement(expected, staged, mutation);
+        return installReadback(staged);
+    }
+
+    private Image installReadback(Image staged) throws IOException {
         Frame durable = finishCatalogReplacement(staged);
         current = staged;
         currentKey = durable.fileKey();
@@ -275,10 +288,18 @@ final class ScopeDStorage implements AutoCloseable {
     }
 
     private void beginCatalogReplacement(Image expected, Image staged) throws IOException {
+        beginCatalogReplacement(expected, staged, null);
+    }
+
+    private void beginCatalogReplacement(Image expected, Image staged, V0RuntimeCatalog.WriterMutation mutation)
+            throws IOException {
         requireExpected(expected);
         verifyWatermark();
         if (pending().orElse(null) != staged || staged == null) {
             throw failure(Reason.STALE, "prepared image belongs to a different operation or writer");
+        }
+        if (mutation != null && !mutation.current()) {
+            throw failure(Reason.STALE, "Runtime catalog mutation was superseded before replace");
         }
         catalogFenced = true;
         try {
@@ -417,6 +438,11 @@ final class ScopeDStorage implements AutoCloseable {
             catalogFenced = true;
             throw failure(Reason.FENCED, "current image identity changed outside this writer");
         }
+    }
+
+    synchronized void requireRuntimeReadback(Image expected) throws IOException {
+        requireExpected(expected);
+        requireNoPending();
     }
 
     private void requireExpected(Image expected) throws IOException {

@@ -383,6 +383,23 @@ final class P11ControlBudgets {
                     && dirtyCount < limits.dirtyUuidAdmissionWatermark();
         }
 
+        /** Admit one new V0 obligation with headroom in the existing aggregate WORK root. */
+        synchronized Optional<RootReservation> tryAcquireV0Work(AccountOwner owner, int maxV0Lineages) {
+            if (maxV0Lineages < 1 || maxV0Lineages > 4 || !issued(owner) || owner.finished) {
+                return Optional.empty();
+            }
+            var current = accounts.get(owner.playerId);
+            if (current != null && current != owner) {
+                return Optional.empty();
+            }
+            long retainedAfter = (long) accounts.size() + (current == null ? 1 : 0);
+            if (retainedAfter + maxV0Lineages > limits.maxUuids()
+                    || (long) dirtyCount + maxV0Lineages >= limits.dirtyUuidAdmissionWatermark()) {
+                return Optional.empty();
+            }
+            return tryAcquireRoot(owner, Root.WORK, true);
+        }
+
         /** New responsibility admission; an exact repeated reservation is a no-op, not new work. */
         synchronized Optional<RootReservation> tryAcquireRoot(
                 AccountOwner owner, Root root, boolean newDirtyWork) {

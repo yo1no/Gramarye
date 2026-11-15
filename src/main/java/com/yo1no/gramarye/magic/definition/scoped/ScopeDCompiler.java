@@ -38,6 +38,12 @@ final class ScopeDCompiler {
 
     static Result compile(UUID source, ScopeDCatalogImage image, ScopeDResolver.Root root,
                           CatalogGeneration expected, Context context) throws IOException {
+        return compileRuntime(source, image, root, expected, context, null);
+    }
+
+    static Result compileRuntime(UUID source, ScopeDCatalogImage image, ScopeDResolver.Root root,
+                                 CatalogGeneration expected, Context context,
+                                 V0RuntimeCatalog.ProjectionCheck projection) throws IOException {
         var diagnostics = new ScopeDCompilerDiagnostics();
         if (!tryEnter()) {
             diagnostics.error(Stage.RESOLVER, Code.SESSION_BUSY, Location.at(root.exact(), "session"));
@@ -50,7 +56,7 @@ final class ScopeDCompiler {
                     recordRejection(rejected, diagnostics);
                     yield new Rejected(diagnostics.report());
                 }
-                case ScopeDResolver.Resolved resolved -> compileResolved(resolved, context, diagnostics);
+                case ScopeDResolver.Resolved resolved -> compileResolved(resolved, context, diagnostics, projection);
             };
         } catch (ScopeDLowering.Capacity | ArithmeticException failure) {
             diagnostics.error(Stage.LOWERING, Code.CAPACITY, Location.at(root.exact(), "compile"));
@@ -64,7 +70,8 @@ final class ScopeDCompiler {
     }
 
     private static Result compileResolved(ScopeDResolver.Resolved resolved, Context context,
-                                          ScopeDCompilerDiagnostics diagnostics) throws IOException {
+                                          ScopeDCompilerDiagnostics diagnostics,
+                                          V0RuntimeCatalog.ProjectionCheck projection) throws IOException {
         var selected = resolved.selected();
         var whole = resolved.manifest();
         var lowered = lower(whole.map(ScopeDResolver.ManifestAvailability::documents).orElse(selected.documents()),
@@ -107,6 +114,9 @@ final class ScopeDCompiler {
         var manifest = whole.map(value -> new ManifestOrigin(value.document().reference(),
                 ((ScopeDResolver.ManifestEntryRoot) resolved.root()).entryId(), value.entries(),
                 List.copyOf(value.documents().keySet())));
+        if (projection != null) {
+            projection.qualify(program, manifest, lowered.units());
+        }
         return new Compiled(program, resolved.snapshot(), manifest, resolved.work(), diagnostics.report());
     }
 

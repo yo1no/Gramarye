@@ -134,7 +134,7 @@ final class P11FoundationBoundaryTest {
                 "var snapshot = p5ServerRuntimeConfig.snapshotAllForStarted();",
                 "var limits = snapshot.p5Limits();",
                 "p11FoundationService.started(event, snapshot.p11State());",
-                "skillRuntimeService.handleRuntimeStarted(event, limits);");
+                "skillRuntimeService.handleRuntimeStarted(event, limits, snapshot.v0State());");
         assertEquals(1, start.split("snapshotAllForStarted\\(", -1).length - 1);
         assertFalse(start.contains("catch ("));
         assertTrue(root.contains("modBus.addListener(P11TransitionPayloadRegistrar::register);"));

@@ -5,23 +5,36 @@ import java.util.Objects;
 import java.util.Optional;
 
 /** Configuration candidates, not source, writer, control, or gameplay authority. */
-record P11ServerConfigCandidate(P5RuntimeLimitLoadState p5State, P11StartupLoadState p11State) {
+record P11ServerConfigCandidate(
+        P5RuntimeLimitLoadState p5State, P11StartupLoadState p11State, V0StartupLoadState v0State) {
+    P11ServerConfigCandidate(P5RuntimeLimitLoadState p5State, P11StartupLoadState p11State) {
+        this(p5State, p11State, V0StartupLoadState.Disabled.INSTANCE);
+    }
+
     P11ServerConfigCandidate {
         Objects.requireNonNull(p5State, "p5State");
         Objects.requireNonNull(p11State, "p11State");
+        Objects.requireNonNull(v0State, "v0State");
     }
 
     static P11ServerConfigCandidate unavailable() {
         return new P11ServerConfigCandidate(
                 P5RuntimeLimitLoadState.Unavailable.INSTANCE,
-                P11StartupLoadState.Unavailable.INSTANCE);
+                P11StartupLoadState.Unavailable.INSTANCE,
+                V0StartupLoadState.Unavailable.INSTANCE);
     }
 }
 
-record P11StartupSnapshot(P5RuntimeLimits p5Limits, P11StartupLoadState p11State) {
+record P11StartupSnapshot(
+        P5RuntimeLimits p5Limits, P11StartupLoadState p11State, V0StartupLoadState v0State) {
+    P11StartupSnapshot(P5RuntimeLimits p5Limits, P11StartupLoadState p11State) {
+        this(p5Limits, p11State, V0StartupLoadState.Disabled.INSTANCE);
+    }
+
     P11StartupSnapshot {
         Objects.requireNonNull(p5Limits, "p5Limits");
         Objects.requireNonNull(p11State, "p11State");
+        Objects.requireNonNull(v0State, "v0State");
     }
 }
 

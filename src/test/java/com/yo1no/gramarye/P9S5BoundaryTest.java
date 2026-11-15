@@ -140,17 +140,18 @@ final class P9S5BoundaryTest {
                                 "handleP9ReloadCompleted",
                                 net.neoforged.neoforge.event.OnDatapackSyncEvent.class)
                         .getModifiers())),
-                () -> assertEquals(1, occurrences(started, "requestP9ReloadInvalidation()")),
-                () -> assertFalse(started.contains("completeP9Reload(")),
+                () -> assertEquals(1, occurrences(started, "requestRuntimeReloadInvalidation(event)")),
+                () -> assertFalse(started.contains("completeP9Reload(") || started.contains("completeRuntimeReload(")),
                 () -> assertEquals(1, occurrences(completed, "if (event.getPlayer() == null)")),
-                () -> assertEquals(1, occurrences(completed, "completeP9Reload(")),
+                () -> assertEquals(1, occurrences(completed, "completeRuntimeReload(")),
                 () -> assertFalse(completed.contains("requestP9ReloadInvalidation()")),
+                () -> assertFalse(completed.contains("requestRuntimeReloadInvalidation(")),
                 () -> assertOrdered(
                         completed,
                         "p10TemplateService.beginPostInstall(server)",
                         "p8ServerPresentationService.activateMatchingCandidateForRoot(server)",
                         "p10TemplateService.completeInstalled(server, outcome)",
-                        "skillRuntimeService.completeP9Reload(server)"),
+                        "skillRuntimeService.completeRuntimeReload(server)"),
                 () -> assertOrdered(completed, "markInstalled.run()", "activateP8.get()",
                         "settleP10.accept(outcome)", "reopenP5.run()"),
                 () -> assertFalse(completed.contains("catch (")),
@@ -162,7 +163,7 @@ final class P9S5BoundaryTest {
                         "p5ServerRuntimeConfig.snapshotAllForStarted();",
                         "var limits = snapshot.p5Limits();",
                         "p11FoundationService.started(event, snapshot.p11State());",
-                        "skillRuntimeService.handleRuntimeStarted(event, limits);"));
+                        "skillRuntimeService.handleRuntimeStarted(event, limits, snapshot.v0State());"));
     }
 
     @Test

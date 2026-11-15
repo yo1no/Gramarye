@@ -93,7 +93,7 @@ final class P5RuntimeStaticGateTest {
                         "modBus.addListener(this::handleRuntimeConfigUnloading);")),
                 () -> assertEquals(1, occurrences(
                         gramarye,
-                        "skillRuntimeService.handleRuntimeStarted(event, limits);")),
+                        "skillRuntimeService.handleRuntimeStarted(event, limits, snapshot.v0State());")),
                 () -> assertTrue(gramarye.indexOf(
                                 "skillRuntimeService = SkillRuntimeService.create(")
                         < gramarye.indexOf(
@@ -101,7 +101,7 @@ final class P5RuntimeStaticGateTest {
                 () -> assertTrue(gramarye.indexOf(
                                 "p8ServerPresentationService.handleServerStarted(event);")
                         < gramarye.indexOf(
-                                "skillRuntimeService.handleRuntimeStarted(event, limits);")));
+                                "skillRuntimeService.handleRuntimeStarted(event, limits, snapshot.v0State());")));
 
         var fields = Arrays.asList(Gramarye.class.getDeclaredFields());
         assertAll(
@@ -133,7 +133,7 @@ final class P5RuntimeStaticGateTest {
                 "p5ServerRuntimeConfig.snapshotAllForStarted()",
                 "var limits = snapshot.p5Limits()",
                 "p11FoundationService.started(event, snapshot.p11State())",
-                "skillRuntimeService.handleRuntimeStarted(event, limits)");
+                "skillRuntimeService.handleRuntimeStarted(event, limits, snapshot.v0State())");
         assertAll(
                 () -> assertEquals(1, occurrences(bridge, "snapshotAllForStarted()")),
                 () -> assertFalse(bridge.contains("catch ("),

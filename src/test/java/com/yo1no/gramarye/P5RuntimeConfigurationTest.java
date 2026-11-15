@@ -519,25 +519,41 @@ final class P5RuntimeConfigurationTest {
         var runtimeConfig = new P5ServerRuntimeConfig(container.eventBus(), container);
         var spec = assertInstanceOf(P5RawServerConfigSpec.class, container.registeredSpec());
         var raw = P11StartupConfigurationTest.diagnosticRawProfile();
+        V0StartupConfigurationTest.setDefaultProfile(raw, true);
         spec.acceptRawConfig(raw);
         var active = runtimeConfig.snapshotAllForStarted();
         var activeLimits = assertInstanceOf(P11StartupLoadState.Ready.class, active.p11State()).limits();
         assertEquals(4, activeLimits.maxUuids());
         assertEquals(4_096, active.p5Limits().pendingEventsPerServer());
+        var activeV0 = assertInstanceOf(V0StartupLoadState.Ready.class, active.v0State()).limits();
+        assertEquals(1L, activeV0.positiveRootFee());
 
         raw.set("p11.retention.maxUuids", 5);
+        raw.set("v0.positiveRootFee", 4L);
         spec.acceptRawConfig(raw);
         container.eventBus().post(new ModConfigEvent.Reloading(container.registeredConfig()));
         var next = runtimeConfig.snapshotAllForStarted();
         assertEquals(5, assertInstanceOf(P11StartupLoadState.Ready.class, next.p11State()).limits().maxUuids());
+        assertEquals(4L, assertInstanceOf(V0StartupLoadState.Ready.class, next.v0State()).limits().positiveRootFee());
+        assertEquals(1L, activeV0.positiveRootFee());
         assertEquals(4, activeLimits.maxUuids());
         container.eventBus().post(new ModConfigEvent.Unloading(container.registerUnrelatedServerConfig()));
         assertEquals(next, runtimeConfig.snapshotAllForStarted());
 
+        raw.set("v0.positiveRootFee", 5L);
+        spec.acceptRawConfig(raw);
+        var invalidV0 = runtimeConfig.snapshotAllForStarted();
+        assertInstanceOf(V0StartupLoadState.Invalid.class, invalidV0.v0State());
+        assertInstanceOf(P11StartupLoadState.Ready.class, invalidV0.p11State());
+        assertEquals(4_096, invalidV0.p5Limits().pendingEventsPerServer());
+        assertEquals(1L, activeV0.positiveRootFee());
+
+        raw.set("v0.positiveRootFee", 4L);
         raw.remove("p11.control.tryBurst");
         spec.acceptRawConfig(raw);
         var isolated = runtimeConfig.snapshotAllForStarted();
         assertInstanceOf(P11StartupLoadState.Invalid.class, isolated.p11State());
+        assertInstanceOf(V0StartupLoadState.Ready.class, isolated.v0State());
         assertEquals(4_096, isolated.p5Limits().pendingEventsPerServer());
         assertEquals(4, activeLimits.maxUuids());
         container.eventBus().post(new ModConfigEvent.Unloading(container.registeredConfig()));
@@ -547,6 +563,7 @@ final class P5RuntimeConfigurationTest {
         var p5Only = rawConfig(hardValues());
         spec.acceptRawConfig(p5Only);
         assertInstanceOf(P11StartupLoadState.Invalid.class, runtimeConfig.snapshotAllForStarted().p11State());
+        assertSame(V0StartupLoadState.Disabled.INSTANCE, runtimeConfig.snapshotAllForStarted().v0State());
         assertEquals(4_096, runtimeConfig.snapshotForStarted().pendingEventsPerServer());
     }
 

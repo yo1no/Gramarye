@@ -2,6 +2,7 @@ package com.yo1no.gramarye;
 
 import com.yo1no.gramarye.magic.api.id.EventId;
 import com.yo1no.gramarye.magic.api.id.SkillInstanceId;
+import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import com.yo1no.gramarye.magic.capability.ActionOutputKind;
 import com.yo1no.gramarye.magic.capability.SourceRequirement;
 import com.yo1no.gramarye.magic.capability.TargetRequirement;
@@ -14,7 +15,9 @@ import com.yo1no.gramarye.magic.definition.store.SkillSubsystemResult;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
 import com.yo1no.gramarye.magic.definition.validation.ProfileAvailabilityView;
 import com.yo1no.gramarye.magic.definition.validation.ValidatedSkillDefinition;
+import com.yo1no.gramarye.magic.definition.scoped.V0RuntimeCatalog;
 import com.yo1no.gramarye.magic.limits.MagicSafetyCeilings;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -38,6 +41,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
@@ -57,6 +61,7 @@ final class SkillRuntimeService {
     private final AtomicBoolean p9ReloadCloseRequested = new AtomicBoolean();
     private final IdentityHashMap<MinecraftServer, ServerSlot> slots = new IdentityHashMap<>(1);
     private long serverTokenHighWater;
+    private volatile V0SlotRuntime v0ReloadTarget;
 
     SkillRuntimeService(
             SkillDefinitionStoreService storeService,
@@ -156,6 +161,70 @@ final class SkillRuntimeService {
         p9ReloadCloseRequested.set(false);
     }
 
+    void handleRuntimeStarted(ServerStartedEvent event, P5RuntimeLimits limits,
+            V0StartupLoadState v0State) {
+        // The existing native-harness injections match the two-argument lifecycle method.
+        handleRuntimeStarted(event, limits);
+        if (!(v0State instanceof V0StartupLoadState.Ready ready)) {
+            return;
+        }
+        var server = event.getServer();
+        var slot = slots.get(server);
+        if (slot == null || slot.state != ServerSlot.State.RUNNING
+                || foundation == null || foundation.sourceOwner(server) == null) {
+            return;
+        }
+        var authority = V0CatalogAuthority.open(slot.token.value(), ready.limits());
+        var startup = new V0SlotStartup(server, authority, v0State, this);
+        var binding = V0Distribution.open(startup);
+        if (binding.isPresent()) {
+            slot.v0 = new V0SlotRuntime(startup, binding.orElseThrow());
+            v0ReloadTarget = slot.v0;
+        }
+    }
+
+    boolean reserveV0Capture(MinecraftServer server, V0CatalogAuthority authority, ServerPlayer actor,
+            SkillOwnerId owner, V0RuntimeCatalog.Selection selection) {
+        if (server == null || actor == null || owner == null || selection == null
+                || !server.isSameThread() || actor.getServer() != server
+                || !owner.value().equals(actor.getUUID()) || foundation == null) {
+            return false;
+        }
+        var slot = slots.get(server);
+        if (slot == null || slot.state != ServerSlot.State.RUNNING || slot.v0 == null
+                || !slot.v0.hasAuthority(authority) || !server.isRunning() || server.isStopped()) {
+            return false;
+        }
+        var source = foundation.sourceOwner(server);
+        var body = source == null ? null : source.body(actor);
+        if (body == null || !source.qualifiedForV0Capture(body)) {
+            return false;
+        }
+        var witness = P7ServerAuthorizationBoundary.captureV0Play(authority, server, actor);
+        return witness.isPresent()
+                && slot.v0.reserveCapture(actor, witness.orElseThrow(), source, body,
+                        owner, selection, slot.runtimeTick);
+    }
+
+    boolean currentV0Actor(V0SlotRuntime v0, V0CatalogAuthority authority,
+            P7ServerAuthorizationBoundary.V0PlayWitness witness, P11QualifiedSourceOwner source,
+            P11QualifiedSourceOwner.Body body, P11ReceiptLedger.Source proof, ServerPlayer actor) {
+        var server = actor.getServer();
+        if (server == null || !server.isSameThread() || foundation == null
+                || !server.isRunning() || server.isStopped()) {
+            return false;
+        }
+        var slot = slots.get(server);
+        return slot != null && slot.state == ServerSlot.State.RUNNING && slot.v0 == v0
+                && v0.hasAuthority(authority) && foundation.sourceOwner(server) == source
+                && source.body(actor) == body && body.source == proof && source.qualifiedForV0Capture(body)
+                && P7ServerAuthorizationBoundary.currentV0Play(authority, witness, server, actor);
+    }
+
+    P11QualifiedSourceOwner.WorkReservation reserveV0Work(ServerPlayer actor, int maxLineages) {
+        return foundation == null ? null : foundation.acquireV0Work(actor, maxLineages);
+    }
+
     RuntimeAdmissionResult admitAuthenticatedPlayerCast(
             MinecraftServer server,
             ServerPlayer actor,
@@ -232,6 +301,25 @@ final class SkillRuntimeService {
                 server, slot, ProjectileClosureReason.RELOAD_INVALIDATED, true);
         if (slots.get(server) == slot && slot.state == ServerSlot.State.RUNNING) {
             p9ReloadCloseRequested.set(false);
+        }
+    }
+
+    void completeRuntimeReload(MinecraftServer server) {
+        completeP9Reload(server);
+        var slot = slots.get(server);
+        if (slot != null && slot.state == ServerSlot.State.RUNNING && slot.v0 != null) {
+            slot.v0.recordInstalledReload(server.getServerResources().managers());
+        }
+    }
+
+    void requestRuntimeReloadInvalidation(AddReloadListenerEvent event) {
+        requestP9ReloadInvalidation();
+        var v0 = v0ReloadTarget;
+        if (v0 != null && v0.ownsReloadRegistries(event.getRegistryAccess())) {
+            synchronized (v0) {
+                v0.invalidateForReload();
+                v0.recordReloadSource(event.getServerResources());
+            }
         }
     }
 
@@ -2006,7 +2094,7 @@ final class SkillRuntimeService {
         }
         if (advanceRuntimeTick(slot) == RuntimeTickAdvanceResult.EXHAUSTED) {
             slot.state = ServerSlot.State.EXHAUSTED;
-            clearSlotNormal(server, slot);
+            clearSlotAndV0Normal(server, slot);
             return;
         }
         resetTickState(slot);
@@ -2143,9 +2231,13 @@ final class SkillRuntimeService {
             throw kernel(RuntimeKernelException.Code.WRONG_THREAD_LIFECYCLE);
         }
         slot.state = ServerSlot.State.STOPPING;
-        clearSlotNormal(server, slot);
+        clearSlotAndV0Normal(server, slot);
         slot.state = ServerSlot.State.REMOVED;
         slots.remove(server);
+        if (v0ReloadTarget == slot.v0) {
+            v0ReloadTarget = null;
+        }
+        slot.v0 = null;
     }
 
     private void invalidateP9Work(
@@ -2293,6 +2385,13 @@ final class SkillRuntimeService {
         }
         slot.dispatching = true;
         try {
+            if (slot.v0 != null) {
+                slot.v0.maintain(slot.runtimeTick, slot.eventSequenceHighWater);
+                var completion = slot.v0.takeCompletion();
+                if (completion != null) {
+                    slot.v0.acceptCompletion(completion, slot.runtimeTick);
+                }
+            }
             while (true) {
                 if (slot.executionsThisTick == slot.limits.executionsPerServerPerTick()) {
                     reintegrateDeferred(slot);
@@ -2406,6 +2505,18 @@ final class SkillRuntimeService {
                 reintegrateDeferred(slot);
             }
         }
+    }
+
+    int readyV0QueueCell(ServerSlot slot, boolean v0BudgetAvailable) {
+        if (!slot.dispatching) {
+            throw kernel(RuntimeKernelException.Code.NESTED_DRAIN);
+        }
+        if (slot.v0 == null || !v0BudgetAvailable) {
+            return -1;
+        }
+        var legacy = slot.executionsThisTick == slot.limits.executionsPerServerPerTick()
+                ? null : slot.queue.peek();
+        return slot.v0.readyEvent(slot.runtimeTick, true, legacy);
     }
 
     private void dispatchClaimed(
@@ -4217,7 +4328,7 @@ final class SkillRuntimeService {
             return 0;
         }
         slot.state = ServerSlot.State.STOPPING;
-        return clearSlotNormal(server, slot);
+        return clearSlotAndV0Normal(server, slot);
     }
 
     void stopSlot(ServerSlot slot) {
@@ -4240,13 +4351,16 @@ final class SkillRuntimeService {
     RuntimeException preserveRuntimeFault(ServerSlot slot, RuntimeException primary) {
         Objects.requireNonNull(primary, "primary");
         var exactSlot = Objects.requireNonNull(slot, "slot");
+        stopV0PreservingFault(exactSlot);
         enterFaultAfterRuntimeException(serverForSlot(exactSlot), exactSlot);
         return primary;
     }
 
     Error preserveErrorFault(ServerSlot slot, Error primary) {
         Objects.requireNonNull(primary, "primary");
-        enterFaultAfterError(Objects.requireNonNull(slot, "slot"));
+        var exactSlot = Objects.requireNonNull(slot, "slot");
+        stopV0PreservingFault(exactSlot);
+        enterFaultAfterError(exactSlot);
         return primary;
     }
 
@@ -4354,6 +4468,22 @@ final class SkillRuntimeService {
         if (instance != null) { instance.p9InFlightClosureReason = null; }
     }
 
+    private static int clearSlotAndV0Normal(MinecraftServer server, ServerSlot slot) {
+        if (slot.v0 != null) {
+            try {
+                slot.v0.stop();
+            } catch (RuntimeException | Error primary) {
+                try {
+                    clearSlotNormal(server, slot);
+                } catch (RuntimeException | Error ignored) {
+                    // The primary stop failure retains its identity.
+                }
+                throw primary;
+            }
+        }
+        return clearSlotNormal(server, slot);
+    }
+
     private static int clearSlotNormal(MinecraftServer server, ServerSlot slot) {
         clearP9InFlightClosureReason(slot);
         var closedWorkUnits = closeAllIndexedContinuations(
@@ -4391,6 +4521,17 @@ final class SkillRuntimeService {
         slot.p9TerminalCount = 0;
         slot.p9ActiveIndexInvalidatedAfterError = false;
         return closedWorkUnits;
+    }
+
+    private static void stopV0PreservingFault(ServerSlot slot) {
+        if (slot.v0 != null) {
+            slot.state = ServerSlot.State.FAULTED;
+            try {
+                slot.v0.stop();
+            } catch (RuntimeException | Error ignored) {
+                // Existing P5 fault cleanup owns and preserves its original primary.
+            }
+        }
     }
 
     private static void clearSlotAfterRuntimeException(
@@ -5245,6 +5386,7 @@ final class ServerSlot {
     boolean p9ActiveIndexInvalidatedAfterError;
     int p9TerminalWriteIndex;
     int p9TerminalCount;
+    V0SlotRuntime v0;
 
     ServerSlot(RuntimeServerToken token, P5RuntimeLimits limits) {
         this.token = Objects.requireNonNull(token, "token");

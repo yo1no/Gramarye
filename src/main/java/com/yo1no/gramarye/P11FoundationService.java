@@ -121,6 +121,11 @@ final class P11FoundationService {
         return source == null ? null : source.acquireWork(actor);
     }
 
+    P11QualifiedSourceOwner.WorkReservation acquireV0Work(ServerPlayer actor, int maxV0Lineages) {
+        var source = actor == null ? null : sourceOwner(actor.getServer());
+        return source == null ? null : source.acquireV0Work(actor, maxV0Lineages);
+    }
+
     SkillRuntimeService.NormalLogoutScope beginNormalLogout(
             net.minecraft.server.network.ServerGamePacketListenerImpl listener, ServerPlayer actor) {
         return runtime == null ? null : runtime.beginNormalLogout(actor.getServer(), listener, actor);

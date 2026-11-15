@@ -1,10 +1,12 @@
 package com.yo1no.gramarye.magic.network;
 
 import com.yo1no.gramarye.P6RuntimeExecutionCapability;
+import com.yo1no.gramarye.V0CatalogAuthority;
 import com.yo1no.gramarye.magic.definition.document.SkillReference;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation;
 import java.util.Objects;
 import java.util.List;
+import java.util.Optional;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -49,6 +51,35 @@ public final class P7ServerAuthorizationBoundary {
     public static LoginReadyPort loginReadyPort(P6RuntimeExecutionCapability capability) {
         Objects.requireNonNull(capability, "capability");
         return LOGIN_READY_PORT;
+    }
+
+    public static Optional<V0PlayWitness> captureV0Play(
+            V0CatalogAuthority authority, MinecraftServer server, ServerPlayer actor) {
+        if (authority == null || !authority.isOwnerThread()) {
+            return Optional.empty();
+        }
+        var identity = P7NetworkComposition.currentV0PlayIdentity(server, actor);
+        if (identity.isEmpty()) {
+            return Optional.empty();
+        }
+        var witness = new V0PlayWitness();
+        witness.authority = authority;
+        witness.identity = identity.orElseThrow();
+        return Optional.of(witness);
+    }
+
+    public static boolean currentV0Play(V0CatalogAuthority authority, V0PlayWitness witness,
+            MinecraftServer server, ServerPlayer actor) {
+        return authority != null && witness != null && witness.authority == authority && authority.isOwnerThread()
+                && P7NetworkComposition.currentV0PlayIdentity(server, actor).orElse(null) == witness.identity;
+    }
+
+    public static final class V0PlayWitness {
+        // Only captureV0Play sets these, before publication on the owner thread.
+        private V0CatalogAuthority authority;
+        private P7SessionIdentity identity;
+
+        private V0PlayWitness() {}
     }
 
     static AdmissionDisposition dispatch(

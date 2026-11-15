@@ -134,7 +134,7 @@ public final class Gramarye {
 
     private void handleP9ReloadStarted(AddReloadListenerEvent event) {
         Objects.requireNonNull(event, "event");
-        skillRuntimeService.requestP9ReloadInvalidation();
+        skillRuntimeService.requestRuntimeReloadInvalidation(event);
     }
 
     private void handleP9ReloadCompleted(OnDatapackSyncEvent event) {
@@ -145,7 +145,7 @@ public final class Gramarye {
                     () -> p10TemplateService.beginPostInstall(server),
                     () -> p8ServerPresentationService.activateMatchingCandidateForRoot(server),
                     outcome -> p10TemplateService.completeInstalled(server, outcome),
-                    () -> skillRuntimeService.completeP9Reload(server));
+                    () -> skillRuntimeService.completeRuntimeReload(server));
         }
     }
 
@@ -165,7 +165,7 @@ public final class Gramarye {
         var snapshot = p5ServerRuntimeConfig.snapshotAllForStarted();
         var limits = snapshot.p5Limits();
         p11FoundationService.started(event, snapshot.p11State());
-        skillRuntimeService.handleRuntimeStarted(event, limits);
+        skillRuntimeService.handleRuntimeStarted(event, limits, snapshot.v0State());
     }
 
     /** Returns the controlled server skill subsystem port held by this composition root. */

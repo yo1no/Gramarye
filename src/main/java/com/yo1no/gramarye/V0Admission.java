@@ -1,0 +1,6 @@
+package com.yo1no.gramarye;
+
+enum V0Admission {
+    ACCEPTED, ACTOR_STALE, SLOT_STALE, DEADLINE_EXPIRED,
+    WORK_UNAVAILABLE, CAPACITY, CATALOG_BUSY, REJECTED
+}

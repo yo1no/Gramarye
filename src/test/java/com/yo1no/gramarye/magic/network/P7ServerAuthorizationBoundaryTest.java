@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.yo1no.gramarye.P6RuntimeExecutionCapability;
+import com.yo1no.gramarye.V0CatalogAuthority;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -19,6 +20,31 @@ import net.minecraft.server.level.ServerPlayer;
 import org.junit.jupiter.api.Test;
 
 final class P7ServerAuthorizationBoundaryTest {
+    @Test
+    void v0WitnessIsExactAndCannotMintWithoutAuthority() throws Exception {
+        var boundary = P7ServerAuthorizationBoundary.class;
+        var type = P7ServerAuthorizationBoundary.V0PlayWitness.class;
+        assertTrue(Modifier.isPublic(type.getModifiers()));
+        assertTrue(Modifier.isFinal(type.getModifiers()));
+        assertTrue(Modifier.isStatic(type.getModifiers()));
+        assertEquals(1, type.getDeclaredConstructors().length);
+        assertTrue(Modifier.isPrivate(type.getDeclaredConstructor().getModifiers()));
+        assertEquals(0, type.getDeclaredMethods().length);
+        assertEquals(Set.of(V0CatalogAuthority.class, P7SessionIdentity.class),
+                Arrays.stream(type.getDeclaredFields()).map(java.lang.reflect.Field::getType)
+                        .collect(Collectors.toSet()));
+        assertTrue(Arrays.stream(type.getDeclaredFields()).allMatch(field ->
+                Modifier.isPrivate(field.getModifiers()) && !Modifier.isStatic(field.getModifiers())));
+        var capture = boundary.getDeclaredMethod("captureV0Play", V0CatalogAuthority.class,
+                MinecraftServer.class, ServerPlayer.class);
+        assertEquals("java.util.Optional<" + type.getName() + ">", capture.getGenericReturnType().getTypeName());
+        var current = boundary.getDeclaredMethod("currentV0Play", V0CatalogAuthority.class,
+                type, MinecraftServer.class, ServerPlayer.class);
+        assertEquals(boolean.class, current.getReturnType());
+        assertTrue(P7ServerAuthorizationBoundary.captureV0Play(null, null, null).isEmpty());
+        assertFalse(P7ServerAuthorizationBoundary.currentV0Play(null, null, null, null));
+    }
+
     @Test
     void publicSurfaceIsExactAndDispatchRemainsPackagePrivate() throws Exception {
         var boundary = P7ServerAuthorizationBoundary.class;
@@ -38,18 +64,18 @@ final class P7ServerAuthorizationBoundaryTest {
                                 || Modifier.isProtected(field.getModifiers()))
                         .count());
         assertEquals(
-                3,
+                5,
                 Arrays.stream(methods)
                         .filter(method -> Modifier.isPublic(method.getModifiers()))
                         .count());
         assertEquals(
-                3,
+                5,
                 Arrays.stream(methods)
                         .filter(method -> Modifier.isPublic(method.getModifiers())
                                 || Modifier.isProtected(method.getModifiers()))
                         .count());
         assertEquals(
-                Set.of("dispatch", "install", "loginReadyPort", "prepareSync"),
+                Set.of("dispatch", "install", "loginReadyPort", "prepareSync", "captureV0Play", "currentV0Play"),
                 Arrays.stream(methods)
                         .filter(method -> !method.isSynthetic())
                         .map(Method::getName)
@@ -161,7 +187,8 @@ final class P7ServerAuthorizationBoundaryTest {
                         P7ServerAuthorizationBoundary.SyncEntry.class,
                         P7ServerAuthorizationBoundary.SyncSourceState.class,
                         P7ServerAuthorizationBoundary.SyncEntryState.class,
-                        P7ServerAuthorizationBoundary.SyncReason.class),
+                        P7ServerAuthorizationBoundary.SyncReason.class,
+                        P7ServerAuthorizationBoundary.V0PlayWitness.class),
                 Set.of(boundary.getDeclaredClasses()));
         assertTrue(Arrays.stream(boundary.getDeclaredClasses())
                 .allMatch(type -> Modifier.isPublic(type.getModifiers())));

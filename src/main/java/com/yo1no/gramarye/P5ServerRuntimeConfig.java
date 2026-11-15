@@ -41,7 +41,7 @@ final class P5ServerRuntimeConfig {
     P11StartupSnapshot snapshotAllForStarted() {
         var candidate = nextSlotState.get();
         return new P11StartupSnapshot(
-                snapshotCandidate(candidate.p5State()), candidate.p11State());
+                snapshotCandidate(candidate.p5State()), candidate.p11State(), candidate.v0State());
     }
 
     Optional<P5RuntimeReloadDisposition> latestReloadDisposition() {
@@ -159,7 +159,8 @@ final class P5RawServerConfigSpec implements IConfigSpec {
     }
 
     private static P11ServerConfigCandidate decodeCandidate(UnmodifiableCommentedConfig rawConfig) {
-        return new P11ServerConfigCandidate(decode(rawConfig), P11ConfigurationValidation.decode(rawConfig));
+        return new P11ServerConfigCandidate(decode(rawConfig), P11ConfigurationValidation.decode(rawConfig),
+                V0ConfigurationValidation.decode(rawConfig));
     }
 
     private static P5RuntimeLimitLoadState decode(UnmodifiableCommentedConfig rawConfig) {

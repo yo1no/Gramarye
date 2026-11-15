@@ -184,6 +184,7 @@ final class P11StartupConfigurationTest {
         raw.set("runtime.cancellationsPerTick", 1);
         raw.set("p11.retention.maxUuids", 1);
         raw.set("p11.save.dirtyUuidAdmissionWatermark", 1);
+        V0StartupConfigurationTest.setDefaultProfile(raw, true);
         var state = emptyState();
         var spec = new P5RawServerConfigSpec(state);
         spec.acceptRawConfig(raw);
@@ -196,6 +197,7 @@ final class P11StartupConfigurationTest {
                     raw.bulkCommentedUpdate(view -> {
                         view.set("runtime.cancellationsPerTick", value);
                         view.set("p11.retention.maxUuids", value);
+                        view.set("v0.positiveRootFee", (long) value);
                         return null;
                     });
                     spec.acceptRawConfig(raw);
@@ -208,6 +210,8 @@ final class P11StartupConfigurationTest {
                 var candidate = state.get();
                 assertEquals(P5ServerRuntimeConfig.snapshotCandidate(candidate.p5State())
                         .cancellationsPerTick(), ready(candidate).maxUuids());
+                var v0Limits = assertInstanceOf(V0StartupLoadState.Ready.class, candidate.v0State()).limits();
+                assertEquals((long) ready(candidate).maxUuids(), v0Limits.positiveRootFee());
             }
             writer.get(10, TimeUnit.SECONDS);
         }
