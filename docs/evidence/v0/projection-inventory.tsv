@@ -1,0 +1,36 @@
+section	field	representation	bytes_each	max_count	max_charge	scope	copy
+header	projection version	unit-free u8	1	1	1	lineage	copy
+header	profile ABI	u8	1	1	1	lineage	copy
+header	unit count	u8	1	1	1	lineage	value
+header	root form	u8 standalone or Manifest	1	1	1	lineage	value
+header	source incarnation	UUID bits	16	1	16	lineage	copy scalar
+header	SkillOwnerId	UUID bits	16	1	16	lineage	copy scalar
+header	catalog generation	i64	8	1	8	lineage	copy scalar
+header	frontend context fingerprint	SHA-256 bits	32	1	32	lineage	copy proof summary
+header	program fingerprint	SHA-256 bits	32	1	32	lineage	copy proof summary
+header	Manifest stable ID if selected	i64	8	1	8	lineage	copy scalar
+header	Manifest exact revision if selected	i64	8	1	8	lineage	copy scalar
+header	Manifest stable entry ID if selected	i64	8	1	8	lineage	copy scalar
+unit	exact Spell stable ID	i64	8	2	16	unit	copy scalar
+unit	exact Spell revision	i64	8	2	16	unit	copy scalar
+unit	exact Spell content digest	SHA-256 bits	32	2	64	unit	copy proof summary
+unit	activation marker	u8 root trusted activation or absent child	1	2	2	unit	value
+unit	on_create presence	u8	1	2	2	unit	value
+unit	on_create handler ID if present	i64	8	2	16	unit	copy scalar
+unit	on_hit presence	u8	1	2	2	unit	value
+unit	on_hit handler ID if present	i64	8	2	16	unit	copy scalar
+unit	appearance state	u8 absent known fallback	1	2	2	unit	value
+unit	statement count	u8	1	2	2	unit	value
+input	creation input schema type	u8 INTEGER	1	1	1	lineage	fixed scalar
+input	creation input schema flags	u8 required and no default	1	1	1	lineage	fixed scalar
+input	launch_step_milli	u16 1 through 1000	2	1	2	lineage	bound server scalar
+input	root input origin	u8 trusted server policy	1	1	1	lineage	value
+input	unit binding mask	u8 root and optional child inheritance	1	1	1	lineage	value
+statement	opcode	u8 Damage or Create	1	3	3	statement	value
+statement	block ID	i64	8	3	24	statement	copy scalar
+statement	author ordinal	u8	1	3	3	statement	value
+statement	damage_hp	u8 1 through 4	1	2	2	Damage	value
+statement	exact child unit ordinal	u8 1 only	1	1	1	Create	reference to verified Unit slot
+appearance	sound profile	u16 length and UTF-8 up to 128	130	2	260	unit	copy immutable bytes
+appearance	particle profile	u16 length and UTF-8 up to 128	130	2	260	unit	copy immutable bytes
+appearance	trail profile	u16 length and UTF-8 up to 128	130	2	260	unit	copy immutable bytes

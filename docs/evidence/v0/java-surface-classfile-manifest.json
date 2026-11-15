@@ -1,0 +1,65 @@
+{
+  "classfiles": [
+    {
+      "class_flags": "0x4030",
+      "inner_flags": "0x401a",
+      "method_field_counts": {
+        "F": 2,
+        "G": 7
+      },
+      "owner": "com.yo1no.gramarye.SkillRuntimeService$V0CarrierBinding$Phase"
+    },
+    {
+      "class_flags": "0x4031",
+      "inner_flags": "0x4019",
+      "method_field_counts": {
+        "F": 2,
+        "G": 1
+      },
+      "owner": "com.yo1no.gramarye.V0StartupLoadState$Disabled"
+    },
+    {
+      "class_flags": "0x31",
+      "inner_flags": "0x19",
+      "method_field_counts": {
+        "B_implicit_public_nonexported": 1,
+        "K_RECORD": 4
+      },
+      "owner": "com.yo1no.gramarye.V0StartupLoadState$Invalid"
+    },
+    {
+      "class_flags": "0x31",
+      "inner_flags": "0x19",
+      "method_field_counts": {
+        "B_implicit_public_nonexported": 1,
+        "K_RECORD": 4
+      },
+      "owner": "com.yo1no.gramarye.V0StartupLoadState$Ready"
+    },
+    {
+      "class_flags": "0x4031",
+      "inner_flags": "0x4019",
+      "method_field_counts": {
+        "F": 2,
+        "G": 1
+      },
+      "owner": "com.yo1no.gramarye.V0StartupLoadState$Unavailable"
+    }
+  ],
+  "engineering_counts_unchanged": true,
+  "exact_ordinary_count_delta": {
+    "A_implicit_public_nonexported_types": 4,
+    "B_implicit_public_nonexported": 2,
+    "F": 2,
+    "F_nonexported": 2,
+    "G": 7,
+    "G_nonexported": 7,
+    "I": -2,
+    "I_types": -4,
+    "J_private_owner_local_types": 1
+  },
+  "java_version": "javac 21.0.8",
+  "source_negative_controls": "PASS",
+  "status": "PASS",
+  "unaffected_rows_unchanged": true
+}

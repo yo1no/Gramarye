@@ -25,6 +25,8 @@ Do not use `java.example.gramarye`, `com.example.gramarye`, or another placehold
 
 Read these files before planning or editing architecture:
 
+- [DP-2 V0 R2 engineering authority](docs/codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md) governs the explicitly scoped evidence and engineering contract.
+
 1. `docs/codex-spec/21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md`
 2. `docs/codex-spec/20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md`
 3. `docs/codex-spec/19_P11持久化與多人修正案.md`
@@ -69,9 +71,10 @@ durable catalog and compiler frontend scopes, respectively.
 V-B/V0-PROJECTILE, and the five confirmed limitations within its explicit runtime/V0 scope.
 Apply the scoped replacement and preservation ledger in §9 and the engineering prerequisites
 in §10. Scope D, M1, C, and P11 are preserved. Scope V document authority is adopted. The V0
-engineering contract, implementation, and runtime qualification have not started and require
-separate authorization. Element E, normal player entry, new network, editor, renderer, and P12
-have not started and require separate authorization.
+R2 engineering contract and prospective platform evidence are registered in [22](docs/codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md).
+V0 implementation and runtime qualification follow the complete integrated delivery authorization
+after authority main checks pass. Element E, normal player entry, new network, editor, renderer, and P12
+require separate authorization.
 
 If the P4 amendment and another authoritative document have not been synchronized and still
 contain a substantive conflict, stop the affected work and report the exact conflict; do not choose

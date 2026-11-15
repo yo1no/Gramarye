@@ -1,0 +1,68 @@
+{
+  "coordinate": "io.github.llamalad7:mixinextras-neoforge:0.5.3",
+  "provider": {
+    "filename": "mixinextras-neoforge-0.5.3.jar",
+    "bytes": 725927,
+    "sha256": "9822e773bd9f42d36ed53ea3d67486207291747a7bfacc29beeb92040721bc9b",
+    "copy_verification": "SIZE_SHA256_AND_CMP_EQUAL"
+  },
+  "universal": {
+    "filename": "neoforge-21.1.241-universal.jar",
+    "bytes": 3544283,
+    "sha256": "4ceaf2c6a1bd9520bf77f227bde8e9eeb441764ecadd33ef1a4328dcbaff4d3f",
+    "copy_verification": "SIZE_SHA256_AND_CMP_EQUAL"
+  },
+  "nested_provider": {
+    "entry": "META-INF/jarjar/mixinextras-neoforge-0.5.3.jar",
+    "bytes": 725927,
+    "sha256": "9822e773bd9f42d36ed53ea3d67486207291747a7bfacc29beeb92040721bc9b"
+  },
+  "class_entries": [
+    {
+      "entry": "com/llamalad7/mixinextras/injector/wrapoperation/WrapOperation.class",
+      "bytes": 872,
+      "sha256": "abff941d9249a6f6f1f94529126e3aab1c837cbba5698829bc85cebb3513c426"
+    },
+    {
+      "entry": "com/llamalad7/mixinextras/injector/wrapoperation/Operation.class",
+      "bytes": 377,
+      "sha256": "71de3b327b2823374e68a4840bb8315a0666c27b72da4208a9712f69a727c29b"
+    },
+    {
+      "entry": "com/llamalad7/mixinextras/injector/wrapoperation/WrapOperationRuntime.class",
+      "bytes": 2626,
+      "sha256": "3a1557dcaf3c88af7beac86ed300a1353212242c36287a8cbf10f03ae6aa562a"
+    },
+    {
+      "entry": "com/llamalad7/mixinextras/injector/wrapoperation/WrapOperationInjectionInfo.class",
+      "bytes": 7640,
+      "sha256": "f314db9ab9010387f63f96c34e0dac84bc08539bc5102b8fe864e58245be6839"
+    },
+    {
+      "entry": "com/llamalad7/mixinextras/injector/wrapoperation/WrapOperationInjector.class",
+      "bytes": 20844,
+      "sha256": "a9aa1e3d4d5bd2ac20ddded9488557ad0740215741fdb98f87dbea055fa29c4f"
+    },
+    {
+      "entry": "com/llamalad7/mixinextras/service/MixinExtrasServiceImpl.class",
+      "bytes": 18822,
+      "sha256": "9e8ed25b149d8007f7fcb13e474a9b5e0bfc7356a3992869f5d05093eb2b363d"
+    },
+    {
+      "entry": "com/llamalad7/mixinextras/platform/neoforge/MixinExtrasConfigPlugin.class",
+      "bytes": 1906,
+      "sha256": "4bad4219b1d2b6012f7aa4ccfc83d5b82e2ff723ec87244e6deed9913f7d42b9"
+    },
+    {
+      "entry": "com/llamalad7/mixinextras/MixinExtrasBootstrap.class",
+      "bytes": 924,
+      "sha256": "89c9354e735f91b52f7739954a1376c452bc8d708d2a90d877f0e089c406e314"
+    }
+  ],
+  "annotation": {
+    "retention": "RUNTIME",
+    "target": "METHOD"
+  },
+  "operation_call_descriptor": "([Ljava/lang/Object;)Ljava/lang/Object;",
+  "bootstrap": "NeoForge Universal JarJar; ModDevGradle dependency resolves same exact cache bytes"
+}

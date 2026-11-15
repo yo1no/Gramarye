@@ -1,0 +1,11 @@
+ordinal	key
+0	v0.enabled
+1	v0.maxLineagesPerAttribution
+2	v0.maxLineagesPerServer
+3	v0.rootAttemptsPerTick
+4	v0.maxManifestEntries
+5	v0.projectileMaxAgeTicks
+6	v0.projectileMaxRangeBlocks
+7	v0.lineageDeadlineTicks
+8	v0.presentationRecipientsPerOffer
+9	v0.positiveRootFee

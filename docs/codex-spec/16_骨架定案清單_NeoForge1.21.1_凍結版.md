@@ -20,7 +20,7 @@
 >
 > [DP-2 Scope V 1.0](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md) 已採用 V-01～V-10、V-B／V0-PROJECTILE 與五項限定。新 Spell runtime 依 21 號正文的狹義邊界，Scope D、M1、C 與 legacy 階段及 P11 驗收保留。
 > V0 是 projectile qualification profile。生命週期、exact pins、P6／P9／P8 接合、工程 Mana／zero cooldown 依 21 號正文。
-> V0 工程契約、實作與 runtime qualification 均未開始。Element E、正常玩家入口與 UI、新 network、editor、renderer 與 P12 延後。
+> [22 號修正案](22_DP2_V0平台證據、工程契約與整合交付修正案.md) 登錄 V0 R2 工程契約與前瞻性平台證據。實作、runtime qualification 依整合交付授權與直接驗收。Element E、正常玩家入口與 UI、新 network、editor、renderer 與 P12 延後。
 
 ---
 

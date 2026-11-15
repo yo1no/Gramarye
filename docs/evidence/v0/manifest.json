@@ -1,0 +1,557 @@
+{
+  "bundle_id": "GRAMARYE-V0-PLATFORM-1.21.1-21.1.241-1743bda78e4f",
+  "created_at": "2026-11-15T00:59:31+08:00",
+  "canonical": {
+    "commit": "e49867051ec5990fc498fd2f67098dcf875d8e7e",
+    "tree": "ba0b45094c1684eccccc9aab73f14cbab6c52bab"
+  },
+  "platform": {
+    "minecraft": "1.21.1",
+    "neoforge": "21.1.241",
+    "neoform": "1.21.1-20240808.144430",
+    "neoform_runtime": "2.0.22",
+    "moddevgradle": "2.0.142",
+    "java_major": 21,
+    "mixinextras_neoforge": "0.5.3"
+  },
+  "source_archive": {
+    "filename": "neoforge-21.1.241-sources.jar",
+    "bytes": 9393659,
+    "sha256": "1743bda78e4fd2016eb48b09353444cfdcd2142e7c9509d2eaa03c7dba7cc606",
+    "copy_verification": "SIZE_SHA256_AND_CMP_EQUAL"
+  },
+  "compiled_jar": {
+    "filename": "neoforge-21.1.241.jar",
+    "bytes": 22917953,
+    "sha256": "1a9fef8eb83ceb8c92023f4a8f2086744fdb46b52db6c6cd82a0a4684dac9279",
+    "copy_verification": "SIZE_SHA256_AND_CMP_EQUAL"
+  },
+  "mixinextras_provider": {
+    "filename": "mixinextras-neoforge-0.5.3.jar",
+    "bytes": 725927,
+    "sha256": "9822e773bd9f42d36ed53ea3d67486207291747a7bfacc29beeb92040721bc9b",
+    "copy_verification": "SIZE_SHA256_AND_CMP_EQUAL",
+    "coordinate": "io.github.llamalad7:mixinextras-neoforge:0.5.3"
+  },
+  "neoforge_universal": {
+    "filename": "neoforge-21.1.241-universal.jar",
+    "bytes": 3544283,
+    "sha256": "4ceaf2c6a1bd9520bf77f227bde8e9eeb441764ecadd33ef1a4328dcbaff4d3f",
+    "copy_verification": "SIZE_SHA256_AND_CMP_EQUAL"
+  },
+  "required_members": [
+    {
+      "path": "net/minecraft/client/multiplayer/ClientPacketListener.java",
+      "bytes": 126873,
+      "sha256": "f7b2e614e700416651bc933f51691cf0079965a7e3088acfa488d6014591ddde",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/client/renderer/entity/ThrownItemRenderer.java",
+      "bytes": 2574,
+      "sha256": "fcc9f0012884d08be38b886d5653d334f19bdcdea6f02238ce9c18694518cf0d",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/client/server/IntegratedServer.java",
+      "bytes": 11268,
+      "sha256": "6ca17d0e74d8d1151e11f3a231ef901e54020c705d2568ea86359fd111f0b1c5",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/network/protocol/game/ClientboundAddEntityPacket.java",
+      "bytes": 5988,
+      "sha256": "2132a53e006501369989cfdebdad4c88f8deda001866aa8330df2138a4059bab",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/MinecraftServer.java",
+      "bytes": 83629,
+      "sha256": "b906c6597095e206ade6a9db34f76993f667bdf2bfacaeca793ba9ce14e568ed",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/level/ChunkMap.java",
+      "bytes": 60373,
+      "sha256": "8051062b0f0b25b1f64704371b0d0fb0e9bfc06dd289eae297163bee5164d648",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/level/ServerChunkCache.java",
+      "bytes": 22621,
+      "sha256": "02465fed32fb76cf2bc415c6ec58ba3d7cdf7b2580af2de6f9ba0c278c1bf306",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/level/ServerEntity.java",
+      "bytes": 16328,
+      "sha256": "93ac1ef6120a4bb81377a173486e6a85ac608cd93cde38ab9581df55d2f4062e",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/level/ServerLevel.java",
+      "bytes": 77451,
+      "sha256": "8d1086b8e63b11d340853e7595a63f2f27edc0d690311c9a0d46d5098eb21925",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/level/ServerPlayer.java",
+      "bytes": 92555,
+      "sha256": "8e0aef1d589ae453b70ff98d6c8be37fd80c4f9480a68c468a0876c25f2ca969",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/network/ServerCommonPacketListenerImpl.java",
+      "bytes": 10733,
+      "sha256": "eccb1d592fead6173134b7ef6e40b606f8edc7f08c353dd14aad5bb2985a341a",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/network/ServerGamePacketListenerImpl.java",
+      "bytes": 96669,
+      "sha256": "ec075b7115af7e755f209d1b459f80a61deb89f0069fdfffd8e31a2782064754",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/players/PlayerList.java",
+      "bytes": 41224,
+      "sha256": "4bb1f33bbf4c056e4435d789d4b9eff9bc9010603ae325cc9f650833102fdf14",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/damagesource/DamageSources.java",
+      "bytes": 9261,
+      "sha256": "60d17da8d58d3d1e2db618043fca3da7879d1f8bddaf86bf331b1c487d513d68",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/Entity.java",
+      "bytes": 139369,
+      "sha256": "ca0586cb259e95dbd29524bf2db0ed7eaccfa5ca3a3c21492f5072c6ceef44bb",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/EntityType.java",
+      "bytes": 64977,
+      "sha256": "a41c8270be7f5e14592181cba8cf135b9a2a8441b9e3badc859b60b9d35bb3f8",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/LivingEntity.java",
+      "bytes": 146153,
+      "sha256": "1bbe1b37d6f73eadefdcdfe6f5822106e410fbc80d20c163a4eb5feefb317731",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/projectile/Projectile.java",
+      "bytes": 11998,
+      "sha256": "06a735152a5942af580144d1b93327cebc33655297e950364144be49d8213bea",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/projectile/ProjectileUtil.java",
+      "bytes": 7498,
+      "sha256": "c20416f82ce40f83571ebc9eba74b0b53da7203f4f326ca61192e48fd7f405c0",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/projectile/ThrowableItemProjectile.java",
+      "bytes": 2414,
+      "sha256": "1fd38dfe403c2991c14021752de4d80ef1f38d69c9daa878bd2806e33aa421c7",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/projectile/ThrowableProjectile.java",
+      "bytes": 2557,
+      "sha256": "ce9bc95785c07452f0467eff4529661f72071420fb3a2bf0462c7fabf6d8d1bb",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/level/BlockGetter.java",
+      "bytes": 8011,
+      "sha256": "8a2bd86ee1efbc1bb6b106cd4a921e77472bd0e0ebc38c974a7cb86877bd5a88",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/level/Level.java",
+      "bytes": 47720,
+      "sha256": "47ff78754901fad8a193669d28b260e836b1ac32ff06c7614c9900f0a5f8da7c",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/level/entity/EntityInLevelCallback.java",
+      "bytes": 422,
+      "sha256": "0f04d902c66331cac0a86f17e17e168b35654c58d9dbd6ec4a6b22d80d86fe7d",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/level/entity/PersistentEntitySectionManager.java",
+      "bytes": 20144,
+      "sha256": "12122c6cd7e2645f9e8d1f3f495298e70e68b9631da5d5ea883199718c255395",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/client/event/EntityRenderersEvent.java",
+      "bytes": 10731,
+      "sha256": "a81aa6d91b6cde4dc0969b3d0a74fa8cfb29bdf8390f538ea8ce1d4ccbdd31f5",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/common/CommonHooks.java",
+      "bytes": 80546,
+      "sha256": "1c01b3c4aabdfeb9b0bc74ddbe3f481bc1762ce8e5e4cfb550417fd7e0f0b929",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/common/damagesource/DamageContainer.java",
+      "bytes": 7493,
+      "sha256": "7940c1f1c700c276f4f9f69575ae5c7e65044771b1b4f49a8bd5b1e03ed6d0c7",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/event/EventHooks.java",
+      "bytes": 59299,
+      "sha256": "83f577d8c146b0bb80e359054cc490829b3664ffbaf3b61a2cb141c6d2cc61ff",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/event/entity/EntityJoinLevelEvent.java",
+      "bytes": 2150,
+      "sha256": "63f3a66ce430bc4ca49ae03190733f95baad7387a85c5417450d9947acca929f",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/event/entity/EntityLeaveLevelEvent.java",
+      "bytes": 1142,
+      "sha256": "dfc4dca4d27057da82b172f5276acd084f4238caf2c1e6079ac2ab14d73f5bff",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/event/entity/ProjectileImpactEvent.java",
+      "bytes": 1456,
+      "sha256": "342554c45667bc1a5963e1571aeb17811f27a02b1790ae66086198df3a1a33bd",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/event/entity/living/LivingDamageEvent.java",
+      "bytes": 6442,
+      "sha256": "c7f6d3d4d730c99bb55f5079232c9017c87fb4e4b5c9e78a1eb3999c45a94fe1",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/event/entity/living/LivingDeathEvent.java",
+      "bytes": 1516,
+      "sha256": "9a54e3c7f7fa1b4dc49d9df7aef6f10ce8296c75719b74e32d5482ed3b7f75e0",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/event/entity/player/PlayerEvent.java",
+      "bytes": 16980,
+      "sha256": "a251597e9990e596186f9997614a8950154ed9bcb1759e92cd2f0df5a92e85f6",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/event/level/ChunkEvent.java",
+      "bytes": 3133,
+      "sha256": "b589d1002c55872ed7b5048a58ef8403552c74b1dffabe24d4ff246db31eaab6",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/event/level/LevelEvent.java",
+      "bytes": 6819,
+      "sha256": "03e3ce8f132bb0679d08b4e979287e93d6f5f1e5b5fac2236abc44fd824591c7",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/server/ServerLifecycleHooks.java",
+      "bytes": 10932,
+      "sha256": "5aa550efe4408ae61e25f217b207dc1a749fa1e97bd3d3694e49840476c05d65",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/network/ServerLoginPacketListenerImpl.java",
+      "bytes": 13049,
+      "sha256": "1206f36938382fe6a99fdd0382a91c114b29cddb797d227e2cc84e9d026bb6e8",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/damagesource/DamageSource.java",
+      "bytes": 4763,
+      "sha256": "04a04036be569e38d7aa0775e0e3ed3d2bf5b180b8c6a5e9e5d42cd75b03908e",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/player/Player.java",
+      "bytes": 93155,
+      "sha256": "750fc78b308139047c444bf6ac766d4afa5285154b2d69c9da20bdda046515c8",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/animal/Animal.java",
+      "bytes": 9066,
+      "sha256": "97712c86f1624bbcd1c954e270a2ee79cfa7e4ad09008331d6c47102efed1e8d",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/entity/animal/Pig.java",
+      "bytes": 10965,
+      "sha256": "ca1ba663c7b9d114f19a1e531f81eae80cf41e2d869750be27a8d1fa9f8a98fc",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/level/chunk/LevelChunk.java",
+      "bytes": 33296,
+      "sha256": "7fe6a0f8b6e46375c0a7dc387550e4ed101c33e1e42d63fe4ed48c6164b99a61",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/level/LevelHeightAccessor.java",
+      "bytes": 1685,
+      "sha256": "3f22f8c195f606d3b0b80202b8d1c1b5327f95df3e7c7e83b545cd0c9ee10ff9",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/common/extensions/IBlockGetterExtension.java",
+      "bytes": 3280,
+      "sha256": "7d23b7e9cfbbb2ac93089f8d2dc44c0b90bf7b58c3e106027f0dad8b582d4c6e",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/neoforged/neoforge/common/extensions/IEntityExtension.java",
+      "bytes": 14603,
+      "sha256": "3bd43e7effddda10ce86ff09d2c9b10a47233679a07d0543cca6876390ecd079",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/world/level/gameevent/GameEventDispatcher.java",
+      "bytes": 3000,
+      "sha256": "cbb6e2e56222cde146295b85e7d268e4d448ae8175a37255b035911e68c5a386",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/level/GenerationChunkHolder.java",
+      "bytes": 13192,
+      "sha256": "e6c100571befa4fa2736b8bc03b46d73aa30bf9912d3dc5bb7f282feb628900c",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/level/ChunkHolder.java",
+      "bytes": 14918,
+      "sha256": "2da0c42a6f8efd52ecd3db07c072f028cc943f6d8ab6d24dbbf4be66b34b83b6",
+      "role": "R1_REQUIRED_51"
+    },
+    {
+      "path": "net/minecraft/server/level/FullChunkStatus.java",
+      "bytes": 255,
+      "sha256": "c85edea531b091f8016b73945bc8bfb9b10553950896fcce094bb6ed3d6f2533",
+      "role": "R1_REQUIRED_51"
+    }
+  ],
+  "motion_supplement_members": [
+    {
+      "path": "net/minecraft/network/protocol/game/ClientboundSetEntityMotionPacket.java",
+      "bytes": 2316,
+      "sha256": "b5077098c4c50e36ee0e820f18f533eb951e97213493aa226263ce73a0e42a12",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/network/protocol/game/ClientboundSetEntityDataPacket.java",
+      "bytes": 1943,
+      "sha256": "bacf165cd87e1ad160a47c81e6f81590ffd9f23f5af59fb8f6d095127f670da7",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/network/protocol/game/ClientboundMoveEntityPacket.java",
+      "bytes": 6576,
+      "sha256": "1014e21ba5e3beb77c823705890c1ee386e77f667f2bf8b1e62beb45ad2ca2f5",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/network/protocol/game/ClientboundTeleportEntityPacket.java",
+      "bytes": 2647,
+      "sha256": "256a9993621fcd82bdc82218789b4d9ce1ddccd5eb86d0ca50cf602813185bb3",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/network/protocol/game/VecDeltaCodec.java",
+      "bytes": 1591,
+      "sha256": "5185772c706b2a8b58e7b0bf325e670139027cdb7d97e1594da641040cd888e5",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/network/syncher/SynchedEntityData.java",
+      "bytes": 9740,
+      "sha256": "223ac2b25d40fbe6c830b4ac2b884088f71a14fe1f533d11a019b0d02cefff2c",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/client/multiplayer/ClientLevel.java",
+      "bytes": 45494,
+      "sha256": "132ad35732523a1fdc2101644ddc11269ad47c90b2560858fed80b6fba813d7e",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/client/renderer/LevelRenderer.java",
+      "bytes": 188013,
+      "sha256": "db78f5cb8a6c7a347883dfed3f48024f4118d628c3a6b9025980448a63d8b40f",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/world/level/block/state/BlockBehaviour.java",
+      "bytes": 57256,
+      "sha256": "410ae028d36585b6c210e853720ea3fb973154a4d7800a082d541293cf355014",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/world/phys/Vec3.java",
+      "bytes": 9885,
+      "sha256": "59966d577f30a6f44f0e5d465c9fcab726f651558e8e0ae9c4c978e1608819a3",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/world/level/block/Blocks.java",
+      "bytes": 327285,
+      "sha256": "c38a694404ba0e0317f744f368ae9a3a44a8bd95f03f3ac65ec9bc78d5d96a58",
+      "role": "R1_K1_SUPPLEMENT_12"
+    },
+    {
+      "path": "net/minecraft/world/level/block/AirBlock.java",
+      "bytes": 1032,
+      "sha256": "b5c5d3212102573909715627950f6f7e0baeeb84d6104508af348e860c8002d4",
+      "role": "R1_K1_SUPPLEMENT_12"
+    }
+  ],
+  "compiled_anchors": {
+    "authentication": {
+      "target": "net.minecraft.server.network.ServerLoginPacketListenerImpl$1",
+      "method": "run()V",
+      "enclosing_method": "net.minecraft.server.network.ServerLoginPacketListenerImpl.handleKey(Lnet/minecraft/network/protocol/login/ServerboundKeyPacket;)V",
+      "opcode": "invokevirtual",
+      "invoke_owner": "net/minecraft/server/network/ServerLoginPacketListenerImpl",
+      "invoke_name": "startClientVerification",
+      "invoke_descriptor": "(Lcom/mojang/authlib/GameProfile;)V",
+      "exact_invocation_count": 3,
+      "success_ordinal": 0,
+      "success_offset": 73,
+      "offline_fallbacks": [
+        {
+          "ordinal": 1,
+          "offset": 110,
+          "case": "session lookup null"
+        },
+        {
+          "ordinal": 2,
+          "offset": 174,
+          "case": "authentication unavailable"
+        }
+      ]
+    },
+    "entity_position_tail": {
+      "target": "net.minecraft.world.entity.Entity",
+      "method": "setPosRaw(DDD)V",
+      "opcode": "invokevirtual",
+      "invoke_owner": "net/minecraft/world/level/Level",
+      "invoke_name": "getChunk",
+      "invoke_descriptor": "(II)Lnet/minecraft/world/level/chunk/LevelChunk;",
+      "exact_invocation_count": 1,
+      "ordinal": 0,
+      "offset": 226,
+      "following_pop_offset": 229,
+      "ordinary_delegate": "exactly once"
+    }
+  },
+  "source_generated_variants": {
+    "repoGenerated": {
+      "filename": "neoforge-21.1.241-sources.jar",
+      "origin_role": "ModDevGradle merged patched sources output of the recorded canonical source",
+      "bytes": 9393659,
+      "sha256": "1743bda78e4fd2016eb48b09353444cfdcd2142e7c9509d2eaa03c7dba7cc606",
+      "mode": "0o644",
+      "symlink": false
+    },
+    "currentNeoFormCache": {
+      "filename": "sourcesWithNeoForge_aa65c9a2ddff6ad5024e2dcc763be1f81b1fc4c0_output.zip",
+      "origin_role": "NeoForm Runtime intermediate generated source variant",
+      "bytes": 9393659,
+      "sha256": "fea5b1405f082e64d5fbab2a1143766fac1f94d80e1f79374d8c428bbe5fe437",
+      "mode": "0o644",
+      "symlink": false
+    },
+    "archivedGenerated": {
+      "filename": "sourcesWithNeoForge_6182dcba56bd60f6ff0059f69718f5315e5dad95_output.zip",
+      "origin_role": "Preserved separate generated source variant from the 2026-10-15 project rescue",
+      "bytes": 9393659,
+      "sha256": "1743bda78e4fd2016eb48b09353444cfdcd2142e7c9509d2eaa03c7dba7cc606",
+      "mode": "0o644",
+      "symlink": false
+    }
+  },
+  "local_generation_provenance": [
+    {
+      "filename": "sourcesWithNeoForge_aa65c9a2ddff6ad5024e2dcc763be1f81b1fc4c0.txt",
+      "bytes": 1003,
+      "sha256": "a4a634fe5ffe0bbb240414a1c04aad5bb11bd2eb634f9653e6d7861f1f96a4d8",
+      "copy_verification": "SIZE_SHA256_AND_CMP_EQUAL"
+    },
+    {
+      "filename": "compiledWithNeoForge_c815e16058a9aa68785805dfbf0b5b8d9fb3738c.txt",
+      "bytes": 999,
+      "sha256": "c15804eea288a3aae7fc690620019f1e7317191390d7c9480898c822e3a670cc",
+      "copy_verification": "SIZE_SHA256_AND_CMP_EQUAL"
+    },
+    {
+      "filename": "sourcesAndCompiledWithNeoForge_a3baf20aa3cd24722815e8b23f524818caf4ad79.txt",
+      "bytes": 853,
+      "sha256": "1b7cba10b877750178a987d2953595353be6ba3593d711800243f2eda6a6c378",
+      "copy_verification": "SIZE_SHA256_AND_CMP_EQUAL"
+    }
+  ],
+  "moddev_input_manifest": {
+    "filename": "nfrt_artifact_manifest.properties",
+    "bytes": 25912,
+    "sha256": "f9a2b7c1757055a408c55d7374447376242bf10133d58ef54ca847a8ba681072",
+    "dependency_coordinates": [
+      "io.github.llamalad7:mixinextras-neoforge:0.5.3",
+      "net.neoforged:neoforge:21.1.241:sources",
+      "net.neoforged:neoforge:21.1.241:userdev",
+      "net.neoforged:neoform:1.21.1-20240808.144430@zip"
+    ]
+  },
+  "historical_z": {
+    "bytes": 9393663,
+    "sha256": "0e1dcae8e21cd8d8c656e7fe76efe1e31260cf0f956f07aa749b86992cf4fe23",
+    "status": "NOT_RECOVERED",
+    "member_comparison": "NOT_APPLICABLE_NO_HISTORICAL_BYTES"
+  },
+  "schema_version": 1,
+  "evidence_role": "V0_ONLY_PROSPECTIVE_PLATFORM_EVIDENCE",
+  "scope": [
+    "V0_ENGINEERING",
+    "V0_IMPLEMENTATION",
+    "V0_QUALIFICATION"
+  ],
+  "prior_bundle_metadata": {
+    "manifest.json": {
+      "bytes": 20373,
+      "sha256": "a7b5821f5efb2102c8ae1b635462abbe114bedb7b4ab4b3921ee8ca213e6566b"
+    },
+    "member-hashes.csv": {
+      "bytes": 8965,
+      "sha256": "0e01a48c08aef4bc64c6956381c71dc289cb83adc675167f7e326699d852303f"
+    },
+    "compiled-anchor-manifest.json": {
+      "bytes": 2374,
+      "sha256": "7aeb156dc2084f6f529f18ab3d5bbb318465229a844091d8426268f4644d93e4"
+    },
+    "mixinextras-manifest.json": {
+      "bytes": 2987,
+      "sha256": "245d5a04fb1e46f1687ec3e372923969fb00f6980e09df4598105fb5134045e3"
+    }
+  },
+  "prior_static_verification": {
+    "status": "PASS_SOURCE_FACT_ONLY",
+    "javap": "Temurin 21.0.8",
+    "classfile_major": 65,
+    "dynamic_tests": "NOT_RUN"
+  }
+}

@@ -27675,3 +27675,11 @@ Scope V 1.0 的唯一正式正文為 [21_DP2_ScopeV_SpellRuntime與V0Projectile�
 Scope D 1.0、M1、C 與 P11 的已發布契約及既有驗收保留。原 H6 前文、§§69–70 與 §47.3／§47.4 exact Java declarations 原樣保留。V0 implementation／runtime qualification 均未開始。Element E、正常玩家入口、新 network、editor、renderer 與 P12 均未開始。
 
 本節登錄文件權威。實際發布身分、前綴驗證及 required CI 結果留於本輪採用紀錄。
+
+---
+
+## §72 — DP-2 V0 platform evidence and Engineering Contract R2 scoped registration
+
+[22 號修正案](../codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md) 登錄 V0-PROJECTILE 前瞻性鎖版平台證據、R2 工程契約（含 R1.1 classfile surface correction）、config／limits 與直接驗收。H6 §65.9 歷史 Z 身分及原 P11、Scope D、M1、C 接受保持。V0 未來平台證據依 22 號具名 sealed bundle 查證。所列歷史 Z bytes 無原件可供等價證明。
+
+§71 採用的產品結果、§§47.3–47.4 既有 Java fence、§§69–71 歷史及原責任保持。後續 production implementation 以已通過 main required checks 的本 authority SHA 為基底，並接受 22 號的 exact surface、K1 與直接驗收門檻。此節不建立 runtime 驗收或新玩家入口。

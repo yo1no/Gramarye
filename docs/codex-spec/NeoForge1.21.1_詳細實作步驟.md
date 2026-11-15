@@ -12,12 +12,10 @@ Scope D 文件權威已發布整合，M1 data foundation 與 C resolver／compil
 
 [DP-2 Scope V 1.0](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md) 已採用 V-01～V-10、V-B／V0-PROJECTILE 與五項限定。Scope D、M1、C 與 P11 保留。
 
-1. Scope V-A 文件限定採用與發布（本輪）。
-2. V0 engineering-contract／limits slice，未開始。
-3. V0 implementation，未開始。
-4. V0 runtime qualification，未開始。
-
-後續工作須另行授權，實作前件與直接驗收依 [21 §10.1](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md#101-規範採用與實作前件) 與 [21 §10.2 V0 DoD](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md#102-v0-definition-of-done)。
+1. Scope V 1.0 文件限定採用與發布。
+2. [22 號修正案](22_DP2_V0平台證據、工程契約與整合交付修正案.md) 登錄 V0 engineering contract R2、前瞻平台證據、限額及 exact inventory。
+3. Authority main required checks 後依整合交付實作 V0-PROJECTILE。
+4. 依 [V0 direct acceptance](../architecture/V0-direct-acceptance-plan.md) 資格驗收及發布。
 Element E、正常玩家入口、新 network、editor、renderer 與 P12 延後。
 
 ## 階段名稱映射

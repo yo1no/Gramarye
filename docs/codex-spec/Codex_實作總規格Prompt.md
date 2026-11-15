@@ -4,7 +4,7 @@
 > 使用方式：將本檔與 `19_P11持久化與多人修正案.md`、`18_P4持久化與組合修正案.md`、`17_P3資料模型修正案.md`、
 > `16_骨架定案清單_NeoForge1.21.1_凍結版.md`、`20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md` 與 `21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md` 一起交給 Codex。
 >
-> 本檔是實作契約。21 號 DP-2 Scope V、20 號 DP-2 Scope D、19 號 P11、18 號 P4、17 號 P3 修正案各在其明示範圍內優先。
+> 本檔是實作契約。22 號 V0 R2、21 號 DP-2 Scope V、20 號 DP-2 Scope D、19 號 P11、18 號 P4、17 號 P3 修正案各在其明示範圍內優先。
 > 其他範圍以凍結版骨架為架構真相。若文件
 > 尚未同步而存在實質衝突，停止實作並回報，不得自行選邊或改變骨架。
 >
@@ -13,9 +13,8 @@
 > Scope D 文件權威已發布整合，M1 data foundation 與 C resolver／compiler 均為 `COMPLETE—PASS`。
 >
 > [DP-2 Scope V 1.0](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md) 已採用 V-01～V-10、V-B／V0-PROJECTILE 與五項限定，Scope D、M1、C 與 P11 保留。
-> 施工依 Scope V 文件權威 → V0 engineering contract → V0 implementation／qualification。現階段完成文件限定採用，後續階段各須另行授權。首片工程範圍限 V0-PROJECTILE，其他 backend 須另行採用。
-> V0 真認證工程入口、transient catalog pins、P5 接受交接、P6 逐 statement 終態回執、P9 原生 handoff 與 P8 applied-fact 投影須依 21 §10 在實作前定稿。任何新增 public surface 須列 exact inventory 並另行明示採用。
-> V0 工程契約、實作與 runtime qualification 均未開始。Element E、正常玩家入口、新 network、editor、renderer 與 P12 延後。
+> [22 號修正案](22_DP2_V0平台證據、工程契約與整合交付修正案.md) 登錄 V0 的前瞻證據、R2 工程契約、精確 Java surface 及直接驗收。整合交付依 authority checks → V0-PROJECTILE implementation → runtime qualification，其他 backend 須另行採用。
+> Element E、正常玩家入口、新 network、editor、renderer 與 P12 延後。
 
 ---
 
