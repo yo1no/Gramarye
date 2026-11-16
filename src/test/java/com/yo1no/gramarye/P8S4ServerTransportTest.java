@@ -287,6 +287,25 @@ final class P8S4ServerTransportTest {
     }
 
     @Test
+    void v0ReleaseOrdinalStaysInStagingAndItsAppliedFactUsesStepZero() {
+        var service = read(SERVICE_SOURCE);
+        var offer = between(service, "    P8PresentationOfferOutcome offerV0Applied(",
+                "    private Optional<P8RecipientIdentity> captureV0Player(");
+        var delivery = between(service, "    private void collectV0Deliveries(",
+                "    private boolean currentV0Stage(");
+
+        assertAll(
+                () -> assertTrue(offer.contains("CAST_RELEASE && ordinal == -1")),
+                () -> assertTrue(offer.contains("HIT && ordinal == 0")),
+                () -> assertTrue(offer.contains("if (!release && !hit)")),
+                () -> assertTrue(offer.contains("staged.statementOrdinal == material.statementOrdinal()")),
+                () -> assertTrue(delivery.contains("int appliedStepIndex = 0;")),
+                () -> assertTrue(delivery.contains("coalescingIdentity(staged.runtimeTick, staged.sourceEventId, appliedStepIndex")),
+                () -> assertTrue(delivery.contains("new P8BufferedPresentation(staged.runtimeTick, staged.sourceEventId, appliedStepIndex")),
+                () -> assertFalse(delivery.contains("staged.statementOrdinal")));
+    }
+
+    @Test
     void fanoutUsesOneMeasuredChargePerRecipientAndDeterministicPriorityOrder() {
         var target = new P8SelectedRecipient(
                 new P8RecipientIdentity(new UUID(0L, 3L), 1L),

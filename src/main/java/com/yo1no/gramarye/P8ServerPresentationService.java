@@ -315,10 +315,16 @@ final class P8ServerPresentationService {
                 || material.serverTick() != server.getTickCount() || material.serverTick() == lastDrainServerTick
                 || material.runtimeTick() <= lastDrainedRuntimeTick || material.requestId() <= 0
                 || material.sourceEventId() <= 0 || material.instanceId().value() <= 0
-                || material.statementOrdinal() < 0 || material.statementOrdinal() > 7
                 || (tickStateServerTick == material.serverTick() && tickState.runtimeTick() != material.runtimeTick())
                 || material.offerLimit() < 4 || material.offerLimit() > 16 || material.offerLimit() % 4 != 0
                 || material.recipientLimit() < 1 || material.recipientLimit() > 16) {
+            return P8PresentationOfferOutcome.DROPPED;
+        }
+        var event = material.eventMaterial();
+        int ordinal = material.statementOrdinal();
+        boolean release = event.kind() == PresentationEventKind.CAST_RELEASE && ordinal == -1;
+        boolean hit = event.kind() == PresentationEventKind.HIT && ordinal == 0;
+        if (!release && !hit) {
             return P8PresentationOfferOutcome.DROPPED;
         }
         if (offerInProgress || drainInProgress) {
@@ -335,7 +341,6 @@ final class P8ServerPresentationService {
         if (v0Staging.size() >= material.offerLimit()) {
             return P8PresentationOfferOutcome.DROPPED;
         }
-        var event = material.eventMaterial();
         for (var staged : v0Staging) {
             if (staged.requestId == material.requestId() && staged.sourceEventId == material.sourceEventId()
                     && staged.statementOrdinal == material.statementOrdinal() && staged.event.kind() == event.kind()) {
@@ -2699,11 +2704,12 @@ final class P8ServerPresentationService {
             return;
         }
         var recipients = selected.orElseThrow().recipients();
-        // The delivery envelope uses the shared visual seed. V0 goes straight to residual admission.
+        // Each staged V0 receipt represents one applied fact in the shared delivery envelope.
+        int appliedStepIndex = 0;
         var coalescing = PresentationCoalescing.Value.create(
-                coalescingIdentity(staged.runtimeTick, staged.sourceEventId, staged.statementOrdinal, event, recipients),
+                coalescingIdentity(staged.runtimeTick, staged.sourceEventId, appliedStepIndex, event, recipients),
                 event.sequence());
-        var buffered = new P8BufferedPresentation(staged.runtimeTick, staged.sourceEventId, staged.statementOrdinal,
+        var buffered = new P8BufferedPresentation(staged.runtimeTick, staged.sourceEventId, appliedStepIndex,
                 event, coalescing, recipients, eventMaterial.sourcePlayerId(),
                 eventMaterial.targetPlayerId(), eventMaterial.targetEntityUuid());
         stages.put(event.sequence(), staged);
