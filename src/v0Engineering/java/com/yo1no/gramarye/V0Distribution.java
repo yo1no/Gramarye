@@ -6,17 +6,22 @@ import com.yo1no.gramarye.magic.definition.scoped.V0EngineeringCatalogAssembly;
 import com.yo1no.gramarye.magic.definition.scoped.V0RuntimeCatalog;
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import net.minecraft.network.Connection;
+import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.fml.ModList;
@@ -140,6 +145,11 @@ final class V0Distribution {
         private final V0LogicalIntent route;
         private Connection exactPlay;
         private boolean issued;
+        private ServerPlayer performanceActor;
+        private ServerGamePacketListenerImpl performanceListener;
+        private int offers;
+        private int reservedCold;
+        private int busy;
 
         private Role(String label, UUID owner, V0LogicalIntent route) {
             this.label = label;
@@ -149,6 +159,11 @@ final class V0Distribution {
     }
 
     private static final class Scenario {
+        private static final int PERFORMANCE_FIRST_TICK = 2_400;
+        private static final int PERFORMANCE_WARMUP_TICKS = 2_000;
+        private static final int PERFORMANCE_SAMPLE_TICKS = 10_000;
+        private static final int PERFORMANCE_TICKS = PERFORMANCE_WARMUP_TICKS + PERFORMANCE_SAMPLE_TICKS;
+
         private final V0SlotStartup startup;
         private final V0EngineeringColdLane cold;
         private final Recipe recipe;
@@ -161,6 +176,9 @@ final class V0Distribution {
         private boolean closing;
         private boolean updated;
         private int firstReservationTick = -1;
+        private int performanceTicks;
+        private boolean performanceDone;
+        private Role performanceOffer;
 
         private Scenario(V0SlotStartup startup, V0EngineeringColdLane cold, Recipe recipe) {
             this.startup = startup;
@@ -195,14 +213,29 @@ final class V0Distribution {
         }
 
         V0Submission submit(ServerPlayer actor, Role role, V0LogicalIntent intent) {
-            if (role.issued || intent != role.route) {
+            if (intent != role.route) {
                 return V0Submission.REJECTED;
+            }
+            if (recipe.performance == null) {
+                if (role.issued) {
+                    return V0Submission.REJECTED;
+                }
+            } else {
+                if (performanceOffer != role || role.performanceActor != actor
+                        || role.performanceListener != actor.connection
+                        || startup.server().getTickCount() != PERFORMANCE_FIRST_TICK + performanceTicks) {
+                    return V0Submission.REJECTED;
+                }
+                // Take the scheduled offer before entering P5, including when P5 is busy.
+                performanceOffer = null;
             }
             var route = intent == V0LogicalIntent.STANDALONE ? standalone : manifest;
             if (!startup.runtime().reserveV0Capture(startup.server(), startup.authority(), actor, role.owner, route)) {
                 return V0Submission.BUSY;
             }
-            role.issued = true;
+            if (recipe.performance == null) {
+                role.issued = true;
+            }
             cold.wake();
             return V0Submission.RESERVED_COLD;
         }
@@ -212,6 +245,12 @@ final class V0Distribution {
                 return;
             }
             V0AuthenticatedLoginObservation.advance(startup.server(), startup.authority());
+            if (recipe.performance != null) {
+                if (startup.server().isSameThread()) {
+                    stepPerformance(startup.server().getTickCount());
+                }
+                return;
+            }
             if (!ready()) {
                 return;
             }
@@ -224,16 +263,106 @@ final class V0Distribution {
             }
         }
 
+        private void stepPerformance(int nativeTick) {
+            if (performanceDone) {
+                return;
+            }
+            if (performanceTicks == PERFORMANCE_TICKS) {
+                finishPerformance("COMPLETE_WINDOW");
+                return;
+            }
+            boolean arm = performanceTicks == 0 && nativeTick < PERFORMANCE_FIRST_TICK;
+            if (!verifyPerformancePlay(recipe.first, arm) || !verifyPerformancePlay(recipe.second, arm)) {
+                finishPerformance("EXACT_PLAY_LOST_OR_LATE");
+                return;
+            }
+            if (arm) {
+                return;
+            }
+            if (!ready() || nativeTick != PERFORMANCE_FIRST_TICK + performanceTicks) {
+                finishPerformance("WINDOW_OR_COLD_NOT_READY");
+                return;
+            }
+            if (performanceTicks == 0) {
+                LOGGER.info("V0_ENGINEERING_PERFORMANCE_START mode={} firstTick={} warmupTicks={} sampleTicks={}",
+                        recipe.performance, PERFORMANCE_FIRST_TICK, PERFORMANCE_WARMUP_TICKS, PERFORMANCE_SAMPLE_TICKS);
+            }
+            if ("MIXED".equals(recipe.performance)) {
+                var role = (performanceTicks & 1) == 0 ? recipe.first : recipe.second;
+                performanceOffer = role;
+                try {
+                    offer(role);
+                } finally {
+                    performanceOffer = null;
+                }
+            }
+            if (!performanceDone) {
+                performanceTicks++;
+            }
+        }
+
+        private boolean verifyPerformancePlay(Role role, boolean arm) {
+            var actor = startup.server().getPlayerList().getPlayer(role.owner.value());
+            if (role.performanceActor == null) {
+                if (!arm) {
+                    return false;
+                }
+                if (actor != null && actor.connection != null && actor.connection.protocol() == ConnectionProtocol.PLAY
+                        && provedPlay(this, role, actor)) {
+                    role.performanceActor = actor;
+                    role.performanceListener = actor.connection;
+                }
+                return true;
+            }
+            // Detect a replacement before provedPlay can consume another connection's proof.
+            return actor == role.performanceActor && actor.connection == role.performanceListener
+                    && actor.connection.protocol() == ConnectionProtocol.PLAY
+                    && actor.connection.getConnection() == role.exactPlay && provedPlay(this, role, actor);
+        }
+
+        private void finishPerformance(String outcome) {
+            if (performanceDone) {
+                return;
+            }
+            performanceDone = true;
+            performanceOffer = null;
+            var a = recipe.first;
+            var b = recipe.second;
+            a.performanceActor = null;
+            a.performanceListener = null;
+            b.performanceActor = null;
+            b.performanceListener = null;
+            LOGGER.info("V0_ENGINEERING_PERFORMANCE_TERMINAL mode={} outcome={} ticks={} offersA={} reservedColdA={} "
+                            + "busyA={} offersB={} reservedColdB={} busyB={}",
+                    recipe.performance, outcome, performanceTicks, a.offers, a.reservedCold, a.busy,
+                    b.offers, b.reservedCold, b.busy);
+        }
+
         private void offer(Role role) {
             var actor = startup.server().getPlayerList().getPlayer(role.owner.value());
-            if (actor == null || actor.isRemoved()) {
-                role.exactPlay = null;
+            if (recipe.performance == null) {
+                if (actor == null || actor.isRemoved()) {
+                    role.exactPlay = null;
+                    return;
+                }
+                if (role.issued && actor.connection != null && role.exactPlay == actor.connection.getConnection()) {
+                    return;
+                }
+            } else if (actor != role.performanceActor) {
+                finishPerformance("EXACT_PLAY_LOST_OR_LATE");
                 return;
             }
-            if (role.issued && actor.connection != null && role.exactPlay == actor.connection.getConnection()) {
-                return;
-            }
-            if (entry.submit(actor, role.route) == V0Submission.RESERVED_COLD) {
+            var result = entry.submit(actor, role.route);
+            if (recipe.performance != null) {
+                role.offers++;
+                if (result == V0Submission.RESERVED_COLD) {
+                    role.reservedCold++;
+                } else if (result == V0Submission.BUSY) {
+                    role.busy++;
+                } else {
+                    finishPerformance("UNEXPECTED_INGRESS");
+                }
+            } else if (result == V0Submission.RESERVED_COLD) {
                 if (firstReservationTick < 0) {
                     firstReservationTick = startup.server().getTickCount();
                 }
@@ -247,6 +376,9 @@ final class V0Distribution {
                 return;
             }
             closing = true;
+            if (recipe.performance != null) {
+                finishPerformance(performanceTicks == PERFORMANCE_TICKS ? "COMPLETE_WINDOW" : "SERVER_STOPPED");
+            }
             if (active == this) { active = null; }
             V0AuthenticatedLoginObservation.retire(startup.server(), startup.authority());
             NeoForge.EVENT_BUS.unregister(tick);
@@ -261,12 +393,14 @@ final class V0Distribution {
         private final Role second;
         private final boolean zeroFee;
         private final boolean publishUpdate;
+        private final String performance;
 
-        private Recipe(Role first, Role second, boolean zeroFee, boolean publishUpdate) {
+        private Recipe(Role first, Role second, boolean zeroFee, boolean publishUpdate, String performance) {
             this.first = first;
             this.second = second;
             this.zeroFee = zeroFee;
             this.publishUpdate = publishUpdate;
+            this.performance = performance;
         }
 
         private static Recipe load(MinecraftServer server, Path world, Path recipe) throws IOException {
@@ -278,9 +412,16 @@ final class V0Distribution {
             try (Reader reader = Files.newBufferedReader(recipe)) {
                 fields.load(reader);
             }
-            if (!RECIPE_KEYS.equals(fields.stringPropertyNames()) || !"1".equals(fields.getProperty("format"))) {
-                throw new IOException("Engineering recipe schema");
-            }
+            String performance = switch (fields.getProperty("format", "")) {
+                case "1" -> {
+                    if (!RECIPE_KEYS.equals(fields.stringPropertyNames())) {
+                        throw new IOException("Engineering recipe schema");
+                    }
+                    yield null;
+                }
+                case "2" -> readPerformance(recipe, fields);
+                default -> throw new IOException("Engineering recipe schema");
+            };
             String topology = fields.getProperty("topology");
             boolean allowed = "dedicated".equals(topology) && server.isDedicatedServer()
                     && server.usesAuthentication() && !server.isSingleplayer()
@@ -306,7 +447,39 @@ final class V0Distribution {
                 case "false" -> false;
                 default -> throw new IOException("Engineering publication recipe");
             };
-            return new Recipe(first, second, zeroFee, update);
+            if (performance != null && (!"dedicated".equals(topology) || !zeroFee || update || first.route == second.route)) {
+                throw new IOException("Engineering performance recipe scope");
+            }
+            return new Recipe(first, second, zeroFee, update, performance);
+        }
+
+        private static String readPerformance(Path recipe, Properties fields) throws IOException {
+            String text;
+            try (var input = Files.newInputStream(recipe, LinkOption.NOFOLLOW_LINKS)) {
+                byte[] bytes = input.readNBytes(1_025);
+                if (bytes.length > 1_024) {
+                    throw new IOException("Unqualified world fixture");
+                }
+                text = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
+            }
+            var rows = new HashSet<String>();
+            for (String line : text.lines().toList()) {
+                int split = line.indexOf('=');
+                if (split < 1) {
+                    throw new IOException("Engineering performance recipe row");
+                }
+                String key = line.substring(0, split);
+                if (!rows.add(key) || !line.substring(split + 1).equals(fields.getProperty(key))) {
+                    throw new IOException("Engineering performance recipe row");
+                }
+            }
+            if (rows.size() != RECIPE_KEYS.size() + 1 || !rows.containsAll(RECIPE_KEYS) || !rows.contains("performance")) {
+                throw new IOException("Engineering performance recipe schema");
+            }
+            return switch (fields.getProperty("performance")) {
+                case "REFERENCE", "MIXED" -> fields.getProperty("performance");
+                default -> throw new IOException("Engineering performance recipe mode");
+            };
         }
     }
 }
