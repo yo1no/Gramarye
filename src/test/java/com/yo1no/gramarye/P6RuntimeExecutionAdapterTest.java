@@ -467,7 +467,9 @@ final class P6RuntimeExecutionAdapterTest {
                         "return primary;"),
                 () -> assertOrdered(
                         preserveError,
-                        "enterFaultAfterError(Objects.requireNonNull(slot, \"slot\"));",
+                        "var exactSlot = Objects.requireNonNull(slot, \"slot\");",
+                        "stopV0PreservingFault(exactSlot);",
+                        "enterFaultAfterError(exactSlot);",
                         "return primary;"),
                 () -> assertEquals(
                         1, occurrences(runtimeCleanup, "closeAllIndexedContinuations(")),

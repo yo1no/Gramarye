@@ -231,6 +231,8 @@ final class P4E0ResearchConfigurationTest {
                 build,
                 "def p4E0ResearchR2ExpectedCombinedRunNames = [",
                 "]\ndef p4E0ResearchR2CombinedCoordinates = [");
+        var combinedRunRegistration = bracedBlock(
+                build, "        p4E0ResearchR2CombinedCoordinates.each { coordinate ->");
         var r2Main = read(PROJECT_ROOT.resolve(
                 "src/p4E0Research/java/com/yo1no/gramarye/magic/definition/"
                         + "research/P4E0ResearchR2Main.java"));
@@ -312,7 +314,7 @@ final class P4E0ResearchConfigurationTest {
                         "if (p4E0ResearchR2ConfiguredCombinedRunNames")),
                 () -> assertTrue(build.contains(
                         "!= p4E0ResearchR2ExpectedCombinedRunNames)")),
-                () -> assertEquals(1, occurrences(build, "create(runName)")),
+                () -> assertEquals(1, occurrences(combinedRunRegistration, "create(runName)")),
                 () -> assertEquals(1, occurrences(
                         build,
                         "systemProperty 'gramarye.p4e0.research.runMode', "
