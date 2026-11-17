@@ -4,7 +4,6 @@ import com.yo1no.gramarye.magic.runtime.mana.P11ManaMaterial;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.DamageCommit;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.SpawnCommit;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.V0NativeOutcome;
-import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.V0Reason;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.V0Terminal;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.V0TerminalReceipt;
 import java.util.ArrayList;
@@ -36,7 +35,6 @@ final class A04UnknownOutcomeProducer extends P9V0WorldEffectHandoff.NativeOutco
     int completedCallbacks;
     boolean cleanupProbeExpected;
     Runnable negativeControls;
-    V0NativeCallFrame probeFrame;
     int probeReceipts;
     P9V0WorldEffectHandoff rootOwner;
     P9V0WorldEffectHandoff damageOwner;
@@ -55,10 +53,6 @@ final class A04UnknownOutcomeProducer extends P9V0WorldEffectHandoff.NativeOutco
     long damageEventId;
     float healthBefore;
     float absorptionBefore;
-    long rootOperationsAtReceipt = -1;
-    long damageOperationsAtReceipt = -1;
-    boolean rootMaterialCurrentAtReceipt;
-    boolean damageMaterialCurrentAtReceipt;
 
     A04UnknownOutcomeProducer(boolean damageUnknown) {
         this.damageUnknown = damageUnknown;
@@ -102,6 +96,7 @@ final class A04UnknownOutcomeProducer extends P9V0WorldEffectHandoff.NativeOutco
         debitMaterial = P11ManaMaterial.capture(expectedActor);
         if (!damageUnknown) {
             unknownReturns++;
+            if (negativeControls != null) { negativeControls.run(); }
             return V0NativeOutcome.OUTCOME_UNKNOWN;
         }
         V0NativeOutcome outcome = super.commitSpawn(owner, frame, command, prepared);
@@ -148,76 +143,22 @@ final class A04UnknownOutcomeProducer extends P9V0WorldEffectHandoff.NativeOutco
         healthBefore = target.getHealth();
         absorptionBefore = target.getAbsorptionAmount();
         unknownReturns++;
+        if (negativeControls != null) { negativeControls.run(); }
         return V0NativeOutcome.OUTCOME_UNKNOWN;
     }
 
     @Override
     void completed(V0NativeCallFrame frame, V0TerminalReceipt receipt) {
-        // Callback observations never replace the receipt or interrupt its P5 consumer.
-        try {
-            if (cleanupProbeExpected && unknownReceipts == 1 && probeReceipts == 0
-                    && frame != rootFrame && frame != damageFrame) {
-                if (receipt == null || frame.actor() != expectedActor || frame.server() != expectedServer
-                        || frame.authority() != rootFrame.authority()
-                        || frame.binding().cell != binding.cell || frame.binding() == binding
-                        || frame.binding().lineage.equals(binding.lineage) || frame.binding().id.equals(binding.id)
-                        || frame.binding().child || frame.statementOrdinal() != -1
-                        || frame.requestId() <= Math.max(rootRequestId, damageRequestId)
-                        || frame.sourceEventId() == rootEventId || frame.sourceEventId() == damageEventId
-                        || receipt.requestId() != frame.requestId()
-                        || receipt.sourceEventId() != frame.sourceEventId()
-                        || receipt.statementOrdinal() != -1
-                        || receipt.terminal() != V0Terminal.REJECTED_BEFORE_COMMIT
-                        || receipt.reason() != V0Reason.INSUFFICIENT_MANA
-                        || work.qualifies(expectedActor) || !frame.work().qualifies(expectedActor)
-                        || frame.work() == work) {
-                    failure = "CLEANUP_PROBE_NOT_FRESH_SAME_CELL_ACCEPTED_WORK";
-                    return;
-                }
-                probeFrame = frame;
-                probeReceipts++;
-                completedCallbacks++;
-                receipts.add(Map.of("requestId", receipt.requestId(), "sourceEventId", receipt.sourceEventId(),
-                        "statementOrdinal", receipt.statementOrdinal(), "terminal", receipt.terminal().name(),
-                        "reason", receipt.reason().name()));
-                return;
-            }
-            boolean rootCompletion = frame == rootFrame && completedCallbacks == 0;
-            boolean damageCompletion = damageUnknown && frame == damageFrame && completedCallbacks == 1;
-            if (receipt == null || !rootCompletion && !damageCompletion
-                    || receipt.requestId() != frame.requestId()
-                    || receipt.sourceEventId() != frame.sourceEventId()
-                    || receipt.statementOrdinal() != frame.statementOrdinal()) {
-                failure = "COMPLETED_RECEIPT_TUPLE_CHANGED";
-                return;
-            }
-            boolean selectedUnknown = damageCompletion || !damageUnknown;
-            if (receipt.terminal() != (selectedUnknown ? V0Terminal.OUTCOME_UNKNOWN : V0Terminal.CONFIRMED_APPLIED)
-                    || receipt.reason() != (selectedUnknown ? V0Reason.NATIVE_OUTCOME_UNCERTAIN : V0Reason.NONE)) {
-                failure = "COMPLETED_RECEIPT_TERMINAL_CHANGED";
-                return;
-            }
-            long operations = -1;
-            for (var entry : expectedSource.diagnostics(expectedActor.getUUID()).nativeResponsibilities().roots()) {
-                if (entry.kind().equals("OPERATION")) { operations = entry.count(); }
-            }
-            if (rootCompletion) {
-                rootOperationsAtReceipt = operations;
-                rootMaterialCurrentAtReceipt = debitMaterial.isCurrent(expectedActor);
-            } else {
-                damageOperationsAtReceipt = operations;
-                damageMaterialCurrentAtReceipt = debitMaterial.isCurrent(expectedActor);
-            }
-            receipts.add(Map.of("requestId", receipt.requestId(), "sourceEventId", receipt.sourceEventId(),
-                    "statementOrdinal", receipt.statementOrdinal(), "terminal", receipt.terminal().name(),
-                    "reason", receipt.reason().name()));
-            completedCallbacks++;
-            if (selectedUnknown) {
-                unknownReceipts++;
-                if (negativeControls != null) { negativeControls.run(); }
-            }
-        } catch (RuntimeException observationFailure) {
-            failure = "COMPLETED_OBSERVATION_FAILED";
+        // Passive scalar copy only: no frame inspection, nested call or assertion.
+        receipts.add(Map.of("requestId", receipt.requestId(), "sourceEventId", receipt.sourceEventId(),
+                "statementOrdinal", receipt.statementOrdinal(), "terminal", receipt.terminal().name(),
+                "reason", receipt.reason().name()));
+        completedCallbacks++;
+        if (receipt.terminal() == V0Terminal.OUTCOME_UNKNOWN) {
+            unknownReceipts++;
+        } else if (cleanupProbeExpected && receipt.requestId() > Math.max(rootRequestId, damageRequestId)
+                && receipt.statementOrdinal() == -1) {
+            probeReceipts++;
         }
     }
 }

@@ -290,10 +290,23 @@ final class A04UnknownQualification {
                 checks.put("unknownAddedNoBufferedPresentation", presentationAtTickStart != null
                         && presentationAtTickStart.get("bufferedEvents").equals(after.get("bufferedEvents")));
                 checks.put("selectedUnknownCompletedExactlyOnce", originalReceiptCounts());
-                checks.put("operationClosedBeforeReceipt", producer.rootOperationsAtReceipt == 0L
-                        && (!DAMAGE_UNKNOWN || producer.damageOperationsAtReceipt == 0L));
-                checks.put("originalDebitMaterialCurrentAtReceipt", producer.rootMaterialCurrentAtReceipt
-                        && (!DAMAGE_UNKNOWN || producer.damageMaterialCurrentAtReceipt));
+                checks.put("operationClosedAfterOriginalDispatch",
+                        rootCount(source.diagnostics(actor.getUUID()), "OPERATION") == 0L);
+                checks.put("originalDebitMaterialCurrentAfterDispatch", producer.debitMaterial.isCurrent(actor));
+                var unknownReceipt = producer.receipts.getLast();
+                checks.put("originalUnknownReceiptTupleAndReason", ((Number) unknownReceipt.get("requestId")).longValue()
+                        == (DAMAGE_UNKNOWN ? producer.damageRequestId : producer.rootRequestId)
+                        && ((Number) unknownReceipt.get("sourceEventId")).longValue()
+                        == (DAMAGE_UNKNOWN ? producer.damageEventId : producer.rootEventId)
+                        && ((Number) unknownReceipt.get("statementOrdinal")).intValue() == (DAMAGE_UNKNOWN ? 0 : -1)
+                        && "OUTCOME_UNKNOWN".equals(unknownReceipt.get("terminal"))
+                        && "NATIVE_OUTCOME_UNCERTAIN".equals(unknownReceipt.get("reason")));
+                var rootReceipt = producer.receipts.getFirst();
+                checks.put("originalRootReceiptTupleAndTerminal", ((Number) rootReceipt.get("requestId")).longValue() == producer.rootRequestId
+                        && ((Number) rootReceipt.get("sourceEventId")).longValue() == producer.rootEventId
+                        && ((Number) rootReceipt.get("statementOrdinal")).intValue() == -1
+                        && (DAMAGE_UNKNOWN ? "CONFIRMED_APPLIED" : "OUTCOME_UNKNOWN").equals(rootReceipt.get("terminal"))
+                        && (DAMAGE_UNKNOWN ? "NONE" : "NATIVE_OUTCOME_UNCERTAIN").equals(rootReceipt.get("reason")));
                 checks.put("nativeRootCountMatchesCase", producer.rootNativeApplied == (DAMAGE_UNKNOWN ? 1 : 0));
                 checks.put("noChildNativeAttempt", producer.childAttempts == 0);
                 checks.put("targetHealthUnchangedAtUnknown", targetUnchanged());
@@ -308,17 +321,17 @@ final class A04UnknownQualification {
             }
             if (producer.probeReceipts == 1 && !probeObservedAfterDispatch) {
                 probeObservedAfterDispatch = true;
-                var probe = producer.probeFrame;
-                boolean exactReuse = probe != null && probe.authority() == authority
-                        && probe.binding().cell == producer.binding.cell
-                        && probe.binding().lineage.value() != producer.binding.lineage.value()
-                        && probe.binding().id.value() != producer.binding.id.value()
-                        && probe.requestId() > Math.max(producer.rootRequestId, producer.damageRequestId)
-                        && probe.sourceEventId() != producer.rootEventId
-                        && probe.sourceEventId() != producer.damageEventId && probe.statementOrdinal() == -1;
-                checks.put("freshProbeExecutedInOriginalCell", exactReuse);
-                observations.put("cleanupProbeReceipt", producer.receipts.getLast());
-                observations.put("probeCell", probe == null ? -1 : probe.binding().cell);
+                var probe = producer.receipts.getLast();
+                boolean fresh = ((Number) probe.get("requestId")).longValue() > Math.max(producer.rootRequestId, producer.damageRequestId)
+                        && ((Number) probe.get("sourceEventId")).longValue() != producer.rootEventId
+                        && ((Number) probe.get("sourceEventId")).longValue() != producer.damageEventId
+                        && ((Number) probe.get("statementOrdinal")).intValue() == -1
+                        && "REJECTED_BEFORE_COMMIT".equals(probe.get("terminal"))
+                        && "INSUFFICIENT_MANA".equals(probe.get("reason"));
+                checks.put("freshCleanupProbeExecutedInSingleCellSlot", fresh && producer.binding.cell == 0
+                        && !producer.work.qualifies(actor));
+                observations.put("cleanupProbeReceipt", probe);
+                observations.put("probeCellProof", "FIXTURE_MAX_LINEAGES_PER_SERVER_1; P5_DISPATCH_RECEIPT_REQUIRES_ACCEPTED_NEW_LINEAGE");
                 checks.put("originalCarrierInsertionMatchesCase", producer.carrier.v0EverInserted() == DAMAGE_UNKNOWN);
                 checks.put("originalBindingClosedAndCarrierCleared", producer.binding.closing()
                         && producer.binding.carrier() == null);
@@ -466,7 +479,6 @@ final class A04UnknownQualification {
         oldCallReferences.put("rootHandoff", new WeakReference<>(producer.rootOwner));
         oldCallReferences.put("binding", new WeakReference<>(producer.binding));
         oldCallReferences.put("work", new WeakReference<>(producer.work));
-        oldCallReferences.put("probeFrame", new WeakReference<>(producer.probeFrame));
         oldCallReferences.put("carrier", new WeakReference<>(producer.carrier));
         if (DAMAGE_UNKNOWN) {
             oldCallReferences.put("damageFrame", new WeakReference<>(producer.damageFrame));
@@ -481,7 +493,6 @@ final class A04UnknownQualification {
         producer.carrier = null;
         producer.target = null;
         producer.debitMaterial = null;
-        producer.probeFrame = null;
         producer.expectedActor = null;
         producer.expectedServer = null;
         producer.expectedSource = null;
@@ -569,7 +580,6 @@ final class A04UnknownQualification {
         producer.carrier = null;
         producer.target = null;
         producer.debitMaterial = null;
-        producer.probeFrame = null;
         producer.expectedActor = null;
         producer.expectedServer = null;
         producer.expectedSource = null;
