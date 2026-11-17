@@ -297,6 +297,10 @@ final class A04UnknownQualification {
                 checks.put("nativeRootCountMatchesCase", producer.rootNativeApplied == (DAMAGE_UNKNOWN ? 1 : 0));
                 checks.put("noChildNativeAttempt", producer.childAttempts == 0);
                 checks.put("targetHealthUnchangedAtUnknown", targetUnchanged());
+                if (DAMAGE_UNKNOWN) {
+                    checks.put("naturalClaimTargetIsExactFixtureTarget", producer.damageFrame != null
+                            && producer.damageFrame.target() == target);
+                }
                 authority = producer.rootFrame.authority();
                 observations.put("originalCell", producer.binding.cell);
                 observations.put("originalLineage", producer.binding.lineage.value());
