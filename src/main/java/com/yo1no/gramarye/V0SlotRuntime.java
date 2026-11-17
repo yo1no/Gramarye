@@ -773,7 +773,7 @@ final class V0SlotRuntime {
     private static P6RuntimeExecutionBridge.V0TerminalReceipt invoke(V0P6StatementAdapter adapter,
             V0NativeCallFrame frame, P6RuntimeExecutionBridge.Invocation command) {
         return adapter.execute(frame.actor(), command, frame.statementOrdinal(), new V0P6StatementGuard(frame),
-                new P9V0WorldEffectHandoff(frame));
+                adapter.nativeHandoff(frame));
     }
 
     synchronized void invalidateForReload() {

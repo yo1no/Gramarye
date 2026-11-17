@@ -26,6 +26,7 @@ import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 final class P9V0WorldEffectHandoff {
     private static final ThreadLocal<P9V0WorldEffectHandoff> IN_FLIGHT_DAMAGE = new ThreadLocal<>();
     private final V0NativeCallFrame frame;
+    private final NativeOutcomePort nativeOutcomes;
     private final int serverTick;
     private DamageSource nativeDamage;
     private boolean attempted;
@@ -36,8 +37,9 @@ final class P9V0WorldEffectHandoff {
     private boolean finitePost;
     private boolean positivePost;
 
-    P9V0WorldEffectHandoff(V0NativeCallFrame frame) {
+    P9V0WorldEffectHandoff(V0NativeCallFrame frame, NativeOutcomePort nativeOutcomes) {
         this.frame = Objects.requireNonNull(frame, "frame");
+        this.nativeOutcomes = Objects.requireNonNull(nativeOutcomes, "nativeOutcomes");
         serverTick = frame.server().getTickCount();
     }
 
@@ -59,33 +61,38 @@ final class P9V0WorldEffectHandoff {
                 projectile.closeV0(V0TerminalReason.REJECTED_BEFORE_COMMIT);
                 return V0NativeOutcome.CONFIRMED_NOT_APPLIED;
             }
-            projectile.armV0InsertionWitness();
-            boolean added;
-            try {
-                added = frame.level().addFreshEntity(projectile);
-            } finally {
-                projectile.completeV0NativeAdd();
-            }
-            if (!added) {
-                var inserted = projectile.v0EverInserted();
-                projectile.closeV0(inserted ? V0TerminalReason.FAULT : V0TerminalReason.CONFIRMED_NOT_APPLIED);
-                return inserted ? V0NativeOutcome.APPLIED_WITH_FAILURE : V0NativeOutcome.CONFIRMED_NOT_APPLIED;
-            }
-            primaryConfirmed = true;
-            if (projectile.v0EverInserted() && projectile.isAddedToLevel() && !projectile.isRemoved()
-                    && projectile.level() == frame.level()
-                    && frame.level().getEntity(projectile.getId()) == projectile
-                    && frame.level().getEntity(projectile.getUUID()) == projectile
-                    && loadedSpawn(geometry) && frame.open(projectile)) {
-                return V0NativeOutcome.CONFIRMED_APPLIED;
-            }
-            projectile.closeV0(V0TerminalReason.OWNER_INVALIDATED);
-            return V0NativeOutcome.APPLIED_WITH_FAILURE;
+            return nativeOutcomes.commitSpawn(this, frame, command, projectile);
         } catch (RuntimeException | Error primary) {
             closeAfterNativeFault(projectile, projectile.v0EverInserted()
                     ? V0TerminalReason.FAULT : V0TerminalReason.OUTCOME_UNKNOWN);
             throw primary;
         }
+    }
+
+    private V0NativeOutcome commitSpawnNative(P9StarterProjectile prepared) {
+        var geometry = frame.spawn();
+        prepared.armV0InsertionWitness();
+        boolean added;
+        try {
+            added = frame.level().addFreshEntity(prepared);
+        } finally {
+            prepared.completeV0NativeAdd();
+        }
+        if (!added) {
+            var inserted = prepared.v0EverInserted();
+            prepared.closeV0(inserted ? V0TerminalReason.FAULT : V0TerminalReason.CONFIRMED_NOT_APPLIED);
+            return inserted ? V0NativeOutcome.APPLIED_WITH_FAILURE : V0NativeOutcome.CONFIRMED_NOT_APPLIED;
+        }
+        primaryConfirmed = true;
+        if (prepared.v0EverInserted() && prepared.isAddedToLevel() && !prepared.isRemoved()
+                && prepared.level() == frame.level()
+                && frame.level().getEntity(prepared.getId()) == prepared
+                && frame.level().getEntity(prepared.getUUID()) == prepared
+                && loadedSpawn(geometry) && frame.open(prepared)) {
+            return V0NativeOutcome.CONFIRMED_APPLIED;
+        }
+        prepared.closeV0(V0TerminalReason.OWNER_INVALIDATED);
+        return V0NativeOutcome.APPLIED_WITH_FAILURE;
     }
 
     static void moveCarrier(P9StarterProjectile projectile, ServerLevel level) {
@@ -136,6 +143,13 @@ final class P9V0WorldEffectHandoff {
         if (IN_FLIGHT_DAMAGE.get() != null) {
             throw new IllegalStateException("Nested V0 native damage");
         }
+        return nativeOutcomes.commitDamage(this, frame, command);
+    }
+
+    private V0NativeOutcome commitDamageNative(DamageCommit command) {
+        var target = frame.target();
+        var carrier = frame.carrier();
+        var actor = frame.actor();
         nativeDamage = frame.level().damageSources().indirectMagic(carrier, actor);
         IN_FLIGHT_DAMAGE.set(this);
         boolean applied;
@@ -153,6 +167,22 @@ final class P9V0WorldEffectHandoff {
             return V0NativeOutcome.OUTCOME_UNKNOWN;
         }
         return V0NativeOutcome.CONFIRMED_NOT_APPLIED;
+    }
+
+    static class NativeOutcomePort {
+        NativeOutcomePort() {}
+
+        V0NativeOutcome commitSpawn(P9V0WorldEffectHandoff owner, V0NativeCallFrame frame,
+                SpawnCommit command, P9StarterProjectile prepared) {
+            return owner.commitSpawnNative(prepared);
+        }
+
+        V0NativeOutcome commitDamage(P9V0WorldEffectHandoff owner, V0NativeCallFrame frame,
+                DamageCommit command) {
+            return owner.commitDamageNative(command);
+        }
+
+        void completed(V0NativeCallFrame frame, V0TerminalReceipt receipt) {}
     }
 
     static void observeV0DamagePost(LivingDamageEvent.Post event) {

@@ -86,7 +86,7 @@ final class SkillRuntimeService {
         this(storeService, policyProvider, projector, referenceResolver, executionPort, foundation, cooldowns, null);
     }
 
-    private SkillRuntimeService(
+    SkillRuntimeService(
             SkillDefinitionStoreService storeService,
             SkillSubmissionPolicyProvider policyProvider,
             P5RuntimeProjector projector,

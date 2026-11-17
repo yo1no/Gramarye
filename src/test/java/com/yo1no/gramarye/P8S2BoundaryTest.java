@@ -883,6 +883,7 @@ final class P8S2BoundaryTest {
     @Test
     void authorityAndRecoveredP7IsolationRemainExactBaseBytes() {
         var architectureBytes = readBytes(ARCHITECTURE_SOURCE);
+        var v0AuthorityBytes = readBytes(V0_AUTHORITY_SOURCE);
         assertAll(
                 () -> assertEquals(ARCHITECTURE_FINAL_LENGTH, architectureBytes.length),
                 () -> assertEquals(
@@ -921,9 +922,12 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
-                () -> assertEquals(6_656L, fileSize(V0_AUTHORITY_SOURCE)),
+                () -> assertEquals(13_649L, fileSize(V0_AUTHORITY_SOURCE)),
                 () -> assertEquals(
                         "cc74a37f6c4be48171080dbc2d03156cb54fad40c47f511078914ad3c71bdbb4",
+                        sha256(v0AuthorityBytes, 0, 6_656)),
+                () -> assertEquals(
+                        "d44b50183661a61e28d84f376ba0cd3d560429e306449a9e37cfd31f3194ad08",
                         sha256(V0_AUTHORITY_SOURCE)),
                 // P11 §6: local-quarantine native copy fixture; authority prefixes stay unchanged.
                 () -> assertEquals(149_692L, fileSize(P7_LOGIN_ISOLATION_SOURCE)),

@@ -182,6 +182,7 @@ final class P9S1BoundaryTest {
             "P9StarterSkillIdentityV0.class",
             "P9V0LoadedBlocks.class",
             "P9V0WorldEffectHandoff.class",
+            "P9V0WorldEffectHandoff$NativeOutcomePort.class",
             "P9V0WorldEffectHandoff$V0PresentationMaterial.class",
             "P9WorldEffectHandoff.class",
             "StarterGameplayFingerprintV0.class");
@@ -480,9 +481,35 @@ final class P9S1BoundaryTest {
         assertTrue(step.indexOf("movement.scale((double) 0.99F)") < step.indexOf("setPos(end);"));
         assertFalse(step.contains("baseTick();") || step.contains("checkInsideBlocks();"));
         var spawn = sourceBlock(commit, "V0NativeOutcome commitSpawn(");
-        assertTrue(spawn.indexOf("armV0InsertionWitness();") < spawn.indexOf(".addFreshEntity(projectile)"));
-        assertTrue(spawn.indexOf("projectile.v0EverInserted()") < spawn.indexOf("primaryConfirmed = true;"));
-        assertTrue(spawn.indexOf("primaryConfirmed = true;") < spawn.indexOf("frame.open(projectile)"));
+        var delegation = spawn.indexOf("return nativeOutcomes.commitSpawn(this, frame, command, projectile);");
+        assertTrue(delegation > 0);
+        assertTrue(spawn.indexOf("beginAttempt(command.requestId(), command.sourceEventId())") >= 0
+                && spawn.indexOf("beginAttempt(command.requestId(), command.sourceEventId())") < delegation);
+        assertTrue(spawn.indexOf("matchesSpawn(command, geometry)") >= 0
+                && spawn.indexOf("matchesSpawn(command, geometry)") < delegation);
+        assertTrue(spawn.indexOf("frame.prepare(projectile)") >= 0
+                && spawn.indexOf("frame.prepare(projectile)") < delegation);
+        assertTrue(spawn.indexOf("projectile.setOwner(frame.actor());") >= 0
+                && spawn.indexOf("projectile.setOwner(frame.actor());") < delegation);
+        assertTrue(spawn.indexOf("!frame.allowsNative() || !loadedSpawn(geometry)") >= 0
+                && spawn.indexOf("!frame.allowsNative() || !loadedSpawn(geometry)") < delegation);
+        assertEquals(1, occurrences(spawn, "nativeOutcomes.commitSpawn("));
+        assertFalse(spawn.contains(".addFreshEntity(") || spawn.contains(".armV0InsertionWitness()"));
+
+        var nativePort = sourceBlock(commit, "static class NativeOutcomePort");
+        var nativeDelegate = sourceBlock(nativePort, "V0NativeOutcome commitSpawn(");
+        assertTrue(nativeDelegate.contains("return owner.commitSpawnNative(prepared);"));
+        var nativeSpawn = sourceBlock(commit, "private V0NativeOutcome commitSpawnNative(");
+        var arming = nativeSpawn.indexOf("prepared.armV0InsertionWitness();");
+        var adding = nativeSpawn.indexOf("frame.level().addFreshEntity(prepared)");
+        var inserted = nativeSpawn.indexOf("prepared.v0EverInserted()");
+        var confirmed = nativeSpawn.indexOf("primaryConfirmed = true;");
+        var opening = nativeSpawn.indexOf("frame.open(prepared)");
+        assertTrue(arming >= 0 && arming < adding);
+        assertTrue(adding < inserted && inserted < confirmed);
+        assertTrue(confirmed < opening);
+        assertEquals(1, occurrences(nativeSpawn, ".addFreshEntity(prepared)"));
+        assertTrue(nativeSpawn.contains("} finally {\n            prepared.completeV0NativeAdd();\n        }"));
     }
 
     @Test

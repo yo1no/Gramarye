@@ -1,5 +1,6 @@
 package com.yo1no.gramarye;
 
+import com.yo1no.gramarye.P9V0WorldEffectHandoff.NativeOutcomePort;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.Invocation;
 import com.yo1no.gramarye.magic.runtime.mana.P6RuntimeExecutionBridge.V0Terminal;
@@ -10,10 +11,20 @@ import net.minecraft.server.level.ServerPlayer;
 final class V0P6StatementAdapter {
     private final P8V0AppliedFactHandoff presentation;
     private final P6RuntimeExecutionCapability.V0 capability;
+    private final NativeOutcomePort nativeOutcomes;
 
     V0P6StatementAdapter(P8ServerPresentationService presentation) {
+        this(presentation, new NativeOutcomePort());
+    }
+
+    V0P6StatementAdapter(P8ServerPresentationService presentation, NativeOutcomePort nativeOutcomes) {
         this.presentation = new P8V0AppliedFactHandoff(Objects.requireNonNull(presentation));
         this.capability = P6RuntimeExecutionCapability.forV0StatementAdapter();
+        this.nativeOutcomes = Objects.requireNonNull(nativeOutcomes, "nativeOutcomes");
+    }
+
+    P9V0WorldEffectHandoff nativeHandoff(V0NativeCallFrame frame) {
+        return new P9V0WorldEffectHandoff(frame, nativeOutcomes);
     }
 
     V0TerminalReceipt execute(
@@ -37,6 +48,7 @@ final class V0P6StatementAdapter {
             P11NativeOperationBoundary.end(guard.operation, normal);
             guard.operation = null;
         }
+        nativeOutcomes.completed(guard.frame, receipt);
         if (receipt.terminal() == V0Terminal.CONFIRMED_APPLIED
                 || receipt.terminal() == V0Terminal.CONFIRMED_APPLIED_WITH_FAILURE) {
             presentation.offer(receipt, handoff);
