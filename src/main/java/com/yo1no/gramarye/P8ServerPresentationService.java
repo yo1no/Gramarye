@@ -117,24 +117,27 @@ final class P8ServerPresentationService {
     private P8TickState tickState = P8TickState.empty();
     private long tickStateServerTick = Long.MIN_VALUE;
     private final List<V0StagedPresentation> v0Staging = new ArrayList<>(16);
+    private final A05Observer a05Observer;
     private volatile V0PresentationEpoch v0PresentationEpoch = new V0PresentationEpoch();
     private boolean offerInProgress;
     private boolean drainInProgress;
     private boolean registered;
 
     private P8ServerPresentationService() {
-        catalogTransport = P8ProductionCatalogTransport.INSTANCE;
-        transport = new ProductionPresentationTransport(this);
+        this(A05Observer.NOOP);
     }
 
-    P8ServerPresentationService(P8PresentationTransport transport) {
-        this(transport, P8ProductionCatalogTransport.INSTANCE);
+    P8ServerPresentationService(A05Observer observer) {
+        a05Observer = Objects.requireNonNull(observer, "observer");
+        catalogTransport = P8ProductionCatalogTransport.INSTANCE;
+        transport = new ProductionPresentationTransport(this);
     }
 
     P8ServerPresentationService(
             P8PresentationTransport transport, P8CatalogTransport catalogTransport) {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.catalogTransport = Objects.requireNonNull(catalogTransport, "catalogTransport");
+        a05Observer = A05Observer.NOOP;
     }
 
     static P8ServerPresentationService create() {
@@ -310,68 +313,86 @@ final class P8ServerPresentationService {
         var server = activeServer;
         var snapshot = activeSnapshot;
         var epoch = v0PresentationEpoch;
-        if (server == null || snapshot == null || !server.isSameThread()
-                || !server.isRunning() || server.isStopped() || !material.authority().isOwnerThread()
-                || material.serverTick() != server.getTickCount() || material.serverTick() == lastDrainServerTick
-                || material.runtimeTick() <= lastDrainedRuntimeTick || material.requestId() <= 0
-                || material.sourceEventId() <= 0 || material.instanceId().value() <= 0
-                || (tickStateServerTick == material.serverTick() && tickState.runtimeTick() != material.runtimeTick())
-                || material.offerLimit() < 4 || material.offerLimit() > 16 || material.offerLimit() % 4 != 0
-                || material.recipientLimit() < 1 || material.recipientLimit() > 16) {
-            return P8PresentationOfferOutcome.DROPPED;
-        }
-        var event = material.eventMaterial();
-        int ordinal = material.statementOrdinal();
-        boolean release = event.kind() == PresentationEventKind.CAST_RELEASE && ordinal == -1;
-        boolean hit = event.kind() == PresentationEventKind.HIT && ordinal == 0;
-        if (!release && !hit) {
-            return P8PresentationOfferOutcome.DROPPED;
-        }
-        if (offerInProgress || drainInProgress) {
-            throw new IllegalStateException("P8 V0 applied-fact offer is reentrant");
-        }
-        if (!v0Staging.isEmpty()) {
-            var first = v0Staging.getFirst();
-            if (first.serverTick != material.serverTick() || first.epoch != epoch || first.snapshot != snapshot) {
-                v0Staging.clear();
-            } else if (first.runtimeTick != material.runtimeTick()) {
-                return P8PresentationOfferOutcome.DROPPED;
-            }
-        }
-        if (v0Staging.size() >= material.offerLimit()) {
-            return P8PresentationOfferOutcome.DROPPED;
-        }
-        for (var staged : v0Staging) {
-            if (staged.requestId == material.requestId() && staged.sourceEventId == material.sourceEventId()
-                    && staged.statementOrdinal == material.statementOrdinal() && staged.event.kind() == event.kind()) {
-                return P8PresentationOfferOutcome.DROPPED;
-            }
-        }
-
-        offerInProgress = true;
+        String observedOutcome = "THREW";
         try {
-            var level = server.getLevel(ResourceKey.create(Registries.DIMENSION, event.dimension()));
-            if (level == null) {
+            if (server == null || snapshot == null || !server.isSameThread()
+                    || !server.isRunning() || server.isStopped() || !material.authority().isOwnerThread()
+                    || material.serverTick() != server.getTickCount() || material.serverTick() == lastDrainServerTick
+                    || material.runtimeTick() <= lastDrainedRuntimeTick || material.requestId() <= 0
+                    || material.sourceEventId() <= 0 || material.instanceId().value() <= 0
+                    || (tickStateServerTick == material.serverTick() && tickState.runtimeTick() != material.runtimeTick())
+                    || material.offerLimit() < 4 || material.offerLimit() > 16 || material.offerLimit() % 4 != 0
+                    || material.recipientLimit() < 1 || material.recipientLimit() > 16) {
+                observedOutcome = "DROPPED";
                 return P8PresentationOfferOutcome.DROPPED;
             }
-            var source = captureV0Player(server, level,
-                    event.sourcePlayerId().filter(material.attribution()::equals), event.sourceEntityId());
-            var target = captureV0Player(server, level, event.targetPlayerId(), event.targetEntityId());
-            var appearanceSnapshot = new AppearanceResolutionSnapshot(snapshot);
-            var resolution = AppearanceSemantics.resolve(material.appearance(),
-                    RuntimeNeutralAppearanceOverride.None.INSTANCE, Optional.empty(),
-                    AppearanceParameterPolicy.none(), appearanceSnapshot.profiles());
-            verifyStoredProfileCosts(resolution.appearance(), appearanceSnapshot.profiles());
-            if (server != activeServer || snapshot != activeSnapshot || epoch != v0PresentationEpoch) {
+            var event = material.eventMaterial();
+            int ordinal = material.statementOrdinal();
+            boolean release = event.kind() == PresentationEventKind.CAST_RELEASE && ordinal == -1;
+            boolean hit = event.kind() == PresentationEventKind.HIT && ordinal == 0;
+            if (!release && !hit) {
+                observedOutcome = "DROPPED";
                 return P8PresentationOfferOutcome.DROPPED;
             }
-            v0Staging.add(new V0StagedPresentation(material.serverTick(), material.runtimeTick(),
-                    material.requestId(), material.sourceEventId(), material.statementOrdinal(),
-                    material.instanceId(), material.attribution(), event, resolution.appearance(), source, target,
-                    material.recipientLimit(), snapshot, epoch));
-            return P8PresentationOfferOutcome.ACCEPTED;
+            if (offerInProgress || drainInProgress) {
+                throw new IllegalStateException("P8 V0 applied-fact offer is reentrant");
+            }
+            if (!v0Staging.isEmpty()) {
+                var first = v0Staging.getFirst();
+                if (first.serverTick != material.serverTick() || first.epoch != epoch || first.snapshot != snapshot) {
+                    v0Staging.clear();
+                } else if (first.runtimeTick != material.runtimeTick()) {
+                    observedOutcome = "DROPPED";
+                    return P8PresentationOfferOutcome.DROPPED;
+                }
+            }
+            if (v0Staging.size() >= material.offerLimit()) {
+                observedOutcome = "DROPPED";
+                return P8PresentationOfferOutcome.DROPPED;
+            }
+            for (var staged : v0Staging) {
+                if (staged.requestId == material.requestId() && staged.sourceEventId == material.sourceEventId()
+                        && staged.statementOrdinal == material.statementOrdinal() && staged.event.kind() == event.kind()) {
+                    observedOutcome = "DROPPED";
+                    return P8PresentationOfferOutcome.DROPPED;
+                }
+            }
+
+            offerInProgress = true;
+            try {
+                var level = server.getLevel(ResourceKey.create(Registries.DIMENSION, event.dimension()));
+                if (level == null) {
+                    observedOutcome = "DROPPED";
+                    return P8PresentationOfferOutcome.DROPPED;
+                }
+                var source = captureV0Player(server, level,
+                        event.sourcePlayerId().filter(material.attribution()::equals), event.sourceEntityId());
+                var target = captureV0Player(server, level, event.targetPlayerId(), event.targetEntityId());
+                var appearanceSnapshot = new AppearanceResolutionSnapshot(snapshot);
+                var resolution = AppearanceSemantics.resolve(material.appearance(),
+                        RuntimeNeutralAppearanceOverride.None.INSTANCE, Optional.empty(),
+                        AppearanceParameterPolicy.none(), appearanceSnapshot.profiles());
+                verifyStoredProfileCosts(resolution.appearance(), appearanceSnapshot.profiles());
+                if (server != activeServer || snapshot != activeSnapshot || epoch != v0PresentationEpoch) {
+                    observedOutcome = "DROPPED";
+                    return P8PresentationOfferOutcome.DROPPED;
+                }
+                v0Staging.add(new V0StagedPresentation(material.serverTick(), material.runtimeTick(),
+                        material.requestId(), material.sourceEventId(), material.statementOrdinal(),
+                        material.instanceId(), material.attribution(), event, resolution.appearance(), source, target,
+                        material.recipientLimit(), snapshot, epoch));
+                observedOutcome = "ACCEPTED";
+                return P8PresentationOfferOutcome.ACCEPTED;
+            } finally {
+                offerInProgress = false;
+            }
         } finally {
-            offerInProgress = false;
+            if (material != null) {
+                a05Observer.offer("OFFER_RETURN", material.serverTick(), material.runtimeTick(),
+                        material.instanceId().value(), material.requestId(), material.sourceEventId(),
+                        material.statementOrdinal(), material.eventMaterial().kind().name(),
+                        snapshot == null ? 0L : snapshot.generation, 0L, 0, 0, 0, observedOutcome);
+            }
         }
     }
 
@@ -1372,15 +1393,24 @@ final class P8ServerPresentationService {
     private void submitEvent(P8RecipientIdentity identity, PresentationEvent event) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(event, "event");
+        int nativeTick = activeServer == null ? 0 : activeServer.getTickCount();
         P8PresentationSubmissionResult result;
         try {
             result = transport.submit(identity, event);
         } catch (RuntimeException ignored) {
             recordRuntimeDiagnostic(
                     P8ServerRuntimeDiagnosticCode.EVENT_TRANSPORT_RUNTIME_EXCEPTION);
+            a05Observer.submission(nativeTick, event.catalogGeneration(), event.sequence(), event.kind().name(),
+                    identity.connectionEpoch(), "RUNTIME_EXCEPTION");
             return;
+        } catch (Error failure) {
+            a05Observer.submission(nativeTick, event.catalogGeneration(), event.sequence(), event.kind().name(),
+                    identity.connectionEpoch(), "ERROR");
+            throw failure;
         }
         Objects.requireNonNull(result, "P8 transport submission result");
+        a05Observer.submission(nativeTick, event.catalogGeneration(), event.sequence(), event.kind().name(),
+                identity.connectionEpoch(), result.name());
     }
 
     static final class CatalogDrainResultForTesting {
@@ -2638,6 +2668,33 @@ final class P8ServerPresentationService {
             }
         }
         var admitted = new ArrayList<>(residual.admitDeliveries(deliveries));
+        if (a05Observer != A05Observer.NOOP) {
+            try {
+                for (var entry : stages.entrySet()) {
+                    var staged = entry.getValue();
+                    int selectedRecipients = -1;
+                    int candidateDeliveries = 0;
+                    int admittedDeliveries = 0;
+                    for (var delivery : deliveries) {
+                        if (delivery.buffered().event().sequence() == entry.getKey()) {
+                            candidateDeliveries++;
+                            selectedRecipients = delivery.buffered().recipients().size();
+                        }
+                    }
+                    for (var delivery : admitted) {
+                        if (delivery.buffered().event().sequence() == entry.getKey()) {
+                            admittedDeliveries++;
+                        }
+                    }
+                    a05Observer.offer("DELIVERY_ADMISSION", (int) serverTick, staged.runtimeTick,
+                            staged.instanceId.value(), staged.requestId, staged.sourceEventId, staged.statementOrdinal,
+                            staged.event.kind().name(), staged.snapshot.generation, entry.getKey(), selectedRecipients,
+                            candidateDeliveries, admittedDeliveries, admittedDeliveries == 0 ? "DROPPED" : "ACCEPTED");
+                }
+            } catch (RuntimeException | Error ignoredObservationFailure) {
+                // Scalar counting and recording cannot alter P8's admitted deliveries.
+            }
+        }
         admitted.sort((left, right) -> {
             var comparison = compareUnsignedUuid(left.identity().playerId(), right.identity().playerId());
             return comparison != 0 ? comparison
@@ -2695,12 +2752,26 @@ final class P8ServerPresentationService {
             return;
         }
         var event = accepted.event();
-        if (!residual.admitLogical(staged.instanceId, staged.attribution, event.bodySize())) {
+        a05Observer.offer("LINK", server.getTickCount(), staged.runtimeTick, staged.instanceId.value(),
+                staged.requestId, staged.sourceEventId, staged.statementOrdinal, event.kind().name(),
+                event.catalogGeneration(), event.sequence(), 0, 0, 0, "CREATED");
+        boolean logicalAdmitted = residual.admitLogical(staged.instanceId, staged.attribution, event.bodySize());
+        a05Observer.offer("LOGICAL", server.getTickCount(), staged.runtimeTick, staged.instanceId.value(),
+                staged.requestId, staged.sourceEventId, staged.statementOrdinal, event.kind().name(),
+                event.catalogGeneration(), event.sequence(), 0, 0, 0, logicalAdmitted ? "ACCEPTED" : "DROPPED");
+        if (!logicalAdmitted) {
             return;
         }
         var selected = P8RecipientSelector.selectV0(server, eventMaterial, event, Optional.ofNullable(target),
                 Optional.ofNullable(source), transport, staged.recipientLimit);
-        if (selected.isEmpty() || !residual.retainSelection(event.bodySize(), selected.orElseThrow())) {
+        boolean selectionRetained = selected.isPresent()
+                && residual.retainSelection(event.bodySize(), selected.orElseThrow());
+        a05Observer.offer("SELECTION", server.getTickCount(), staged.runtimeTick, staged.instanceId.value(),
+                staged.requestId, staged.sourceEventId, staged.statementOrdinal, event.kind().name(),
+                event.catalogGeneration(), event.sequence(),
+                selected.isEmpty() ? 0 : selected.orElseThrow().recipients().size(), 0, 0,
+                selectionRetained ? "ACCEPTED" : "DROPPED");
+        if (!selectionRetained) {
             return;
         }
         var recipients = selected.orElseThrow().recipients();
@@ -2713,6 +2784,7 @@ final class P8ServerPresentationService {
                 event, coalescing, recipients, eventMaterial.sourcePlayerId(),
                 eventMaterial.targetPlayerId(), eventMaterial.targetEntityUuid());
         stages.put(event.sequence(), staged);
+        int previousDeliveries = deliveries.size();
         for (var recipient : recipients) {
             if (!P8RecipientSelector.remainsEligible(server, buffered, recipient, transport)) {
                 continue;
@@ -2728,6 +2800,10 @@ final class P8ServerPresentationService {
                 deliveries.add(new P8Delivery(order, recipient.identity(), buffered, measured.getAsInt()));
             }
         }
+        a05Observer.offer("CANDIDATES", server.getTickCount(), staged.runtimeTick, staged.instanceId.value(),
+                staged.requestId, staged.sourceEventId, staged.statementOrdinal, event.kind().name(),
+                event.catalogGeneration(), event.sequence(), recipients.size(), deliveries.size() - previousDeliveries,
+                0, "COLLECTED");
     }
 
     private boolean currentV0Stage(V0StagedPresentation staged, long serverTick) {

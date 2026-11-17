@@ -302,7 +302,8 @@ final class P8S4ServerTransportTest {
                 () -> assertTrue(delivery.contains("int appliedStepIndex = 0;")),
                 () -> assertTrue(delivery.contains("coalescingIdentity(staged.runtimeTick, staged.sourceEventId, appliedStepIndex")),
                 () -> assertTrue(delivery.contains("new P8BufferedPresentation(staged.runtimeTick, staged.sourceEventId, appliedStepIndex")),
-                () -> assertFalse(delivery.contains("staged.statementOrdinal")));
+                () -> assertFalse(between(delivery, "        var coalescing =", "        stages.put(")
+                        .contains("staged.statementOrdinal")));
     }
 
     @Test

@@ -108,7 +108,7 @@ final class A04UnknownQualification {
         var service = new SkillRuntimeService(storeService, policyProvider,
                 new P5RuntimeProjector(profiles), new P5LoadedReferenceResolver(),
                 new P6RuntimeExecutionPortAdapter(capability, presentationService), foundation, cooldowns,
-                new V0P6StatementAdapter(presentationService, producer));
+                new V0P6StatementAdapter(presentationService, producer, A05Observer.NOOP));
         observer.runtime = service;
         observer.negativeAdapter = new V0P6StatementAdapter(presentationService);
         producer.negativeControls = observer::observeNegativeCoordinates;

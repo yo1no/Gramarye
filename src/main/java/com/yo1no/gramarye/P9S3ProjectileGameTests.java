@@ -1966,7 +1966,7 @@ public final class P9S3ProjectileGameTests {
 
         private RecordingProductionPort(ServerPlayer actor) {
             readyPlayerId = Objects.requireNonNull(actor, "actor").getUUID();
-            presentation = new P8ServerPresentationService(this);
+            presentation = new P8ServerPresentationService(this, P8ProductionCatalogTransport.INSTANCE);
             delegate = new P6RuntimeExecutionPortAdapter(
                     runtimeCapability(), presentation);
         }

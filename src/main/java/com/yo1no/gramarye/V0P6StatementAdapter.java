@@ -12,15 +12,18 @@ final class V0P6StatementAdapter {
     private final P8V0AppliedFactHandoff presentation;
     private final P6RuntimeExecutionCapability.V0 capability;
     private final NativeOutcomePort nativeOutcomes;
+    private final A05Observer a05Observer;
 
     V0P6StatementAdapter(P8ServerPresentationService presentation) {
-        this(presentation, new NativeOutcomePort());
+        this(presentation, new NativeOutcomePort(), A05Observer.NOOP);
     }
 
-    V0P6StatementAdapter(P8ServerPresentationService presentation, NativeOutcomePort nativeOutcomes) {
+    V0P6StatementAdapter(P8ServerPresentationService presentation, NativeOutcomePort nativeOutcomes,
+            A05Observer a05Observer) {
         this.presentation = new P8V0AppliedFactHandoff(Objects.requireNonNull(presentation));
         this.capability = P6RuntimeExecutionCapability.forV0StatementAdapter();
         this.nativeOutcomes = Objects.requireNonNull(nativeOutcomes, "nativeOutcomes");
+        this.a05Observer = Objects.requireNonNull(a05Observer, "a05Observer");
     }
 
     P9V0WorldEffectHandoff nativeHandoff(V0NativeCallFrame frame) {
@@ -49,6 +52,10 @@ final class V0P6StatementAdapter {
             guard.operation = null;
         }
         nativeOutcomes.completed(guard.frame, receipt);
+        a05Observer.receipt(guard.frame.server().getTickCount(), guard.frame.runtimeTick(),
+                guard.frame.instanceId().value(), guard.frame.binding().lineage.value(),
+                receipt.requestId(), receipt.sourceEventId(), receipt.statementOrdinal(),
+                receipt.terminal().name(), receipt.reason().name());
         if (receipt.terminal() == V0Terminal.CONFIRMED_APPLIED
                 || receipt.terminal() == V0Terminal.CONFIRMED_APPLIED_WITH_FAILURE) {
             presentation.offer(receipt, handoff);

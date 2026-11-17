@@ -1,0 +1,176 @@
+package com.yo1no.gramarye;
+
+import com.mojang.logging.LogUtils;
+import com.yo1no.gramarye.magic.api.registry.MagicRegistries;
+import com.yo1no.gramarye.magic.definition.migration.DescriptorMigrationAudit;
+import com.yo1no.gramarye.magic.definition.player.PlayerSkillAttachmentService;
+import com.yo1no.gramarye.magic.definition.store.SkillDefinitionStoreService;
+import com.yo1no.gramarye.magic.definition.submission.SkillDefinitionSubmissionService;
+import com.yo1no.gramarye.magic.definition.submission.SkillDraftCreationService;
+import com.yo1no.gramarye.magic.definition.submission.SkillIdSource;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService;
+import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionPolicyProvider;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
+import java.util.Objects;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.bus.api.EventPriority;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.AddReloadListenerEvent;
+import net.neoforged.neoforge.event.OnDatapackSyncEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import org.slf4j.Logger;
+
+@Mod(Gramarye.MOD_ID)
+public final class Gramarye {
+    public static final String MOD_ID = "gramarye";
+    public static final String DATA_NAMESPACE = "gramarye";
+    public static final Logger LOGGER = LogUtils.getLogger();
+
+    private final A05Qualification qualification = new A05Qualification();
+    private final PlayerSkillAttachmentService playerSkillAttachmentService;
+    private final SkillDefinitionStoreService skillDefinitionStoreService;
+    private final SkillIdSource skillIdSource;
+    private final SkillDraftCreationService skillDraftCreationService;
+    private final SkillSubmissionPolicyProvider skillSubmissionPolicyProvider;
+    private final SkillDefinitionSubmissionService skillDefinitionSubmissionService;
+    private final SkillSubmissionRecoveryService skillSubmissionRecoveryService;
+    private final P5ServerRuntimeConfig p5ServerRuntimeConfig;
+    private final P11FoundationService p11FoundationService;
+    private final P11CastCooldownService p11CastCooldownService;
+    private final SkillRuntimeService skillRuntimeService;
+    private final P8ServerPresentationService p8ServerPresentationService;
+    private final P9StarterCommand p9StarterCommand;
+    private final P10TemplateService p10TemplateService;
+    private final P10TemplateValidateCommand p10TemplateValidateCommand;
+
+    public Gramarye(IEventBus modBus, ModContainer exactContainer) {
+        Objects.requireNonNull(modBus, "modBus");
+        Objects.requireNonNull(exactContainer, "exactContainer");
+        if (!MOD_ID.equals(exactContainer.getModId())) {
+            throw new IllegalArgumentException("unexpected mod container");
+        }
+        var exactFacade = new P4E2QualificationFacade();
+        P9StarterSkillContent.registerDefinitionTypes();
+        MagicRegistries.register(modBus);
+        P9StarterProjectileRegistration.register(modBus);
+        new DescriptorMigrationAudit().register(modBus);
+        var p11SourceProvenance = new P11SourceProvenance();
+        playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus, p11SourceProvenance);
+        p8ServerPresentationService = new P8ServerPresentationService(qualification.observer);
+        var profileAvailability = p8ServerPresentationService.profileAvailabilityView();
+        var runtimeCapability = P6RuntimeExecutionCapability.forRuntimeAdapter();
+        var p7LoginReadyPort = P7ServerAuthorizationBoundary.loginReadyPort(runtimeCapability);
+        skillDefinitionStoreService = SkillDefinitionStoreService.registerOn(
+                NeoForge.EVENT_BUS,
+                playerSkillAttachmentService,
+                p7LoginReadyPort,
+                exactFacade.storeView(),
+                exactFacade.playerView());
+        skillIdSource = SkillDraftCreationService.randomUuidSkillIdSource();
+        skillDraftCreationService = new SkillDraftCreationService(
+                playerSkillAttachmentService, skillIdSource);
+        skillSubmissionPolicyProvider = SkillSubmissionPolicyProvider.defaults();
+        skillDefinitionSubmissionService = SkillDefinitionSubmissionService.production(
+                playerSkillAttachmentService,
+                skillDefinitionStoreService.submissionPort(),
+                skillSubmissionPolicyProvider,
+                profileAvailability);
+        skillSubmissionRecoveryService = SkillSubmissionRecoveryService.create(
+                playerSkillAttachmentService,
+                skillDefinitionStoreService.submissionPort(),
+                skillDefinitionStoreService.onlineReconciliationDependency(),
+                exactFacade.submissionView());
+        skillSubmissionRecoveryService.registerOn(NeoForge.EVENT_BUS);
+        p5ServerRuntimeConfig = new P5ServerRuntimeConfig(modBus, exactContainer);
+        p11FoundationService = new P11FoundationService(p11SourceProvenance, playerSkillAttachmentService);
+        var cooldownPolicyProjection = new P11CooldownPolicyProjection(playerSkillAttachmentService,
+                skillDefinitionStoreService, skillSubmissionPolicyProvider, profileAvailability);
+        p11CastCooldownService = new P11CastCooldownService(p11FoundationService, cooldownPolicyProjection::observe);
+        p11FoundationService.bindCooldowns(p11CastCooldownService);
+        modBus.addListener(P11TransitionPayloadRegistrar::register);
+        modBus.addListener(P11ConfigurationBoundary::registerTasks);
+        NeoForge.EVENT_BUS.addListener(p11FoundationService::tick);
+        skillRuntimeService = qualification.create(
+                NeoForge.EVENT_BUS,
+                skillDefinitionStoreService,
+                skillSubmissionPolicyProvider,
+                profileAvailability,
+                runtimeCapability,
+                p8ServerPresentationService,
+                p11FoundationService,
+                p11CastCooldownService);
+        p11FoundationService.bindRuntime(skillRuntimeService);
+        p8ServerPresentationService.registerAfterP5(NeoForge.EVENT_BUS);
+        var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(
+                skillRuntimeService,
+                playerSkillAttachmentService,
+                skillDefinitionStoreService);
+        P7ServerAuthorizationBoundary.install(
+                runtimeCapability,
+                p7AuthenticatedPlayerCastIngress,
+                p11CastCooldownService);
+        var p10TemplateValidation = new P10TemplateValidation(
+                skillSubmissionPolicyProvider, p8ServerPresentationService);
+        p10TemplateService = new P10TemplateService(p10TemplateValidation);
+        p9StarterCommand = new P9StarterCommand(
+                playerSkillAttachmentService,
+                skillDefinitionSubmissionService,
+                skillDefinitionStoreService,
+                p10TemplateService,
+                p10TemplateValidation);
+        p10TemplateValidateCommand = new P10TemplateValidateCommand(
+                p10TemplateService, p10TemplateValidation);
+        NeoForge.EVENT_BUS.addListener(p9StarterCommand::register);
+        NeoForge.EVENT_BUS.addListener(p10TemplateValidateCommand::register);
+        NeoForge.EVENT_BUS.addListener(this::handleP9ReloadStarted);
+        p10TemplateService.registerAfterP8(NeoForge.EVENT_BUS);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, this::handleP9ReloadCompleted);
+        NeoForge.EVENT_BUS.addListener(this::handleP5RuntimeStarted);
+        NeoForge.EVENT_BUS.addListener(p11FoundationService::stopping);
+        NeoForge.EVENT_BUS.addListener(p11FoundationService::stopped);
+        exactContainer.registerExtensionPoint(P4E2QualificationFacade.class, exactFacade);
+    }
+
+    private void handleP9ReloadStarted(AddReloadListenerEvent event) {
+        Objects.requireNonNull(event, "event");
+        skillRuntimeService.requestRuntimeReloadInvalidation(event);
+    }
+
+    private void handleP9ReloadCompleted(OnDatapackSyncEvent event) {
+        Objects.requireNonNull(event, "event");
+        if (event.getPlayer() == null) {
+            var server = event.getPlayerList().getServer();
+            finishP10Reload(
+                    () -> p10TemplateService.beginPostInstall(server),
+                    () -> p8ServerPresentationService.activateMatchingCandidateForRoot(server),
+                    outcome -> p10TemplateService.completeInstalled(server, outcome),
+                    () -> skillRuntimeService.completeRuntimeReload(server));
+        }
+    }
+
+    private static void finishP10Reload(Runnable markInstalled,
+            java.util.function.Supplier<P8ServerPresentationService.P8RootFullSyncOutcome> activateP8,
+            java.util.function.Consumer<P8ServerPresentationService.P8RootFullSyncOutcome> settleP10,
+            Runnable reopenP5) {
+        markInstalled.run();
+        var outcome = activateP8.get();
+        settleP10.accept(outcome);
+        reopenP5.run();
+    }
+
+    private void handleP5RuntimeStarted(ServerStartedEvent event) {
+        p8ServerPresentationService.handleServerStarted(event);
+        p10TemplateService.handleServerStarted(event);
+        var snapshot = p5ServerRuntimeConfig.snapshotAllForStarted();
+        var limits = snapshot.p5Limits();
+        p11FoundationService.started(event, snapshot.p11State());
+        skillRuntimeService.handleRuntimeStarted(event, limits, snapshot.v0State());
+    }
+
+    /** Returns the controlled server skill subsystem port held by this composition root. */
+    public SkillDefinitionStoreService skillDefinitionStoreService() {
+        return skillDefinitionStoreService;
+    }
+}

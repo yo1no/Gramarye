@@ -76,7 +76,7 @@ public final class P8S3PresentationGameTests {
         MinecraftServer server = helper.getLevel().getServer();
         ServerPlayer player = P7S4LoginManaGameTests.makeCooldownMockPlayer(helper, 0x8101L);
         var transport = new RecordingTransport(player.getUUID());
-        var service = new P8ServerPresentationService(transport);
+        var service = new P8ServerPresentationService(transport, P8ProductionCatalogTransport.INSTANCE);
         try {
             assertRootFullSyncHandoff(helper, server, service);
             service.startForTesting(server, emptyCatalog());
@@ -235,7 +235,7 @@ public final class P8S3PresentationGameTests {
         boolean originAdded = targetLevel.addFreshEntity(origin);
         boolean targetAdded = targetLevel.addFreshEntity(target);
         var transport = new RecordingTransport(player.getUUID());
-        var service = new P8ServerPresentationService(transport);
+        var service = new P8ServerPresentationService(transport, P8ProductionCatalogTransport.INSTANCE);
         service.startForTesting(server, emptyCatalog());
         helper.runAfterDelay(10L, () -> {
             boolean[] passed = {false};
@@ -983,7 +983,8 @@ public final class P8S3PresentationGameTests {
         RuntimeFixture isCurrentFixture = runtimeFixture(
                 context, player, 10L, ACTIVE_CAST);
         var isCurrentTransport = new RecordingTransport(player.getUUID());
-        var isCurrentService = new P8ServerPresentationService(isCurrentTransport);
+        var isCurrentService = new P8ServerPresentationService(
+                isCurrentTransport, P8ProductionCatalogTransport.INSTANCE);
         try {
             isCurrentService.startForTesting(server, emptyCatalog());
             helper.assertTrue(isCurrentService.offerApplied(
@@ -1010,7 +1011,8 @@ public final class P8S3PresentationGameTests {
         RuntimeFixture submitFixture = runtimeFixture(
                 context, player, 11L, ACTIVE_CAST);
         var submitTransport = new RecordingTransport(player.getUUID());
-        var submitService = new P8ServerPresentationService(submitTransport);
+        var submitService = new P8ServerPresentationService(
+                submitTransport, P8ProductionCatalogTransport.INSTANCE);
         try {
             submitService.startForTesting(server, emptyCatalog());
             helper.assertTrue(submitService.offerApplied(
