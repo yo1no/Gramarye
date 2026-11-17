@@ -294,7 +294,7 @@ final class A04UnknownQualification {
                         && (!DAMAGE_UNKNOWN || producer.damageOperationsAtReceipt == 0L));
                 checks.put("originalDebitMaterialCurrentAtReceipt", producer.rootMaterialCurrentAtReceipt
                         && (!DAMAGE_UNKNOWN || producer.damageMaterialCurrentAtReceipt));
-                checks.put("prerequisiteNativeRoot", producer.rootNativeApplied == (DAMAGE_UNKNOWN ? 1 : 0));
+                checks.put("nativeRootCountMatchesCase", producer.rootNativeApplied == (DAMAGE_UNKNOWN ? 1 : 0));
                 checks.put("noChildNativeAttempt", producer.childAttempts == 0);
                 checks.put("targetHealthUnchangedAtUnknown", targetUnchanged());
                 authority = producer.rootFrame.authority();
@@ -315,6 +315,7 @@ final class A04UnknownQualification {
                 checks.put("freshProbeExecutedInOriginalCell", exactReuse);
                 observations.put("cleanupProbeReceipt", producer.receipts.getLast());
                 observations.put("probeCell", probe == null ? -1 : probe.binding().cell);
+                checks.put("originalCarrierInsertionMatchesCase", producer.carrier.v0EverInserted() == DAMAGE_UNKNOWN);
                 checks.put("originalBindingClosedAndCarrierCleared", producer.binding.closing()
                         && producer.binding.carrier() == null);
                 checks.put("originalCarrierAbsentFromBothWorldIndexes", !producer.carrier.isAddedToLevel()
@@ -461,6 +462,7 @@ final class A04UnknownQualification {
         oldCallReferences.put("rootHandoff", new WeakReference<>(producer.rootOwner));
         oldCallReferences.put("binding", new WeakReference<>(producer.binding));
         oldCallReferences.put("work", new WeakReference<>(producer.work));
+        oldCallReferences.put("probeFrame", new WeakReference<>(producer.probeFrame));
         oldCallReferences.put("carrier", new WeakReference<>(producer.carrier));
         if (DAMAGE_UNKNOWN) {
             oldCallReferences.put("damageFrame", new WeakReference<>(producer.damageFrame));
@@ -530,8 +532,8 @@ final class A04UnknownQualification {
         result.put("observations", observations);
         result.put("checks", checks);
         result.put("receipts", new ArrayList<>(producer.receipts));
-        result.put("counts", Map.of("rootNativeAttempts", producer.rootAttempts,
-                "damageNativeAttempts", producer.damageAttempts, "childNativeAttempts", producer.childAttempts,
+        result.put("counts", Map.of("rootOutcomeProducerEntries", producer.rootAttempts,
+                "damageOutcomeProducerEntries", producer.damageAttempts, "childOutcomeProducerEntries", producer.childAttempts,
                 "rootNativeApplied", producer.rootNativeApplied, "unknownReturns", producer.unknownReturns,
                 "unknownReceipts", producer.unknownReceipts, "completedCallbacks", producer.completedCallbacks,
                 "cleanupProbeReceipts", producer.probeReceipts));
