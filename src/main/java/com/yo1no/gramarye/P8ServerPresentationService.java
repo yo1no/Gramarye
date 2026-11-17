@@ -118,17 +118,32 @@ final class P8ServerPresentationService {
     private long tickStateServerTick = Long.MIN_VALUE;
     private final List<V0StagedPresentation> v0Staging = new ArrayList<>(16);
     private final A05Observer a05Observer;
+    private final NativeV0SubmissionBoundary submissionBoundary;
     private volatile V0PresentationEpoch v0PresentationEpoch = new V0PresentationEpoch();
     private boolean offerInProgress;
     private boolean drainInProgress;
     private boolean registered;
+
+    static class NativeV0SubmissionBoundary {
+        NativeV0SubmissionBoundary() {}
+
+        void beforeSend(int nativeTick, long runtimeTick, long instanceId,
+                long requestId, long sourceEventId, int statementOrdinal,
+                long catalogGeneration, long presentationSequence,
+                long connectionEpoch, PresentationEventKind kind) {}
+    }
 
     private P8ServerPresentationService() {
         this(A05Observer.NOOP);
     }
 
     P8ServerPresentationService(A05Observer observer) {
+        this(observer, new NativeV0SubmissionBoundary());
+    }
+
+    P8ServerPresentationService(A05Observer observer, NativeV0SubmissionBoundary submissionBoundary) {
         a05Observer = Objects.requireNonNull(observer, "observer");
+        this.submissionBoundary = Objects.requireNonNull(submissionBoundary, "submissionBoundary");
         catalogTransport = P8ProductionCatalogTransport.INSTANCE;
         transport = new ProductionPresentationTransport(this);
     }
@@ -138,6 +153,7 @@ final class P8ServerPresentationService {
         this.transport = Objects.requireNonNull(transport, "transport");
         this.catalogTransport = Objects.requireNonNull(catalogTransport, "catalogTransport");
         a05Observer = A05Observer.NOOP;
+        submissionBoundary = new NativeV0SubmissionBoundary();
     }
 
     static P8ServerPresentationService create() {
@@ -1303,7 +1319,7 @@ final class P8ServerPresentationService {
                                 right.buffered().event().sequence());
             });
             for (P8Delivery delivery : admitted) {
-                submitEvent(delivery.identity(), delivery.buffered().event());
+                submitEvent(delivery.identity(), delivery.buffered().event(), null);
             }
             if (!v0Staging.isEmpty()) {
                 var shared = drainingServerTick == serverTick ? draining : P8TickState.empty();
@@ -1390,13 +1406,15 @@ final class P8ServerPresentationService {
         connectionAuthority.submitted(key);
     }
 
-    private void submitEvent(P8RecipientIdentity identity, PresentationEvent event) {
+    private void submitEvent(P8RecipientIdentity identity, PresentationEvent event, V0StagedPresentation staged) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(event, "event");
         int nativeTick = activeServer == null ? 0 : activeServer.getTickCount();
         P8PresentationSubmissionResult result;
         try {
-            result = transport.submit(identity, event);
+            result = staged != null && transport instanceof ProductionPresentationTransport nativeTransport
+                    ? nativeTransport.submitV0(identity, event, staged)
+                    : transport.submit(identity, event);
         } catch (RuntimeException ignored) {
             recordRuntimeDiagnostic(
                     P8ServerRuntimeDiagnosticCode.EVENT_TRANSPORT_RUNTIME_EXCEPTION);
@@ -2715,7 +2733,7 @@ final class P8ServerPresentationService {
                                 || currentV0Source(server, level, staged) != null)
                         && player != null && P8RecipientSelector.currentConnected(server, player)
                         && transport.isCurrent(player, delivery.identity(), event.catalogGeneration())) {
-                    submitEvent(delivery.identity(), event);
+                    submitEvent(delivery.identity(), event, staged);
                 }
             } catch (RuntimeException ignored) {
                 recordObserverRuntimeException();
@@ -2906,6 +2924,19 @@ final class P8ServerPresentationService {
             }
             P8PacketSubmission.send(
                     player.orElseThrow(), new PresentationEventPayload(event));
+            return P8PresentationSubmissionResult.SUBMITTED;
+        }
+
+        private P8PresentationSubmissionResult submitV0(
+                P8RecipientIdentity identity, PresentationEvent event, V0StagedPresentation staged) {
+            Objects.requireNonNull(event, "event");
+            var player = owner.currentReadyPlayer(identity, event.catalogGeneration());
+            if (player.isEmpty()) {
+                return P8PresentationSubmissionResult.UNAVAILABLE;
+            }
+            P8PacketSubmission.sendV0(player.orElseThrow(), new PresentationEventPayload(event),
+                    owner.submissionBoundary, staged.serverTick, staged.runtimeTick, staged.instanceId.value(),
+                    staged.requestId, staged.sourceEventId, staged.statementOrdinal, identity.connectionEpoch());
             return P8PresentationSubmissionResult.SUBMITTED;
         }
     }

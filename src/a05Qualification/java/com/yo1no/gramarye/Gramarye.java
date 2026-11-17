@@ -58,7 +58,7 @@ public final class Gramarye {
         new DescriptorMigrationAudit().register(modBus);
         var p11SourceProvenance = new P11SourceProvenance();
         playerSkillAttachmentService = PlayerSkillAttachmentService.registerOn(modBus, p11SourceProvenance);
-        p8ServerPresentationService = new P8ServerPresentationService(qualification.observer);
+        p8ServerPresentationService = qualification.presentation;
         var profileAvailability = p8ServerPresentationService.profileAvailabilityView();
         var runtimeCapability = P6RuntimeExecutionCapability.forRuntimeAdapter();
         var p7LoginReadyPort = P7ServerAuthorizationBoundary.loginReadyPort(runtimeCapability);

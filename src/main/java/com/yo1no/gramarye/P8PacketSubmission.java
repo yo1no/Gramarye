@@ -86,6 +86,21 @@ final class P8PacketSubmission {
         }
         player.connection.send(payload);
     }
+
+    static void sendV0(ServerPlayer player, PresentationEventPayload payload,
+            P8ServerPresentationService.NativeV0SubmissionBoundary boundary,
+            int nativeTick, long runtimeTick, long instanceId,
+            long requestId, long sourceEventId, int statementOrdinal, long connectionEpoch) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(boundary, "boundary");
+        if (!canSubmit(player, payload)) {
+            throw new IllegalStateException("P8 payload connection stopped accepting");
+        }
+        boundary.beforeSend(nativeTick, runtimeTick, instanceId, requestId, sourceEventId, statementOrdinal,
+                payload.catalogGeneration(), payload.sequence(), connectionEpoch, payload.kind());
+        player.connection.send(payload);
+    }
 }
 
 interface P8CatalogTransport {

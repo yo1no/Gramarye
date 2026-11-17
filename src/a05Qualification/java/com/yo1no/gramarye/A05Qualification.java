@@ -39,7 +39,7 @@ import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
-/** One statically composed native absorption case, outside all distributable artifacts. */
+/** One statically composed validated pre-native-send negative case, outside all distributable artifacts. */
 final class A05Qualification {
     private static final int CASE_ABSORPTION = 1;
     private static final int READY_DEADLINE = 2_300;
@@ -48,12 +48,14 @@ final class A05Qualification {
     private static final Path OWNED_ROOT = Path.of("/private/tmp/gramarye-v0-final-continuation");
     private static final StackWalker STACK = StackWalker.getInstance();
 
-    final A05QualificationRecorder recorder = new A05QualificationRecorder(CASE_ABSORPTION);
+    static final A05QualificationRecorder recorder = new A05QualificationRecorder(CASE_ABSORPTION);
     final A05Observer observer = new A05Observer(recorder::receipt, recorder::offer, recorder::submission);
     private final Map<String, Boolean> checks = new LinkedHashMap<>();
     private final Map<String, Object> facts = new LinkedHashMap<>();
     private P11FoundationService foundation;
-    private P8ServerPresentationService presentation;
+    private final A05OneShotSubmissionFault submissionFault = new A05OneShotSubmissionFault();
+    private final A05OneShotSubmissionFault controlFault = new A05OneShotSubmissionFault();
+    final P8ServerPresentationService presentation;
     private P6RuntimeExecutionCapability capability;
     private SkillRuntimeService runtime;
     private MinecraftServer server;
@@ -75,6 +77,13 @@ final class A05Qualification {
     private boolean sceneReady;
     private boolean redirected;
     private boolean rootTracked;
+    private boolean rootOwnerMatchedAtInitialJoin;
+    private boolean cooldownObservationsValid = true;
+    private boolean cooldownDispatchIdentityPreserved = true;
+    private int cooldownSamples;
+    private int cooldownDispatchSamples;
+    private long initialCooldownGameTime = -1L;
+    private long lastCooldownClockFloor = -1L;
     private boolean childTracked;
     private boolean finished;
     private int stableReadiness;
@@ -97,7 +106,9 @@ final class A05Qualification {
     private float absorptionConsumed;
     private String issue = "NONE";
 
-    A05Qualification() {}
+    A05Qualification() {
+        presentation = new P8ServerPresentationService(observer, submissionFault);
+    }
 
     SkillRuntimeService create(IEventBus gameBus,
             SkillDefinitionStoreService storeService,
@@ -109,7 +120,9 @@ final class A05Qualification {
             P11CastCooldownService cooldowns) {
         if (created) { throw new IllegalStateException("A05 qualification already composed"); }
         this.capability = Objects.requireNonNull(capability);
-        this.presentation = Objects.requireNonNull(presentationService);
+        if (Objects.requireNonNull(presentationService) != presentation) {
+            throw new IllegalArgumentException("A05 original presentation composition changed");
+        }
         this.foundation = Objects.requireNonNull(foundation);
         Objects.requireNonNull(gameBus);
         Objects.requireNonNull(profiles);
@@ -122,7 +135,64 @@ final class A05Qualification {
         runtime = service;
         gameBus.addListener(EventPriority.HIGHEST, this::onPostTick);
         gameBus.addListener(EventPriority.HIGHEST, this::onPreTick);
-        gameBus.addListener(EventPriority.LOWEST, service::handleRuntimePost);
+        gameBus.addListener(EventPriority.LOWEST, (ServerTickEvent.Post event) -> {
+            if (!sceneReady || finished || event.getServer() != server) {
+                service.handleRuntimePost(event);
+                return;
+            }
+            // Qualification-only bracket around the unchanged production P5 drain.
+            var beforeCooldown = P11CastCooldownMaterial.capture(actor);
+            service.handleRuntimePost(event);
+            var afterCooldown = P11CastCooldownMaterial.capture(actor);
+            cooldownDispatchSamples++;
+            cooldownDispatchIdentityPreserved &= beforeCooldown.current(actor)
+                    && beforeCooldown.same(afterCooldown);
+            observeCooldownState(event.getServer());
+            identifyReceipts();
+            if (hitReceipt != null && !submissionFault.armed && issue.equals("NONE")) {
+                try {
+                    if (!confirmed(hitReceipt) || rootReceipt == null || !confirmed(rootReceipt)
+                            || hitReceipt.lineageId != rootReceipt.lineageId
+                            || hitReceipt.instanceId != rootReceipt.instanceId
+                            || hitReceipt.nativeTick != event.getServer().getTickCount()
+                            || postTick != hitReceipt.nativeTick || postCount != 1 || impactCount != 1
+                            || !checks.getOrDefault("exactIndirectMagicNativePost", false)
+                            || !checks.getOrDefault("exactNaturalUncancelledImpact", false)
+                            || postHealth != 10.0F || postAbsorption != 2.0F
+                            || !currentPlay(server, actor) || !currentPlay(server, peer)
+                            || !qualified(source, actor) || !qualified(source, peer)) {
+                        throw new IllegalStateException("A05 original native hit preconditions unproved");
+                    }
+                    long generation = 0L;
+                    long rootSequence = 0L;
+                    for (var offer : recorder.offers) {
+                        if (offer.phase.equals("LINK") && offer.instanceId == rootReceipt.instanceId
+                                && offer.requestId == rootReceipt.requestId
+                                && offer.sourceEventId == rootReceipt.sourceEventId
+                                && offer.statementOrdinal == -1 && offer.kind.equals("CAST_RELEASE")) {
+                            generation = offer.generation;
+                            rootSequence = offer.sequence;
+                        }
+                    }
+                    long selectedEpoch = 0L;
+                    for (var sent : recorder.submissions) {
+                        if (sent.generation == generation && sent.sequence == rootSequence
+                                && sent.kind.equals("CAST_RELEASE") && sent.outcome.equals("SUBMITTED")) {
+                            selectedEpoch = sent.connectionEpoch;
+                            break;
+                        }
+                    }
+                    // Both instances receive only this same original post-P5, pre-P8 receipt.
+                    // The secondary instance is never installed in the native transport.
+                    submissionFault.expect(hitReceipt, generation, selectedEpoch);
+                    controlFault.expect(hitReceipt, generation, selectedEpoch);
+                    facts.put("faultArmedNativeTick", event.getServer().getTickCount());
+                    facts.put("faultArmedAfterOriginalP5BeforeP8", true);
+                } catch (RuntimeException armingFailure) {
+                    issue = "ORIGINAL_PRE_SEND_ARMING_PRECONDITION_FAILED";
+                }
+            }
+        });
         gameBus.addListener(EventPriority.LOWEST, this::onJoin);
         gameBus.addListener(EventPriority.LOWEST, this::onImpact);
         gameBus.addListener(EventPriority.LOWEST, this::onDamage);
@@ -174,6 +244,7 @@ final class A05Qualification {
                 redirected = true;
                 facts.put("futureCastPoseChangedAtTick", current.getTickCount());
             }
+            observeCooldownState(current);
             identifyReceipts();
             if (rootJoinTick < 0 && current.getTickCount() > FIRST_NATIVE_OFFER + 80) {
                 finish(current, "NO_SELECTED_NATIVE_ROOT");
@@ -245,13 +316,21 @@ final class A05Qualification {
             throw new IllegalStateException("A05 Mana observation changed material or was unavailable");
         }
         initialCooldown = P11CastCooldownMaterial.capture(actor);
+        initialCooldownGameTime = current.overworld().getGameTime();
+        if (initialCooldown.data == null || initialCooldown.data.kind != P11CastCooldownData.Kind.ROUTED
+                || !initialCooldown.data.entries.isEmpty() || initialCooldown.data.clockFloor < 0L
+                || initialCooldown.data.clockFloor > initialCooldownGameTime || !initialCooldown.current(actor)) {
+            throw new IllegalStateException("A05 initially routed empty cooldown material is unproved");
+        }
+        lastCooldownClockFloor = initialCooldown.data.clockFloor;
+        observeCooldownState(current);
         var diagnostics = source.diagnostics(actor.getUUID());
         initialSourceEpoch = diagnostics.sourceEpoch();
         initialExperience = actor.totalExperience;
         initialItems = itemCount(actor);
         readyTick = current.getTickCount();
         var readiness = new LinkedHashMap<String, Object>();
-        readiness.put("case", "A05.absorption");
+        readiness.put("case", "A05.transport-drop");
         readiness.put("nativeTick", readyTick);
         readiness.put("players", 2);
         readiness.put("distinctAuthenticatedPlayConnections", true);
@@ -282,7 +361,10 @@ final class A05Qualification {
         sceneReady = true;
         facts.put("readyNativeTick", readyTick);
         facts.put("initialMana", initialBalance);
-        facts.put("initialCooldownEntries", initialCooldown.data == null ? 0 : initialCooldown.data.entries.size());
+        facts.put("initialCooldownEntries", initialCooldown.data.entries.size());
+        facts.put("initialCooldownKind", initialCooldown.data.kind.name());
+        facts.put("initialCooldownClockFloor", initialCooldown.data.clockFloor);
+        facts.put("initialCooldownGameTime", initialCooldownGameTime);
         facts.put("initialSource", sourceScalars(diagnostics));
         facts.put("casterPose", List.of(4.5, 65.0, 0.5, 45.0, 6.0));
         facts.put("targetPose", List.of(-1.0, 65.0, 6.0));
@@ -305,8 +387,12 @@ final class A05Qualification {
                 issue = "FIRST_NATIVE_ROOT_OWNER_OR_SCHEDULE_CHANGED";
                 return;
             }
+            // The native owner is intentionally unavailable once the V0 carrier closes.
+            rootOwnerMatchedAtInitialJoin = projectile.getOwner() == actor;
             rootCarrier = projectile;
             rootJoinTick = server.getTickCount();
+            facts.put("firstRootOwnerMatchedAtInitialJoin", rootOwnerMatchedAtInitialJoin);
+            facts.put("firstRootOwnerWitnessTick", rootJoinTick);
             return;
         }
         if (projectile.getOwner() == actor && projectile != rootCarrier && postTick >= 0
@@ -382,7 +468,7 @@ final class A05Qualification {
     private void assess(MinecraftServer current) {
         identifyReceipts();
         checks.put("recorderComplete", recorder.overflow == 0 && recorder.invalid == 0);
-        checks.put("firstNativeRootOwnerWasSelectedCaster", rootCarrier != null && rootCarrier.getOwner() == actor);
+        checks.put("firstNativeRootOwnerWasSelectedCaster", rootCarrier != null && rootOwnerMatchedAtInitialJoin);
         checks.put("originalRootWasNativeInserted", rootCarrier != null && rootCarrier.v0EverInserted() && rootTracked);
         checks.put("oneParentImpactAndOneExactPost", impactCount == 1 && postCount == 1);
         checks.put("nativePostSameTickAsImpact", impactTick > 0 && postTick == impactTick);
@@ -407,6 +493,67 @@ final class A05Qualification {
         checkPresentation(rootReceipt, "CAST_RELEASE", "root");
         checkPresentation(hitReceipt, "HIT", "parentHit");
         checkPresentation(childReceipt, "CAST_RELEASE", "child");
+        // These calls exercise only a second, never-installed scalar strategy.
+        // They do not call packet, transport, receipt producer, P8 offer or native send.
+        int rejectedControls = 0;
+        if (controlFault.armed && hitReceipt != null && submissionFault.boundSequence > 0L) {
+            long sequence = submissionFault.boundSequence;
+            try {
+                controlFault.beforeSend(hitReceipt.nativeTick, hitReceipt.runtimeTick, hitReceipt.instanceId,
+                        hitReceipt.requestId, hitReceipt.sourceEventId, 0, controlFault.expectedGeneration,
+                        sequence + 1L, controlFault.selectedEpoch, PresentationEventKind.HIT);
+            } catch (IllegalArgumentException expected) { rejectedControls++; }
+            try {
+                controlFault.beforeSend(hitReceipt.nativeTick, hitReceipt.runtimeTick, hitReceipt.instanceId,
+                        hitReceipt.requestId, hitReceipt.sourceEventId, 0, controlFault.expectedGeneration + 1L,
+                        sequence, controlFault.selectedEpoch, PresentationEventKind.HIT);
+            } catch (IllegalArgumentException expected) { rejectedControls++; }
+            try {
+                controlFault.beforeSend(hitReceipt.nativeTick, hitReceipt.runtimeTick, hitReceipt.instanceId,
+                        hitReceipt.requestId, hitReceipt.sourceEventId, 0, controlFault.expectedGeneration,
+                        sequence, Long.MAX_VALUE, PresentationEventKind.HIT);
+            } catch (IllegalArgumentException expected) { rejectedControls++; }
+            try {
+                controlFault.beforeSend(hitReceipt.nativeTick, hitReceipt.runtimeTick, hitReceipt.instanceId,
+                        hitReceipt.requestId, hitReceipt.sourceEventId + 1L, 0, controlFault.expectedGeneration,
+                        sequence, controlFault.selectedEpoch, PresentationEventKind.HIT);
+            } catch (IllegalArgumentException expected) { rejectedControls++; }
+            checks.put("directControlsWrongKeysRejectedBeforeConsumption", rejectedControls == 4
+                    && !controlFault.consumed && controlFault.faultCount == 0
+                    && controlFault.rejectedSequence == 1 && controlFault.rejectedGeneration == 1
+                    && controlFault.rejectedRecipient == 1 && controlFault.rejectedEvent == 1);
+            boolean exactFaultIdentity = false;
+            try {
+                controlFault.beforeSend(hitReceipt.nativeTick, hitReceipt.runtimeTick, hitReceipt.instanceId,
+                        hitReceipt.requestId, hitReceipt.sourceEventId, 0, controlFault.expectedGeneration,
+                        sequence, controlFault.selectedEpoch, PresentationEventKind.HIT);
+            } catch (RuntimeException expected) { exactFaultIdentity = expected == controlFault.plannedFault; }
+            boolean reuseRejected = false;
+            try {
+                controlFault.beforeSend(hitReceipt.nativeTick, hitReceipt.runtimeTick, hitReceipt.instanceId,
+                        hitReceipt.requestId, hitReceipt.sourceEventId, 0, controlFault.expectedGeneration,
+                        sequence, controlFault.selectedEpoch, PresentationEventKind.HIT);
+            } catch (IllegalStateException expected) { reuseRejected = true; }
+            checks.put("directControlsExactOnceThenReuseRejected", exactFaultIdentity && reuseRejected
+                    && controlFault.consumed && controlFault.faultCount == 1 && controlFault.rejectedSecondUse == 1);
+        } else {
+            checks.put("directControlsWrongKeysRejectedBeforeConsumption", false);
+            checks.put("directControlsExactOnceThenReuseRejected", false);
+        }
+        checks.put("installedBoundaryFaultOccurredOnceWithoutInvalidTuple", submissionFault.expectCalls == 1
+                && submissionFault.faultCount == 1 && submissionFault.otherRecipientPasses == 1
+                && submissionFault.rejectedEvent == 0 && submissionFault.rejectedGeneration == 0
+                && submissionFault.rejectedRecipient == 0 && submissionFault.rejectedSequence == 0
+                && submissionFault.rejectedLink == 0 && submissionFault.rejectedAdmission == 0
+                && submissionFault.rejectedSecondUse == 0 && submissionFault.rejectedExpectation == 0);
+        facts.put("negativeEvidenceRole", "INJECTED_VALIDATED_PRE_NATIVE_SEND_BOUNDARY; NOT_PHYSICAL_NETWORK_FAILURE");
+        facts.put("installedFault", Map.of("expectCalls", submissionFault.expectCalls,
+                "beforeSendCalls", submissionFault.beforeSendCalls, "faultCount", submissionFault.faultCount,
+                "boundSequence", submissionFault.boundSequence, "generation", submissionFault.expectedGeneration,
+                "selectedEpoch", submissionFault.selectedEpoch, "otherEpoch", submissionFault.otherEpoch,
+                "otherRecipientPasses", submissionFault.otherRecipientPasses));
+        facts.put("directControlFault", Map.of("notInstalledInTransport", true, "rejectedWrongKeys", rejectedControls,
+                "faultCount", controlFault.faultCount, "rejectedSecondUse", controlFault.rejectedSecondUse));
         checks.put("originalCarriersTerminalAndUnindexed", absent(rootCarrier) && absent(childCarrier));
         checks.put("nativeTargetSurvivedWithExactAbsorptionResult", target != null && indexed(target)
                 && target.isAlive() && target.getHealth() == 10.0F && target.getAbsorptionAmount() == 2.0F);
@@ -416,16 +563,28 @@ final class A05Qualification {
         long balance = P7ManaSnapshotBridge.observeBalance(capability, actor);
         checks.put("manaBalanceUnchangedAndReadPreservedMaterial", balance == initialBalance
                 && before.sameState(P11ManaMaterial.capture(actor)));
-        checks.put("cooldownMaterialAndEntriesUnchanged", initialCooldown != null && initialCooldown.current(actor)
-                && initialCooldown.same(P11CastCooldownMaterial.capture(actor)));
+        observeCooldownState(current);
+        checks.put("zeroCooldownEntriesRemainEmptyWithLegalClockFloor", initialCooldown != null
+                && cooldownObservationsValid && cooldownSamples > 0);
+        checks.put("originalP5DispatchPreservesCooldownMaterial", cooldownDispatchIdentityPreserved
+                && cooldownDispatchSamples > 0);
         var diagnostics = source.diagnostics(actor.getUUID());
         checks.put("originalSourceStillComplete", qualified(source, actor) && diagnostics.sourceEpoch() == initialSourceEpoch);
         checks.put("noDeathRewardInTargetCase", target.isAlive() && target.getHealth() == 10.0F
                 && actor.totalExperience == initialExperience && itemCount(actor) == initialItems);
         facts.put("terminalSource", sourceScalars(diagnostics));
         facts.put("finalMana", balance);
-        facts.put("finalCooldownEntries", P11CastCooldownAttachments.existing(actor) == null
-                ? 0 : P11CastCooldownAttachments.existing(actor).entries.size());
+        var finalCooldown = P11CastCooldownMaterial.capture(actor);
+        facts.put("finalCooldownEntries", finalCooldown.data == null ? -1 : finalCooldown.data.entries.size());
+        facts.put("finalCooldownKind", finalCooldown.data == null ? "ABSENT" : finalCooldown.data.kind.name());
+        facts.put("finalCooldownClockFloor", finalCooldown.data == null ? -1L : finalCooldown.data.clockFloor);
+        facts.put("finalCooldownGameTime", current.overworld().getGameTime());
+        facts.put("cooldownSamples", cooldownSamples);
+        facts.put("cooldownDispatchSamples", cooldownDispatchSamples);
+        facts.put("cooldownImmediateObservationPreserved", cooldownObservationsValid);
+        facts.put("cooldownDispatchIdentityPreserved", cooldownDispatchIdentityPreserved);
+        facts.put("cooldownSameIdentityAcrossElapsedNativeTicks", initialCooldown.same(finalCooldown));
+        facts.put("cooldownClockFloorPolicy", "ROUTED_EMPTY_MONOTONIC_NOT_ABOVE_ACTUAL_GAMETIME");
         facts.put("nativeImpactTick", impactTick);
         facts.put("nativePostTick", postTick);
         facts.put("nativeChildJoinTick", childJoinTick);
@@ -435,6 +594,19 @@ final class A05Qualification {
         facts.put("postHealthDamage", healthDamage);
         facts.put("postAbsorptionConsumed", absorptionConsumed);
         facts.put("nativeHurtBooleanObservation", "CONFIRMED_BY_ORIGINAL_APPLIED_RECEIPT; NO_NEW_NATIVE_RETURN_HOOK");
+    }
+
+    private void observeCooldownState(MinecraftServer current) {
+        var before = P11CastCooldownMaterial.capture(actor);
+        var data = before.data;
+        long gameTime = current.overworld().getGameTime();
+        boolean legal = data != null && data.kind == P11CastCooldownData.Kind.ROUTED
+                && data.entries.isEmpty() && data.clockFloor >= lastCooldownClockFloor
+                && data.clockFloor >= 0L && data.clockFloor <= gameTime;
+        if (data != null) { lastCooldownClockFloor = data.clockFloor; }
+        cooldownSamples++;
+        cooldownObservationsValid &= legal && before.current(actor)
+                && before.same(P11CastCooldownMaterial.capture(actor));
     }
 
     private void checkPresentation(A05Observer.ReceiptObservation receipt, String kind, String label) {
@@ -483,8 +655,32 @@ final class A05Qualification {
         checks.put(label + "OriginalOfferOnce", offerReturns == 1);
         checks.put(label + "SequenceLinkedOnce", links == 1);
         checks.put(label + "TwoRealRecipientsAdmitted", admissions == 1);
-        checks.put(label + "ActualNativeSubmissionExactlyOncePerConnection", submissions == 2
-                && epochs.size() == 2 && failedSubmissions == 0);
+        if (label.equals("parentHit")) {
+            int selectedFaults = 0;
+            int actualOtherSends = 0;
+            int selectedAttempts = 0;
+            if (link != null) {
+                for (var sent : recorder.submissions) {
+                    if (sent.generation == link.generation && sent.sequence == link.sequence) {
+                        selectedAttempts++;
+                        if (sent.nativeTick == receipt.nativeTick && sent.kind.equals("HIT")
+                                && sent.connectionEpoch == submissionFault.selectedEpoch
+                                && sent.outcome.equals("RUNTIME_EXCEPTION")) { selectedFaults++; }
+                        if (sent.nativeTick == receipt.nativeTick && sent.kind.equals("HIT")
+                                && sent.connectionEpoch == submissionFault.otherEpoch
+                                && sent.outcome.equals("SUBMITTED")) { actualOtherSends++; }
+                    }
+                }
+            }
+            checks.put("parentHitOneInjectedBoundaryFailureAndOtherRealSend", selectedAttempts == 2
+                    && selectedFaults == 1 && actualOtherSends == 1
+                    && submissions == 1 && failedSubmissions == 1 && epochs.size() == 1
+                    && submissionFault.armed && submissionFault.consumed && submissionFault.faultCount == 1
+                    && submissionFault.boundSequence == (link == null ? 0L : link.sequence));
+        } else {
+            checks.put(label + "ActualNativeSubmissionExactlyOncePerConnection", submissions == 2
+                    && epochs.size() == 2 && failedSubmissions == 0);
+        }
         facts.put(label + "Presentation", Map.of("offers", offerReturns, "links", links,
                 "admissions", admissions, "submissions", submissions, "distinctConnectionEpochs", epochs.size(),
                 "failedSubmissions", failedSubmissions));
@@ -496,7 +692,7 @@ final class A05Qualification {
         boolean accepted = reason.equals("NONE") && rootReceipt != null && hitReceipt != null && childReceipt != null
                 && !checks.isEmpty() && checks.values().stream().allMatch(Boolean.TRUE::equals);
         var result = new LinkedHashMap<String, Object>();
-        result.put("case", "A05.absorption");
+        result.put("case", "A05.transport-drop");
         result.put("accepted", accepted);
         result.put("terminal", true);
         result.put("issue", reason);
@@ -509,9 +705,9 @@ final class A05Qualification {
         result.put("recorderOverflow", recorder.overflow);
         result.put("recorderInvalid", recorder.invalid);
         result.put("notRun", List.of("A05.missing-profile", "A05.stale-profile", "A05.residual-drop",
-                "A05.transport-drop", "A05.zero-post", "A05.postcondition"));
+                "A05.absorption", "A05.zero-post", "A05.postcondition"));
         try {
-            if (outputDirectory != null) { writeJson("a05-absorption-result.json", result); }
+            if (outputDirectory != null) { writeJson("a05-transport-result.json", result); }
         } catch (RuntimeException writeFailure) {
             System.err.println("A05_QUALIFICATION_RESULT_WRITE_FAILED");
             current.halt(false);
@@ -525,7 +721,6 @@ final class A05Qualification {
         initialMana = null;
         initialCooldown = null;
         foundation = null;
-        presentation = null;
         capability = null;
         runtime = null;
         impact = null;

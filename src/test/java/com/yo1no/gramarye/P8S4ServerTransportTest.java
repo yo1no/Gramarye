@@ -274,16 +274,30 @@ final class P8S4ServerTransportTest {
         var sharedDrain = between(service, "    private CatalogDrainResultForTesting drainPresentation(",
                 "    private CatalogDrainResultForTesting drainCatalogs(");
         var v0Drain = between(service, "    private void drainV0Applied(", "    private boolean currentV0Stage(");
-        int legacySubmit = sharedDrain.indexOf("submitEvent(delivery.identity(), delivery.buffered().event())");
+        int legacySubmit = sharedDrain.indexOf("submitEvent(delivery.identity(), delivery.buffered().event(), null)");
         int v0Residual = sharedDrain.indexOf("shared.residualAfter(deliveries.size(), admitted)");
         int eligibility = v0Drain.indexOf("P8RecipientSelector.remainsEligible(");
         int measure = v0Drain.indexOf("transport.packetCharge(");
+        var nativeSubmission = between(service,
+                "        private P8PresentationSubmissionResult submitV0(",
+                "    static final class ReloadIdentity");
+        var packetSubmission = read(PACKET_SUBMISSION_SOURCE);
+        var nativeBoundary = between(packetSubmission, "    static void sendV0(", "\n}\n\ninterface P8CatalogTransport");
+        int nativeGuard = nativeBoundary.indexOf("if (!canSubmit(player, payload))");
+        int faultBoundary = nativeBoundary.indexOf("boundary.beforeSend(");
+        int nativeSend = nativeBoundary.indexOf("player.connection.send(payload)");
         assertAll(
                 () -> assertTrue(legacySubmit >= 0 && legacySubmit < v0Residual),
                 () -> assertTrue(v0Drain.contains("residual.admitDeliveries(deliveries)")),
                 () -> assertTrue(eligibility >= 0 && eligibility < measure),
                 () -> assertEquals(1, occurrences(v0Drain, "submitEvent(")),
-                () -> assertEquals(0, occurrences(v0Drain, "transport.submit(")));
+                () -> assertEquals(0, occurrences(v0Drain, "transport.submit(")),
+                () -> assertTrue(v0Drain.contains("submitEvent(delivery.identity(), event, staged)")),
+                () -> assertTrue(nativeSubmission.contains("owner.currentReadyPlayer(identity, event.catalogGeneration())")),
+                () -> assertTrue(nativeSubmission.contains("P8PacketSubmission.sendV0(")),
+                () -> assertTrue(nativeGuard >= 0 && nativeGuard < faultBoundary && faultBoundary < nativeSend),
+                () -> assertEquals(0, occurrences(nativeBoundary, "catch (")),
+                () -> assertEquals(0, occurrences(nativeSubmission, "catch (")));
     }
 
     @Test
