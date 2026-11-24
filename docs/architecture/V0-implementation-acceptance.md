@@ -1,0 +1,9 @@
+# V0 implementation acceptance
+
+The original 55 required direct-acceptance rows are qualified locally. The canonical row decisions, exact source/artifact bindings, complete evidence bridge and preserved failures are recorded in the [durable acceptance package](/Users/yashen/Desktop/Gramarye-Design/DP2-V0-integrated-delivery-20261115-115028-v0surface/acceptance.md) and [current ledger](/Users/yashen/Desktop/Gramarye-Design/DP2-V0-integrated-delivery-20261115-115028-v0surface/milestone-e-qualification/gap-closure/gap-ledger-current.md).
+
+Product evidence is bound to production candidate `7c1ce5162f89904bf754af278671f2ec6e5f7ceb`. This closure changes documentation and evidence status. Rebuilt ordinary and engineering artifacts must preserve that candidate's runtime class/resource entries; only the expected manifest commit identity may change. The exact final artifact hashes and entry comparison belong to the external closure evidence.
+
+This local direct qualification does not alone complete V0 Integrated Delivery. Final publication requires the final commit's complete local regression, current candidate required checks, safe canonical integration and required main checks on the exact final main SHA. The external acceptance package records the actual commands, outputs, commit/tree, JAR identities, CI run IDs and canonical clean/0:0 state. This frozen document does not contain a self-referential final SHA or a CI status that would require another documentation commit.
+
+The scope and exclusions in [22](../codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md), the [runtime contract](V0-runtime-engineering-contract.md) and [direct acceptance plan](V0-direct-acceptance-plan.md) remain unchanged. Existing H6 authority whole/prefix closure is preserved; no additional H6 appendix or product requirement is introduced here.

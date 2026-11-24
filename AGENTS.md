@@ -76,6 +76,10 @@ V0 implementation and runtime qualification follow the complete integrated deliv
 after authority main checks pass. Element E, normal player entry, new network, editor, renderer, and P12
 require separate authorization.
 
+V0's original 55 required direct-acceptance rows are qualified locally against production evidence candidate `7c1ce5162f89904bf754af278671f2ec6e5f7ceb`. [V0 implementation acceptance](docs/architecture/V0-implementation-acceptance.md) records this bounded local status. Existing scope, authoritative precedence, accepted limitations and exclusions remain unchanged.
+
+V0 Integrated Delivery publication additionally requires final-commit local regression, candidate required CI, safe canonical integration and exact-main-SHA required CI. Actual final identities and results are maintained in the durable external acceptance package. Rebuilt ordinary/engineering runtime entries must remain equivalent to the qualified production candidate apart from the expected manifest commit identity. No global completion is implied by the local row status alone.
+
 If the P4 amendment and another authoritative document have not been synchronized and still
 contain a substantive conflict, stop the affected work and report the exact conflict; do not choose
 one side or redesign the frozen architecture. Apply the same stop rule to other specification

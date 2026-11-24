@@ -18,6 +18,10 @@ Scope D 文件權威已發布整合，M1 data foundation 與 C resolver／compil
 4. 依 [V0 direct acceptance](../architecture/V0-direct-acceptance-plan.md) 資格驗收及發布。
 Element E、正常玩家入口、新 network、editor、renderer 與 P12 延後。
 
+V0 原 55 項 required direct-acceptance rows 已完成本機資格驗收，產品證據綁定 production candidate `7c1ce5162f89904bf754af278671f2ec6e5f7ceb`。詳見 [V0 implementation acceptance](../architecture/V0-implementation-acceptance.md)。既有 scope、正式接受條款、限定與 exclusions 保持。
+
+V0 Integrated Delivery 的發布另須 final commit 全部本機回歸、candidate required CI、安全 canonical 整合及 exact main SHA required CI。最終 commit/tree、普通／工程 JAR identities、runtime entry equivalence、真實命令／結果與 CI run IDs 由既有外部 durable acceptance package 記錄；不以本文件自我引用最終 SHA 或反覆修改 CI 狀態。本機 55 列通過本身不表示全交付已完成。
+
 ## 階段名稱映射
 
 - 凍結骨架的 Stage 0 是由工程階段 P0～P8 共同完成的概念性完整地基階段。
