@@ -521,7 +521,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(211, dependencyErrorCatchCount(production)),
+                () -> assertEquals(216, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -781,8 +781,32 @@ class P4B2BApiGateTest {
                         .matcher(block.body())
                         .find())
                 .toList();
-        var p8ServerCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
-                "com/yo1no/gramarye/P8ServerPresentationService.java"))));
+        var p8ServerRaw = read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/P8ServerPresentationService.java"));
+        var p8ServerSource = withoutCommentsAndLiterals(p8ServerRaw);
+        var p8ServerCatches = errorCatchBlocks(p8ServerSource);
+        assertEquals(3, assertMethodErrorCatches(p8ServerSource, Map.of(
+                "private void completeCatalogSubmission(", List.of(new ErrorCatchBlock("failure",
+                        "connectionAuthority.cancel(key);throwfailure;")),
+                "private void submitEvent(", List.of(new ErrorCatchBlock("failure",
+                        "a05Observer.submission(nativeTick,event.catalogGeneration(),event.sequence(),"
+                                + "event.kind().name(),identity.connectionEpoch(),);throwfailure;")),
+                "private void drainV0Applied(", List.of(new ErrorCatchBlock(
+                        "ignoredObservationFailure", "")))));
+        assertOrdered(bodyFollowing(p8ServerRaw, "private void submitEvent("),
+                "catch (Error failure)", "identity.connectionEpoch(), \"ERROR\");", "throw failure;");
+        var p8ServerPrimary = p8ServerCatches.stream()
+                .filter(block -> block.binding().equals("failure"))
+                .toList();
+        var p8ServerObservationIsolation = p8ServerCatches.stream()
+                .filter(block -> block.binding().equals("ignoredObservationFailure"))
+                .toList();
+        var a05ObserverSource = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/A05Observer.java")));
+        var a05ObservationIsolation = assertNativeHelperCatches(a05ObserverSource, Map.of(
+                "void receipt(", List.of(new ErrorCatchBlock("ignoredObservationFailure", "")),
+                "void offer(", List.of(new ErrorCatchBlock("ignoredObservationFailure", "")),
+                "void submission(", List.of(new ErrorCatchBlock("ignoredObservationFailure", ""))));
         var p8ExecutionCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(
                 MAIN_JAVA.resolve("com/yo1no/gramarye/P8ClientPresentationExecution.java"))));
         var p8LifecycleCatches = errorCatchBlocks(withoutCommentsAndLiterals(read(
@@ -860,12 +884,12 @@ class P4B2BApiGateTest {
         primary.add(taskCatches.getFirst());
         primary.addAll(syncCatches);
         primary.addAll(p8ClientPrimary);
-        primary.addAll(p8ServerCatches);
+        primary.addAll(p8ServerPrimary);
         primary.addAll(p9Primary);
         assertAll(
                 () -> assertEquals(28, p5Catches.size()),
                 () -> assertEquals(12, p5Primary.size()),
-                () -> assertEquals(28, primary.size()),
+                () -> assertEquals(29, primary.size()),
                 () -> assertEquals(11, secondary.size()),
                 () -> assertEquals(2, diagnosticIsolation.size()),
                 () -> assertEquals(3, p9ErrorPrimitiveIsolation.size()),
@@ -901,7 +925,11 @@ class P4B2BApiGateTest {
                 () -> assertEquals(5, syncCatches.size()),
                 () -> assertEquals(15, p8ClientCatches.size()),
                 () -> assertEquals(1, p8ClientPrimary.size()),
-                () -> assertEquals(1, p8ServerCatches.size()),
+                () -> assertEquals(3, p8ServerCatches.size()),
+                () -> assertEquals(2, p8ServerPrimary.size()),
+                () -> assertEquals(1, p8ServerObservationIsolation.size()),
+                () -> assertTrue(p8ServerObservationIsolation.getFirst().body().isBlank()),
+                () -> assertEquals(3, a05ObservationIsolation),
                 () -> assertEquals(31, p8ExecutionCatches.size()),
                 () -> assertEquals(8, p8LifecycleCatches.size()),
                 () -> assertEquals(3, p8RendererCatches.size()),
@@ -1036,9 +1064,11 @@ class P4B2BApiGateTest {
                                 + p11ObservationIsolation.size()
                                 + p11NativeHelpers
                                 + fixtureCatches
-                                + v0OwnedCatches,
+                                + v0OwnedCatches
+                                + p8ServerObservationIsolation.size()
+                                + a05ObservationIsolation,
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(211, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(216, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
                 "primary = failure;", "throw failure;");
         assertOrdered(
