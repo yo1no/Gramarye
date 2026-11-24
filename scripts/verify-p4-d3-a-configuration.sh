@@ -454,6 +454,59 @@ require_exact_ere_owners() {
         || fail "${message} (expected ${expected_count} owners, found ${found})"
 }
 
+require_exact_java_method() {
+    local file="$1"
+    local marker="$2"
+    local expected="$3"
+    LC_ALL=C awk -v marker="${marker}" -v expected="${expected}" '
+        index($0, marker) { found++; active = 1 }
+        active {
+            line = $0; sub(/\/\/.*$/, "", line); gsub(/[[:space:]]/, "", line)
+            body = body line
+            for (i = 1; i <= length(line); i++) {
+                ch = substr(line, i, 1)
+                if (ch == "{") { depth++; opened = 1 }
+                else if (ch == "}") depth--
+            }
+            if (opened && depth == 0) active = 0
+        }
+        END { if (found != 1 || active || body != expected) exit 1 }
+    ' "${file}" || fail "exact reviewed Attachment method changed: ${marker}"
+}
+
+
+verify_exact_attachment_components() {
+    local file="$1"
+    local cooldown="$2"
+    local owner=''
+    local writes=''
+    for owner in "${file}" "${cooldown}"; do
+        writes="$(LC_ALL=C awk '
+            { line = $0; gsub(/[[:space:]]/, "", line); source = source line }
+            END {
+                while ((at = index(source, ".setData(")) > 0) {
+                    count++; source = substr(source, at + length(".setData("))
+                }
+                print count + 0
+            }
+        ' "${owner}")" || fail 'could not count exact Attachment write occurrences'
+        [[ "${writes}" -eq 1 ]] \
+            || fail 'reviewed component/cooldown owner must retain its sole typed Attachment assignment'
+    done
+    require_exact_java_method "${cooldown}" \
+        '    static P11CastCooldownData existing(ServerPlayer actor)' \
+        'staticP11CastCooldownDataexisting(ServerPlayeractor){returnactor.hasData(TYPE)?actor.getData(TYPE):null;}'
+    require_exact_java_method "${cooldown}" \
+        '    static void replace(ServerPlayer actor,' \
+        'staticvoidreplace(ServerPlayeractor,P11CastCooldownDataexpected,P11CastCooldownDatareplacement){if(existing(actor)!=expected){thrownewIllegalStateException("COOLDOWN_MATERIAL_CHANGED");}varbefore=P11CastCooldownMaterial.capture(actor);actor.setData(TYPE,replacement);P11NativeStorageBoundary.cooldownPublished(before,P11CastCooldownMaterial.capture(actor));}'
+    require_exact_java_method "${file}" \
+        '    private static void loadAttachmentFixture(ServerPlayer player,' \
+        'privatestaticvoidloadAttachmentFixture(ServerPlayerplayer,Tagattachment){player.setData(PlayerSkillAttachments.type(),readUnboundComponent(player,attachment));}'
+    require_exact_java_method "${file}" \
+        '    private static PlayerSkillAttachmentState readUnboundComponent(ServerPlayer player,' \
+        'privatestaticPlayerSkillAttachmentStatereadUnboundComponent(ServerPlayerplayer,Tagattachment){if(player.getServer().getPlayerList().getPlayer(player.getUUID())==player||player.isAddedToLevel()||player.hasData(PlayerSkillAttachments.type())){thrownewAssertionError("componentinputrequiresanunplacedfreshholder");}returnPlayerSkillAttachmentSerializer.INSTANCE.read(player,attachment.copy(),player.registryAccess());}'
+}
+
 verify_search_helpers() {
     local missing_output=''
     local forbidden_output=''
@@ -1082,6 +1135,8 @@ verify_ownership_and_phase_boundary() {
     local recovery='src/main/java/com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java'
     local port='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreSubmissionPort.java'
     local player='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentService.java'
+    local player_components='src/main/java/com/yo1no/gramarye/magic/definition/player/PlayerSkillAttachmentGameTests.java'
+    local cooldown_attachments='src/main/java/com/yo1no/gramarye/P11CastCooldownAttachments.java'
     local mana_attachments='src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaAttachments.java'
     local saved_data='src/main/java/com/yo1no/gramarye/magic/definition/store/GramaryeSkillSavedData.java'
     local store_service='src/main/java/com/yo1no/gramarye/magic/definition/store/SkillDefinitionStoreService.java'
@@ -1100,9 +1155,10 @@ verify_ownership_and_phase_boundary() {
         'journal-prefix clear commit escaped the unique D3-A recovery service'
     require_only_ere_owner '\.[[:space:]]*commit[[:space:]]*\(' "${port}" \
         'Store commit escaped the unique D1 port'
-    require_exact_ere_owners '\.[[:space:]]*setData[[:space:]]*\(' 2 \
-        'live Attachment setData escaped the exact reviewed access owners' \
-        "${player}" "${mana_attachments}"
+    verify_exact_attachment_components "${player_components}" "${cooldown_attachments}"
+    require_exact_ere_owners '\.[[:space:]]*setData[[:space:]]*\(' 4 \
+        'Attachment setData escaped the three live owners and exact unplaced component' \
+        "${player}" "${mana_attachments}" "${cooldown_attachments}" "${player_components}"
     require_exact_ere_owners '\.[[:space:]]*reclaim[[:space:]]*\(' 2 \
         'Store reclaim escaped reviewed P4-B lifecycle owners' \
         "${saved_data}" "${store_service}"
