@@ -608,6 +608,15 @@ verify_p11_native_helper_error_catches() {
                 expect("moveCarrier", 1, "catch(RuntimeException|Errorprimary){closeAfterNativeFault(projectile,V0TerminalReason.FAULT);throwprimary;}")
                 expect("discardAfterV0Close", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
                 expect("closeAfterNativeFault", 1, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
+            } else if (kind == "a05_observer") {
+                simple = "catch(RuntimeException|ErrorignoredObservationFailure){}"
+                expect("voidreceipt(intnativeTick,longruntimeTick,longinstanceId,longlineageId,longrequestId,longsourceEventId,intstatementOrdinal,Stringterminal,Stringreason)", 1, simple)
+                expect("voidoffer(Stringphase,intnativeTick,longruntimeTick,longinstanceId,longrequestId,longsourceEventId,intstatementOrdinal,Stringkind,longgeneration,longsequence,intselectedRecipients,intcandidateDeliveries,intadmittedDeliveries,Stringoutcome)", 1, simple)
+                expect("voidsubmission(intnativeTick,longgeneration,longsequence,Stringkind,longconnectionEpoch,Stringoutcome)", 1, simple)
+            } else if (kind == "p8_server") {
+                expect("privatevoidcompleteCatalogSubmission(P8CatalogAttemptKeykey,longserverTick,ServerPlayerplayer,ProfileCatalogPayloadpayload)", 1, "catch(Errorfailure){connectionAuthority.cancel(key);throwfailure;}")
+                expect("privatevoidsubmitEvent(P8RecipientIdentityidentity,PresentationEventevent,V0StagedPresentationstaged)", 1, "catch(Errorfailure){a05Observer.submission(nativeTick,event.catalogGeneration(),event.sequence(),event.kind().name(),identity.connectionEpoch(),\"ERROR\");throwfailure;}")
+                expect("privatevoiddrainV0Applied(longserverTick,P8V0ResidualBudgetresidual)", 1, "catch(RuntimeException|ErrorignoredObservationFailure){}")
             } else if (kind == "mana_fixture") {
                 expect("queueConnected", 1, "catch(RuntimeException|Errorfailure){cleanupConnected(connected,failure);throwfailure;}")
                 expect("cleanupConnected", 1, "catch(RuntimeException|Errorcleanup){if(cleanup!=primary){primary.addSuppressed(cleanup);}}")
@@ -633,7 +642,7 @@ verify_p11_native_helper_error_catches() {
             }
             if (line ~ /^    ((public|private) )?(static )?.*\(/ && line !~ /^        /) {
                 method = line; sub(/\(.*/, "", method); sub(/^.*[ \t]/, "", method)
-                if (kind == "operation") {
+                if (kind == "operation" || kind == "a05_observer" || kind == "p8_server") {
                     while (line !~ /[={;]/) {
                         if ((getline continuation) <= 0) reject("incomplete operation method declaration")
                         sub(/\/\/.*$/, "", continuation)
@@ -1087,6 +1096,36 @@ verify_search_helpers() {
                 fail 'P11 native helper self-check accepted a changed binding/body/primary or foreign method'
             fi
         done
+    done
+    for native_kind in a05_observer p8_server; do
+        if [[ "${native_kind}" == a05_observer ]]; then
+            native_source='src/main/java/com/yo1no/gramarye/A05Observer.java'
+        else
+            native_source='src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java'
+        fi
+        verify_p11_native_helper_error_catches "${native_source}" "${native_kind}"
+        for mutation in \
+            's/RuntimeException | Error ignoredObservationFailure/RuntimeException ignoredObservationFailure/g' \
+            's/Error ignoredObservationFailure/Error unreviewed/g' \
+            's/} catch (RuntimeException | Error ignoredObservationFailure) {/} catch (RuntimeException | Error ignoredObservationFailure) { unsafe();/g' \
+            's/void receipt(/void unreviewedReceipt(/g' \
+            's/void offer(/void unreviewedOffer(/g' \
+            's/void submission(/void unreviewedSubmission(/g' \
+            's/void completeCatalogSubmission(/void unreviewedCatalog(/g' \
+            's/void submitEvent(/void unreviewedEvent(/g' \
+            's/void drainV0Applied(/void unreviewedDrain(/g' \
+            's/identity.connectionEpoch(), "ERROR");/identity.connectionEpoch(), "CHANGED");/g' \
+            's/throw failure;/throw new Error();/g'; do
+            sed "${mutation}" "${native_source}" > "${HELPER_FIXTURE}"
+            if cmp -s "${native_source}" "${HELPER_FIXTURE}"; then continue; fi
+            if (verify_p11_native_helper_error_catches "${HELPER_FIXTURE}" "${native_kind}") >/dev/null 2>&1; then
+                fail 'A05/P8 observer self-check accepted a missing or changed catch, binding, body, method, label, or primary'
+            fi
+        done
+        { cat "${native_source}"; printf '\n    void foreign(){try{}catch(Error failure){throw failure;}}\n'; } > "${HELPER_FIXTURE}"
+        if (verify_p11_native_helper_error_catches "${HELPER_FIXTURE}" "${native_kind}") >/dev/null 2>&1; then
+            fail 'A05/P8 observer self-check accepted a foreign-method Error catch'
+        fi
     done
     for native_source in \
         src/main/java/com/yo1no/gramarye/magic/runtime/mana/ManaLifecycleGameTests.java \
@@ -1730,6 +1769,8 @@ verify_b2_sources_and_outputs() {
     local p7_pending_owner='src/main/java/com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java'
     local p7_sync='src/main/java/com/yo1no/gramarye/magic/network/P7AuthoritativeSyncService.java'
     local p7_lifecycle='src/main/java/com/yo1no/gramarye/magic/network/P7ServerLifecycleCoordinator.java'
+    local a05_observer='src/main/java/com/yo1no/gramarye/A05Observer.java'
+    local p8_server='src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java'
     local p8_client_state='src/main/java/com/yo1no/gramarye/P8ClientPresentationState.java'
     local p8_client_execution='src/main/java/com/yo1no/gramarye/P8ClientPresentationExecution.java'
     local p8_client_lifecycle='src/main/java/com/yo1no/gramarye/P8ClientPresentationLifecycle.java'
@@ -1981,7 +2022,8 @@ verify_b2_sources_and_outputs() {
                 || "${source}" == "${p11_p9_tracking}" \
                 || "${source}" == "${p11_source_owner}" \
                 || "${source}" == "${p4_recovery_game_tests}" \
-                || "${source}" == 'src/main/java/com/yo1no/gramarye/P8ServerPresentationService.java' \
+                || "${source}" == "${p8_server}" \
+                || "${source}" == "${a05_observer}" \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/magic/network/P7S4NetworkGameTests.java' \
                 || "${source}" == 'src/main/java/com/yo1no/gramarye/P7S4LoginManaGameTests.java' ]] \
                 || bash scripts/verify-p7-s4-source-contracts.sh \
@@ -1997,6 +2039,8 @@ verify_b2_sources_and_outputs() {
             'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
             "production Error catch escaped the reviewed P4-E3/P5 owners: ${source}"
     done < "${PRODUCTION_SOURCE_LIST}"
+    verify_p11_native_helper_error_catches "${a05_observer}" a05_observer
+    verify_p11_native_helper_error_catches "${p8_server}" p8_server
     verify_p11_observer_error_catches "${p11_storage_boundary}"
     verify_p11_native_helper_error_catches "${p11_operation_boundary}" operation
     verify_p11_native_helper_error_catches "${p11_native_cleanup}" cleanup
