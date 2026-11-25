@@ -25,6 +25,8 @@ Do not use `java.example.gramarye`, `com.example.gramarye`, or another placehold
 
 Read these files before planning or editing architecture:
 
+- [DP-2 U0 temporary Bootstrap authority](docs/codex-spec/23_DP2_U0_NormalPlayerStarterSpellActivation修正案.md) governs only its explicitly adopted normal-input/provisioning/generic typed-cooldown/Sunset scope. This temporary content is not a permanent Starter or player learned/equipped ownership. Authority main closure precedes production implementation in the same integrated work item; this authority commit does not claim U0 runtime completion. Existing P11/ScopeD/M1/C/ScopeV/V0 closures remain preserved.
+
 - [DP-2 V0 R2 engineering authority](docs/codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md) governs the explicitly scoped evidence and engineering contract.
 
 1. `docs/codex-spec/21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md`

@@ -1,5 +1,8 @@
 # NeoForge 1.21.1 魔法 Node 系統：詳細實作步驟
 
+
+[DP-2 U0 Temporary Bootstrap／Qualification Spell](23_DP2_U0_NormalPlayerStarterSpellActivation修正案.md)採用暫時C provisioning、0 Mana、20 advancing ticks、單一generic normal C2S與通用typed cooldown-key schema例外及精確Sunset。不是永久Starter／learned／equipped政策；原P11/ScopeD/M1/C/ScopeV/V0完成結果保留。只在23號逐項scope增補normal input/production composition/native接合/schema；authority candidate/main閉合後同一工作單接續實作，現本authority commit尚未實作／驗收。Learn/equip/select/switch、Element、editor、renderer擴張、P12仍未開始。
+
 本文件把凍結骨架拆成可交給 Codex 逐階段執行的工程工作包。
 
 P3 相關工作包已依 `17_P3資料模型修正案.md` 同步；P4-A1～A3與P4-B～P4-E 已依

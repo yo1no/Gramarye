@@ -22,6 +22,8 @@
 > V0 是 projectile qualification profile。生命週期、exact pins、P6／P9／P8 接合、工程 Mana／zero cooldown 依 21 號正文。
 > [22 號修正案](22_DP2_V0平台證據、工程契約與整合交付修正案.md) 登錄 V0 R2 工程契約與前瞻性平台證據。實作、runtime qualification 依整合交付授權與直接驗收。Element E、正常玩家入口與 UI、新 network、editor、renderer 與 P12 延後。
 
+> [DP-2 U0 Temporary Bootstrap／Qualification Spell](23_DP2_U0_NormalPlayerStarterSpellActivation修正案.md)採用暫時C provisioning、0 Mana、20 advancing ticks、單一generic normal C2S與通用typed cooldown-key schema例外及精確Sunset。不是永久Starter／learned／equipped政策；原P11/ScopeD/M1/C/ScopeV/V0完成結果保留。只在23號逐項scope增補normal input/production composition/native接合/schema；authority candidate/main閉合後同一工作單接續實作，現本authority commit尚未實作／驗收。Learn/equip/select/switch、Element、editor、renderer擴張、P12仍未開始。
+
 ---
 
 ## 第一層：平台與建置鎖定

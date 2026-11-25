@@ -27689,3 +27689,19 @@ Scope D 1.0、M1、C 與 P11 的已發布契約及既有驗收保留。原 H6 �
 ## §73 — V0 Descriptor Namespace Correction
 
 [22 號 §5](../codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md#5-v0-descriptor-namespace-correction) 採用 V0 backend category `gramarye:projectile` 與 backend capability `gramarye:v0_projectile`，backend descriptor 保持 `gramarye:v0_projectile`。此修正限符合既有 Scope D `namespace:path` 資料與可信 frontend 規則。原 codec、產品語意、Java surface、config、limits、K1、P11 與驗收矩陣保持。原 §72 與此前全部 H6 bytes 保留。
+
+---
+
+## §74 — DP-2 U0 Temporary Bootstrap／Qualification Spell scoped registration
+
+完整正式正文為[23_DP2_U0_NormalPlayerStarterSpellActivation修正案.md](../codex-spec/23_DP2_U0_NormalPlayerStarterSpellActivation修正案.md)。使用者於2026-11-25採用暫時性Bootstrap定位、C provisioning、0 Mana、20 advancing ticks、通用typed cooldown-key schema例外及明確Sunset；不是永久Starter／learned／equipped或未來Spell通用免費／冷卻政策。
+
+§§58–59四個P7 families外只增加23號Part C的單一generic normal PLAY C2S；原P7 session/D3/sequence/rate/permit/ACK及legacy equipped receiver保留。§63.6／§66僅同一R dispatch改normal operation、fresh PRESS而非held repeat、8-edge／32-drain bounded consume/drop及跨tickflush；不改P8／P11 phase/generation或新增S2C。
+
+§69／19號§11在23號Part B明示擴充schema2 typed legacy/logical-policy key、真V0 captured release window；原schema1／legacy256／policy1／101、soleAttachment/service/nativewriter、source/clock/ARM/NO_RELEASE/Raw/Unknown/readback責任保持。不得fakeSkillId/hashUUID或暗改v1。Normal Mana0仍實證source/availability/exactactor，不造正debit/refund。
+
+§§70–73／20–22號在23號normal publication/activation/frontend/cold composition、true seed→closedfork provenance與ordinary native接合範圍增補；owner-private、M1/C真proof/publication/reclaim、V0既有55列與P11結果、exactA/closure/deadline/K1其餘責任保持。Position wrapper/shareddamagePost唯一有效註冊、rootpackageclosedquerybridge、U0-only64raw/8sections完整或拒絕查詢由23號逐項採用；legacy/engineering原delegate及targets/terrain不擴。
+
+Sunset依23號Part A：先有正式玩家建立/保存/選定/施放路徑全數接受，才封新Bootstrapprovision/selection/義務；既有accepted closure及PENDING可依法收束。只在pins/instances/publication/recovery/CD真終態後，精確provenance+identity+revision+bodyfingerprint匹配者沿solewriter移除；Unknown/玩家其他材料不刪。保留genericinput/C2S/P7/M1/C/Mana/typedCD/V0/P8。
+
+本節strict EOF追加，e24原29019328 bytes逐byte保持。Authority需direct local/candidateCI/canonical FF/exact-mainCI閉合後，同一整合工作單才開始U0production implementation/qualification。本commit無production Java/resources/Gradle/workflow/Mixin改動；不宣稱runtimePASS，也不授learn/equip/select/editor/Element/renderer/P12。所有未具名取代條款及更早H6身份保留。

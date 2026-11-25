@@ -4,7 +4,7 @@
 > 使用方式：將本檔與 `19_P11持久化與多人修正案.md`、`18_P4持久化與組合修正案.md`、`17_P3資料模型修正案.md`、
 > `16_骨架定案清單_NeoForge1.21.1_凍結版.md`、`20_DP2_ScopeD_SpellDefinition與可選SkillManifest修正案.md` 與 `21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md` 一起交給 Codex。
 >
-> 本檔是實作契約。22 號 V0 R2、21 號 DP-2 Scope V、20 號 DP-2 Scope D、19 號 P11、18 號 P4、17 號 P3 修正案各在其明示範圍內優先。
+> 本檔是實作契約。23 號 U0、22 號 V0 R2、21 號 DP-2 Scope V、20 號 DP-2 Scope D、19 號 P11、18 號 P4、17 號 P3 修正案各在其明示範圍內優先。
 > 其他範圍以凍結版骨架為架構真相。若文件
 > 尚未同步而存在實質衝突，停止實作並回報，不得自行選邊或改變骨架。
 >
@@ -15,6 +15,8 @@
 > [DP-2 Scope V 1.0](21_DP2_ScopeV_SpellRuntime與V0Projectile修正案.md) 已採用 V-01～V-10、V-B／V0-PROJECTILE 與五項限定，Scope D、M1、C 與 P11 保留。
 > [22 號修正案](22_DP2_V0平台證據、工程契約與整合交付修正案.md) 登錄 V0 的前瞻證據、R2 工程契約、精確 Java surface 及直接驗收。整合交付依 authority checks → V0-PROJECTILE implementation → runtime qualification，其他 backend 須另行採用。
 > Element E、正常玩家入口、新 network、editor、renderer 與 P12 延後。
+
+> [DP-2 U0 Temporary Bootstrap／Qualification Spell](23_DP2_U0_NormalPlayerStarterSpellActivation修正案.md)採用暫時C provisioning、0 Mana、20 advancing ticks、單一generic normal C2S與通用typed cooldown-key schema例外及精確Sunset。不是永久Starter／learned／equipped政策；原P11/ScopeD/M1/C/ScopeV/V0完成結果保留。只在23號逐項scope增補normal input/production composition/native接合/schema；authority candidate/main閉合後同一工作單接續實作，現本authority commit尚未實作／驗收。Learn/equip/select/switch、Element、editor、renderer擴張、P12仍未開始。
 
 ---
 

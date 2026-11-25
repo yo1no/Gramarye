@@ -121,9 +121,17 @@ final class P8S2BoundaryTest {
     private static final int ARCHITECTURE_V0_DESCRIPTOR_PREFIX_LENGTH = 29_018_772;
     private static final String ARCHITECTURE_V0_DESCRIPTOR_PREFIX_SHA256 =
             "275fb17bc2419e55f32838bd28a227d2bba5a62e471a97d42fccc159402206eb";
-    private static final int ARCHITECTURE_FINAL_LENGTH = 29_019_328;
-    private static final String ARCHITECTURE_FINAL_SHA256 =
+    private static final int ARCHITECTURE_U0_PREFIX_LENGTH = 29_019_328;
+    private static final String ARCHITECTURE_U0_PREFIX_SHA256 =
             "c7fa78d63ff17cb61bf043835dd0c20e5b16de72df9af75dbcf8426131e29e83";
+    private static final int ARCHITECTURE_FINAL_LENGTH = 29_021_868;
+    private static final String ARCHITECTURE_FINAL_SHA256 =
+            "f69e4cae713c8f8df1cb98ed1f268c2493787930bbd2e8eb181cd222159714fb";
+    private static final Path U0_AUTHORITY_SOURCE = PROJECT_ROOT.resolve(
+            "docs/codex-spec/23_DP2_U0_NormalPlayerStarterSpellActivation修正案.md");
+    private static final int U0_AUTHORITY_LENGTH = 113_282;
+    private static final String U0_AUTHORITY_SHA256 =
+            "9d27b02a8e7aa7501963ad9fade812c368c81bfa9be1fcaa5aabb76a113ad740";
     private static final Path V0_AUTHORITY_SOURCE = PROJECT_ROOT.resolve(
             "docs/codex-spec/22_DP2_V0平台證據、工程契約與整合交付修正案.md");
     private static final Path P7_LOGIN_ISOLATION_SOURCE =
@@ -884,6 +892,7 @@ final class P8S2BoundaryTest {
     void authorityAndRecoveredP7IsolationRemainExactBaseBytes() {
         var architectureBytes = readBytes(ARCHITECTURE_SOURCE);
         var v0AuthorityBytes = readBytes(V0_AUTHORITY_SOURCE);
+        var u0AuthorityBytes = readBytes(U0_AUTHORITY_SOURCE);
         assertAll(
                 () -> assertEquals(ARCHITECTURE_FINAL_LENGTH, architectureBytes.length),
                 () -> assertEquals(
@@ -919,6 +928,13 @@ final class P8S2BoundaryTest {
                 () -> assertEquals(
                         ARCHITECTURE_V0_DESCRIPTOR_PREFIX_SHA256,
                         sha256(architectureBytes, 0, ARCHITECTURE_V0_DESCRIPTOR_PREFIX_LENGTH)),
+                () -> assertEquals(
+                        ARCHITECTURE_U0_PREFIX_SHA256,
+                        sha256(architectureBytes, 0, ARCHITECTURE_U0_PREFIX_LENGTH)),
+                () -> assertEquals(U0_AUTHORITY_LENGTH, u0AuthorityBytes.length),
+                () -> assertEquals(
+                        U0_AUTHORITY_SHA256,
+                        sha256(u0AuthorityBytes, 0, u0AuthorityBytes.length)),
                 () -> assertEquals(
                         ARCHITECTURE_FINAL_SHA256,
                         sha256(architectureBytes, 0, architectureBytes.length)),
