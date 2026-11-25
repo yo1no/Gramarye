@@ -25,6 +25,10 @@ final class P7PayloadRegistrar {
                 CastIntentPayload.STREAM_CODEC,
                 (payload, context) -> P7CastIntentNetworkHandler.handle(
                         payload, context, PRODUCTION));
+        event.registrar(CastCurrentSpellPayload.NORMAL_PROTOCOL_VERSION)
+                .executesOn(HandlerThread.NETWORK)
+                .playToServer(CastCurrentSpellPayload.TYPE, CastCurrentSpellPayload.STREAM_CODEC,
+                        (payload, context) -> P7CastIntentNetworkHandler.handleNormal(payload, context, PRODUCTION));
         registrar.playToClient(
                 IntentAckPayload.TYPE,
                 IntentAckPayload.STREAM_CODEC,

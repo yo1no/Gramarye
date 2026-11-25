@@ -101,6 +101,7 @@ public final class Gramarye {
                 p11FoundationService,
                 p11CastCooldownService);
         p11FoundationService.bindRuntime(skillRuntimeService);
+        NeoForge.EVENT_BUS.addListener(P9V0WorldEffectHandoff::observeV0DamagePost);
         p8ServerPresentationService.registerAfterP5(NeoForge.EVENT_BUS);
         var p7AuthenticatedPlayerCastIngress = new P7AuthenticatedPlayerCastIngress(
                 skillRuntimeService,
@@ -109,7 +110,8 @@ public final class Gramarye {
         P7ServerAuthorizationBoundary.install(
                 runtimeCapability,
                 p7AuthenticatedPlayerCastIngress,
-                p11CastCooldownService);
+                p11CastCooldownService,
+                new NormalSpellCastIngress(skillRuntimeService));
         var p10TemplateValidation = new P10TemplateValidation(
                 skillSubmissionPolicyProvider, p8ServerPresentationService);
         p10TemplateService = new P10TemplateService(p10TemplateValidation);

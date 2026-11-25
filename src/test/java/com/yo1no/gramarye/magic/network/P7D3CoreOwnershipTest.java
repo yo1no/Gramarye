@@ -83,12 +83,73 @@ final class P7D3CoreOwnershipTest {
                 new P7SessionIdentity(PLAYER, 1, 2)}) {
             assertThrows(P7SemanticInvariantException.class, () -> new P7ServerDispatchTask(
                     new P7QueuedCastIntent(identity, intent()), ignored -> {}, permit));
+            assertThrows(P7SemanticInvariantException.class, () -> new P7ServerDispatchTask(
+                    new P7QueuedCastIntent(identity, new P7CastOperation.NormalSpell(1)), ignored -> {}, permit));
             assertEquals(1, owner.serverPending());
             assertFalse(permit.released());
         }
         permit.release();
         assertThrows(P7SemanticInvariantException.class, permit::tryStartTask);
         assertThrows(P7SemanticInvariantException.class, permit::releaseAfterEnqueueFailure);
+    }
+
+    @Test
+    void normalAndLegacyEnqueuesShareTheSameBoundedPermitOwnerAndOriginalCapture() {
+        var owner = started();
+        var context = new Context(false, null);
+        var source = new Source(context.connection);
+        var dispatched = new java.util.ArrayList<P7QueuedCastIntent>();
+        var composition = composition(source, owner, dispatched::add);
+        var tasks = new java.util.ArrayList<Runnable>();
+        for (int index = 0; index < 8; index++) {
+            if ((index & 1) == 0) {
+                P7CastIntentNetworkHandler.handleNormalAuthenticated(
+                        new CastCurrentSpellPayload(index + 1), PLAYER, context, composition);
+            } else {
+                P7CastIntentNetworkHandler.handleAuthenticated(
+                        new CastIntentPayload(new CastIntent(index + 1, 0, CastInputKind.CAST, 0, null, null)),
+                        PLAYER, context, composition);
+            }
+            tasks.add(context.task);
+            assertEquals(index + 1, owner.serverPending());
+        }
+        assertEquals(P7PendingPermitOwner.AcquireOutcome.SERVER_BUSY, owner.acquire(PLAYER, 1, 1).outcome());
+        assertEquals(8, source.captures);
+        assertEquals(8, source.rechecks);
+        assertEquals(8, context.enqueueCalls);
+        assertTrue(dispatched.isEmpty());
+        tasks.forEach(Runnable::run);
+        assertEquals(0, owner.serverPending());
+        assertEquals(0, owner.trackedPlayerCount());
+        assertEquals(8, dispatched.size());
+        for (int index = 0; index < 8; index++) {
+            var queued = dispatched.get(index);
+            assertSame(source.identity, queued.sessionIdentity());
+            assertEquals(index + 1, queued.sequence());
+            assertEquals((index & 1) == 0, queued.operation() instanceof P7CastOperation.NormalSpell);
+        }
+    }
+
+    @Test
+    void oldNormalTaskCannotEnterSuccessorGenerationOrReleaseItsNewPermit() {
+        var owner = started();
+        var context = new Context(false, null);
+        var source = new Source(context.connection);
+        var calls = new int[1];
+        P7CastIntentNetworkHandler.handleNormalAuthenticated(new CastCurrentSpellPayload(1), PLAYER, context,
+                composition(source, owner, ignored -> calls[0]++));
+        var original = context.task;
+        assertEquals(1, owner.serverPending());
+        assertEquals(1, owner.stopAll());
+        long successor = owner.startServer();
+        var current = owner.acquire(PLAYER, 1, successor).permit().orElseThrow();
+        original.run();
+        assertEquals(0, calls[0]);
+        assertEquals(1, source.captures);
+        assertEquals(1, owner.serverPending());
+        assertFalse(current.released());
+        current.release();
+        assertEquals(0, owner.serverPending());
     }
 
     @Test

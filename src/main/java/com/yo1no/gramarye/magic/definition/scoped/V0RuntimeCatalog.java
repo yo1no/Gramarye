@@ -8,6 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.channels.FileChannel;
+import java.nio.channels.OverlappingFileLockException;
+import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -34,6 +37,7 @@ public final class V0RuntimeCatalog {
     private final V0CatalogAuthority authority;
     private final Path sourceRoot;
     private final ScopeDFrontend.Context context;
+    private final boolean normal;
     private final AtomicReference<Thread> coldOwner = new AtomicReference<>();
     private final AtomicReference<Gate> gate = new AtomicReference<>(new Gate(PHASE_OPEN));
     private final AtomicReferenceArray<Lease> pins = new AtomicReferenceArray<>(MAX_LINEAGES + 1);
@@ -41,11 +45,447 @@ public final class V0RuntimeCatalog {
     private Object sourceRootKey;
     private volatile long lastCaptureTicket;
     private boolean retired;
+    private volatile boolean bootstrapStopped;
 
     V0RuntimeCatalog(V0CatalogAuthority authority, Path sourceRoot, ScopeDFrontend.Context context) {
+        this(authority, sourceRoot, context, false);
+    }
+
+    private V0RuntimeCatalog(V0CatalogAuthority authority, Path sourceRoot, ScopeDFrontend.Context context,
+                             boolean normal) {
         this.authority = Objects.requireNonNull(authority);
         this.sourceRoot = Objects.requireNonNull(sourceRoot);
         this.context = Objects.requireNonNull(context);
+        this.normal = normal;
+    }
+
+    /** Pure composition: directory creation, recovery and compilation belong to the cold owner. */
+    public static V0RuntimeCatalog openNormal(V0CatalogAuthority authority, Path qualifiedSource) {
+        return new V0RuntimeCatalog(authority, qualifiedSource.toAbsolutePath().normalize(),
+                V0NormalBootstrap.context(), true);
+    }
+
+    public BootstrapReadiness ensureNormalBootstrap(V0CatalogAuthority exactAuthority, SkillOwnerId owner) {
+        if (!coldLane(exactAuthority) || retired || !normal || bootstrapStopped) {
+            return BootstrapReadiness.rejected(Refusal.SLOT_STALE);
+        }
+        if (owner == null || owner.equals(V0NormalBootstrap.SEED)) {
+            return BootstrapReadiness.rejected(Refusal.INVALID_SELECTION);
+        }
+        Gate expected = gate.get();
+        if (expected.phase != PHASE_OPEN) {
+            return BootstrapReadiness.rejected(Refusal.CATALOG_BUSY);
+        }
+        Gate writing = new Gate(PHASE_WRITING);
+        if (!gate.compareAndSet(expected, writing)) {
+            return BootstrapReadiness.rejected(Refusal.CATALOG_BUSY);
+        }
+        Writer active = null;
+        try {
+            initializeNormalSource();
+            active = writer(V0NormalBootstrap.SEED);
+            var seed = bootstrapDocument(active, Optional.empty(), null, writing);
+            if (seed == null) {
+                return BootstrapReadiness.rejected(Refusal.ROOT_UNAVAILABLE);
+            }
+            var seedReadback = active.catalog.captureRuntimeReadback(context);
+            var provenance = new ForkProvenance(active.source, seed.reference(), seedReadback.image.generation());
+            var bundle = active.catalog.exportFork(context.catalogContext(), seed.reference());
+            var roster = normalRoster();
+            if (roster.size() == ScopeDLimits.MAX_OWNERS && !roster.contains(owner)) {
+                return BootstrapReadiness.rejected(Refusal.CAPACITY);
+            }
+            active = writer(owner);
+            var player = bootstrapDocument(active, Optional.of(provenance), bundle, writing);
+            if (player == null || bootstrapStopped || gate.get() != writing) {
+                return BootstrapReadiness.rejected(Refusal.ROOT_UNAVAILABLE);
+            }
+            var witness = new BootstrapWitness(provenance, V0NormalBootstrap.digest(seed), active.source,
+                    player.reference(), V0NormalBootstrap.digest(player));
+            return new BootstrapReadiness(new Selection(false, player.reference().identity().id().value(), 0, witness), null);
+        } catch (ScopeDGraph.Rejected | ScopeDFork.Rejected rejected) {
+            return BootstrapReadiness.rejected(Refusal.ROOT_UNAVAILABLE);
+        } catch (IOException unavailable) {
+            fenceWriter(active, writing);
+            return BootstrapReadiness.rejected(Refusal.SOURCE_UNPROVED);
+        } catch (RuntimeException | Error failure) {
+            fenceWriter(active, writing);
+            throw failure;
+        } finally {
+            gate.compareAndSet(writing, new Gate(PHASE_OPEN));
+        }
+    }
+
+    private SpellDefinition bootstrapDocument(Writer writer, Optional<ForkProvenance> provenance,
+                                               ScopeDFork.Bundle bundle, Gate writing) throws IOException {
+        if (!new ScopeDDrafts(writer.catalog.current().owner(), writer.storage).read().drafts().isEmpty()) {
+            return null;
+        }
+        var current = writer.catalog.current();
+        var pending = writer.catalog.recoverRuntimePreparation(context.catalogContext(), livePins(writer.proof));
+        if (pending.isPresent()) {
+            var prepared = pending.orElseThrow();
+            var candidate = ScopeDCatalogImage.decode(current.owner(), prepared.binding().candidate().value(), prepared.bytes());
+            // Provisioning can recover its original empty-to-singleton fork, never a foreign batch.
+            if (!V0NormalBootstrap.genesis(current) || V0NormalBootstrap.singleton(candidate, provenance) == null) {
+                return null;
+            }
+            publishNormal(writer, prepared, writing);
+            current = writer.catalog.captureRuntimeReadback(context).image;
+        }
+        var existing = V0NormalBootstrap.singleton(current, provenance);
+        if (existing != null) {
+            writer.catalog.captureRuntimeReadback(context);
+            return existing;
+        }
+        if (!V0NormalBootstrap.genesis(current) || bootstrapStopped || gate.get() != writing) {
+            return null;
+        }
+        var reservation = writer.catalog.reserve();
+        var prepared = bundle == null
+                ? writer.catalog.prepare(reservation, context.catalogContext(),
+                        List.of(V0NormalBootstrap.seed(reservation.newSpell(1))))
+                : writer.catalog.prepareFork(reservation, context.catalogContext(), bundle);
+        publishNormal(writer, prepared, writing);
+        return V0NormalBootstrap.singleton(writer.catalog.captureRuntimeReadback(context).image, provenance);
+    }
+
+    private void publishNormal(Writer writer, ScopeDCatalog.Prepared prepared, Gate writing) throws IOException {
+        var proof = writer.catalog.verifyCompatibility(prepared, context).proof()
+                .orElseThrow(() -> new IOException("Normal catalog publication has no matching C proof"));
+        writer.catalog.publishRuntime(prepared, context, proof, new WriterMutation(this, writing));
+        writer.catalog.captureRuntimeReadback(context);
+    }
+
+    private boolean matchesBootstrap(Writer player, ScopeDCatalog.RuntimeReadback readback,
+                                      BootstrapWitness witness) throws IOException {
+        if (!normal || bootstrapStopped || !player.source.equals(witness.playerSource)
+                || !witness.player.identity().owner().equals(readback.image.owner())
+                || !witness.player.equals(readback.image.routes().get(witness.player.identity()))) {
+            return false;
+        }
+        var document = readback.image.revisions().get(witness.player);
+        if (!(document instanceof SpellDefinition spell)
+                || !V0NormalBootstrap.matches(spell, Optional.of(witness.provenance))
+                || !witness.playerDigest.equals(V0NormalBootstrap.digest(spell))) {
+            return false;
+        }
+        var seed = writer(V0NormalBootstrap.SEED).catalog.captureRuntimeReadback(context);
+        var source = V0NormalBootstrap.singleton(seed.image, Optional.empty());
+        return seed.source.equals(witness.provenance.sourceId())
+                && seed.image.generation().equals(witness.provenance.generation())
+                && source != null && source.reference().equals(witness.provenance.source())
+                && witness.seedDigest.equals(V0NormalBootstrap.digest(source));
+    }
+
+    private void initializeNormalSource() throws IOException {
+        if (sourceRootKey != null) {
+            requireSourceRoot();
+            return;
+        }
+        Path namespace = sourceRoot.getParent();
+        Path world = namespace == null ? null : namespace.getParent();
+        if (world == null || !Files.isDirectory(world, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Normal catalog has no owned world directory");
+        }
+        if (Files.notExists(namespace, LinkOption.NOFOLLOW_LINKS)) {
+            Files.createDirectory(namespace);
+            forceDirectory(world);
+        }
+        if (!Files.isDirectory(namespace, LinkOption.NOFOLLOW_LINKS)
+                || !Files.getOwner(namespace, LinkOption.NOFOLLOW_LINKS).equals(Files.getOwner(world, LinkOption.NOFOLLOW_LINKS))) {
+            throw new IOException("Normal catalog namespace is not owned by its world");
+        }
+        if (Files.notExists(sourceRoot, LinkOption.NOFOLLOW_LINKS)) {
+            Files.createDirectory(sourceRoot);
+            forceDirectory(namespace);
+        }
+        if (!Files.isDirectory(sourceRoot, LinkOption.NOFOLLOW_LINKS)
+                || !Files.getOwner(sourceRoot, LinkOption.NOFOLLOW_LINKS).equals(Files.getOwner(world, LinkOption.NOFOLLOW_LINKS))) {
+            throw new IOException("Normal catalog source is not owned by its world");
+        }
+        requireSourceRoot();
+    }
+
+    private static void forceDirectory(Path directory) throws IOException {
+        try (var channel = FileChannel.open(directory, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+            channel.force(true);
+        }
+    }
+
+    /** Only the trusted lifecycle coordinator may seal the temporary selector; normal C remains. */
+    boolean stopBootstrap(V0CatalogAuthority exactAuthority) {
+        if (!normal || retired || !ownerThread(exactAuthority)) {
+            return false;
+        }
+        bootstrapStopped = true;
+        return true;
+    }
+
+    public BootstrapCleanup cleanupNormalBootstrap(V0CatalogAuthority exactAuthority, SkillOwnerId owner,
+                                             V0CatalogAuthority.BootstrapRetirementPermit permit) {
+        return cleanupNormalBootstrap(exactAuthority, owner, permit, null).result();
+    }
+
+    public BootstrapCleanupReport cleanupNormalBootstrap(V0CatalogAuthority exactAuthority, SkillOwnerId owner,
+            V0CatalogAuthority.BootstrapRetirementPermit permit, BootstrapRosterProof rosterProof) {
+        BootstrapCleanup result = cleanupBootstrap(exactAuthority, owner, permit, rosterProof);
+        BootstrapCleanupReceipt receipt = null;
+        if (owner != null && !owner.equals(V0NormalBootstrap.SEED)
+                && (result == BootstrapCleanup.REMOVED || result == BootstrapCleanup.NO_MATCH)) {
+            try {
+                Writer writer = writers.get(owner);
+                if (writer != null && gate.get().phase == PHASE_OPEN && writer.proof.proved) {
+                    var exact = writer.catalog.captureRuntimeReadback(context);
+                    receipt = new BootstrapCleanupReceipt(identity, owner, exact.source,
+                            exact.image.generation(), exact.physical.digest());
+                }
+            } catch (IOException unavailable) {
+                // The completed operation remains its original fact, but no current receipt is manufactured.
+            }
+        }
+        return new BootstrapCleanupReport(result, receipt);
+    }
+
+    private BootstrapCleanup cleanupBootstrap(V0CatalogAuthority exactAuthority, SkillOwnerId owner,
+            V0CatalogAuthority.BootstrapRetirementPermit permit, BootstrapRosterProof rosterProof) {
+        if (!coldLane(exactAuthority) || !normal || retired || owner == null
+                || owner.equals(V0NormalBootstrap.SEED) && rosterProof == null
+                || permit == null || !empty() || !permit.claim(exactAuthority, owner, this)) {
+            return BootstrapCleanup.REFUSED;
+        }
+        bootstrapStopped = true;
+        Gate expected = gate.get();
+        if (expected.phase != PHASE_OPEN) {
+            return BootstrapCleanup.REFUSED;
+        }
+        Gate writing = new Gate(PHASE_WRITING);
+        if (!gate.compareAndSet(expected, writing)) {
+            return BootstrapCleanup.REFUSED;
+        }
+        Writer active = null;
+        try {
+            requireSourceRoot();
+            Set<SkillOwnerId> roster = normalRoster();
+            if (!roster.contains(owner) || !roster.contains(V0NormalBootstrap.SEED)) {
+                return BootstrapCleanup.REFUSED;
+            }
+            var seedWriter = writer(V0NormalBootstrap.SEED);
+            var seedReadback = seedWriter.catalog.captureRuntimeReadback(context);
+            var seed = V0NormalBootstrap.singleton(seedReadback.image, Optional.empty());
+            if (seed == null || seedWriter.storage.hasPendingMaterial()
+                    || !new ScopeDDrafts(V0NormalBootstrap.SEED, seedWriter.storage).read().drafts().isEmpty()) {
+                return BootstrapCleanup.REFUSED;
+            }
+            var provenance = new ForkProvenance(seedWriter.source, seed.reference(), seedReadback.image.generation());
+            if (owner.equals(V0NormalBootstrap.SEED)) {
+                // The actual bounded admitted roster, not the set of currently online actors.
+                for (SkillOwnerId admitted : roster) {
+                    if (!admitted.equals(V0NormalBootstrap.SEED)) {
+                        var other = writer(admitted);
+                        var image = other.catalog.captureRuntimeReadback(context).image;
+                        if (other.storage.hasPendingMaterial()
+                                || !new ScopeDDrafts(admitted, other.storage).read().drafts().isEmpty()
+                                || image.revisions().values().stream().anyMatch(document -> document.hasOpaqueRaw()
+                                        || document.provenance().map(origin -> origin.sourceId().equals(seedWriter.source)
+                                                || origin.source().identity().owner().equals(V0NormalBootstrap.SEED)).orElse(false))) {
+                            return BootstrapCleanup.REFUSED;
+                        }
+                    }
+                }
+            }
+            active = writer(owner);
+            // Every admitted writer is already open before taking admission's existing lock.
+            // Holding it through seed publication prevents a newly admitted copy escaping inventory.
+            try (var admission = owner.equals(V0NormalBootstrap.SEED)
+                    ? FileChannel.open(sourceRoot.resolve(".owner-admission.lock"),
+                            StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS) : null;
+                 var lock = admission == null ? null : admission.tryLock()) {
+                if (admission != null && (lock == null || !normalRoster().equals(roster))) {
+                    return BootstrapCleanup.REFUSED;
+                }
+                if (owner.equals(V0NormalBootstrap.SEED)
+                        && !rosterProof.consume(this, exactAuthority, roster, seedReadback, seed)) {
+                    return BootstrapCleanup.REFUSED;
+                }
+                return removeBootstrap(active, owner, seed, provenance, writing);
+            }
+        } catch (ScopeDGraph.Rejected | OverlappingFileLockException unavailable) {
+            return BootstrapCleanup.REFUSED;
+        } catch (IOException unavailable) {
+            fenceWriter(active, writing);
+            return BootstrapCleanup.SOURCE_UNPROVED;
+        } catch (RuntimeException | Error failure) {
+            fenceWriter(active, writing);
+            throw failure;
+        } finally {
+            gate.compareAndSet(writing, new Gate(PHASE_OPEN));
+        }
+    }
+
+    /** Read-only cold proof; seed authorization still requires its original root's main-owner drain proof. */
+    public Optional<BootstrapRosterProof> prepareBootstrapSeedRetirement(V0CatalogAuthority exactAuthority,
+            List<BootstrapCleanupReceipt> receipts) {
+        if (!coldLane(exactAuthority) || !normal || retired || receipts == null || receipts.size() > 31
+                || !empty() || gate.get().phase != PHASE_OPEN) {
+            return Optional.empty();
+        }
+        Gate expected = gate.get();
+        Gate observing = new Gate(PHASE_WRITING);
+        if (!gate.compareAndSet(expected, observing)) { return Optional.empty(); }
+        try {
+            var roster = normalRoster();
+            if (!roster.contains(V0NormalBootstrap.SEED)) { return Optional.empty(); }
+            for (SkillOwnerId owner : roster) { writer(owner); }
+            var byOwner = receiptOwners(receipts);
+            if (byOwner == null || !receiptRosterMatches(roster, byOwner)) { return Optional.empty(); }
+            try (var admission = FileChannel.open(sourceRoot.resolve(".owner-admission.lock"),
+                    StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+                 var lock = admission.tryLock()) {
+                if (lock == null || !normalRoster().equals(roster)) { return Optional.empty(); }
+                var seedWriter = writers.get(V0NormalBootstrap.SEED);
+                var seedReadback = seedWriter.catalog.captureRuntimeReadback(context);
+                var seed = V0NormalBootstrap.singleton(seedReadback.image, Optional.empty());
+                if (seed == null || !retirementImageSafe(seedWriter)
+                        || !validateCleanupReceipts(byOwner, seedWriter.source) || gate.get() != observing) {
+                    return Optional.empty();
+                }
+                return Optional.of(new BootstrapRosterProof(this, roster, byOwner, seedReadback.source,
+                        seed.reference(), seedReadback.image.generation(), V0NormalBootstrap.digest(seed)));
+            }
+        } catch (IOException | ScopeDGraph.Rejected | OverlappingFileLockException unavailable) {
+            return Optional.empty();
+        } finally {
+            gate.compareAndSet(observing, new Gate(PHASE_OPEN));
+        }
+    }
+
+    private Map<SkillOwnerId, BootstrapCleanupReceipt> receiptOwners(List<BootstrapCleanupReceipt> receipts) {
+        Map<SkillOwnerId, BootstrapCleanupReceipt> byOwner = new HashMap<>();
+        for (var receipt : receipts) {
+            if (receipt == null || receipt.catalogIdentity != identity || receipt.owner.equals(V0NormalBootstrap.SEED)
+                    || byOwner.putIfAbsent(receipt.owner, receipt) != null) {
+                return null;
+            }
+        }
+        return Map.copyOf(byOwner);
+    }
+
+    private static boolean receiptRosterMatches(Set<SkillOwnerId> roster,
+            Map<SkillOwnerId, BootstrapCleanupReceipt> receipts) {
+        Set<SkillOwnerId> players = new HashSet<>(roster);
+        players.remove(V0NormalBootstrap.SEED);
+        return players.equals(receipts.keySet());
+    }
+
+    private boolean retirementImageSafe(Writer writer) throws IOException {
+        var image = writer.catalog.captureRuntimeReadback(context).image;
+        return !writer.storage.hasPendingMaterial()
+                && new ScopeDDrafts(image.owner(), writer.storage).read().drafts().isEmpty()
+                && image.revisions().values().stream().noneMatch(FormalDocument::hasOpaqueRaw);
+    }
+
+    private boolean validateCleanupReceipts(Map<SkillOwnerId, BootstrapCleanupReceipt> receipts, UUID seedSource)
+            throws IOException {
+        for (var entry : receipts.entrySet()) {
+            Writer writer = writers.get(entry.getKey());
+            if (writer == null || !writer.proof.proved || !retirementImageSafe(writer)) { return false; }
+            var exact = writer.catalog.captureRuntimeReadback(context);
+            var receipt = entry.getValue();
+            if (receipt.catalogIdentity != identity || !receipt.source.equals(exact.source)
+                    || !receipt.generation.equals(exact.image.generation())
+                    || !receipt.digest.equals(exact.physical.digest())
+                    || exact.image.revisions().values().stream().anyMatch(document -> document.provenance()
+                            .map(origin -> origin.sourceId().equals(seedSource)
+                                    || origin.source().identity().owner().equals(V0NormalBootstrap.SEED)).orElse(false))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private BootstrapCleanup removeBootstrap(Writer active, SkillOwnerId owner, SpellDefinition seed,
+                                             ForkProvenance provenance, Gate writing) throws IOException {
+        var image = active.catalog.captureRuntimeReadback(context).image;
+        if (active.storage.hasPendingMaterial()
+                || !new ScopeDDrafts(owner, active.storage).read().drafts().isEmpty()
+                || image.revisions().values().stream().anyMatch(FormalDocument::hasOpaqueRaw)) {
+            return BootstrapCleanup.REFUSED;
+        }
+        Set<Identity> removals = new HashSet<>();
+        for (FormalDocument document : image.currentBodies().values()) {
+            boolean originMatches = owner.equals(V0NormalBootstrap.SEED)
+                    ? document.reference().equals(seed.reference())
+                    : document.provenance().map(provenance::equals).orElse(false);
+            if (originMatches) {
+                Optional<ForkProvenance> origin = owner.equals(V0NormalBootstrap.SEED)
+                        ? Optional.empty() : Optional.of(provenance);
+                if (!(document instanceof SpellDefinition spell) || !V0NormalBootstrap.matches(spell, origin)
+                        || !V0NormalBootstrap.digest(spell).equals(V0NormalBootstrap.digest(
+                                new SpellDefinition(spell.reference(), V0NormalBootstrap.body(), origin)))) {
+                    return BootstrapCleanup.REFUSED;
+                }
+                removals.add(spell.identity());
+            }
+        }
+        if (removals.isEmpty()) {
+            return BootstrapCleanup.NO_MATCH;
+        }
+        if (image.externalRoots().stream().anyMatch(reference -> removals.contains(reference.identity()))) {
+            return BootstrapCleanup.REFUSED;
+        }
+        if (image.revisions().values().stream().anyMatch(document -> !removals.contains(document.identity())
+                && document.dependencies().stream().anyMatch(reference -> removals.contains(reference.target())))) {
+            return BootstrapCleanup.REFUSED;
+        }
+        var inventory = active.catalog.captureRoots(context.catalogContext(), List.of());
+        var reservation = active.catalog.reserve();
+        var prepared = active.catalog.prepare(reservation, context.catalogContext(), List.of(), removals, inventory);
+        publishNormal(active, prepared, writing);
+        var after = active.catalog.captureRuntimeReadback(context).image;
+        return after.routes().keySet().stream().noneMatch(removals::contains)
+                ? BootstrapCleanup.REMOVED : BootstrapCleanup.SOURCE_UNPROVED;
+    }
+
+    private Set<SkillOwnerId> normalRoster() throws IOException {
+        requireSourceRoot();
+        Set<SkillOwnerId> admitted = new HashSet<>();
+        Set<SkillOwnerId> directories = new HashSet<>();
+        int entries = 0;
+        try (var stream = Files.newDirectoryStream(sourceRoot)) {
+            for (Path entry : stream) {
+                if (++entries > 2 * ScopeDLimits.MAX_OWNERS + 1) {
+                    throw new IOException("Normal catalog roster exceeds capacity");
+                }
+                String name = entry.getFileName().toString();
+                if (name.equals(".owner-admission.lock") && Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
+                    continue;
+                }
+                boolean marker = name.endsWith(".admitted");
+                String principal = marker ? name.substring(0, name.length() - ".admitted".length()) : name;
+                UUID id;
+                try {
+                    id = UUID.fromString(principal);
+                } catch (IllegalArgumentException malformed) {
+                    throw new IOException("Unrecognized normal catalog roster entry", malformed);
+                }
+                if (!id.toString().equals(principal)) {
+                    throw new IOException("Noncanonical normal catalog principal");
+                }
+                var admittedOwner = new SkillOwnerId(id);
+                if (marker && Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS) && Files.size(entry) == 0) {
+                    admitted.add(admittedOwner);
+                } else if (!marker && Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) {
+                    directories.add(admittedOwner);
+                } else {
+                    throw new IOException("Unrecognized normal catalog roster material");
+                }
+            }
+        }
+        if (!admitted.equals(directories) || admitted.size() > ScopeDLimits.MAX_OWNERS) {
+            throw new IOException("Incomplete normal catalog roster");
+        }
+        return Set.copyOf(admitted);
     }
 
     public PrepareResult prepare(V0CatalogAuthority exactAuthority, long captureTicket,
@@ -55,6 +495,10 @@ public final class V0RuntimeCatalog {
         }
         if (owner == null || selection == null || maxManifestEntries < 1
                 || maxManifestEntries > MAX_MANIFEST_ENTRIES || !authority.matchesCaptureLimits(maxManifestEntries)) {
+            return reject(Refusal.INVALID_SELECTION);
+        }
+        if (normal && (owner.equals(V0NormalBootstrap.SEED)
+                || selection.bootstrap != null && bootstrapStopped)) {
             return reject(Refusal.INVALID_SELECTION);
         }
         if (captureTicket <= lastCaptureTicket) {
@@ -73,11 +517,19 @@ public final class V0RuntimeCatalog {
         try {
             writer = writer(owner);
             ScopeDCatalog.RuntimeReadback exact = writer.catalog.captureRuntimeReadback(context);
+            if (selection.bootstrap != null && !matchesBootstrap(writer, exact, selection.bootstrap)) {
+                return reject(Refusal.ROOT_UNAVAILABLE);
+            }
             var root = selection.resolve(exact.image, owner);
             if (root == null) {
                 return reject(Refusal.ROOT_UNAVAILABLE);
             }
-            var projection = new ProjectionCheck(maxManifestEntries);
+            if (normal && selection.bootstrap == null && exact.image.revisions().get(root.exact()).provenance()
+                    .map(origin -> origin.source().identity().owner().equals(V0NormalBootstrap.SEED)).orElse(false)) {
+                // A generic future policy is not a back door around the temporary selector's exact witness/barrier.
+                return reject(Refusal.ROOT_UNAVAILABLE);
+            }
+            var projection = new ProjectionCheck(maxManifestEntries, normal);
             ScopeDCompiler.Result result = ScopeDCompiler.compileRuntime(exact.source, exact.image, root,
                     exact.image.generation(), context, projection);
             if (result instanceof ScopeDCompiler.Rejected rejected) {
@@ -544,6 +996,7 @@ public final class V0RuntimeCatalog {
                 java.util.regex.Pattern.compile("[a-z0-9_.-]+:[a-z0-9/._-]+");
 
         private final int entryCap;
+        private final boolean normal;
         private Refusal refusal;
         private Unit root;
         private byte[] frontendDigest;
@@ -554,7 +1007,12 @@ public final class V0RuntimeCatalog {
         private final int launchStepMilli = ENGINEERING_LAUNCH_STEP_MILLI;
 
         ProjectionCheck(int entryCap) {
+            this(entryCap, false);
+        }
+
+        ProjectionCheck(int entryCap, boolean normal) {
             this.entryCap = entryCap;
+            this.normal = normal;
         }
 
         Refusal refusal() {
@@ -629,7 +1087,7 @@ public final class V0RuntimeCatalog {
             }
         }
 
-        private static Unit projectRoot(SpellReference root, Map<SpellReference, ScopeDProgram.SpellUnit> whole)
+        private Unit projectRoot(SpellReference root, Map<SpellReference, ScopeDProgram.SpellUnit> whole)
                 throws ProfileFailure {
             var lowered = whole.get(root);
             validateCommon(lowered);
@@ -637,7 +1095,7 @@ public final class V0RuntimeCatalog {
                 throw new ProfileFailure(Refusal.NO_ACTIVATION);
             }
             var activation = lowered.activation().orElseThrow();
-            if (!kind(activation.descriptor(), "gramarye:v0_engineering")
+            if (!kind(activation.descriptor(), normal ? "gramarye:normal_cast" : "gramarye:v0_engineering")
                     || !activation.descriptor().arguments().isEmpty() || !launchFacts(activation.inputRequirements())) {
                 throw new ProfileFailure(Refusal.PROFILE_REJECTED);
             }
@@ -854,6 +1312,103 @@ public final class V0RuntimeCatalog {
 
     public sealed interface PrepareResult permits Candidate, Rejected { }
 
+    /** Actor-free hint, issued only after real receiver publication and durable readback. */
+    public static final class BootstrapReadiness {
+        private final Selection selection;
+        private final Refusal refusal;
+
+        private BootstrapReadiness(Selection selection, Refusal refusal) {
+            this.selection = selection;
+            this.refusal = refusal;
+        }
+
+        private static BootstrapReadiness rejected(Refusal refusal) {
+            return new BootstrapReadiness(null, refusal);
+        }
+
+        public boolean ready() { return selection != null; }
+
+        public Optional<Selection> selection() { return Optional.ofNullable(selection); }
+
+        public Optional<Refusal> refusal() { return Optional.ofNullable(refusal); }
+    }
+
+    public static final class BootstrapCleanupReport {
+        private final BootstrapCleanup result;
+        private final BootstrapCleanupReceipt receipt;
+
+        private BootstrapCleanupReport(BootstrapCleanup result, BootstrapCleanupReceipt receipt) {
+            this.result = result; this.receipt = receipt;
+        }
+
+        public BootstrapCleanup result() { return result; }
+        public Optional<BootstrapCleanupReceipt> receipt() { return Optional.ofNullable(receipt); }
+    }
+
+    /** No public data or constructor. Only a completed, P11-permitted cold operation can issue it. */
+    public static final class BootstrapCleanupReceipt {
+        private final Object catalogIdentity;
+        private final SkillOwnerId owner;
+        private final UUID source;
+        private final CatalogGeneration generation;
+        private final String digest;
+
+        private BootstrapCleanupReceipt(Object catalogIdentity, SkillOwnerId owner, UUID source,
+                CatalogGeneration generation, String digest) {
+            this.catalogIdentity = catalogIdentity; this.owner = owner; this.source = source;
+            this.generation = generation; this.digest = digest;
+        }
+    }
+
+    /** Source-bound whole-roster evidence, revalidated under admission's lock before seed removal. */
+    public static final class BootstrapRosterProof {
+        private final V0RuntimeCatalog catalog;
+        private final Set<SkillOwnerId> roster;
+        private final Map<SkillOwnerId, BootstrapCleanupReceipt> receipts;
+        private final UUID seedSource;
+        private final SpellReference seed;
+        private final CatalogGeneration seedGeneration;
+        private final String seedDigest;
+        private boolean issued;
+        private boolean consumed;
+
+        private BootstrapRosterProof(V0RuntimeCatalog catalog, Set<SkillOwnerId> roster,
+                Map<SkillOwnerId, BootstrapCleanupReceipt> receipts, UUID seedSource, SpellReference seed,
+                CatalogGeneration seedGeneration, String seedDigest) {
+            this.catalog = catalog; this.roster = Set.copyOf(roster); this.receipts = Map.copyOf(receipts);
+            this.seedSource = seedSource; this.seed = seed; this.seedGeneration = seedGeneration;
+            this.seedDigest = seedDigest;
+        }
+
+        /** Sole consumer is the original root's retirement issuer; this never creates a catalog permit. */
+        public synchronized boolean authorizeSeed(V0CatalogAuthority exact, V0RuntimeCatalog source) {
+            if (issued || consumed || source != catalog || exact != catalog.authority || !exact.isOwnerThread()) {
+                return false;
+            }
+            issued = true;
+            return true;
+        }
+
+        private boolean consume(V0RuntimeCatalog source, V0CatalogAuthority exact,
+                Set<SkillOwnerId> actualRoster, ScopeDCatalog.RuntimeReadback actualSeed, SpellDefinition seedBody)
+                throws IOException {
+            synchronized (this) {
+                if (!issued || consumed || source != catalog || exact != catalog.authority || exact.isOwnerThread()) {
+                    return false;
+                }
+                consumed = true;
+            }
+            return roster.equals(actualRoster) && receiptRosterMatches(actualRoster, receipts)
+                    && seedSource.equals(actualSeed.source) && seed.equals(seedBody.reference())
+                    && seedGeneration.equals(actualSeed.image.generation())
+                    && seedDigest.equals(V0NormalBootstrap.digest(seedBody))
+                    && catalog.validateCleanupReceipts(receipts, seedSource);
+        }
+    }
+
+    private record BootstrapWitness(ForkProvenance provenance, String seedDigest, UUID playerSource,
+                                    SpellReference player, String playerDigest) { }
+
     public static final class Suspension {
         private final Object catalogIdentity;
         private final Gate closed = new Gate(PHASE_SUSPENDED);
@@ -898,14 +1453,20 @@ public final class V0RuntimeCatalog {
         private final boolean manifest;
         private final long stableId;
         private final long entryId;
+        private final BootstrapWitness bootstrap;
 
         private Selection(boolean manifest, long stableId, long entryId) {
+            this(manifest, stableId, entryId, null);
+        }
+
+        private Selection(boolean manifest, long stableId, long entryId, BootstrapWitness bootstrap) {
             if (stableId <= 0 || manifest && entryId <= 0) {
                 throw new IllegalArgumentException("V0 stable identities must be positive");
             }
             this.manifest = manifest;
             this.stableId = stableId;
             this.entryId = entryId;
+            this.bootstrap = bootstrap;
         }
 
         public static Selection standalone(long spellId) {
@@ -1067,6 +1628,8 @@ public final class V0RuntimeCatalog {
     }
 
     public enum Acceptance { COMMITTED, CATALOG_BUSY, HEAD_STALE, INVALID_RESERVATION }
+
+    public enum BootstrapCleanup { REMOVED, NO_MATCH, REFUSED, SOURCE_UNPROVED }
 
     public enum Disposition { RELEASED, CATALOG_BUSY, STALE_OR_RELEASED, FENCED }
 }

@@ -517,6 +517,20 @@ final class P11ReceiptLedger {
                         obligation.attempt));
     }
 
+    /** Exact current completed PD attempt only; returning it does not assert a later read. */
+    synchronized Optional<PhysicalWriterReceipt> currentPlayerWriteForReadback(Source source) {
+        var entry = matching(source);
+        if (entry == null || source.dataIdentity == null || !identities.ownsData(source.dataIdentity)) {
+            return Optional.empty();
+        }
+        var obligation = entry.physical.get(WriterKind.PLAYER_DATA);
+        var attempt = obligation == null ? null : obligation.attempt;
+        return attempt != null && attempt.source == source && attempt.kind == WriterKind.PLAYER_DATA
+                && !obligation.dirty && obligation.generation == attempt.materialVersion
+                && attempt.terminal == Terminal.COMPLETED && physicalComplete(attempt)
+                ? Optional.of(attempt) : Optional.empty();
+    }
+
     synchronized Optional<PhysicalFacts> attemptFacts(PhysicalWriterReceipt receipt) {
         if (!ownPhysical(receipt)) { return Optional.empty(); }
         return Optional.of(new PhysicalFacts(receipt.kind, receipt.materialVersion,

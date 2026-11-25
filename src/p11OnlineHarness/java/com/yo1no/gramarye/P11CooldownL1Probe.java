@@ -151,7 +151,7 @@ public final class P11CooldownL1Probe {
         var body = e.owner.body(actor);
         require(body != null && e.owner.canCopy(body) && body.account.current == body && body.complete
                 && equipped(actor).equals(reference), "QUALIFIED_CURRENT_B_REFERENCE");
-        var entry = body.cooldown.data.entries.get(reference.skillId().value());
+        var entry = body.cooldown.data.entries.get(new P11CooldownKey.LegacySkill(reference.skillId()));
         require(e.active == null ? samePending(entry, e.pending)
                 : sameActive(entry, e.active) && gameTime() < e.active.expiresAt, "B_SAME_UNEXPIRED_OBLIGATION");
         e.workLiveAtReconnect = e.instance.work == e.work;
@@ -178,7 +178,7 @@ public final class P11CooldownL1Probe {
             var data = (P11CastCooldownData) dataValue;
             require(body.cooldown.data == data && body.account.current == body && data.kind == P11CastCooldownData.Kind.ROUTED,
                     "ORIGINAL_PUBLICATION_CURRENT_MATERIAL");
-            var entry = data.entries.get(reference.skillId().value());
+            var entry = data.entries.get(new P11CooldownKey.LegacySkill(reference.skillId()));
             if (entry == null || e.sealed) { return; }
             if (e.pending == null) {
                 if (entry.kind != 1) { return; } // Prior completed episode may still have an expired ACTIVE material.
@@ -379,7 +379,7 @@ public final class P11CooldownL1Probe {
         var data = P11CastCooldownCodec.read(saved.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY)
                 .get(P11CastCooldownAttachments.ID.toString()));
         require(data.kind == P11CastCooldownData.Kind.ROUTED && data.clockFloor >= e.armFloor
-                && sameActive(data.entries.get(reference.skillId().value()), e.active), "PHYSICAL_CURRENT_B_SAME_ACTIVE");
+                && sameActive(data.entries.get(new P11CooldownKey.LegacySkill(reference.skillId())), e.active), "PHYSICAL_CURRENT_B_SAME_ACTIVE");
         e.savedFloor = data.clockFloor;
     }
 
@@ -387,7 +387,7 @@ public final class P11CooldownL1Probe {
         var body = e.owner.current(e.actor.getUUID());
         require(body != null && e.owner.canCopy(body) && body.cooldown.data.kind == P11CastCooldownData.Kind.ROUTED,
                 "CURRENT_LOGICAL_OWNER_MATERIAL");
-        return body.cooldown.data.entries.get(reference.skillId().value());
+        return body.cooldown.data.entries.get(new P11CooldownKey.LegacySkill(reference.skillId()));
     }
     private static boolean sameAttempt(P11CastCooldownData.Entry a, P11CastCooldownData.Entry b) {
         return a != null && b != null && a.skillId.equals(b.skillId) && a.revision == b.revision

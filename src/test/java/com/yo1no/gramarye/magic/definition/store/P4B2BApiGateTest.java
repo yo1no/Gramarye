@@ -521,7 +521,7 @@ class P4B2BApiGateTest {
                 () -> assertFalse(build.contains("relocate(")),
                 () -> assertFalse(build.contains("com.gradleup.shadow")),
                 () -> assertFalse(build.contains("com.github.johnrengelman.shadow")),
-                () -> assertEquals(216, dependencyErrorCatchCount(production)),
+                () -> assertEquals(235, dependencyErrorCatchCount(production)),
                 () -> assertEquals(1, reviewedStartupErrorCatchCount(startup)),
                 () -> assertEquals(0, catchTypeCount(storeService, "Throwable")),
                 () -> assertEquals(lexicalFixture.length(), maskedLexicalFixture.length()),
@@ -740,6 +740,9 @@ class P4B2BApiGateTest {
                 "com/yo1no/gramarye/magic/network/P7PendingPermitOwner.java")));
         var p5Catches = errorCatchBlocks(runtimeService);
         assertP5WorkErrorCatches(runtimeService);
+        var normalStartupSecondary = errorCatchBlocks(bodyFollowing(runtimeService,
+                normalStartupErrorContracts().keySet().iterator().next())).stream()
+                .filter(block -> Set.of("cleanup", "suppressionFailure").contains(block.binding())).toList();
         var p5Primary = p5Catches.stream()
                 .filter(block -> block.binding().equals("primary"))
                 .toList();
@@ -852,7 +855,7 @@ class P4B2BApiGateTest {
                         attachmentFixtureErrorContracts());
         assertEquals(6, fixtureCatches);
         var v0OwnedCatches = assertV0RuntimeErrorCatches();
-        assertEquals(13, v0OwnedCatches);
+        assertEquals(27, v0OwnedCatches);
         var p9OwnedCatches = List.of(
                         p6AdapterCatches, p9ProjectileCatches, p9WorldHandoffCatches)
                 .stream()
@@ -887,10 +890,11 @@ class P4B2BApiGateTest {
         primary.addAll(p8ServerPrimary);
         primary.addAll(p9Primary);
         assertAll(
-                () -> assertEquals(28, p5Catches.size()),
-                () -> assertEquals(12, p5Primary.size()),
-                () -> assertEquals(29, primary.size()),
+                () -> assertEquals(31, p5Catches.size()),
+                () -> assertEquals(13, p5Primary.size()),
+                () -> assertEquals(30, primary.size()),
                 () -> assertEquals(11, secondary.size()),
+                () -> assertEquals(2, normalStartupSecondary.size()),
                 () -> assertEquals(2, diagnosticIsolation.size()),
                 () -> assertEquals(3, p9ErrorPrimitiveIsolation.size()),
                 () -> assertEquals(2, p6AdapterCatches.size()),
@@ -899,7 +903,7 @@ class P4B2BApiGateTest {
                 () -> assertEquals(6, p9Primary.size()),
                 () -> assertEquals(5, p9CleanupIsolation.size()),
                 () -> assertEquals(18, p11ObservationIsolation.size()),
-                () -> assertEquals(48, p11NativeHelpers),
+                () -> assertEquals(50, p11NativeHelpers),
                 () -> assertEquals(16, p11ObservationIsolation.stream().filter(block ->
                         block.binding().equals("secondary")
                                 && block.body().replaceAll("\\s+", "").equals(
@@ -1054,6 +1058,7 @@ class P4B2BApiGateTest {
                 () -> assertEquals(
                         primary.size()
                                 + secondary.size()
+                                + normalStartupSecondary.size()
                                 + diagnosticIsolation.size()
                                 + p9ErrorPrimitiveIsolation.size()
                                 + p9CleanupIsolation.size()
@@ -1068,7 +1073,7 @@ class P4B2BApiGateTest {
                                 + p8ServerObservationIsolation.size()
                                 + a05ObservationIsolation,
                         dependencyErrorCatchCount(allProduction)),
-                () -> assertEquals(216, dependencyErrorCatchCount(allProduction)));
+                () -> assertEquals(235, dependencyErrorCatchCount(allProduction)));
         assertOrdered(networkCatches.getFirst().body(),
                 "primary = failure;", "throw failure;");
         assertOrdered(
@@ -1378,6 +1383,46 @@ class P4B2BApiGateTest {
             assertThrows(AssertionError.class, () -> assertNativeHelperCatches(
                     stopOwner.replace(replacement.getFirst(), replacement.getLast()), stopWriterErrorContracts()));
         }
+        for (var owner : Map.of(
+                "V0SlotRuntime.java", v0SlotErrorContracts(),
+                "magic/definition/scoped/V0RuntimeCatalog.java", v0CatalogErrorContracts(),
+                "V0NormalColdLane.java", v0ColdErrorContracts()).entrySet()) {
+            var actual = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve("com/yo1no/gramarye/" + owner.getKey())));
+            assertEquals(errorCatchBlocks(actual).size(), assertMethodErrorCatches(actual, owner.getValue()));
+            for (String marker : owner.getValue().keySet()) {
+                var mutant = actual.replace(marker, marker.replace("(", "Unreviewed("));
+                assertFalse(mutant.equals(actual));
+                assertThrows(AssertionError.class, () -> assertMethodErrorCatches(mutant, owner.getValue()));
+            }
+            for (String binding : List.of("primary", "failure", "cleanup", "delivery", "cleanupFailure", "suppressionFailure")) {
+                String before = "Error " + binding;
+                if (!actual.contains(before)) { continue; }
+                var mutant = actual.replace(before, "Error foreign");
+                assertThrows(AssertionError.class, () -> assertMethodErrorCatches(mutant, owner.getValue()));
+            }
+        }
+        for (var replacement : List.of(
+                List.of("void cooldownPrimaryReadback(", "void foreignReadback("),
+                List.of("Error observationFailure", "Error foreign"),
+                List.of("throw observationFailure;", "throw new Error();"),
+                List.of("if (primary == null) { throw cleanupFailure; }", "throw cleanupFailure;"))) {
+            var mutant = stopOwner.replace(replacement.getFirst(), replacement.getLast());
+            assertFalse(mutant.equals(stopOwner));
+            assertThrows(AssertionError.class, () -> assertNativeHelperCatches(mutant, stopWriterErrorContracts()));
+        }
+
+        var normalStartup = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve("com/yo1no/gramarye/SkillRuntimeService.java")));
+        for (var replacement : List.of(
+                List.of("bound.abortUnpublished(authority);", "bound.startNormalCold();"),
+                List.of("Error cleanup", "Error foreign"),
+                List.of("Error suppressionFailure", "Error foreign"),
+                List.of("throw primary;", "throw new Error();"),
+                List.of("if (bound.normalPolicy())", "if (true)"))) {
+            var mutant = normalStartup.replace(replacement.getFirst(), replacement.getLast());
+            assertFalse(mutant.equals(normalStartup));
+            assertThrows(AssertionError.class, () -> assertMethodErrorCatches(mutant, normalStartupErrorContracts()));
+        }
+
     }
 
     private static Map<String, List<ErrorCatchBlock>> keepAliveErrorContracts() {
@@ -1396,6 +1441,11 @@ class P4B2BApiGateTest {
     }
 
     private static void assertP5WorkErrorCatches(String source) {
+        assertEquals(3, assertMethodErrorCatches(source, normalStartupErrorContracts()));
+        var oldLifecycle = bodyFollowing(source,
+                "void handleRuntimeStarted(ServerStartedEvent event, P5RuntimeLimits limits)");
+        assertTrue(errorCatchBlocks(oldLifecycle).isEmpty());
+        assertFalse(oldLifecycle.contains("startNormalCold") || oldLifecycle.contains("abortUnpublished"));
         var preserved = new ErrorCatchBlock("primary",
                 "slot.p9ErrorCleanup.prepare(server);throwpreserveErrorFault(slot,primary);");
         var ignored = new ErrorCatchBlock("ignored", "");
@@ -1505,7 +1555,10 @@ class P4B2BApiGateTest {
                                 + "catch(RuntimeException|Errorsecondary){failures=increment(failures);}"),
                         new ErrorCatchBlock("secondary", "failures=increment(failures);")),
                 "void flushDetachedIndependent(", List.of(new ErrorCatchBlock("failure",
-                        "body.account.fault=Fault.WRITE;failures=increment(failures);")));
+                        "body.account.fault=Fault.WRITE;failures=increment(failures);")),
+                "void cooldownPrimaryReadback(", List.of(
+                        new ErrorCatchBlock("observationFailure", "body.cooldownReadback=null;primary=observationFailure;throwobservationFailure;"),
+                        new ErrorCatchBlock("cleanupFailure", "body.cooldownReadback=null;if(primary==null){throwcleanupFailure;}")));
     }
 
     private static Map<String, List<ErrorCatchBlock>> manaFixtureErrorContracts() {
@@ -1547,7 +1600,7 @@ class P4B2BApiGateTest {
         var secondary = new ErrorCatchBlock("secondary", "suppress(primary,secondary);");
         var suppression = List.of(new ErrorCatchBlock("suppressionFailure", ""));
         if (kind.equals("handler") || kind.equals("task")) {
-            return Map.of(kind.equals("handler") ? "void handleAuthenticated(" : "void run(", List.of(
+            return Map.of(kind.equals("handler") ? "void enqueueAuthenticated(" : "void run(", List.of(
                     new ErrorCatchBlock("failure", "primary=failure;throwfailure;"), secondary),
                     "void suppress(", suppression);
         }
@@ -1578,6 +1631,9 @@ class P4B2BApiGateTest {
         assertNativeHelperCatches(source, p7ErrorContracts(kind));
         var compact = source.replaceAll("\\s+", "");
         if (kind.equals("handler")) {
+            assertTrue(errorCatchBlocks(bodyFollowing(source, "void handleAuthenticated(")).isEmpty());
+            assertTrue(errorCatchBlocks(bodyFollowing(source, "void handleNormalAuthenticated(")).isEmpty());
+            assertEquals(3, occurrences(compact, "enqueueAuthenticated(")); // two entry calls plus sole definition
             assertTrue(compact.contains("finally{if(!submissionReturned){if(primary==null){permit.releaseAfterEnqueueFailure();}"
                     + "else{try{permit.releaseAfterEnqueueFailure();}catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}}}}"));
         } else if (kind.equals("task")) {
@@ -1605,36 +1661,66 @@ class P4B2BApiGateTest {
                         "closeAfterNativeFault(projectile,V0TerminalReason.FAULT);throwprimary;")),
                 "void discardAfterV0Close(", List.of(ignoredCleanup),
                 "void closeAfterNativeFault(", List.of(ignoredCleanup)));
-        var slotCatches = exactNativeHelperCatches("V0SlotRuntime.java", Map.of(
-                "V0Admission acceptCompletion(", List.of(new ErrorCatchBlock("primary",
-                        "if(!committed){cleanupAttempted=true;try{"
-                                + "undoReservation(reservedCell,reservedLineage,candidate,work);}"
-                                + "catch(RuntimeException|ErrorignoredCleanupFailure){}}throwprimary;"), ignoredCleanup),
-                "void dispatch(", List.of(new ErrorCatchBlock("primary",
-                        "try{lineage.releasing=true;finishChecked(claim);}"
-                                + "catch(RuntimeException|Errorcleanup){}throwprimary;"),
-                        new ErrorCatchBlock("cleanup", "")),
-                "void settleLineage(", List.of(new ErrorCatchBlock("primary",
-                        "try{closeCarrier(lineage.childBinding,reason);}"
-                                + "catch(RuntimeException|Errorignored){}throwprimary;"),
-                        new ErrorCatchBlock("ignored", ""))));
+        var slotCatches = exactNativeHelperCatches("V0SlotRuntime.java", v0SlotErrorContracts());
         var catalog = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/magic/definition/scoped/V0RuntimeCatalog.java")));
-        var catalogCatches = assertMethodErrorCatches(catalog, Map.of(
-                "PrepareResult prepare(", List.of(new ErrorCatchBlock("failure",
-                        "fenceWriter(writer,expected);throwfailure;")),
-                "boolean write(", List.of(new ErrorCatchBlock("failure",
-                        "fenceWriter(writer,writing);throwfailure;")),
-                "Writer open(", List.of(new ErrorCatchBlock("primary",
-                        "try{storage.close();}catch(IOExceptioncloseFailure){"
-                                + "primary.addSuppressed(closeFailure);}throwprimary;"))));
+        var catalogCatches = assertMethodErrorCatches(catalog, v0CatalogErrorContracts());
         assertEquals(catalogCatches, errorCatchBlocks(catalog).size());
         var compactCatalog = catalog.replaceAll("\\s+", "");
-        assertEquals(2, occurrences(compactCatalog, "catch(RuntimeException|Error"));
+        assertEquals(4, occurrences(compactCatalog, "catch(RuntimeException|Error"));
         assertEquals(1, occurrences(compactCatalog, "catch(IOException|RuntimeException|Error"));
         assertEquals(0, catchTypeCount(catalog, "Throwable"));
-        return worldCatches + slotCatches + catalogCatches;
+        int coldCatches = exactNativeHelperCatches("V0NormalColdLane.java", v0ColdErrorContracts());
+        assertEquals(15, slotCatches);
+        assertEquals(5, catalogCatches);
+        assertEquals(3, coldCatches);
+        // Original 13 + slot9 + catalog2 + normal-cold3 = 27; source readback adds
+        // 2 P11 helpers and exact normal startup adds 3 P5 roles: 216 + 19 = 235.
+        return worldCatches + slotCatches + catalogCatches + coldCatches;
     }
+
+    private static Map<String, List<ErrorCatchBlock>> v0SlotErrorContracts() {
+        return Map.ofEntries(
+                Map.entry("V0Admission acceptCompletion(", List.of(new ErrorCatchBlock("primary", "primaryFailure=primary;throwprimary;"),
+                        new ErrorCatchBlock("failure", "cleanupFailure=failure;"),
+                        new ErrorCatchBlock("failure", "if(cleanupFailure==null){cleanupFailure=failure;}else{suppress(cleanupFailure,failure);}"),
+                        new ErrorCatchBlock("cleanup", "if(primaryFailure==null){primaryFailure=cleanup;throwcleanup;}suppress(primaryFailure,cleanup);"),
+                        new ErrorCatchBlock("cleanup", "if(primaryFailure==null){primaryFailure=cleanup;throwcleanup;}suppress(primaryFailure,cleanup);"),
+                        new ErrorCatchBlock("delivery", "if(primaryFailure==null){throwdelivery;}suppress(primaryFailure,delivery);"))),
+                Map.entry("void suppress(", List.of(new ErrorCatchBlock("suppressionFailure", ""))),
+                Map.entry("void dispatch(", List.of(new ErrorCatchBlock("primary", "try{if(claim.role==V0P5Queue.ROOT_RELEASE&&lineage.cooldownReceipt!=null){lineage.cooldownReceipt.unknown();}lineage.releasing=true;finishChecked(claim);}catch(RuntimeException|Errorcleanup){}throwprimary;"),
+                        new ErrorCatchBlock("cleanup", ""))),
+                Map.entry("void undoReservation(", List.of(new ErrorCatchBlock("primary", "failure=primary;"),
+                        new ErrorCatchBlock("secondary", "if(failure==null){failure=secondary;}else{suppress(failure,secondary);}"))),
+                Map.entry("void undoCandidate(", List.of(new ErrorCatchBlock("primary", "failure=primary;"),
+                        new ErrorCatchBlock("secondary", "if(failure==null){failure=secondary;}else{suppress(failure,secondary);}"))),
+                Map.entry("void settleLineage(", List.of(new ErrorCatchBlock("primary", "try{closeCarrier(lineage.childBinding,reason);}catch(RuntimeException|Errorignored){}throwprimary;"),
+                        new ErrorCatchBlock("ignored", ""))));
+    }
+
+    private static Map<String, List<ErrorCatchBlock>> v0CatalogErrorContracts() {
+        return Map.ofEntries(
+                Map.entry("BootstrapReadiness ensureNormalBootstrap(", List.of(new ErrorCatchBlock("failure", "fenceWriter(active,writing);throwfailure;"))),
+                Map.entry("BootstrapCleanup cleanupBootstrap(", List.of(new ErrorCatchBlock("failure", "fenceWriter(active,writing);throwfailure;"))),
+                Map.entry("PrepareResult prepare(", List.of(new ErrorCatchBlock("failure", "fenceWriter(writer,expected);throwfailure;"))),
+                Map.entry("boolean write(", List.of(new ErrorCatchBlock("failure", "fenceWriter(writer,writing);throwfailure;"))),
+                Map.entry("Writer open(", List.of(new ErrorCatchBlock("primary", "try{storage.close();}catch(IOExceptioncloseFailure){primary.addSuppressed(closeFailure);}throwprimary;"))));
+    }
+
+    private static Map<String, List<ErrorCatchBlock>> v0ColdErrorContracts() {
+        return Map.of("void run(", List.of(
+                new ErrorCatchBlock("primary", "try{if(!retirementTaken){catalog.suspend(authority);LOGGER.error();while(!mailbox.retirementForColdLane()){LockSupport.parkNanos(this,2_000_000L);}retirementTaken=true;retire();}}catch(RuntimeException|ErrorcleanupFailure){if(cleanupFailure!=primary){try{primary.addSuppressed(cleanupFailure);}catch(RuntimeException|ErrorsuppressionFailure){}}}throwprimary;"),
+                new ErrorCatchBlock("cleanupFailure", "if(cleanupFailure!=primary){try{primary.addSuppressed(cleanupFailure);}catch(RuntimeException|ErrorsuppressionFailure){}}"),
+                new ErrorCatchBlock("suppressionFailure", "")));
+    }
+
+    private static Map<String, List<ErrorCatchBlock>> normalStartupErrorContracts() {
+        return Map.of("void handleRuntimeStarted(ServerStartedEvent event, P5RuntimeLimits limits,\n            V0StartupLoadState v0State)", List.of(
+                new ErrorCatchBlock("primary", "if(bound.normalPolicy()){try{bound.abortUnpublished(authority);}catch(RuntimeException|Errorcleanup){if(cleanup!=primary){try{primary.addSuppressed(cleanup);}catch(RuntimeException|ErrorsuppressionFailure){}}}}throwprimary;"),
+                new ErrorCatchBlock("cleanup", "if(cleanup!=primary){try{primary.addSuppressed(cleanup);}catch(RuntimeException|ErrorsuppressionFailure){}}"),
+                new ErrorCatchBlock("suppressionFailure", "")));
+    }
+
 
     private static int assertNativeHelperCatches(String source, Map<String, List<ErrorCatchBlock>> contracts) {
         int count = assertMethodErrorCatches(source, contracts);

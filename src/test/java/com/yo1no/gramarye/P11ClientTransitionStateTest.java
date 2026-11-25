@@ -306,7 +306,17 @@ final class P11ClientTransitionStateTest {
         assertTrue(input.contains("transitionSuppressionGeneration != observedTransition"));
         assertTrue(input.contains("P11ClientTransitions.blocksCast()"));
         assertTrue(input.contains("GateDecision.TRANSITION_PENDING"));
-        assertTrue(input.contains("dropAllPendingClicks();"));
+        // U0 preserves consume/drop through bounded drains, including cross-tick recovery.
+        assertTrue(input.contains("var drained = drainPendingClicks();"));
+        assertTrue(input.contains("return P9FreshPressState.drain(castKey::consumeClick);"));
+        assertTrue(input.contains("if (gate == GateDecision.PENDING_FLUSH_REQUIRED)"));
+        assertTrue(input.contains("drained.empty() && evaluateGates(liveGateProbe(minecraft, true)) == GateDecision.ALLOW"));
+        assertTrue(input.contains("pendingFlushRequired = true;\n        freshPresses.invalidate();"));
+        var edges = source("magic/network/P9FreshPressState.java");
+        assertTrue(edges.contains("MAX_CLICK_DRAIN = 32"));
+        assertTrue(edges.contains("count < MAX_CLICK_DRAIN"));
+        assertTrue(edges.contains("return new Drain(MAX_CLICK_DRAIN, false);"));
+        assertFalse(input.contains("while (castKey.consumeClick())"));
         assertFalse(input.contains("KeyMapping.releaseAll"));
     }
 

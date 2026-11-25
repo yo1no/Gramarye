@@ -234,6 +234,17 @@ def p11OnlineRuntimeText = providers.gradleProperty('gramaryeP11OnlineRuntime').
 def p11OnlineOutputText = providers.gradleProperty('gramaryeP11OnlineOutput').orElse('').get()
 def p11OnlinePrivateText = providers.gradleProperty('gramaryeP11OnlinePrivate').orElse('').get()
 def p11OnlineCase = providers.gradleProperty('gramaryeP11OnlineCase').orElse('single').get()
+// Excluded future-policy qualification selector; never an ordinary network/client permission.
+def p11U027InputText = providers.gradleProperty('gramaryeU027Input').orElse('').get()
+def p11U027InputSha256 = providers.gradleProperty('gramaryeU027InputSha256').orElse('').get()
+def p11U027Future = !p11U027InputText.isBlank()
+if (p11U027Future || !p11U027InputSha256.isBlank()) {
+    if (p11OnlineCase != 'u0-ordinary-ab' || !p11U027Future
+            || !java.nio.file.Path.of(p11U027InputText).isAbsolute()
+            || !(p11U027InputSha256 ==~ /[0-9a-f]{64}/)) {
+        throw new GradleException('U027 requires the exact ordinary qualification case and sealed absolute input')
+    }
+}
 def p11D3Cases = ['d3-replay', 'd3-old-source', 'd3-late-task', 'd3-old-result', 'd3-respawn', 'd3-dual', 'd3-host-lan']
 def p11OnlinePort = providers.gradleProperty('gramaryeP11OnlinePort').orElse('25576').get()
 def p11OnlineRunId = providers.gradleProperty('gramaryeP11OnlineRunId').orElse('unconfigured').get()
@@ -244,6 +255,24 @@ def p11OnlineJar = file(p11OnlineJarText.isBlank()
 p11OnlineHarnessSourceSet.output.dir(p11OnlineJar)
 configurations.named(p11OnlineHarnessSourceSet.runtimeClasspathConfigurationName) {
     exclude(group: 'org.apache.commons', module: 'commons-compress')
+}
+// Snapshot U0's qualification classes/resources; native runs group these roots with the ordinary JAR.
+// Copy classes/resources explicitly: output also contains the external frozen production JAR.
+tasks.register('u0OrdinaryQualificationJar', Jar) {
+    dependsOn(tasks.named(p11OnlineHarnessSourceSet.compileJavaTaskName),
+            tasks.named(p11OnlineHarnessSourceSet.processResourcesTaskName))
+    archiveBaseName = mod_id
+    archiveVersion = mod_version
+    archiveClassifier = 'u0-ordinary-qualification'
+    destinationDirectory = layout.buildDirectory.dir('u0/artifacts')
+    includeEmptyDirs = false
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+    from(p11OnlineHarnessSourceSet.output.classesDirs)
+    from(p11OnlineHarnessSourceSet.output.resourcesDir) {
+        exclude 'META-INF/neoforge.mods.toml', 'u0-qualification/**'
+    }
 }
 // V0 loads exactly one packaged Gramarye instead of any exploded mod output.
 def v0EngineeringSourceSet = sourceSets.create('v0Engineering')
@@ -1504,7 +1533,8 @@ neoForge {
                     throw new GradleException('P11 restart universe is only valid for the exact read case')
                 }
                 programArguments.addAll '--mixin.config',
-                        p11OnlineCase in p11D3Cases ? 'gramarye-p11-d3-harness.mixins.json' : p11OnlineCase in ['cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual']
+                        p11OnlineCase == 'u0-ordinary-ab' ? (p11U027Future ? 'gramarye-u0-future-qualification.mixins.json' : 'gramarye-u0-ordinary-qualification.mixins.json')
+                                : p11OnlineCase in p11D3Cases ? 'gramarye-p11-d3-harness.mixins.json' : p11OnlineCase in ['cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual']
                                 ? 'gramarye-p11-cooldown-harness.mixins.json' : p11OnlineCase in ['l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-p8-missing-asset', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'cooldown-l1-pre-spawn', 'cooldown-l1-open', 'cooldown-l1-claimed']
                                 ? 'gramarye-p11-l1-harness.mixins.json' : p11OnlineCase in ['c4a-dedicated', 'c4a-host-lan', 'c4a-reward', 'd3-c4a-baseline']
                                 ? 'gramarye-p11-c4a-harness.mixins.json' : 'gramarye-p11-online-harness.mixins.json'
@@ -1519,6 +1549,10 @@ neoForge {
                 systemProperty 'gramarye.p11.online.runId', p11OnlineRunId
                 systemProperty 'gramarye.p11.online.readyOnly', p11OnlineReadyOnly
                 systemProperty 'gramarye.p11.online.jar', p11OnlineJar.absolutePath
+                if (dedicated && p11U027Future) {
+                    systemProperty 'gramarye.p11.online.u027Input', p11U027InputText
+                    systemProperty 'gramarye.p11.online.u027InputSha256', p11U027InputSha256
+                }
                 if (!dedicated) {
                     // DevLogin alone reads/writes this private store; no evidence collector does.
                     systemProperty 'devlogin.storage', p11OnlinePrivateText + '/' + (onlineName.endsWith('A') ? 'a' : 'b')
@@ -1741,7 +1775,7 @@ tasks.named('runServer', JavaExec).configure {
             }
             def paths = [p11OnlineRuntimeText, p11OnlineOutputText, p11OnlinePrivateText]
             if (paths.any { it.isBlank() || !java.nio.file.Path.of(it).isAbsolute() }
-                    || !p11OnlineJar.isFile() || !(p11OnlineCase in (['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward', 'l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-p8-missing-asset', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'l1-qctx', 'l1-capacity', 'cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual', 'cooldown-l1-pre-spawn', 'cooldown-l1-open', 'cooldown-l1-claimed'] + p11D3Cases + ['d3-c4a-baseline']))
+                    || !p11OnlineJar.isFile() || !(p11OnlineCase in (['single', 'qctx', 'capacity', 'c4a-dedicated', 'c4a-host-lan', 'c4a-qctx', 'c4a-capacity', 'c4a-reward', 'l1-pre-spawn', 'l1-open', 'l1-claimed', 'l1-impact-close-custody', 'l1-two-work-reload', 'l1-two-work-stop', 'l1-revision', 'l1-p8-send-fault', 'l1-p8-missing-asset', 'l1-ack-fault', 'l1-work-death', 'l1-work-dimension', 'l1-work-config', 'l1-partial-reward-function', 'l1-work-multi-uuid-qctx', 'l1-stats-write-fault-memory', 'l1-work-deadline', 'l1-spawn-callback-remove', 'l1-logout-cleanup-fault', 'l1-tracking-retirement', 'l1-work-capacity', 'l1-natural-unload', 'l1-online-peer', 'l1-work-context-refusal', 'l1-restart-write', 'l1-restart-read', 'l1-qctx', 'l1-capacity', 'cooldown-d1', 'cooldown-d120', 'cooldown-d600', 'cooldown-restart-write', 'cooldown-restart-read', 'cooldown-prepared-reentry', 'cooldown-add-false', 'cooldown-add-remove', 'cooldown-clone', 'cooldown-before-arm-throw', 'cooldown-after-arm-throw', 'cooldown-unarmed-stop', 'cooldown-save-active', 'cooldown-save-clear', 'cooldown-dual', 'cooldown-l1-pre-spawn', 'cooldown-l1-open', 'cooldown-l1-claimed'] + p11D3Cases + ['d3-c4a-baseline', 'u0-ordinary-ab']))
                     || p11OnlineCase in ['c4a-host-lan', 'd3-host-lan']
                     || !(p11OnlineRunId ==~ /[a-zA-Z0-9_-]{8,64}/)
                     || !(p11OnlinePort ==~ /[0-9]{4,5}/)

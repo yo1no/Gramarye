@@ -196,6 +196,10 @@ final class P7ServerAuthorizationDispatcherTest {
                         nonEligibleAdmissionNeverCallsRoot();
                         deadAndSpectatorActorsAreRejectedAfterConsumption();
                         eligibleAdmissionCallsRootAndSinkOnce();
+                        normalPendingIsNotAnAcceptedAcknowledgement();
+                        normalImmediateRefusalsKeepSharedAdmissionAndSkipLegacyTarget();
+                        normalPendingAndImmediateDeferralMustAgree();
+                        oldNormalIdentityStopsBeforeTheNormalPort();
                         disconnectInvalidatesThenPublishesThenDisconnects();
                         return "PASS";
                     }
@@ -360,6 +364,66 @@ final class P7ServerAuthorizationDispatcherTest {
                         check(fixture.trace.invalidations == 1, "invalidation count");
                     }
 
+                    private static void normalPendingIsNotAnAcceptedAcknowledgement() {
+                        var f = new Fixture();
+                        f.trace.normalOutcome = P7ServerAuthorizationBoundary.NormalIngressDisposition.PENDING;
+                        f.trace.deferNormal = true;
+                        f.dispatchNormal();
+                        f.trace.expectCounts(1, 1, 0, 0, 0);
+                        check(f.trace.normalCalls == 1 && f.trace.targetCalls == 0 && f.trace.feedbackCalls == 0,
+                                "pending must own one capture, no legacy target, no ACK or feedback");
+                        f.trace.expectEvents("server", "sameThread", "lifetime", "session", "running", "player",
+                                "connected", "admission", "tick", "transition", "alive", "spectator",
+                                "normal:receipt", "normal:root");
+                    }
+
+                    private static void normalImmediateRefusalsKeepSharedAdmissionAndSkipLegacyTarget() {
+                        for (var outcome : P7ServerAuthorizationBoundary.NormalIngressDisposition.values()) {
+                            if (outcome == P7ServerAuthorizationBoundary.NormalIngressDisposition.PENDING) { continue; }
+                            var f = new Fixture();
+                            f.trace.normalOutcome = outcome;
+                            f.dispatchNormal();
+                            f.trace.expectCounts(1, 1, 0, 1, 0);
+                            check(f.trace.normalCalls == 1 && f.trace.targetCalls == 0 && f.trace.feedbackCalls == 1,
+                                    "normal refusal did not remain behind shared admission");
+                            var expected = switch (outcome) {
+                                case NOT_READY, UNAVAILABLE -> P7ServerAuthorizationBoundary.AdmissionDisposition.P5_UNAVAILABLE;
+                                case CAPACITY, COOLDOWN, INSUFFICIENT_MANA -> P7ServerAuthorizationBoundary.AdmissionDisposition.P5_ADMISSION_REJECTED;
+                                case REJECTED -> P7ServerAuthorizationBoundary.AdmissionDisposition.UNAUTHORIZED_INTENT;
+                                case PENDING -> throw new AssertionError();
+                            };
+                            check(f.trace.lastRootDisposition == expected
+                                    && f.trace.lastRootDisposition != P7ServerAuthorizationBoundary.AdmissionDisposition.ACCEPTED,
+                                    "refusal was reported as accepted");
+                        }
+                    }
+
+                    private static void normalPendingAndImmediateDeferralMustAgree() {
+                        for (boolean deferred : new boolean[]{false, true}) {
+                            var f = new Fixture();
+                            f.trace.deferNormal = deferred;
+                            f.trace.normalOutcome = deferred
+                                    ? P7ServerAuthorizationBoundary.NormalIngressDisposition.NOT_READY
+                                    : P7ServerAuthorizationBoundary.NormalIngressDisposition.PENDING;
+                            try { f.dispatchNormal(); throw new AssertionError("inconsistent normal result survived"); }
+                            catch (P7SemanticInvariantException expected) { }
+                            f.trace.expectCounts(1, 1, 0, 0, 0);
+                        }
+                    }
+
+                    private static void oldNormalIdentityStopsBeforeTheNormalPort() {
+                        var old = new Fixture();
+                        old.trace.currentLifetime = false;
+                        old.dispatchNormal();
+                        old.trace.expectCounts(0, 0, 0, 0, 0);
+                        check(old.trace.normalCalls == 0, "old server identity entered normal ingress");
+                        var connectionChanged = new Fixture();
+                        connectionChanged.trace.connected = false;
+                        connectionChanged.dispatchNormal();
+                        connectionChanged.trace.expectCounts(1, 0, 0, 1, 0);
+                        check(connectionChanged.trace.normalCalls == 0, "replaced actor entered normal ingress");
+                    }
+
                     static void check(boolean condition, String message) {
                         if (!condition) {
                             throw new AssertionError(message);
@@ -372,6 +436,14 @@ final class P7ServerAuthorizationDispatcherTest {
                         private final Trace trace = new Trace();
 
                         private void dispatch() {
+                            dispatch(new P7CastOperation.Legacy(new CastIntent(73L, 4)));
+                        }
+
+                        private void dispatchNormal() {
+                            dispatch(new P7CastOperation.NormalSpell(73L));
+                        }
+
+                        private void dispatch(P7CastOperation operation) {
                             P7ServerAuthorizationBoundary.installTrace(trace);
                             var dispatcher = new P7ServerAuthorizationDispatcher(
                                     new P7ServerSessionService(trace),
@@ -379,7 +451,7 @@ final class P7ServerAuthorizationDispatcherTest {
                                     new P7AdvisoryTargetValidator(trace),
                                     new P7ServerIntentResultSink(trace),
                                     new P7ServerDisconnectPort(trace));
-                            dispatcher.dispatch(new P7QueuedCastIntent(new P7SessionIdentity(PLAYER_ID, 19L, 1L), new CastIntent(73L, 4)));
+                            dispatcher.dispatch(new P7QueuedCastIntent(new P7SessionIdentity(PLAYER_ID, 19L, 1L), operation));
                         }
                     }
                 }
@@ -404,8 +476,15 @@ final class P7ServerAuthorizationDispatcherTest {
                             CastIntentAdmissionSemantics.Outcome.ELIGIBLE;
                     P7ServerAuthorizationBoundary.TargetDisposition targetDisposition =
                             P7ServerAuthorizationBoundary.TargetDisposition.VALID;
-                    P7ServerAuthorizationBoundary.RootDisposition rootDisposition =
-                            P7ServerAuthorizationBoundary.RootDisposition.ACCEPTED;
+                    P7ServerAuthorizationBoundary.AdmissionDisposition rootDisposition =
+                            P7ServerAuthorizationBoundary.AdmissionDisposition.ACCEPTED;
+                    P7ServerAuthorizationBoundary.NormalIngressDisposition normalOutcome =
+                            P7ServerAuthorizationBoundary.NormalIngressDisposition.NOT_READY;
+                    P7ServerAuthorizationBoundary.AdmissionDisposition lastRootDisposition;
+                    P7ServerAuthorizationBoundary.NormalFeedback lastFeedback;
+                    boolean deferNormal;
+                    int normalCalls;
+                    int feedbackCalls;
                     int sessionLookups;
                     int transitions;
                     int rootCalls;
@@ -651,9 +730,10 @@ final class P7ServerAuthorizationDispatcherTest {
                     static P7ServerIntentResult fromRootDisposition(
                             P7SessionIdentity identity,
                             long sequence,
-                            P7ServerAuthorizationBoundary.RootDisposition disposition) {
+                            P7ServerAuthorizationBoundary.AdmissionDisposition disposition) {
                         var trace = P7ServerAuthorizationBoundary.trace();
                         trace.add("map:root");
+                        trace.lastRootDisposition = disposition;
                         return new P7ServerIntentResult("root", sequence, -1L);
                     }
                 }
@@ -664,12 +744,37 @@ final class P7ServerAuthorizationDispatcherTest {
                         INVALID_TARGET
                     }
 
-                    enum RootDisposition {
-                        ACCEPTED
+                    enum AdmissionDisposition {
+                        ACCEPTED, UNKNOWN_SKILL, UNAUTHORIZED_INTENT, INVALID_TARGET, TARGET_UNAVAILABLE,
+                        P5_ADMISSION_REJECTED, P5_UNAVAILABLE, INTERNAL_SERVER_FAULT
                     }
 
                     interface AdvisoryTargetCheck {
                         TargetDisposition validate(MinecraftServer server, ServerPlayer actor);
+                    }
+
+                    enum NormalIngressDisposition {
+                        PENDING, NOT_READY, CAPACITY, COOLDOWN, INSUFFICIENT_MANA, UNAVAILABLE, REJECTED
+                    }
+                    enum NormalFeedback {
+                        NOT_READY, CAPACITY, COOLDOWN_ACTIVE, INSUFFICIENT_MANA, RATE_LIMITED, UNAVAILABLE
+                    }
+                    static final class NormalReceipt {
+                        private boolean deferred;
+                        boolean deferred() { return deferred; }
+                        void immediateCompleted() { deferred = false; }
+                    }
+                    static NormalReceipt normalReceipt(P7SessionIdentity identity, long sequence) {
+                        trace().add("normal:receipt");
+                        return new NormalReceipt();
+                    }
+                    static NormalIngressDisposition dispatchNormal(MinecraftServer server, ServerPlayer actor,
+                            NormalReceipt receipt) {
+                        var trace = trace();
+                        trace.add("normal:root");
+                        trace.normalCalls++;
+                        receipt.deferred = trace.deferNormal;
+                        return trace.normalOutcome;
                     }
 
                     private static Trace currentTrace;
@@ -685,7 +790,7 @@ final class P7ServerAuthorizationDispatcherTest {
                         return currentTrace;
                     }
 
-                    static RootDisposition dispatch(
+                    static AdmissionDisposition dispatch(
                             MinecraftServer server,
                             ServerPlayer actor,
                             int slot,
@@ -699,10 +804,20 @@ final class P7ServerAuthorizationDispatcherTest {
                     }
                 }
 
+                final class P7NetworkComposition {
+                    static void normalFeedback(ServerPlayer actor, P7ServerAuthorizationBoundary.NormalFeedback feedback) {
+                        var trace = P7ServerAuthorizationBoundary.trace();
+                        trace.feedbackCalls++;
+                        trace.lastFeedback = feedback;
+                        trace.add("feedback:" + feedback.name());
+                    }
+                }
+
                 final class CastIntentAdmissionSemantics {
                     enum Outcome {
                         ELIGIBLE,
-                        REPLAYED
+                        REPLAYED,
+                        RATE_LIMITED
                     }
 
                     record Decision(boolean disconnect, Outcome outcome) {
@@ -734,22 +849,6 @@ final class P7ServerAuthorizationDispatcherTest {
                 }
 
                 record P7ServerIntentResult(String kind, long sequence, long expectedNext) {
-                }
-
-                final class P7QueuedCastIntent {
-                    private final P7SessionIdentity identity;
-                    private final CastIntent intent;
-
-                    P7QueuedCastIntent(P7SessionIdentity identity, CastIntent intent) {
-                        this.identity = identity;
-                        this.intent = intent;
-                    }
-
-                    P7SessionIdentity sessionIdentity() { return identity; }
-
-                    CastIntent intent() {
-                        return intent;
-                    }
                 }
 
                 final class CastIntent {
@@ -799,7 +898,10 @@ final class P7ServerAuthorizationDispatcherTest {
         try (var files = compiler.getStandardFileManager(
                 diagnostics, java.util.Locale.ROOT, StandardCharsets.UTF_8)) {
             var units = files.getJavaFileObjectsFromPaths(List.of(
-                    SOURCE, serverStub, playerStub, harness));
+                    SOURCE,
+                    projectRoot().resolve("src/main/java/com/yo1no/gramarye/magic/network/P7CastOperation.java"),
+                    projectRoot().resolve("src/main/java/com/yo1no/gramarye/magic/network/P7QueuedCastIntent.java"),
+                    serverStub, playerStub, harness));
             var options = List.of(
                     "--release", "21",
                     "-proc:none",

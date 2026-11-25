@@ -363,7 +363,7 @@ final class P9S1BoundaryTest {
                                 "clearObservedHit", "resumeObservedHit", "v0InitialVelocity", "armV0InsertionWitness",
                                 "completeV0NativeAdd", "v0EverInserted", "guardV0PositionChunk",
                                 "v0ClosedForTrackingDiscard", "closeV0", "stepV0",
-                                "eligibleV0Target"),
+                                "eligibleV0Target", "normalQueryCurrent"),
                         Arrays.stream(P9StarterProjectile.class.getDeclaredMethods())
                                 .filter(method -> !method.isSynthetic())
                                 .filter(method -> !Modifier.isPrivate(method.getModifiers()))

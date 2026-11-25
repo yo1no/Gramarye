@@ -561,7 +561,7 @@ public final class P11CooldownServerHarness {
         var owner = foundation.sourceOwner(server); var body = owner == null ? null : owner.body(actor);
         require(body != null && owner.canCopy(body) && body.cooldown.data.kind == P11CastCooldownData.Kind.ROUTED,
                 "EXACT_QUALIFIED_COOLDOWN_SOURCE");
-        var entry = body.cooldown.data.entries.get(reference.skillId().value());
+        var entry = body.cooldown.data.entries.get(new P11CooldownKey.LegacySkill(reference.skillId()));
         require(entry != null, "EXACT_COOLDOWN_KEY"); return entry;
     }
     private static boolean terminal(int index) {
@@ -590,7 +590,7 @@ public final class P11CooldownServerHarness {
         var material = P11CastCooldownCodec.read(nbt.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY)
                 .get(P11CastCooldownAttachments.ID.toString()));
         require(material.kind == P11CastCooldownData.Kind.ROUTED
-                && sameRelease(material.entries.get(reference.skillId().value()), expected), "PHYSICAL_SAME_ACTIVE");
+                && sameRelease(material.entries.get(new P11CooldownKey.LegacySkill(reference.skillId())), expected), "PHYSICAL_SAME_ACTIVE");
     }
     private static boolean sameRelease(P11CastCooldownData.Entry value, P11CastCooldownData.Entry expected) {
         return value != null && value.kind == 0 && value.skillId.equals(expected.skillId)

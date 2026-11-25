@@ -35,6 +35,7 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
         private P11QualifiedSourceOwner.Body preparationBody;
         private P11ReceiptLedger.Source preparationSource;
         private boolean installed;
+        private SourceTrace sourceTrace;
         private Prepared(P11CastCooldownService owner, Cell cell, P11CastCooldownData.Entry pending,
                 P11CastCooldownData replacement, ReleaseReceipt receipt, P11QualifiedSourceOwner.Body body,
                 long runtimeAccepted, long runtimeDeadline, P11QualifiedSourceOwner.WorkReservation work) {
@@ -73,6 +74,9 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
     }
     void stopped(MinecraftServer exact) {
         if (server != exact || !exact.isSameThread()) { throw new IllegalStateException("COOLDOWN_SLOT_STOP"); }
+        for (var cell : cells.values()) {
+            for (var attempt : cell.attempts.values()) { discardPendingSource(attempt); }
+        }
         cells.clear(); server = null;
     }
 
@@ -84,29 +88,65 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
                 || runtimeAccepted > Long.MAX_VALUE - 101 || runtimeDeadline != runtimeAccepted + 101) {
             return new Rejected(CooldownRejectionReason.UNAVAILABLE);
         }
+        return prepare(exact, actor, new P11CooldownKey.LegacySkill(reference.skillId()), reference.revision().value(),
+                duration, runtimeAccepted, runtimeDeadline, 101, receipt, work, false);
+    }
+
+    Admission prepareV0PolicyAdmission(MinecraftServer exact, ServerPlayer actor,
+            P11CooldownKey.LogicalPolicy key, int duration, long runtimeAccepted, long runtimeDeadline,
+            int lineageDeadlineTicks, ReleaseReceipt receipt, P11QualifiedSourceOwner.WorkReservation work) {
+        if (!owns(exact) || actor == null || actor.getServer() != exact || key == null || receipt == null
+                || work == null || !work.qualifies(actor) || duration < 0 || duration > 600 || runtimeAccepted < 0
+                || lineageDeadlineTicks < 3 || lineageDeadlineTicks > 40
+                || runtimeAccepted > Long.MAX_VALUE - 1 - lineageDeadlineTicks
+                || runtimeDeadline != runtimeAccepted + 1 + lineageDeadlineTicks) {
+            return new Rejected(CooldownRejectionReason.UNAVAILABLE);
+        }
+        return prepare(exact, actor, key, 0, duration, runtimeAccepted, runtimeDeadline,
+                1 + lineageDeadlineTicks, receipt, work, true);
+    }
+
+    private Admission prepare(MinecraftServer exact, ServerPlayer actor, P11CooldownKey key, int revision,
+            int duration, long runtimeAccepted, long runtimeDeadline, int window, ReleaseReceipt receipt,
+            P11QualifiedSourceOwner.WorkReservation work, boolean policy) {
         var source = foundation.sourceOwner(exact);
         var body = source == null ? null : source.body(actor);
         if (!admissionActor(body, actor) || !source.canCopy(body)) { return new Rejected(CooldownRejectionReason.UNAVAILABLE); }
-        var cell = ensureCell(source, body);
-        if (cell == null) { return new Rejected(CooldownRejectionReason.UNAVAILABLE); }
-        Long now = clock(cell);
-        reconcileAt(source, body, cell, now);
-        if (now == null) { return new Rejected(CooldownRejectionReason.CLOCK); }
-        if (cell.data == null || cell.data.kind != P11CastCooldownData.Kind.ROUTED || !cell.failedWriters.isEmpty()) {
-            return new Rejected(CooldownRejectionReason.UNAVAILABLE);
+        var trace = policy ? new SourceTrace(source, body) : null;
+        boolean retained = false;
+        try {
+            var cell = ensureCell(source, body, trace);
+            if (cell == null) { return new Rejected(CooldownRejectionReason.UNAVAILABLE); }
+            Long now = clock(cell);
+            reconcileAt(source, body, cell, now, trace);
+            if (now == null) { return new Rejected(CooldownRejectionReason.CLOCK); }
+            if (cell.data == null || cell.data.kind != P11CastCooldownData.Kind.ROUTED || !cell.failedWriters.isEmpty()
+                    || trace != null && !trace.current(source, body, cell)) {
+                return new Rejected(CooldownRejectionReason.UNAVAILABLE);
+            }
+            var blocked = rejection(cell.data.entries.get(key), now);
+            if (blocked != null) { return new Rejected(blocked); }
+            if (duration == 0) { return new Zero(); }
+            int count = 0;
+            for (var present : cell.data.entries.keySet()) {
+                if ((present instanceof P11CooldownKey.LogicalPolicy) == policy) { count++; }
+            }
+            if (count >= (policy ? 64 : 256) || cell.generation == Long.MAX_VALUE || now > Long.MAX_VALUE - window - duration) {
+                return new Rejected(CooldownRejectionReason.UNAVAILABLE);
+            }
+            var id = Objects.requireNonNull(receipt.attemptId(), "attemptId");
+            var pending = policy ? P11CastCooldownData.Entry.pendingPolicy((P11CooldownKey.LogicalPolicy) key, duration, now, id, window)
+                    : P11CastCooldownData.Entry.pending(((P11CooldownKey.LegacySkill) key).skillId().value(), revision,
+                            duration, now, id, now + window);
+            var entries = mutable(cell.data); entries.put(key, pending);
+            var replacement = P11CastCooldownData.routed(policy ? 2 : cell.data.schemaVersion, now, entries);
+            var attempt = new Prepared(this, cell, pending, replacement, receipt, body, runtimeAccepted, runtimeDeadline, work);
+            attempt.sourceTrace = trace;
+            retained = true;
+            return attempt;
+        } finally {
+            if (!retained && trace != null) { trace.clear(); }
         }
-        var existing = cell.data.entries.get(reference.skillId().value());
-        var blocked = rejection(existing, now);
-        if (blocked != null) { return new Rejected(blocked); }
-        if (duration == 0) { return new Zero(); }
-        if (cell.data.entries.size() >= 256 || cell.generation == Long.MAX_VALUE || now > Long.MAX_VALUE - 101 - duration) {
-            return new Rejected(CooldownRejectionReason.UNAVAILABLE);
-        }
-        var pending = P11CastCooldownData.Entry.pending(reference.skillId().value(), reference.revision().value(),
-                duration, now, Objects.requireNonNull(receipt.attemptId(), "attemptId"), now + (runtimeDeadline - runtimeAccepted));
-        var entries = mutable(cell.data); entries.put(pending.skillId, pending);
-        return new Prepared(this, cell, pending, P11CastCooldownData.routed(now, entries), receipt,
-                body, runtimeAccepted, runtimeDeadline, work);
     }
 
     boolean installPending(Prepared attempt) {
@@ -117,26 +157,48 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
                 && admissionActor(body, body.actor) && source != null && source.canCopy(body)
                 && sameCell(source, body, attempt.cell) && attempt.cell.generation == attempt.expectedGeneration
                 && attempt.receipt.fact() == ReleaseFact.UNPUBLISHED;
+        boolean handoffReady = false;
         try {
             if (!current) { return false; }
             // Own the exact scalar receipt before the public replacement can be observed.
             // A failed/unknown native publication never leaves an unowned PENDING cell.
             attempt.installed = true;
             try {
-                attempt.cell.attempts.put(attempt.pending.skillId, attempt);
-                publish(source, body, attempt.cell, attempt.replacement);
+                attempt.cell.attempts.put(attempt.pending.key, attempt);
+                publish(source, body, attempt.cell, attempt.replacement, attempt.sourceTrace);
             }
             finally {
                 if (attempt.cell.data != attempt.replacement) {
-                    attempt.cell.attempts.remove(attempt.pending.skillId, attempt);
+                    attempt.cell.attempts.remove(attempt.pending.key, attempt);
                     attempt.installed = false;
                 }
             }
-            return true;
+            handoffReady = attempt.sourceTrace == null || attempt.sourceTrace.current(source, body, attempt.cell);
+            return handoffReady;
         } finally {
+            if (!handoffReady) { discardPendingSource(attempt); }
             // The accepted attempt does not retain its old actor or an old source epoch.
             attempt.preparationBody = null; attempt.preparationSource = null;
         }
+    }
+
+    /** Consume only this preparation's own source publications, never an arbitrary recapture. */
+    P11ReceiptLedger.Source claimPendingSource(Prepared attempt, P11QualifiedSourceOwner sourceOwner,
+            P11QualifiedSourceOwner.Body body, P11ReceiptLedger.Source originalProof) {
+        if (attempt == null || attempt.owner != this) { return null; }
+        var trace = attempt.sourceTrace;
+        attempt.sourceTrace = null;
+        if (trace == null) { return null; }
+        try {
+            return attempt.installed && owns(server) && trace.origin == originalProof
+                    && body != null && attempt.work.qualifies(body.actor) && trace.current(sourceOwner, body, attempt.cell)
+                    && attempt.cell.data == attempt.replacement && matchesAttempt(attempt)
+                    ? trace.published : null;
+        } finally { trace.clear(); }
+    }
+    private static void discardPendingSource(Prepared attempt) {
+        attempt.preparationBody = null; attempt.preparationSource = null;
+        if (attempt.sourceTrace != null) { attempt.sourceTrace.clear(); attempt.sourceTrace = null; }
     }
 
     ArmPreparation prepareArm(Prepared attempt, P11QualifiedSourceOwner.WorkReservation work,
@@ -144,28 +206,31 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
         if (attempt == null || attempt.owner != this || !attempt.installed || !owns(server)
                 || work == null || work != attempt.work
                 || exactCause == null || exactCause.getServer() != server || runtimeTick < attempt.runtimeAccepted
-                || runtimeTick >= attempt.runtimeDeadline || attempt.receipt.fact() != ReleaseFact.PENDING) { return null; }
+                || (attempt.pending.key instanceof P11CooldownKey.LogicalPolicy
+                    ? runtimeTick > attempt.runtimeDeadline : runtimeTick >= attempt.runtimeDeadline)
+                || attempt.receipt.fact() != ReleaseFact.PENDING) { return null; }
         var source = foundation.sourceOwner(server);
         var body = source == null ? null : source.cooldownWorkRecipient(work, exactCause);
         if (body == null || !sameCell(source, body, attempt.cell) || !matchesAttempt(attempt)
                 || attempt.cell.generation == Long.MAX_VALUE) { return null; }
         Long now = clock(attempt.cell);
         if (now == null || now < attempt.pending.acceptedAt || now > attempt.pending.releaseNotAfter) { return null; }
-        var entries = mutable(attempt.cell.data); entries.put(attempt.pending.skillId, attempt.pending.active(now));
-        return new ArmPreparation(attempt, now, P11CastCooldownData.routed(now, entries));
+        var entries = mutable(attempt.cell.data); entries.put(attempt.pending.key, attempt.pending.active(now));
+        return new ArmPreparation(attempt, now, attempt.cell.data.replacing(now, entries));
     }
 
     void completeArm(ArmPreparation arm) {
         if (arm == null || arm.attempt.owner != this || !owns(server)) { return; }
         var attempt = arm.attempt;
+        discardPendingSource(attempt);
         if (attempt.receipt.fact() != ReleaseFact.ARM || attempt.receipt.releasedAt() != arm.releasedAt) {
             throw new IllegalStateException("COOLDOWN_ARM_RECEIPT_MISMATCH");
         }
         var source = foundation.sourceOwner(server);
         var body = currentBody(source, attempt.cell);
         if (body != null && attempt.cell.generation == arm.generation && matchesAttempt(attempt)) {
-            publish(source, body, attempt.cell, arm.replacement);
-            attempt.cell.attempts.remove(attempt.pending.skillId, attempt);
+            publish(source, body, attempt.cell, arm.replacement, null);
+            attempt.cell.attempts.remove(attempt.pending.key, attempt);
         } else {
             // The receipt remains the exact ARM fact if a later publication or native handoff
             // makes this prebuilt replacement stale. No ACTIVE rollback or NO_RELEASE guess.
@@ -174,12 +239,77 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
     }
 
     void settle(Prepared attempt) {
+        if (attempt != null && attempt.owner == this) { discardPendingSource(attempt); }
         if (attempt == null || attempt.owner != this || !attempt.installed || !owns(server)) { return; }
         var source = foundation.sourceOwner(server);
         var body = currentBody(source, attempt.cell);
         if (body == null) { return; }
         Long now = clock(attempt.cell);
-        reconcileAt(source, body, attempt.cell, now);
+        reconcileAt(source, body, attempt.cell, now, null);
+    }
+
+    /** Quiescence of one logical key plus original P11 write/readback truth, never data.empty alone. */
+    RetirementProof preparePolicyRetirement(MinecraftServer exact, P11CooldownKey.LogicalPolicy key,
+            P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body, P11ReceiptLedger.Source version) {
+        if (!owns(exact) || key == null || source == null || body == null || foundation.sourceOwner(exact) != source
+                || body.source != version) { return null; }
+        var cell = cells.get(body.actor.getUUID());
+        if (!retirementCurrent(source, body, cell, key)) { return null; }
+        var readback = source.cooldownRetirementReadback(body, version);
+        if (readback == null) {
+            if (!source.prepareCooldownRetirementReadback(body, version)) { return null; }
+            readback = source.cooldownRetirementReadback(body, version);
+        }
+        return readback == null || !retirementCurrent(source, body, cell, key) || body.source != version
+                ? null : new RetirementProof(this, exact, source, body, version, cell, key, readback);
+    }
+
+    boolean claimPolicyRetirement(RetirementProof proof) {
+        if (proof == null || proof.owner != this) { return false; }
+        return claimPolicyRetirement(proof, proof.body.actor.getUUID(), proof.key);
+    }
+
+    boolean claimPolicyRetirement(RetirementProof proof, UUID expectedOwner, P11CooldownKey.LogicalPolicy expectedKey) {
+        if (proof == null || proof.owner != this) { return false; }
+        try {
+            return expectedOwner != null && expectedOwner.equals(proof.body.actor.getUUID())
+                    && expectedKey != null && expectedKey.equals(proof.key) && owns(proof.server) && foundation.sourceOwner(proof.server) == proof.source
+                    && proof.body.source == proof.version && proof.cell.data == proof.material
+                    && proof.cell.generation == proof.generation
+                    && retirementCurrent(proof.source, proof.body, proof.cell, proof.key)
+                    && proof.source.cooldownRetirementCurrent(proof.body, proof.version, proof.readback);
+        } finally { proof.clear(); }
+    }
+
+    private boolean retirementCurrent(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body,
+            Cell cell, P11CooldownKey.LogicalPolicy key) {
+        return cell != null && sameCell(source, body, cell) && source.canCopy(body)
+                && cell.failedWriters.isEmpty() && cell.data != null && cell.data.kind == P11CastCooldownData.Kind.ROUTED
+                && !cell.data.entries.containsKey(key) && !cell.attempts.containsKey(key);
+    }
+
+    /** Root may mint its separate catalog permit only after successfully consuming this proof. */
+    static final class RetirementProof {
+        private P11CastCooldownService owner;
+        private MinecraftServer server;
+        private P11QualifiedSourceOwner source;
+        private P11QualifiedSourceOwner.Body body;
+        private P11ReceiptLedger.Source version;
+        private Cell cell;
+        private P11CooldownKey.LogicalPolicy key;
+        private P11QualifiedSourceOwner.CooldownReadback readback;
+        private P11CastCooldownData material;
+        private final long generation;
+        private RetirementProof(P11CastCooldownService owner, MinecraftServer server, P11QualifiedSourceOwner source,
+                P11QualifiedSourceOwner.Body body, P11ReceiptLedger.Source version, Cell cell,
+                P11CooldownKey.LogicalPolicy key, P11QualifiedSourceOwner.CooldownReadback readback) {
+            this.owner = owner; this.server = server; this.source = source; this.body = body; this.version = version;
+            this.cell = cell; this.key = key; this.readback = readback; material = cell.data; generation = cell.generation;
+        }
+        private void clear() {
+            owner = null; server = null; source = null; body = null; version = null;
+            cell = null; key = null; readback = null; material = null;
+        }
     }
 
     boolean materialAdopted(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body) {
@@ -198,10 +328,10 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
 
     void reconcile(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body) {
         if (!owns(body.actor.getServer()) || !source.canSerialize(body)) { return; }
-        var cell = ensureCell(source, body);
+        var cell = ensureCell(source, body, null);
         if (cell == null) { return; }
         Long now = clock(cell);
-        reconcileAt(source, body, cell, now);
+        reconcileAt(source, body, cell, now, null);
     }
 
     void writerFinished(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body,
@@ -212,10 +342,11 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
         else { cell.failedWriters.add(kind); }
     }
 
-    private Cell ensureCell(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body) {
+    private Cell ensureCell(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body, SourceTrace trace) {
         if (!source.canSerialize(body)) { return null; }
         var cell = cells.get(body.actor.getUUID());
         if (cell == null || !sameCell(source, body, cell)) { return null; }
+        if (trace != null) { trace.bind(cell); }
         if (cell.data == null) {
             if (body.inputKind != P11QualifiedSourceOwner.InputKind.PRIMARY
                     && body.inputKind != P11QualifiedSourceOwner.InputKind.HOST_PRIMARY
@@ -223,42 +354,42 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
                     && body.inputKind != P11QualifiedSourceOwner.InputKind.MEMORY) { return null; }
             Long now = clock(cell);
             if (now == null || !cell.failedWriters.isEmpty()) { return null; }
-            publish(source, body, cell, P11CastCooldownData.routed(now, Map.of()));
+            publish(source, body, cell, P11CastCooldownData.routed(now, Map.of()), trace);
         }
         return cell;
     }
 
-    private void reconcileAt(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body, Cell cell, Long now) {
+    private void reconcileAt(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body, Cell cell, Long now, SourceTrace trace) {
         if (cell.data == null || cell.data.kind != P11CastCooldownData.Kind.ROUTED) { return; }
         var entries = mutable(cell.data);
         long floor = now == null ? Math.max(cell.data.clockFloor, cell.highWater) : now;
         boolean changed = floor != cell.data.clockFloor;
         var consumed = new ArrayList<Prepared>();
         for (var entry : cell.data.entries.values()) {
-            var attempt = cell.attempts.get(entry.skillId);
+            var attempt = cell.attempts.get(entry.key);
             var exact = attempt != null && entry.attemptId != null && entry.attemptId.equals(attempt.pending.attemptId)
                     ? attempt : null;
             var settlement = settleEntry(entry, exact == null ? null : exact.receipt, now, floor);
             if (settlement.receiptConsumed && exact != null) { consumed.add(exact); }
-            if (settlement.material == null) { entries.remove(entry.skillId); changed = true; }
-            else if (settlement.material != entry) { entries.put(entry.skillId, settlement.material); changed = true; }
+            if (settlement.material == null) { entries.remove(entry.key); changed = true; }
+            else if (settlement.material != entry) { entries.put(entry.key, settlement.material); changed = true; }
         }
         if (changed) {
-            var replacement = P11CastCooldownData.routed(floor, entries);
-            try { publish(source, body, cell, replacement); }
+            var replacement = cell.data.replacing(floor, entries);
+            try { publish(source, body, cell, replacement, trace); }
             finally {
                 // Even if later bookkeeping throws, remove facts only after the same
                 // replacement became actual Attachment truth, never before it.
                 if (cell.data == replacement) {
                     for (int index = 0; index < consumed.size(); index++) {
-                        var attempt = consumed.get(index); cell.attempts.remove(attempt.pending.skillId, attempt);
+                        var attempt = consumed.get(index); cell.attempts.remove(attempt.pending.key, attempt);
                     }
                 }
             }
         } else {
             // The matching ACTIVE/clear material was already installed; consuming the
             // same scalar receipt does not require another publication or source version.
-            for (var attempt : consumed) { cell.attempts.remove(attempt.pending.skillId, attempt); }
+            for (var attempt : consumed) { cell.attempts.remove(attempt.pending.key, attempt); }
         }
     }
 
@@ -307,17 +438,25 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
     record Settlement(P11CastCooldownData.Entry material, boolean receiptConsumed) { }
 
     private void publish(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body,
-            Cell cell, P11CastCooldownData replacement) {
+            Cell cell, P11CastCooldownData replacement, SourceTrace trace) {
         if (!sameCell(source, body, cell) || cell.generation == Long.MAX_VALUE || !source.canSerialize(body)) {
             throw new P11QualifiedSourceOwner.SourceUnavailable();
         }
+        if (trace != null && !trace.current(source, body, cell)) {
+            trace.clear(); throw new P11QualifiedSourceOwner.SourceUnavailable();
+        }
         var previous = cell.data;
+        var previousSource = body.source;
+        long generation = cell.generation;
         try { P11CastCooldownAttachments.replace(body.actor, previous, replacement); }
         finally {
             // A native publication that succeeded before later bookkeeping failed is still
             // the latest material, never permission to resurrect an older disk PENDING.
             if (P11CastCooldownAttachments.existing(body.actor) == replacement) {
                 cell.data = replacement; cell.generation++;
+            }
+            if (trace != null) {
+                trace.after(source, body, cell, previousSource, generation, replacement);
             }
         }
     }
@@ -348,12 +487,12 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
         return body != null && sameCell(source, body, cell) && source.canCopy(body) ? body : null;
     }
     private static boolean matchesAttempt(Prepared attempt) {
-        var entry = attempt.cell.data == null ? null : attempt.cell.data.entries.get(attempt.pending.skillId);
+        var entry = attempt.cell.data == null ? null : attempt.cell.data.entries.get(attempt.pending.key);
         return entry != null && entry.kind == 1 && entry.attemptId.equals(attempt.pending.attemptId)
-                && attempt.cell.attempts.get(entry.skillId) == attempt;
+                && attempt.cell.attempts.get(entry.key) == attempt;
     }
-    private static TreeMap<UUID, P11CastCooldownData.Entry> mutable(P11CastCooldownData data) {
-        var entries = new TreeMap<UUID, P11CastCooldownData.Entry>(P11CastCooldownData.KEY_ORDER);
+    private static TreeMap<P11CooldownKey, P11CastCooldownData.Entry> mutable(P11CastCooldownData data) {
+        var entries = new TreeMap<P11CooldownKey, P11CastCooldownData.Entry>(P11CooldownKey.ORDER);
         entries.putAll(data.entries); return entries;
     }
     private static boolean sameMaterial(P11CastCooldownData first, P11CastCooldownData second) {
@@ -377,9 +516,9 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
         var source = foundation.sourceOwner(exact);
         var body = source == null ? null : source.body(actor);
         if (body == null || !source.canCopy(body)) { return unavailable(exact, actor); }
-        var cell = ensureCell(source, body);
+        var cell = ensureCell(source, body, null);
         Long now = cell == null ? null : clock(cell);
-        if (cell != null) { reconcileAt(source, body, cell, now); }
+        if (cell != null) { reconcileAt(source, body, cell, now, null); }
 
         // Initialization/reconciliation above belong to the owner. Everything below is
         // one detached observation; policy lookup must not recapture a changed version.
@@ -421,14 +560,14 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
                         SyncEntryState.UNAVAILABLE, sourceReason, 0));
                 continue;
             }
-            var entry = material.entries.get(equipped.reference().skillId().value());
+            var entry = material.entries.get(new P11CooldownKey.LegacySkill(equipped.reference().skillId()));
             SyncEntryState state; SyncReason why; int remaining = 0;
             if (entry != null && entry.kind == 0 && now < entry.expiresAt) {
                 state = SyncEntryState.ACTIVE;
                 why = saveFailed ? SyncReason.SAVE_FAILED : SyncReason.NONE;
                 remaining = Math.toIntExact(entry.expiresAt - now);
             } else if (entry != null && entry.kind == 1) {
-                var live = cell.attempts.get(entry.skillId);
+                var live = cell.attempts.get(entry.key);
                 boolean pending = live != null && entry.attemptId.equals(live.pending.attemptId)
                         && (live.receipt.fact() == ReleaseFact.PENDING || live.receipt.fact() == ReleaseFact.UNPUBLISHED);
                 state = pending ? SyncEntryState.PENDING : SyncEntryState.RECOVERY_REQUIRED;
@@ -491,7 +630,7 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
         if (reason == null) { return SyncReason.SOURCE_UNAVAILABLE; }
         return switch (reason) {
             case UNSUPPORTED -> SyncReason.UNSUPPORTED_VERSION;
-            case BYTE_LIMIT, DEPTH_LIMIT, ENTRY_LIMIT -> SyncReason.BOUNDS;
+            case BYTE_LIMIT, DEPTH_LIMIT, ENTRY_LIMIT, LEGACY_ENTRY_LIMIT, POLICY_ENTRY_LIMIT -> SyncReason.BOUNDS;
             case CLOCK -> SyncReason.CLOCK;
             case SAVE_FAILURE -> SyncReason.SAVE_FAILED;
             case PUBLICATION_UNKNOWN, RELEASE_UNKNOWN -> SyncReason.OUTCOME_UNCERTAIN;
@@ -499,12 +638,46 @@ final class P11CastCooldownService implements P7ServerAuthorizationBoundary.Sync
             default -> SyncReason.MALFORMED;
         };
     }
+    /** Ephemeral induction over only the publications performed by one prepare/install. */
+    private final class SourceTrace {
+        private P11QualifiedSourceOwner source;
+        private P11QualifiedSourceOwner.Body body;
+        private P11ReceiptLedger.Source origin, published;
+        private Cell cell;
+        private P11CastCooldownData material;
+        private long generation;
+        private boolean valid = true;
+        SourceTrace(P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body) {
+            this.source = source; this.body = body; origin = body.source; published = origin;
+        }
+        void bind(Cell exact) {
+            if (cell == null) { cell = exact; material = exact.data; generation = exact.generation; }
+        }
+        boolean current(P11QualifiedSourceOwner exactSource, P11QualifiedSourceOwner.Body exactBody, Cell exactCell) {
+            return valid && source == exactSource && body == exactBody && cell == exactCell
+                    && body.source == published && cell.data == material && cell.generation == generation
+                    && sameCell(source, body, cell) && source.canCopy(body);
+        }
+        void after(P11QualifiedSourceOwner exactSource, P11QualifiedSourceOwner.Body exactBody, Cell exactCell,
+                P11ReceiptLedger.Source before, long previousGeneration, P11CastCooldownData replacement) {
+            var next = exactBody.source;
+            valid = valid && source == exactSource && body == exactBody && cell == exactCell && published == before
+                    && previousGeneration == generation && previousGeneration < Long.MAX_VALUE
+                    && exactCell.data == replacement && exactCell.generation == previousGeneration + 1
+                    && before != null && next != null && before.version() < Long.MAX_VALUE && next != before && next.epoch() == before.epoch()
+                    && next.version() == before.version() + 1 && sameCell(exactSource, exactBody, exactCell)
+                    && exactSource.canCopy(exactBody);
+            if (valid) { published = next; material = replacement; generation = exactCell.generation; }
+        }
+        void clear() { valid = false; source = null; body = null; origin = null; published = null; cell = null; material = null; }
+    }
+
     private static final class Cell {
         final UUID playerId;
         final P11ControlBudgets.Resources.AccountOwner account;
         P11CastCooldownData data;
         long generation, highWater;
-        final Map<UUID, Prepared> attempts = new HashMap<>();
+        final Map<P11CooldownKey, Prepared> attempts = new HashMap<>();
         final EnumSet<P11ReceiptLedger.WriterKind> failedWriters = EnumSet.noneOf(P11ReceiptLedger.WriterKind.class);
         Cell(UUID playerId, P11ControlBudgets.Resources.AccountOwner account, P11CastCooldownData data) {
             this.playerId = playerId; this.account = account; this.data = data;

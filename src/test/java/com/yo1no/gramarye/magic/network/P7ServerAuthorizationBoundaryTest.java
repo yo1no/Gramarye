@@ -56,7 +56,7 @@ final class P7ServerAuthorizationBoundaryTest {
         assertTrue(Modifier.isFinal(boundary.getModifiers()));
         assertEquals(1, constructors.length);
         assertTrue(Modifier.isPrivate(constructors[0].getModifiers()));
-        assertEquals(6, fields.length);
+        assertEquals(8, fields.length);
         assertEquals(
                 0,
                 Arrays.stream(fields)
@@ -64,24 +64,25 @@ final class P7ServerAuthorizationBoundaryTest {
                                 || Modifier.isProtected(field.getModifiers()))
                         .count());
         assertEquals(
-                5,
+                6,
                 Arrays.stream(methods)
                         .filter(method -> Modifier.isPublic(method.getModifiers()))
                         .count());
         assertEquals(
-                5,
+                6,
                 Arrays.stream(methods)
                         .filter(method -> Modifier.isPublic(method.getModifiers())
                                 || Modifier.isProtected(method.getModifiers()))
                         .count());
         assertEquals(
-                Set.of("dispatch", "install", "loginReadyPort", "prepareSync", "captureV0Play", "currentV0Play"),
+                Set.of("dispatch", "install", "loginReadyPort", "prepareSync", "captureV0Play", "currentV0Play",
+                        "normalReceipt", "dispatchNormal"),
                 Arrays.stream(methods)
                         .filter(method -> !method.isSynthetic())
                         .map(Method::getName)
                         .collect(Collectors.toSet()));
         assertEquals(
-                2,
+                3,
                 Arrays.stream(methods)
                         .filter(method -> method.getName().equals("install"))
                         .count());
@@ -155,6 +156,13 @@ final class P7ServerAuthorizationBoundaryTest {
         assertTrue(Modifier.isPublic(installProjection.getModifiers()));
         assertTrue(Modifier.isStatic(installProjection.getModifiers()));
         assertSame(void.class, installProjection.getReturnType());
+        var installNormal = boundary.getDeclaredMethod("install", P6RuntimeExecutionCapability.class,
+                P7ServerAuthorizationBoundary.RootIngressPort.class,
+                P7ServerAuthorizationBoundary.SyncProjectionPort.class,
+                P7ServerAuthorizationBoundary.NormalRootIngressPort.class);
+        assertTrue(Modifier.isPublic(installNormal.getModifiers()));
+        assertTrue(Modifier.isStatic(installNormal.getModifiers()));
+        assertSame(void.class, installNormal.getReturnType());
         var prepare = boundary.getDeclaredMethod("prepareSync", MinecraftServer.class, ServerPlayer.class);
         assertFalse(Modifier.isPublic(prepare.getModifiers()));
         assertFalse(Modifier.isProtected(prepare.getModifiers()));
@@ -188,10 +196,31 @@ final class P7ServerAuthorizationBoundaryTest {
                         P7ServerAuthorizationBoundary.SyncSourceState.class,
                         P7ServerAuthorizationBoundary.SyncEntryState.class,
                         P7ServerAuthorizationBoundary.SyncReason.class,
-                        P7ServerAuthorizationBoundary.V0PlayWitness.class),
+                        P7ServerAuthorizationBoundary.V0PlayWitness.class,
+                        P7ServerAuthorizationBoundary.NormalRootIngressPort.class,
+                        P7ServerAuthorizationBoundary.NormalIngressDisposition.class,
+                        P7ServerAuthorizationBoundary.NormalFeedback.class,
+                        P7ServerAuthorizationBoundary.NormalReceipt.class),
                 Set.of(boundary.getDeclaredClasses()));
         assertTrue(Arrays.stream(boundary.getDeclaredClasses())
                 .allMatch(type -> Modifier.isPublic(type.getModifiers())));
+        var normalOperation = P7ServerAuthorizationBoundary.NormalRootIngressPort.class
+                .getDeclaredMethod("authorizeAndAdmit", MinecraftServer.class, ServerPlayer.class,
+                        P7ServerAuthorizationBoundary.NormalReceipt.class);
+        assertTrue(Modifier.isPublic(normalOperation.getModifiers()));
+        assertTrue(Modifier.isAbstract(normalOperation.getModifiers()));
+        assertEquals(P7ServerAuthorizationBoundary.NormalIngressDisposition.class, normalOperation.getReturnType());
+        assertEquals(1, P7ServerAuthorizationBoundary.NormalRootIngressPort.class.getDeclaredMethods().length);
+        assertEquals(Set.of("defer", "matches", "complete"), Arrays.stream(
+                P7ServerAuthorizationBoundary.NormalReceipt.class.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers()))
+                .map(Method::getName).collect(Collectors.toSet()));
+        assertEquals(List.of("PENDING", "NOT_READY", "CAPACITY", "COOLDOWN", "INSUFFICIENT_MANA",
+                "UNAVAILABLE", "REJECTED"), Arrays.stream(P7ServerAuthorizationBoundary.NormalIngressDisposition.values())
+                .map(Enum::name).toList());
+        assertEquals(List.of("NOT_READY", "CAPACITY", "COOLDOWN_ACTIVE", "INSUFFICIENT_MANA",
+                "RATE_LIMITED", "UNAVAILABLE"), Arrays.stream(P7ServerAuthorizationBoundary.NormalFeedback.values())
+                .map(Enum::name).toList());
 
         var rootOperation = P7ServerAuthorizationBoundary.RootIngressPort.class
                 .getDeclaredMethod(
@@ -246,6 +275,67 @@ final class P7ServerAuthorizationBoundaryTest {
     }
 
     @Test
+    void normalScalarReceiptRequiresItsOriginalWitnessAndCannotBeDeferredOrCompletedTwice() throws Exception {
+        var identity = new P7SessionIdentity(new java.util.UUID(0, 921), 11, 3);
+        var receipt = P7ServerAuthorizationBoundary.normalReceipt(identity, 17);
+        var fields = Arrays.stream(P7ServerAuthorizationBoundary.NormalReceipt.class.getDeclaredFields())
+                .collect(Collectors.toMap(java.lang.reflect.Field::getName, java.lang.reflect.Field::getType));
+        assertEquals(java.util.Map.of("identity", P7SessionIdentity.class, "sequence", long.class,
+                "deferred", boolean.class, "completed", boolean.class), fields);
+        assertTrue(Arrays.stream(P7ServerAuthorizationBoundary.NormalReceipt.class.getDeclaredFields())
+                .allMatch(field -> Modifier.isPrivate(field.getModifiers())));
+        assertTrue(Modifier.isPrivate(P7ServerAuthorizationBoundary.NormalReceipt.class
+                .getDeclaredConstructor(P7SessionIdentity.class, long.class).getModifiers()));
+        var authority = com.yo1no.gramarye.V0CatalogTestAuthority.open(4);
+        var witness = scalarWitness(authority, identity);
+        assertTrue(receipt.matches(authority, witness));
+        assertFalse(receipt.matches(null, witness));
+        assertFalse(receipt.matches(authority, null));
+        var equalButDifferent = new P7SessionIdentity(identity.authenticatedPlayerId(), 11, 3);
+        assertEquals(identity, equalButDifferent);
+        assertFalse(receipt.matches(authority, scalarWitness(authority, equalButDifferent)),
+                "equal scalars cannot relabel the original captured session object");
+        var another = com.yo1no.gramarye.V0CatalogTestAuthority.open(4);
+        assertFalse(receipt.matches(authority, scalarWitness(another, identity)));
+        assertFalse(receipt.matches(another, witness));
+        var foreign = new java.util.concurrent.atomic.AtomicReference<V0CatalogAuthority>();
+        var thread = new Thread(() -> foreign.set(com.yo1no.gramarye.V0CatalogTestAuthority.open(4)));
+        thread.start();
+        thread.join();
+        assertFalse(receipt.matches(foreign.get(), scalarWitness(foreign.get(), identity)));
+        assertTrue(receipt.defer());
+        assertFalse(receipt.defer());
+        assertTrue(receipt.deferred());
+        assertFalse(receipt.matches(authority, witness));
+        receipt.complete(null, null, P7ServerAuthorizationBoundary.AdmissionDisposition.P5_UNAVAILABLE,
+                P7ServerAuthorizationBoundary.NormalFeedback.UNAVAILABLE);
+        assertFalse(receipt.deferred());
+        assertFalse(receipt.defer());
+        receipt.complete(null, null, P7ServerAuthorizationBoundary.AdmissionDisposition.ACCEPTED, null);
+        assertFalse(receipt.defer());
+        var immediate = P7ServerAuthorizationBoundary.normalReceipt(identity, 18);
+        immediate.immediateCompleted();
+        assertFalse(immediate.defer());
+        assertFalse(immediate.matches(authority, witness));
+    }
+
+    /** Private scalar witness construction for a component test, not authenticated PLAY evidence. */
+    private static P7ServerAuthorizationBoundary.V0PlayWitness scalarWitness(
+            V0CatalogAuthority authority, P7SessionIdentity identity) throws Exception {
+        var type = P7ServerAuthorizationBoundary.V0PlayWitness.class;
+        var constructor = type.getDeclaredConstructor();
+        constructor.setAccessible(true);
+        var witness = constructor.newInstance();
+        var authorityField = type.getDeclaredField("authority");
+        var identityField = type.getDeclaredField("identity");
+        authorityField.setAccessible(true);
+        identityField.setAccessible(true);
+        authorityField.set(witness, authority);
+        identityField.set(witness, identity);
+        return witness;
+    }
+
+    @Test
     void unavailableThenInstallDispatchAndDuplicateFailureOwnStaticLifecycle()
             throws Exception {
         var sentinelField = P7ServerAuthorizationBoundary.class.getDeclaredField(
@@ -258,6 +348,9 @@ final class P7ServerAuthorizationBoundaryTest {
         var projectionField = P7ServerAuthorizationBoundary.class.getDeclaredField("installedSyncProjection");
         projectionField.setAccessible(true);
         var productionProjection = projectionField.get(null);
+        var normalField = P7ServerAuthorizationBoundary.class.getDeclaredField("installedNormalIngress");
+        normalField.setAccessible(true);
+        var productionNormal = normalField.get(null);
         var manaCapabilityField = P7NetworkComposition.class.getDeclaredField("manaCapability");
         manaCapabilityField.setAccessible(true);
         var productionCapability = manaCapabilityField.get(null);
@@ -303,6 +396,11 @@ final class P7ServerAuthorizationBoundaryTest {
                         return P7ServerAuthorizationBoundary.AdmissionDisposition.ACCEPTED;
                     };
             P7ServerAuthorizationBoundary.install(capability, firstPort);
+            assertEquals(P7ServerAuthorizationBoundary.NormalIngressDisposition.UNAVAILABLE,
+                    P7ServerAuthorizationBoundary.dispatchNormal(null, null,
+                            P7ServerAuthorizationBoundary.normalReceipt(new P7SessionIdentity(
+                                    new java.util.UUID(0, 922), 1, 1), 1)),
+                    "legacy install must not implicitly authorize normal roots");
             var unavailableProjection = P7ServerAuthorizationBoundary.prepareSync(null, null).projection();
             assertEquals(0, unavailableProjection.sourceEpoch());
             assertEquals(P7ServerAuthorizationBoundary.SyncSourceState.UNAVAILABLE, unavailableProjection.sourceState());
@@ -332,6 +430,7 @@ final class P7ServerAuthorizationBoundaryTest {
         } finally {
             installedField.set(null, productionPort);
             projectionField.set(null, productionProjection);
+            normalField.set(null, productionNormal);
             manaCapabilityField.set(null, productionCapability);
         }
     }

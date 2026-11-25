@@ -1,6 +1,7 @@
 package com.yo1no.gramarye;
 
 import java.util.Objects;
+import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -597,9 +598,20 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
         }
         HitResult hit = blocks.clip(new ClipContext(start, end, ClipContext.Block.COLLIDER,
                 ClipContext.Fluid.NONE, this));
-        var entityHit = ProjectileUtil.getEntityHitResult(exactLevel, this, start, hit.getLocation(), query,
-                candidate -> !candidate.getUUID().equals(actor.getUUID())
-                        && eligibleV0Target(exactLevel, candidate) && canHitEntity(candidate), 0.3F);
+        Predicate<Entity> target = candidate -> !candidate.getUUID().equals(actor.getUUID())
+                && eligibleV0Target(exactLevel, candidate) && canHitEntity(candidate);
+        EntityHitResult entityHit;
+        if (v0Binding.normalPolicy()) {
+            var result = U0BoundedEntityQuery.query(exactLevel, this, start, hit.getLocation(), query, target);
+            if (!result.qualified) {
+                closeV0(V0TerminalReason.OWNER_INVALIDATED);
+                return;
+            }
+            entityHit = result.hit;
+        } else {
+            entityHit = ProjectileUtil.getEntityHitResult(exactLevel, this, start, hit.getLocation(), query,
+                    target, 0.3F);
+        }
         if (entityHit != null) {
             hit = entityHit;
         }
@@ -661,6 +673,16 @@ final class P9StarterProjectile extends ThrowableItemProjectile {
     private boolean v0MotionCurrent() {
         return !isPassenger() && !isVehicle() && isNoGravity()
                 && v0ExpectedPosition.equals(position()) && v0ExpectedVelocity.equals(getDeltaMovement());
+    }
+
+    boolean normalQueryCurrent(ServerLevel exactLevel, Vec3 start, AABB query) {
+        return v0Binding != null && v0Binding.normalPolicy() && !v0Closed && level() == exactLevel
+                && exactLevel.getServer().isSameThread() && exactLevel.getServer().getTickCount() == v0LastSweep
+                && isAddedToLevel() && !isRemoved() && exactLevel.getEntity(getId()) == this
+                && exactLevel.getEntity(getUUID()) == this && v0MotionCurrent()
+                && v0Binding.qualification(this) == V0WorkQualification.EXECUTABLE
+                && v0Binding.qualifiedActor(this) != null && v0ExpectedPosition.equals(start)
+                && getBoundingBox().expandTowards(v0ExpectedVelocity).inflate(1.0).equals(query);
     }
 
     static boolean eligibleV0Target(ServerLevel exactLevel, Entity candidate) {

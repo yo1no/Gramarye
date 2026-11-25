@@ -30,6 +30,10 @@ final class V0P6StatementAdapter {
         return new P9V0WorldEffectHandoff(frame, nativeOutcomes);
     }
 
+    boolean normalManaAvailable(ServerPlayer actor) {
+        return P6RuntimeExecutionBridge.normalV0ManaAvailable(capability, actor);
+    }
+
     V0TerminalReceipt execute(
             ServerPlayer actor, Invocation input, int statementOrdinal,
             V0P6StatementGuard guard, P9V0WorldEffectHandoff handoff) {

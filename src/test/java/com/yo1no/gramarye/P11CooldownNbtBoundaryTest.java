@@ -94,7 +94,7 @@ final class P11CooldownNbtBoundaryTest {
         assertLocal(bound, P11CastCooldownData.Reason.MALFORMED);
         var floor = original.copy(); floor.putLong("clock_floor", 999);
         assertLocal(floor, P11CastCooldownData.Reason.MALFORMED);
-        assertEquals(ATTEMPT, P11CastCooldownCodec.read(original).entries.get(KEY).attemptId);
+        assertEquals(ATTEMPT, P11CastCooldownCodec.read(original).entries.get(P11CooldownKey.legacy(KEY)).attemptId);
     }
 
     @Test
@@ -102,7 +102,7 @@ final class P11CooldownNbtBoundaryTest {
         var low = new UUID(0, -1L); var high = new UUID(-1L, 0);
         var original = encode(Map.of(high, pending(high), low, pending(low)));
         var read = P11CastCooldownCodec.read(original);
-        assertEquals(List.of(low, high), List.copyOf(read.entries.keySet()));
+        assertEquals(List.of(P11CooldownKey.legacy(low), P11CooldownKey.legacy(high)), List.copyOf(read.entries.keySet()));
         var duplicate = original.copy(); var list = duplicate.getList("entries", Tag.TAG_COMPOUND);
         list.set(1, list.getCompound(0).copy());
         assertWhole(duplicate, P11CastCooldownData.Reason.DUPLICATE_KEY);
@@ -111,7 +111,7 @@ final class P11CooldownNbtBoundaryTest {
         var unsorted = original.copy(); var rows = unsorted.getList("entries", Tag.TAG_COMPOUND);
         var first = rows.getCompound(0); rows.set(0, rows.getCompound(1)); rows.set(1, first);
         assertWhole(unsorted, P11CastCooldownData.Reason.MALFORMED);
-        var futureRoot = original.copy(); futureRoot.putInt("schema_version", 2);
+        var futureRoot = original.copy(); futureRoot.putInt("schema_version", 3);
         assertWhole(futureRoot, P11CastCooldownData.Reason.UNSUPPORTED);
         var mismatched = encode(Map.of(KEY, P11CastCooldownData.Entry.raw(KEY,
                 P11CastCooldownData.Reason.MALFORMED, original.getList("entries", Tag.TAG_COMPOUND).getCompound(0))));
@@ -122,13 +122,13 @@ final class P11CooldownNbtBoundaryTest {
     void uncertainKnowledgeDoesNotInferArmFromPairAndRejectsHalfPairsAndClosedReasons() {
         var pending = pending(KEY);
         var unknown = encode(Map.of(KEY, pending.uncertain(P11CastCooldownData.Reason.RELEASE_UNKNOWN, 1003, false, -1)));
-        assertEquals(0, P11CastCooldownCodec.read(unknown).entries.get(KEY).releaseKnowledge);
+        assertEquals(0, P11CastCooldownCodec.read(unknown).entries.get(P11CooldownKey.legacy(KEY)).releaseKnowledge);
         var candidate = unknown.copy(); var entry = candidate.getList("entries", Tag.TAG_COMPOUND).getCompound(0);
         entry.putLong("candidate_release_at", 1002); entry.putLong("candidate_expires_at", 1122);
-        assertEquals(0, P11CastCooldownCodec.read(candidate).entries.get(KEY).releaseKnowledge);
+        assertEquals(0, P11CastCooldownCodec.read(candidate).entries.get(P11CooldownKey.legacy(KEY)).releaseKnowledge);
         assertIdempotent(candidate);
         entry.putByte("release_knowledge", (byte) 1);
-        assertEquals(1, P11CastCooldownCodec.read(candidate).entries.get(KEY).releaseKnowledge);
+        assertEquals(1, P11CastCooldownCodec.read(candidate).entries.get(P11CooldownKey.legacy(KEY)).releaseKnowledge);
         for (int reason : new int[] {0, 1, 8, 9, 12, 127}) {
             var bad = candidate.copy(); bad.getList("entries", Tag.TAG_COMPOUND).getCompound(0).putByte("reason", (byte) reason);
             assertLocal(bad, P11CastCooldownData.Reason.MALFORMED);
@@ -200,7 +200,7 @@ final class P11CooldownNbtBoundaryTest {
         var data = P11CastCooldownCodec.read(input);
         assertEquals(P11CastCooldownData.Kind.ROUTED, data.kind);
         assertEquals(1, data.entries.size());
-        assertEquals(3, data.entries.get(KEY).kind); assertEquals(why, data.entries.get(KEY).reason);
+        assertEquals(3, data.entries.get(P11CooldownKey.legacy(KEY)).kind); assertEquals(why, data.entries.get(P11CooldownKey.legacy(KEY)).reason);
         assertIdempotent(P11CastCooldownCodec.write(data));
     }
     private static void assertWhole(Tag input, P11CastCooldownData.Reason why) {

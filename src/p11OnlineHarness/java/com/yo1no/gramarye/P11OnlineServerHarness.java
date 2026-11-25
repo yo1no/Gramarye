@@ -71,6 +71,19 @@ public final class P11OnlineServerHarness {
 
     /** Called only after the original online hasJoinedServer result's profile() returns. */
     public static synchronized void authenticated(MinecraftServer exact, Connection connection, UUID id) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            try {
+                if (exact != server || connection == null || id == null || AUTH.size() >= 8 || AUTH.containsKey(connection)) {
+                    authenticationOverflow = true;
+                    U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, "");
+                } else { AUTH.put(connection, new AuthReceipt(exact, connection, id)); }
+            } catch (RuntimeException | Error observationFailure) {
+                authenticationOverflow = true;
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            return;
+        }
         if (System.getProperty("gramarye.p11.online.output") == null || !P11OnlineInputs.onlineContextCase() || terminal) { return; }
         if (exact != server || connection == null || id == null || AUTH.size() >= 8
                 || AUTH.containsKey(connection)) {
@@ -82,6 +95,25 @@ public final class P11OnlineServerHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void started(ServerStartedEvent event) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            try {
+                server = event.getServer();
+                output = P11C4aEvidence.reserve("server");
+                U0OrdinaryTrace.nativeTick(server.getTickCount());
+                boolean normal = server.isSameThread() && server.isDedicatedServer()
+                        && server.usesAuthentication() && !server.isSingleplayer();
+                U0OrdinaryTrace.note(normal ? "SERVER_START" : "OBSERVATION_FAILURE",
+                        0, 0, 0, 0, 0, 0, normal ? 1 : 0, 0, 0, "");
+                P11C4aEvidence.write(output, "loaded-sources-ready.json", u0LoadedSources());
+                P11C4aEvidence.write(output, "ready.json", Map.of("status", "ORDINARY_SERVER_READY_NOT_AUTH_PROOF",
+                        "onlineMode", server.usesAuthentication(), "dedicated", server.isDedicatedServer(),
+                        "case", "u0-ordinary-ab", "runId", P11C4aEvidence.property("runId")));
+            } catch (Exception | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            return;
+        }
         if (System.getProperty("gramarye.p11.online.output") == null || !P11OnlineInputs.onlineContextCase()) { return; }
         try {
             server = event.getServer();
@@ -112,6 +144,30 @@ public final class P11OnlineServerHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void login(PlayerEvent.PlayerLoggedInEvent event) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            try {
+                if (!(event.getEntity() instanceof ServerPlayer player)) {
+                    U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, "");
+                    return;
+                }
+                var connection = player.connection.getConnection();
+                AuthReceipt receipt;
+                synchronized (P11OnlineServerHarness.class) { receipt = AUTH.remove(connection); }
+                boolean exact = server != null && player.getServer() == server && server.isSameThread()
+                        && server.usesAuthentication() && !player.isFakePlayer() && receipt != null
+                        && receipt.server == server && receipt.connection == connection
+                        && receipt.id.equals(player.getUUID()) && !connection.isMemoryConnection()
+                        && connection.isConnected() && connection.isEncrypted()
+                        && player.connection.player == player && connection.getPacketListener() == player.connection;
+                U0OrdinaryTrace.note(exact ? "AUTH_EXACT_PLAY" : "OBSERVATION_FAILURE",
+                        0, 0, 0, 0, 0, 0, exact ? 1 : 0, 0, 0, P11C4aEvidence.pseudonym(player.getUUID()));
+                if (exact) { U0OrdinaryScenario.authenticatedPlay(server, player); }
+            } catch (RuntimeException | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            return;
+        }
         if (server == null || terminal || !(event.getEntity() instanceof ServerPlayer player)) { return; }
         try {
             require(player.getServer() == server && server.isSameThread() && !player.isFakePlayer(), "BAD_ACTOR");
@@ -142,6 +198,17 @@ public final class P11OnlineServerHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void respawn(PlayerEvent.PlayerRespawnEvent event) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            try {
+                if (event.getEntity() instanceof ServerPlayer player) {
+                    U0OrdinaryScenario.observedLifecycleRespawn(server, player, event.isEndConquered());
+                }
+            } catch (RuntimeException | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            return;
+        }
         if (server == null || terminal || !("c4a-capacity".equals(cohort) || "l1-capacity".equals(cohort))
                 || !(event.getEntity() instanceof ServerPlayer player) || player.getServer() != server) { return; }
         try {
@@ -162,6 +229,19 @@ public final class P11OnlineServerHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            try {
+                if (event.getEntity() instanceof ServerPlayer player) {
+                    U0OrdinaryTrace.note("SERVER_LOGOUT", 0, 0, 0, 0, 0, 0,
+                            player.getServer() == server ? 1 : 0, player.hasDisconnected() ? 1 : 0, 0,
+                            P11C4aEvidence.pseudonym(player.getUUID()));
+                }
+            } catch (RuntimeException | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            return;
+        }
         if (server == null || terminal || !(event.getEntity() instanceof ServerPlayer player)) { return; }
         var state = ACTORS.get(player.getUUID());
         if (state == null || state.current != player) { fail("UNEXPECTED_LOGOUT", null); return; }
@@ -184,6 +264,18 @@ public final class P11OnlineServerHarness {
 
     @SubscribeEvent
     static void tick(ServerTickEvent.Post event) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            try {
+                if (event.getServer() != server || authenticationOverflow) {
+                    U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, "");
+                } else { U0OrdinaryTrace.nativeTick(event.getServer().getTickCount()); }
+            } catch (RuntimeException | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            U0OrdinaryScenario.tick(event.getServer());
+            return;
+        }
         if (server == null || terminal || event.getServer() != server) { return; }
         try {
             ticks++;
@@ -475,6 +567,30 @@ public final class P11OnlineServerHarness {
 
     @SubscribeEvent
     static void stopped(ServerStoppedEvent event) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            try {
+                U0OrdinaryTrace.note("SERVER_STOPPED", 0, 0, 0, 0, 0, 0, event.getServer() == server ? 1 : 0, 0, 0, "");
+                U0OrdinaryScenario.flushStopped(event.getServer());
+                if (output != null) {
+                    P11C4aEvidence.write(output, "loaded-sources-terminal.json", u0LoadedSources());
+                }
+            } catch (Exception | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            } finally {
+                try {
+                    if (output != null) U0OrdinaryTrace.write(output);
+                } catch (Exception | Error traceFailure) {
+                    try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                    catch (RuntimeException | Error unavailableRecorder) { }
+                } finally {
+                    synchronized (P11OnlineServerHarness.class) { AUTH.clear(); }
+                    ACTORS.clear(); fixtureRewards = null; server = null;
+                    U0OrdinaryScenario.stopped(event.getServer());
+                }
+            }
+            return;
+        }
         if (event.getServer() != server) { return; }
         if (output != null) {
             try { write("stopped.json", Map.of("nativeServerStopped", true, "terminalObserved", terminal)); }
@@ -484,6 +600,70 @@ public final class P11OnlineServerHarness {
         ACTORS.clear();
         fixtureRewards = null;
         server = null;
+    }
+
+    /** Qualified code/resources only; never inspects argv, environment or any authentication store. */
+    static Map<String, Object> u0LoadedSources() throws IOException, java.net.URISyntaxException {
+        var jarPath = Path.of(P11C4aEvidence.property("jar"));
+        if (!jarPath.isAbsolute() || !Files.isRegularFile(jarPath, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(jarPath) || Files.size(jarPath) > 67_108_864) {
+            throw new IOException("U0_ORDINARY_JAR_INPUT");
+        }
+        var records = new java.util.ArrayList<Map<String, Object>>();
+        boolean allMainResourcesMatch = true;
+        try (var jar = new java.util.jar.JarFile(jarPath.toFile())) {
+            for (Class<?> type : List.of(Gramarye.class, V0SlotRuntime.class, P9StarterProjectile.class, U0OrdinaryTrace.class, U0OrdinaryLogoutScenario.class)) {
+                String resource = type.getName().replace('.', '/') + ".class";
+                byte[] actual;
+                try (var stream = type.getResourceAsStream("/" + resource)) {
+                    if (stream == null) { throw new IOException("U0_RUNTIME_CLASS_RESOURCE_MISSING"); }
+                    actual = stream.readNBytes(1_048_577);
+                }
+                if (actual.length > 1_048_576) { throw new IOException("U0_RUNTIME_CLASS_RESOURCE_BOUND"); }
+                boolean main = type != U0OrdinaryTrace.class && type != U0OrdinaryLogoutScenario.class;
+                boolean matches = false;
+                var entry = jar.getJarEntry(resource);
+                if (main && entry != null) {
+                    try (var stream = jar.getInputStream(entry)) {
+                        matches = java.util.Arrays.equals(actual, stream.readNBytes(1_048_577));
+                    }
+                }
+                if (main && !matches) { allMainResourcesMatch = false; }
+                var source = type.getProtectionDomain().getCodeSource();
+                records.add(Map.of("binaryName", type.getName(), "role", main ? "ORDINARY_MAIN_RESOURCE" : "QUALIFICATION_ROOT_RESOURCE",
+                        "runtimeResourceSha256", P11C4aEvidence.hash(actual),
+                        "matchesPinnedOrdinaryJarEntry", matches, "absentFromOrdinaryJar", entry == null,
+                        "module", type.getModule().isNamed() ? type.getModule().getName() : "UNNAMED",
+                        "codeSourceUri", source == null ? "NONE" : source.getLocation().toURI().toString()));
+            }
+        }
+        var applied = new java.util.LinkedHashMap<String, Object>();
+        var targets = new java.util.ArrayList<>(List.of("com/yo1no/gramarye/V0SlotRuntime",
+                "com/yo1no/gramarye/V0SlotRuntime$V0ReleaseReceipt",
+                "com/yo1no/gramarye/SkillRuntimeService$V0CarrierBinding", "com/yo1no/gramarye/A05Observer",
+                "com/yo1no/gramarye/P9V0WorldEffectHandoff", "com/yo1no/gramarye/P9StarterProjectile",
+                "net/minecraft/world/entity/Entity", "net/minecraft/world/entity/projectile/ProjectileUtil",
+                "net/minecraft/world/level/entity/LevelEntityGetterAdapter"));
+        String sourceRole = P11C4aEvidence.property("role");
+        if (sourceRole.equals("server")) {
+            targets.add("com/yo1no/gramarye/U0BoundedEntityQuery$Scan");
+            targets.add("net/minecraft/server/level/DistanceManager");
+            targets.add("com/yo1no/gramarye/P11NativeStorageBoundary");
+            targets.add("com/yo1no/gramarye/SkillRuntimeService");
+        } else if (sourceRole.equals("a") || sourceRole.equals("b")) {
+            targets.add("com/yo1no/gramarye/magic/network/P9ClientCastInput");
+            targets.add("net/minecraft/client/gui/Gui");
+        } else { throw new IOException("U0_SOURCE_ROLE"); }
+        for (String target : targets) {
+            applied.put(target, org.spongepowered.asm.mixin.Mixins.getMixinsForClass(target).stream()
+                    .map(info -> info.getConfig().getName() + ":" + info.getClassName()).sorted().toList());
+        }
+        return Map.of("status", "RUNTIME_SOURCE_AND_APPLIED_CONFIG_OBSERVATIONS_NOT_AUTH_PROOF",
+                "ordinaryJarSha256", P11C4aEvidence.hash(Files.readAllBytes(jarPath)),
+                "mainResourcesMatchPinnedJar", allMainResourcesMatch,
+                "sameLogicalModule", Gramarye.class.getModule() == U0OrdinaryTrace.class.getModule(),
+                "records", records, "appliedMixinsForAlreadyLoadedTargets", applied,
+                "transformedClassBytesClaim", false, "authProofClaim", false);
     }
 
     private record AuthReceipt(MinecraftServer server, Connection connection, UUID id) {}

@@ -8,6 +8,43 @@ import org.junit.jupiter.api.Test;
 
 final class P7ServerSequenceRateIntegrationTest {
     @Test
+    void switchingClosedOperationsDoesNotCreateASecondSequenceOrTokenBucket() {
+        var session = CastIntentAdmissionSemantics.SessionState.initial(0L);
+        var global = IntentTickBudget.initial(IntentTickBudget.Kind.GLOBAL_WORK, 0L);
+        for (long sequence = 1; sequence <= 8; sequence++) {
+            P7CastOperation operation = (sequence & 1) == 1
+                    ? new P7CastOperation.NormalSpell(sequence)
+                    : new P7CastOperation.Legacy(new CastIntent(sequence, 0, CastInputKind.CAST, 0, null, null));
+            var result = CastIntentAdmissionSemantics.evaluate(session, global, 0L, operation.sequence());
+            assertEquals(CastIntentAdmissionSemantics.Outcome.ELIGIBLE, result.outcome());
+            session = result.nextSessionState();
+            global = result.nextGlobalBudget();
+            assertEquals(sequence + 1, session.sequenceState().expectedNext().orElseThrow());
+            assertEquals(8 - sequence, session.tokenBucket().tokens());
+        }
+        var ninth = CastIntentAdmissionSemantics.evaluate(session, global, 0L,
+                new P7CastOperation.NormalSpell(9).sequence());
+        assertEquals(CastIntentAdmissionSemantics.Outcome.RATE_LIMITED, ninth.outcome());
+        assertFalse(ninth.sequenceConsumed());
+        assertEquals(9, ninth.nextSessionState().sequenceState().expectedNext().orElseThrow());
+        assertEquals(0, ninth.nextSessionState().tokenBucket().tokens());
+    }
+
+    @Test
+    void normalThenLegacyDuplicateUsesTheSameExactNextState() {
+        var first = CastIntentAdmissionSemantics.evaluate(
+                CastIntentAdmissionSemantics.SessionState.initial(0L),
+                IntentTickBudget.initial(IntentTickBudget.Kind.GLOBAL_WORK, 0L), 0L,
+                new P7CastOperation.NormalSpell(1L).sequence());
+        var legacyReplay = new P7CastOperation.Legacy(new CastIntent(1L, 0, CastInputKind.CAST, 0, null, null));
+        var duplicate = CastIntentAdmissionSemantics.evaluate(first.nextSessionState(),
+                first.nextGlobalBudget(), 0L, legacyReplay.sequence());
+        assertEquals(CastIntentAdmissionSemantics.Outcome.DUPLICATE_SEQUENCE, duplicate.outcome());
+        assertFalse(duplicate.sequenceConsumed());
+        assertEquals(2L, duplicate.nextSessionState().sequenceState().expectedNext().orElseThrow());
+    }
+
+    @Test
     void globalBusyPrecedesAndPreservesPlayerRateAndSequenceState() {
         var session = CastIntentAdmissionSemantics.SessionState.initial(0L);
         var global = IntentTickBudget.initial(IntentTickBudget.Kind.GLOBAL_WORK, 0L);

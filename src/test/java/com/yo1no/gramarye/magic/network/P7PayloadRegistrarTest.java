@@ -101,18 +101,23 @@ final class P7PayloadRegistrarTest {
     }
 
     @Test
-    void registrarBindsOneServerAndThreeClientPlayPayloadsToNetwork() {
+    void registrarKeepsLegacyFourAndAddsOneRequiredNormalServerOperation() {
         var source = read(REGISTRAR_SOURCE);
         var normalized = source.replaceAll("\\s+", " ");
 
         assertEquals("gramarye-p7-v1", P7NetworkBounds.PROTOCOL_VERSION);
-        assertEquals(1, occurrences(source, ".playToServer("));
+        assertEquals(2, occurrences(source, ".playToServer("));
         assertEquals(3, occurrences(source, ".playToClient("));
-        assertEquals(1, occurrences(
+        assertEquals(2, occurrences(
                 source, ".executesOn(HandlerThread.NETWORK)"));
         assertEquals(1, occurrences(
                 source, "event.registrar(P7NetworkBounds.PROTOCOL_VERSION)"));
-        assertEquals(4, occurrences(source, ".STREAM_CODEC,"));
+        assertEquals(5, occurrences(source, ".STREAM_CODEC,"));
+        assertEquals("gramarye-normal-spell-v1", CastCurrentSpellPayload.NORMAL_PROTOCOL_VERSION);
+        assertTrue(normalized.contains("event.registrar(CastCurrentSpellPayload.NORMAL_PROTOCOL_VERSION) "
+                + ".executesOn(HandlerThread.NETWORK) "
+                + ".playToServer(CastCurrentSpellPayload.TYPE, CastCurrentSpellPayload.STREAM_CODEC, "
+                + "(payload, context) -> P7CastIntentNetworkHandler.handleNormal(payload, context, PRODUCTION));"));
         assertTrue(normalized.contains(
                 "var registrar = event.registrar(P7NetworkBounds.PROTOCOL_VERSION) "
                         + ".executesOn(HandlerThread.NETWORK);"));

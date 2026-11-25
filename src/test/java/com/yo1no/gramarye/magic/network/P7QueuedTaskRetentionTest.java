@@ -27,7 +27,9 @@ final class P7QueuedTaskRetentionTest {
         assertSame(intent, queued.intent());
         assertExactPrivateFinalFields(P7QueuedCastIntent.class, Map.of(
                 "sessionIdentity", P7SessionIdentity.class,
-                "intent", CastIntent.class));
+                "operation", P7CastOperation.class));
+        assertTrue(queued.operation() instanceof P7CastOperation.Legacy);
+        assertEquals(intent.sequence(), queued.sequence());
     }
 
     @Test
@@ -38,11 +40,26 @@ final class P7QueuedTaskRetentionTest {
         assertThrows(NullPointerException.class, () ->
                 new P7QueuedCastIntent(null, intent));
         assertThrows(NullPointerException.class, () ->
-                new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1L, 1L), null));
+                new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1L, 1L), (CastIntent) null));
+        assertThrows(NullPointerException.class, () ->
+                new P7QueuedCastIntent(new P7SessionIdentity(playerId, 1L, 1L), (P7CastOperation) null));
         assertThrows(P7SemanticInvariantException.class, () ->
                 new P7QueuedCastIntent(new P7SessionIdentity(playerId, 0L, 1L), intent));
         assertThrows(P7SemanticInvariantException.class, () ->
                 new P7QueuedCastIntent(new P7SessionIdentity(playerId, -1L, 1L), intent));
+    }
+
+    @Test
+    void normalQueuedOperationRetainsOnlyItsScalarAndNeverInventsALegacySlot() {
+        var identity = new P7SessionIdentity(new UUID(0L, 309L), 41L, 2L);
+        var operation = new P7CastOperation.NormalSpell(91L);
+        var queued = new P7QueuedCastIntent(identity, operation);
+        assertSame(identity, queued.sessionIdentity());
+        assertSame(operation, queued.operation());
+        assertEquals(91L, queued.sequence());
+        assertThrows(P7SemanticInvariantException.class, queued::intent);
+        assertExactPrivateFinalFields(P7CastOperation.NormalSpell.class, Map.of("sequence", long.class));
+        assertExactPrivateFinalFields(P7CastOperation.Legacy.class, Map.of("intent", CastIntent.class));
     }
 
     @Test
@@ -69,6 +86,8 @@ final class P7QueuedTaskRetentionTest {
     void queuedValuesAndTasksRetainNoContextPlayerBufferConnectionOrThrowable() {
         var retainedTypes = List.of(
                 P7QueuedCastIntent.class,
+                P7CastOperation.NormalSpell.class,
+                P7CastOperation.Legacy.class,
                 P7ServerDispatchTask.class,
                 P7IntentAckDispatchTask.class,
                 P7ManaDispatchTask.class,

@@ -283,12 +283,12 @@ public final class P11CooldownDurabilityProbe {
         require(player.hasUUID("UUID") && player.getUUID("UUID").equals(r.actor.getUUID()), "PHYSICAL_PLAYER_IDENTITY");
         var data = P11CastCooldownCodec.read(player.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY).get(P11CastCooldownAttachments.ID.toString()));
         require(data.kind == P11CastCooldownData.Kind.ROUTED, "PHYSICAL_ROUTED_COOLDOWN");
-        return data.entries.get(r.reference.skillId().value());
+        return data.entries.get(new P11CooldownKey.LegacySkill(r.reference.skillId()));
     }
     private static P11CastCooldownData.Entry entry(Run r) {
         require(r.source.body(r.actor) == r.body && r.source.canCopy(r.body) && r.source.canSerialize(r.body)
                 && r.body.cooldown.data.kind == P11CastCooldownData.Kind.ROUTED, "EXACT_QUALIFIED_MEMORY_SOURCE");
-        return r.body.cooldown.data.entries.get(r.reference.skillId().value());
+        return r.body.cooldown.data.entries.get(new P11CooldownKey.LegacySkill(r.reference.skillId()));
     }
     private static boolean sameEntry(P11CastCooldownData.Entry a, P11CastCooldownData.Entry b) {
         return a != null && b != null && a.kind == b.kind && a.skillId.equals(b.skillId) && a.revision == b.revision

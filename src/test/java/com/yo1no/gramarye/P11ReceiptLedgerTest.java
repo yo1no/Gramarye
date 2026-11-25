@@ -867,6 +867,48 @@ final class P11ReceiptLedgerTest {
         return new DataFixture(identities, identity, ledger, source);
     }
 
+    @Test
+    void retirementReadbackRetrievesOnlyTheExactCompletedCurrentPlayerAttempt() {
+        var f = dataFixture(true);
+        assertTrue(f.ledger.currentPlayerWriteForReadback(f.source).isEmpty());
+        var writer = f.ledger.beginSave(f.source, P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        assertTrue(f.ledger.currentPlayerWriteForReadback(f.source).isEmpty());
+        completePhysical(f.ledger, writer);
+        assertSame(writer, f.ledger.currentPlayerWriteForReadback(f.source).orElseThrow());
+        var freshRead = f.ledger.beginReadback(f.source, P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+        assertEquals(P11ReceiptLedger.Observation.NOT_OBSERVED, freshRead.outcome());
+        assertFalse(f.ledger.persistedReadbackCurrent(freshRead));
+    }
+
+    @Test
+    void retirementReadbackRejectsIncompleteForeignKindAndSupersededWriterReceipts() {
+        for (var missing : java.util.List.of(P11ReceiptLedger.PhysicalStep.ENCODE,
+                P11ReceiptLedger.PhysicalStep.WRITE, P11ReceiptLedger.PhysicalStep.CLOSE,
+                P11ReceiptLedger.PhysicalStep.REPLACE)) {
+            var f = dataFixture(true);
+            var writer = f.ledger.beginSave(f.source, P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+            for (var step : java.util.List.of(P11ReceiptLedger.PhysicalStep.ENCODE,
+                    P11ReceiptLedger.PhysicalStep.WRITE, P11ReceiptLedger.PhysicalStep.CLOSE,
+                    P11ReceiptLedger.PhysicalStep.REPLACE)) {
+                if (step != missing) f.ledger.physical(writer, step, P11ReceiptLedger.Observation.SUCCEEDED);
+            }
+            assertEquals(P11ReceiptLedger.Change.REFUSED, f.ledger.finishSave(writer, P11ReceiptLedger.Terminal.COMPLETED));
+            assertTrue(f.ledger.currentPlayerWriteForReadback(f.source).isEmpty(), missing.toString());
+        }
+        var other = dataFixture(true);
+        completePhysical(other.ledger, other.ledger.beginSave(other.source, P11ReceiptLedger.WriterKind.LEVEL_PLAYER).orElseThrow());
+        assertTrue(other.ledger.currentPlayerWriteForReadback(other.source).isEmpty());
+        for (int mutation = 0; mutation < 3; mutation++) {
+            var f = dataFixture(true);
+            var writer = f.ledger.beginSave(f.source, P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+            completePhysical(f.ledger, writer);
+            if (mutation == 0) f.ledger.markDirty(f.source, P11ReceiptLedger.WriterKind.PLAYER_DATA);
+            if (mutation == 1) f.ledger.beginSave(f.source, P11ReceiptLedger.WriterKind.PLAYER_DATA).orElseThrow();
+            if (mutation == 2) f.ledger.advanceMutationVersion(f.source).orElseThrow();
+            assertTrue(f.ledger.currentPlayerWriteForReadback(f.source).isEmpty());
+        }
+    }
+
     private static void completeMaterial(P11ReceiptLedger ledger, P11ReceiptLedger.MaterialReceipt receipt) {
         for (var step : P11ReceiptLedger.MaterialStep.values()) {
             assertEquals(P11ReceiptLedger.Change.RECORDED,

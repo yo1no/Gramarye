@@ -141,6 +141,26 @@ is_p11_cooldown_slice_path() {
     esac
 }
 
+# Adopted23 A.6/A.7 exact native after-set; no package or future-source admission.
+is_u0_native_slice_path() {
+    case "$1" in
+        src/main/java/com/yo1no/gramarye/U0BoundedEntityQuery.java | \
+        src/main/java/com/yo1no/gramarye/U0BoundedQueryAccess.java | \
+        src/main/java/com/yo1no/gramarye/mixin/P9V0LoadedPositionMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/U0SectionQueryMixin.java | \
+        src/main/java/com/yo1no/gramarye/mixin/U0ProjectileQueryMixin.java | \
+        src/main/resources/gramarye.p11.mixins.json | \
+        src/v0Engineering/resources/gramarye.v0.engineering.mixins.json | \
+        src/test/java/com/yo1no/gramarye/U0BoundedEntityQueryTest.java | \
+        src/test/java/com/yo1no/gramarye/U0BoundedQueryScopeTest.java)
+            return 0 ;;
+        src/v0Engineering/java/com/yo1no/gramarye/v0engineering/mixin/P9V0LoadedPositionMixin.java)
+            # Only the known moved-role removal is adopted; do not reintroduce a duplicate hook.
+            [[ ! -e "$1" && ! -L "$1" ]] ;;
+        *) return 1 ;;
+    esac
+}
+
 # Exact P11 native lifecycle/reward, accepted-work L1 and direct companions, never prefix admission.
 is_p11_native_slice_path() {
     case "$1" in
@@ -1483,7 +1503,7 @@ case "${1:-}" in
                 || is_p9_s3_dc1_path "$2" || is_p9_s4_path "$2" \
                 || is_p9_s4_wc1_path "$2" || is_p9_s5_path "$2" || is_p10_path "$2" \
                 || is_p11_native_slice_path "$2" || is_p11_cooldown_slice_path "$2" \
-                || is_p11_d3_slice_path "$2"; } ;;
+                || is_p11_d3_slice_path "$2" || is_u0_native_slice_path "$2"; } ;;
     --is-p9-s5-path)
         [[ "$#" -eq 2 ]] && is_p9_s5_path "$2" ;;
     --check-game-test-worker-source)

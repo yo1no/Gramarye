@@ -44,7 +44,7 @@ final class P7S4ServerBehaviorTest {
                 "P7PendingPermitOwner.java", "P7PendingPermit.java", "P7Diagnostics.java",
                 "P7ReloadAdmissionGate.java", "P7AuthoritativeSyncService.java",
                 "P7ServerLifecycleCoordinator.java", "P7ServerAuthorizationDispatcher.java",
-                "P7AdmissionDispositionMapper.java", "P7QueuedCastIntent.java", "CastIntent.java",
+                "P7AdmissionDispositionMapper.java", "P7QueuedCastIntent.java", "P7CastOperation.java", "CastIntent.java",
                 "CastInputKind.java", "AimHint.java", "EntityHint.java", "P7ServerIntentResultSink.java",
                 "P7ServerDisconnectPort.java")) {
             units.add(production.resolve(file));
@@ -135,6 +135,22 @@ final class P7S4ServerBehaviorTest {
                             public boolean isCurrent() { return true; }
                         };
                     }
+                    enum NormalIngressDisposition {
+                        PENDING, NOT_READY, CAPACITY, COOLDOWN, INSUFFICIENT_MANA, UNAVAILABLE, REJECTED
+                    }
+                    enum NormalFeedback {
+                        NOT_READY, CAPACITY, COOLDOWN_ACTIVE, INSUFFICIENT_MANA, RATE_LIMITED, UNAVAILABLE
+                    }
+                    static final class NormalReceipt {
+                        private boolean deferred;
+                        boolean deferred() { return deferred; }
+                        void immediateCompleted() { deferred = false; }
+                    }
+                    static NormalReceipt normalReceipt(P7SessionIdentity identity, long sequence) {
+                        return new NormalReceipt();
+                    }
+                    static NormalIngressDisposition dispatchNormal(MinecraftServer server, ServerPlayer actor,
+                            NormalReceipt receipt) { return NormalIngressDisposition.NOT_READY; }
                     public interface LoginReadyPort {}
                     enum AdmissionDisposition {
                         ACCEPTED, UNKNOWN_SKILL, UNAUTHORIZED_INTENT, INVALID_TARGET,
@@ -150,6 +166,13 @@ final class P7S4ServerBehaviorTest {
                     }
                 }
                 """.formatted(projectionTypes)));
+        units.add(write(sourceRoot, "com/yo1no/gramarye/magic/network/P7NetworkComposition.java", """
+                package com.yo1no.gramarye.magic.network;
+                import net.minecraft.server.level.ServerPlayer;
+                final class P7NetworkComposition {
+                    static void normalFeedback(ServerPlayer actor, P7ServerAuthorizationBoundary.NormalFeedback feedback) {}
+                }
+                """));
         units.add(write(sourceRoot, "com/yo1no/gramarye/magic/definition/submission/SkillSubmissionRecoveryService.java", """
                 package com.yo1no.gramarye.magic.definition.submission;
                 import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary.LoginReadyPort;
@@ -373,6 +396,16 @@ final class P7S4ServerBehaviorTest {
         run("d3-stop-exhaustion");
     }
 
+    @Test
+    void normalAndLegacyOperationsShareTheActualSessionSequenceAndRateOwners() throws Exception {
+        run("normal-shared");
+    }
+
+    @Test
+    void oldNormalCaptureCannotAdoptTheSameUuidReplacementSession() throws Exception {
+        run("normal-reconnect");
+    }
+
     private static void run(String scenario) throws Exception {
         assertEquals("PASS", harness.getMethod("run", String.class).invoke(null, scenario));
     }
@@ -427,6 +460,8 @@ final class P7S4ServerBehaviorTest {
                             case "d3-respawn" -> d3Respawn();
                             case "d3-send-reentry" -> d3SendReentry();
                             case "d3-stop-exhaustion" -> d3StopExhaustion();
+                            case "normal-shared" -> normalShared();
+                            case "normal-reconnect" -> normalReconnect();
                             default -> throw new AssertionError("unknown case");
                         }
                         return "PASS";
@@ -1058,6 +1093,60 @@ final class P7S4ServerBehaviorTest {
                                     "rate terminal did not clear exact session-owned state");
                             permit.releaseAfterTask();
                         }
+                    }
+
+                    private static void normalShared() {
+                        var f = new Fixture();
+                        var actor = f.player(71);
+                        var id = f.open(actor);
+                        var results = new ArrayList<P7ServerIntentResult>();
+                        var dispatcher = new P7ServerAuthorizationDispatcher(f.sessions, f.access,
+                                new P7AdvisoryTargetValidator(), results::add, f.life::finishInvalidated);
+                        for (long sequence = 1; sequence <= 8; sequence++) {
+                            P7CastOperation operation = (sequence & 1) == 1
+                                    ? new P7CastOperation.NormalSpell(sequence)
+                                    : new P7CastOperation.Legacy(new CastIntent(sequence, 0, CastInputKind.CAST, 0, null, null));
+                            dispatcher.dispatch(new P7QueuedCastIntent(id, operation));
+                            var current = f.sessions.currentSession(id).orElseThrow();
+                            check(current.admissionState().sequenceState().expectedNext().orElseThrow() == sequence + 1,
+                                    "operation changed the shared sequence");
+                            check(current.admissionState().tokenBucket().tokens() == 8 - sequence,
+                                    "operation created a separate token bucket");
+                            check(results.getLast().sequenceConsumed() && !results.getLast().p5AdmissionAccepted(),
+                                    "not-ready/unknown normal or legacy root became accepted");
+                        }
+                        dispatcher.dispatch(new P7QueuedCastIntent(id, new P7CastOperation.NormalSpell(9)));
+                        check(results.size() == 9 && results.getLast().acknowledgementCandidate().orElseThrow().disposition()
+                                == IntentAcknowledgement.Disposition.RATE_LIMITED,
+                                "normal ninth operation bypassed shared rate state");
+                        var second = new Fixture();
+                        var b = second.player(72);var identity = second.open(b);
+                        var observed = new ArrayList<P7ServerIntentResult>();
+                        var mixed = new P7ServerAuthorizationDispatcher(second.sessions, second.access,
+                                new P7AdvisoryTargetValidator(), observed::add, second.life::finishInvalidated);
+                        mixed.dispatch(new P7QueuedCastIntent(identity, new P7CastOperation.NormalSpell(1)));
+                        mixed.dispatch(new P7QueuedCastIntent(identity, new CastIntent(1,0,CastInputKind.CAST,0,null,null)));
+                        check(observed.getLast().acknowledgementCandidate().orElseThrow().disposition()
+                                == IntentAcknowledgement.Disposition.DUPLICATE, "legacy replay acquired a second normal sequence");
+                        check(second.sessions.currentIdentity(second.server,b.getUUID()).orElseThrow() == identity,
+                                "ordinary transition relabeled original capture identity");
+                    }
+
+                    private static void normalReconnect() {
+                        var f = new Fixture();var actor = f.player(73);var old = f.open(actor);
+                        var original = new P7QueuedCastIntent(old,new P7CastOperation.NormalSpell(1));
+                        check(f.sessions.closeSession(f.server,old), "old normal session did not close");
+                        var replacement = f.player(73);var fresh = f.open(replacement);
+                        check(old.connectionEpoch() != fresh.connectionEpoch(), "replacement did not obtain new native epoch");
+                        var results = new ArrayList<P7ServerIntentResult>();
+                        var dispatcher = new P7ServerAuthorizationDispatcher(f.sessions,f.access,
+                                new P7AdvisoryTargetValidator(),results::add,f.life::finishInvalidated);
+                        dispatcher.dispatch(original);
+                        check(results.isEmpty() && f.sessions.currentSession(fresh).orElseThrow().admissionState()
+                                .sequenceState().expectedNext().orElseThrow() == 1, "old normal capture consumed successor state");
+                        dispatcher.dispatch(new P7QueuedCastIntent(fresh,new P7CastOperation.NormalSpell(1)));
+                        check(results.size() == 1 && results.getFirst().sequenceConsumed()
+                                && !results.getFirst().p5AdmissionAccepted(), "fresh normal not-ready operation did not use current owner");
                     }
 
                     private static P7ServerIntentResult result(P7SessionIdentity id, boolean ack) {

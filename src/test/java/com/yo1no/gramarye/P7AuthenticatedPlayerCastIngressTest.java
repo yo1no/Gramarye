@@ -207,7 +207,9 @@ final class P7AuthenticatedPlayerCastIngressTest {
                 () -> assertTrue(source.contains("P7ServerAuthorizationBoundary.install(\n"
                         + "                runtimeCapability,\n"
                         + "                p7AuthenticatedPlayerCastIngress,\n"
-                        + "                p11CastCooldownService);")),
+                        + "                p11CastCooldownService,\n"
+                        + "                new NormalSpellCastIngress(skillRuntimeService));")),
+                () -> assertEquals(1, occurrences(source, "new NormalSpellCastIngress(skillRuntimeService)")),
                 () -> assertTrue(source.contains("new P11CastCooldownService("
                         + "p11FoundationService, cooldownPolicyProjection::observe)")),
                 () -> assertTrue(section(source,

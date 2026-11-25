@@ -36,6 +36,52 @@ final class P7CastIntentNetworkHandlerTest {
     Path temporary;
 
     @Test
+    void normalOperationUsesTheSameCapturedSessionPermitAndSingleTask() {
+        var player = new UUID(0, 901);
+        var owner = runningOwner();
+        var dispatched = new ArrayList<P7QueuedCastIntent>();
+        var composition = composition(ignored -> OptionalLong.of(31), owner, dispatched::add);
+        var context = new P7RecordingPayloadContext(null);
+        P7CastIntentNetworkHandler.handleNormalAuthenticated(
+                new CastCurrentSpellPayload(1), player, context, composition);
+        assertEquals(1, context.enqueueCalls());
+        assertEquals(1, owner.playerPending(player));
+        var task = context.takeOnlyTask();
+        task.run();
+        assertThrows(P7SemanticInvariantException.class, task::run);
+        assertEquals(1, dispatched.size());
+        var queued = dispatched.getFirst();
+        assertEquals(player, queued.sessionIdentity().authenticatedPlayerId());
+        assertEquals(31, queued.sessionIdentity().connectionEpoch());
+        assertEquals(1, queued.sequence());
+        assertTrue(queued.operation() instanceof P7CastOperation.NormalSpell);
+        assertThrows(P7SemanticInvariantException.class, queued::intent);
+        assertEquals(0, owner.serverPending());
+    }
+
+    @Test
+    void normalAndLegacyShareTheSameEightPendingPermitLimit() {
+        var player = new UUID(0, 902);
+        var owner = runningOwner();
+        var held = new ArrayList<P7PendingPermit>();
+        for (int index = 0; index < 8; index++) {
+            held.add(owner.acquire(player, 31, 1).permit().orElseThrow());
+        }
+        var context = new P7RecordingPayloadContext(null);
+        var composition = composition(ignored -> OptionalLong.of(31), owner,
+                ignored -> { throw new AssertionError("busy normal task must not dispatch"); });
+        P7CastIntentNetworkHandler.handleNormalAuthenticated(
+                new CastCurrentSpellPayload(1), player, context, composition);
+        assertEquals(0, context.enqueueCalls());
+        assertEquals(1, context.replyCalls());
+        assertEquals(IntentAcknowledgement.Disposition.SERVER_BUSY,
+                ((IntentAckPayload) context.replyPayload()).acknowledgement().disposition());
+        assertEquals(8, owner.playerPending(player));
+        held.forEach(P7PendingPermit::release);
+        assertEquals(0, owner.serverPending());
+    }
+
+    @Test
     void validEpochAndPermitEnqueueOneScalarTaskThenDispatchExactlyOnce() {
         var playerId = UUID.fromString("00000000-0000-0000-0000-000000000201");
         var epochLookup = new AtomicReference<UUID>();
@@ -524,6 +570,12 @@ final class P7CastIntentNetworkHandlerTest {
                     }
                 }
 
+                final class CastCurrentSpellPayload {
+                    private final long sequence;
+                    CastCurrentSpellPayload(long sequence) { this.sequence = sequence; }
+                    long sequence() { return sequence; }
+                }
+
                 final class IntentAckPayload {
                     IntentAckPayload(IntentAcknowledgement ignored) {
                     }
@@ -587,7 +639,7 @@ final class P7CastIntentNetworkHandlerTest {
                     serverPlayerStub,
                     contextStub,
                     harness));
-            for (var name : List.of("P7SessionIdentity", "P7QueuedCastIntent", "P7ServerDispatchTask",
+            for (var name : List.of("P7SessionIdentity", "P7CastOperation", "P7QueuedCastIntent", "P7ServerDispatchTask",
                     "P7PendingPermitOwner", "P7PendingPermit", "PendingPermitAccounting",
                     "P7NetworkBounds", "P7SemanticInvariantException", "P7ConnectionEpochSnapshotSource")) {
                 sources.add(HANDLER_SOURCE.resolveSibling(name + ".java"));

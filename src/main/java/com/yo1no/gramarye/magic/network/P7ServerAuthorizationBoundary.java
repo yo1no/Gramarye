@@ -24,6 +24,9 @@ public final class P7ServerAuthorizationBoundary {
         @Override public boolean isCurrent() { return true; }
     };
     private static volatile SyncProjectionPort installedSyncProjection = UNAVAILABLE_SYNC;
+    private static final NormalRootIngressPort UNAVAILABLE_NORMAL =
+            (server, actor, receipt) -> NormalIngressDisposition.UNAVAILABLE;
+    private static volatile NormalRootIngressPort installedNormalIngress = UNAVAILABLE_NORMAL;
 
     private P7ServerAuthorizationBoundary() {}
 
@@ -34,9 +37,15 @@ public final class P7ServerAuthorizationBoundary {
 
     public static void install(P6RuntimeExecutionCapability capability, RootIngressPort rootIngressPort,
             SyncProjectionPort syncProjectionPort) {
+        install(capability, rootIngressPort, syncProjectionPort, UNAVAILABLE_NORMAL);
+    }
+
+    public static void install(P6RuntimeExecutionCapability capability, RootIngressPort rootIngressPort,
+            SyncProjectionPort syncProjectionPort, NormalRootIngressPort normalIngressPort) {
         Objects.requireNonNull(capability, "capability");
         Objects.requireNonNull(rootIngressPort, "rootIngressPort");
         Objects.requireNonNull(syncProjectionPort, "syncProjectionPort");
+        Objects.requireNonNull(normalIngressPort, "normalIngressPort");
         synchronized (P7ServerAuthorizationBoundary.class) {
             if (installedRootIngress != UNAVAILABLE_ROOT_INGRESS) {
                 throw new P7SemanticInvariantException(
@@ -44,6 +53,7 @@ public final class P7ServerAuthorizationBoundary {
             }
             P7NetworkComposition.bindManaCapability(capability);
             installedSyncProjection = syncProjectionPort;
+            installedNormalIngress = normalIngressPort;
             installedRootIngress = rootIngressPort;
         }
     }
@@ -89,6 +99,68 @@ public final class P7ServerAuthorizationBoundary {
             AdvisoryTargetCheck targetCheck) {
         var rootIngressPort = installedRootIngress;
         return rootIngressPort.authorizeAndAdmit(server, actor, slot, targetCheck);
+    }
+
+    static NormalReceipt normalReceipt(P7SessionIdentity identity, long sequence) {
+        return new NormalReceipt(identity, sequence);
+    }
+
+    static NormalIngressDisposition dispatchNormal(MinecraftServer server, ServerPlayer actor,
+            NormalReceipt receipt) {
+        return Objects.requireNonNull(installedNormalIngress.authorizeAndAdmit(server, actor, receipt),
+                "normal ingress result");
+    }
+
+    /** Fixed normal operation, separate from the legacy equipped-SkillReference branch. */
+    @FunctionalInterface
+    public interface NormalRootIngressPort {
+        NormalIngressDisposition authorizeAndAdmit(
+                MinecraftServer server, ServerPlayer actor, NormalReceipt receipt);
+    }
+
+    public enum NormalIngressDisposition {
+        PENDING, NOT_READY, CAPACITY, COOLDOWN, INSUFFICIENT_MANA, UNAVAILABLE, REJECTED
+    }
+
+    public enum NormalFeedback {
+        NOT_READY, CAPACITY, COOLDOWN_ACTIVE, INSUFFICIENT_MANA, RATE_LIMITED, UNAVAILABLE
+    }
+
+    /** Scalar result join for the single bounded P5 capture; not a queued ACK or retry. */
+    public static final class NormalReceipt {
+        private final P7SessionIdentity identity;
+        private final long sequence;
+        private boolean deferred;
+        private boolean completed;
+
+        private NormalReceipt(P7SessionIdentity identity, long sequence) {
+            this.identity = Objects.requireNonNull(identity, "identity");
+            this.sequence = sequence;
+        }
+
+        public boolean defer() {
+            if (deferred || completed) { return false; }
+            deferred = true;
+            return true;
+        }
+
+        public boolean matches(V0CatalogAuthority authority, V0PlayWitness witness) {
+            return !deferred && !completed && authority != null && witness != null
+                    && authority.isOwnerThread() && witness.authority == authority && witness.identity == identity;
+        }
+
+        boolean deferred() { return deferred && !completed; }
+
+        void immediateCompleted() { completed = true; }
+
+        public void complete(MinecraftServer server, ServerPlayer exactActor,
+                AdmissionDisposition disposition, NormalFeedback feedback) {
+            Objects.requireNonNull(disposition, "disposition");
+            if (!deferred || completed) { return; }
+            completed = true;
+            P7NetworkComposition.completeNormal(
+                    server, exactActor, identity, sequence, disposition, feedback);
+        }
     }
 
     static SyncCapture prepareSync(MinecraftServer server, ServerPlayer actor) {

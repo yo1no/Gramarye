@@ -240,8 +240,22 @@ final class P4D2BApiGateTest {
                 relativeSourcesMatching(PREPARE_JOURNAL_CLEAR_CALL));
         assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
                 relativeSourcesMatching(COMMIT_JOURNAL_CLEAR_CALL));
-        assertEquals(Set.of("RandomUuidSkillIdSource.java"),
+        // 23 B.7's private attempt UUID is not a second SkillId allocator.
+        assertEquals(Set.of("RandomUuidSkillIdSource.java", "V0SlotRuntime.java"),
                 relativeSourcesContaining("UUID.randomUUID()"));
+        var normalRuntime = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/V0SlotRuntime.java")));
+        int receiptStart = normalRuntime.indexOf("private static final class V0ReleaseReceipt implements P11CastCooldownService.ReleaseReceipt {");
+        int receiptEnd = normalRuntime.indexOf("private static final class Impact {", receiptStart);
+        assertTrue(receiptStart >= 0 && receiptEnd > receiptStart);
+        var scalarReceipt = normalRuntime.substring(receiptStart, receiptEnd);
+        assertEquals(1, occurrences(normalRuntime.replaceAll("\\s+", ""), "UUID.randomUUID()"));
+        assertTrue(scalarReceipt.contains("private final UUID attempt = UUID.randomUUID();"));
+        for (String forbidden : List.of("SkillId", "SkillReference", "ServerPlayer", "MinecraftServer", "WorkReservation")) {
+            assertFalse(scalarReceipt.contains(forbidden), forbidden);
+        }
+        assertEquals(Set.of("RandomUuidSkillIdSource.java"),
+                relativeSourcesContaining("new SkillId(UUID.randomUUID())"));
         assertEquals(Set.of("DefaultSkillSubmissionPolicyProvider.java"),
                 relativeSourcesContaining("SkillQuota.Unlimited.INSTANCE"));
         assertEquals(Set.of(
@@ -293,6 +307,7 @@ final class P4D2BApiGateTest {
         assertEquals(
                 Set.of(
                         "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
+                        "com/yo1no/gramarye/magic/network/CastCurrentSpellPayload.java",
                         "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
                         "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
                         "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java",

@@ -31,6 +31,16 @@ final class P11CooldownProjectionTest {
         var units = new ArrayList<Path>();
         units.add(root.resolve("P11CastCooldownService.java"));
         units.add(root.resolve("P11CastCooldownData.java"));
+        units.add(root.resolve("P11CooldownKey.java"));
+        units.add(write(sources, "net/minecraft/resources/ResourceLocation.java", """
+                package net.minecraft.resources;
+                public record ResourceLocation(String namespace, String path) {
+                    public static ResourceLocation fromNamespaceAndPath(String namespace, String path) {
+                        return new ResourceLocation(namespace, path);
+                    }
+                    @Override public String toString() { return namespace + ":" + path; }
+                }
+                """));
         for (String leaf : List.of("SkillCooldownSnapshot.java", "CooldownSnapshotEntry.java",
                 "P7NetworkBounds.java", "P7SemanticInvariantException.java")) {
             units.add(root.resolve("magic/network").resolve(leaf));
@@ -154,6 +164,10 @@ final class P11CooldownProjectionTest {
     @Test void actualPendingInstallationRejectsStaleCapturesWithoutPublishing() throws Exception { run("installation"); }
     @Test void actualAdmissionUsesTrustedClockAndFiniteReleaseBounds() throws Exception { run("bounds"); }
     @Test void actualReceiptSettlementPreservesLatestPublicationAndFailedSaveTruth() throws Exception { run("publication"); }
+    @Test void typedPolicyAdmissionHasIndependentCapacityAndCapturedWindow() throws Exception { run("typed"); }
+    @Test void typedOwnerPublicationProofCanBeClaimedOnlyOnce() throws Exception { run("typed-source"); }
+    @Test void acceptedTypedArmUsesOriginalWorkRecipientWithoutOnlineReadmission() throws Exception { run("typed-arm"); }
+    @Test void retirementRequiresAnOpaqueCurrentReadbackAndNoTargetObligation() throws Exception { run("retirement"); }
 
     private static void run(String name) throws Exception { harness.getMethod("run", String.class).invoke(null, name); }
     private static Path write(Path root, String name, String source) throws Exception {
@@ -230,6 +244,31 @@ final class P11CooldownProjectionTest {
                     boolean isCurrent(ServerPlayer exact) {
                         return exact == actor && owner.generation == generation && owner.available == available;
                     }
+                }
+                // This is only the source-platform fixture for exercising the actual
+                // service's proof lifetime. It is not a physical readback witness.
+                static final class CooldownReadback {
+                    final Body body; final P11ReceiptLedger.Source version;
+                    private CooldownReadback(Body body, P11ReceiptLedger.Source version) { this.body = body; this.version = version; }
+                }
+                private CooldownReadback retirement;
+                boolean retirementReady;
+                CooldownReadback cooldownRetirementReadback(Body body, P11ReceiptLedger.Source version) {
+                    if (!retirementReady || !canCopy(body) || body.source != version) return null;
+                    if (retirement == null) retirement = new CooldownReadback(body, version);
+                    return cooldownRetirementCurrent(body, version, retirement) ? retirement : null;
+                }
+                boolean allowRetirementRead, failRetirementRead;
+                int retirementReadCalls;
+                boolean prepareCooldownRetirementReadback(Body body, P11ReceiptLedger.Source expected) {
+                    retirementReadCalls++;
+                    if (failRetirementRead) throw new AssertionError("controlled native read primary");
+                    if (!allowRetirementRead || body.source != expected) return false;
+                    retirementReady = true; return true;
+                }
+                boolean cooldownRetirementCurrent(Body body, P11ReceiptLedger.Source version, CooldownReadback exact) {
+                    return retirementReady && exact != null && retirement == exact && exact.body == body
+                            && exact.version == version && body.source == version && canCopy(body);
                 }
                 Body value;
                 boolean copy = true, serialize = true;
@@ -346,6 +385,7 @@ final class P11CooldownProjectionTest {
                         case "handoff" -> handoff();
                         case "admission" -> admission(); case "installation" -> installation();
                         case "bounds" -> bounds(); case "publication" -> publication();
+                        case "typed" -> typed(); case "typed-source" -> typedSource(); case "typed-arm" -> typedArm(); case "retirement" -> retirement();
                         default -> throw new AssertionError(scenario);
                     }
                 }
@@ -488,10 +528,10 @@ final class P11CooldownProjectionTest {
                         receipt.released = arm.releasedAt(); receipt.fact = P11CastCooldownService.ReleaseFact.ARM;
                         int before = f.publications;
                         f.service.completeArm(arm);
-                        var active = next.cooldown.data.entries.get(ID);
+                        var active = next.cooldown.data.entries.get(P11CooldownKey.legacy(ID));
                         check(active.kind == 0 && active.releasedAt == 1000 && active.expiresAt == 1120
                                 && active.attemptId.equals(ATTEMPT), "exact ARM survives handoff and generation drift");
-                        check(f.body.cooldown.data == oldMaterial && oldMaterial.entries.get(ID).kind == 1
+                        check(f.body.cooldown.data == oldMaterial && oldMaterial.entries.get(P11CooldownKey.legacy(ID)).kind == 1
                                 && f.actor.cooldown == oldMaterial, "no old A material publication");
                         check(f.publications == before + 1 && next.source.epoch() == 12, "one current B publication");
                         f.service.completeArm(arm);
@@ -517,7 +557,7 @@ final class P11CooldownProjectionTest {
                         var pending = prepared(f.prepare(duration, ref(ID, 7), receipt));
                         check(f.publications == 0 && f.body.cooldown.data.entries.isEmpty(), "prepare is unpublished");
                         check(f.service.installPending(pending) && f.publications == 1, "positive install once");
-                        var actual = f.body.cooldown.data.entries.get(ID);
+                        var actual = f.body.cooldown.data.entries.get(P11CooldownKey.legacy(ID));
                         check(actual.kind == 1 && actual.duration == duration && actual.revision == 7
                                 && actual.acceptedAt == 1000 && actual.releaseNotAfter == 1101
                                 && actual.attemptId.equals(ATTEMPT), "exact positive pending values");
@@ -600,7 +640,7 @@ final class P11CooldownProjectionTest {
                     var exact = new Fixture(data()); exact.server.world.time = Long.MAX_VALUE - 101 - 600;
                     var bound = prepared(exact.prepare(600, ref(ID, 7), new Receipt()));
                     check(exact.service.installPending(bound), "last representable U accepted");
-                    check(exact.body.cooldown.data.entries.get(ID).releaseNotAfter == Long.MAX_VALUE - 600, "exact representable bound");
+                    check(exact.body.cooldown.data.entries.get(P11CooldownKey.legacy(ID)).releaseNotAfter == Long.MAX_VALUE - 600, "exact representable bound");
                     var overflow = new Fixture(data()); overflow.server.world.time = Long.MAX_VALUE - 101 - 600 + 1;
                     reject(overflow.prepare(600, ref(ID, 7), new Receipt()), CooldownRejectionReason.UNAVAILABLE);
                     check(overflow.body.cooldown.data.entries.isEmpty(), "overflow cannot publish pending");
@@ -640,9 +680,9 @@ final class P11CooldownProjectionTest {
                             sameFailure(pending::settle, primary);
                             var latest = f.body.cooldown.data; int writes = f.publications;
                             check(f.actor.cooldown == latest && writes == 2, "settlement replacement survives later bookkeeping fault");
-                            if (fact == P11CastCooldownService.ReleaseFact.UNKNOWN) check(latest.entries.get(ID).kind == 2, "unknown remains uncertain");
-                            if (fact == P11CastCooldownService.ReleaseFact.ARM) check(latest.entries.get(ID).kind == 0
-                                    && latest.entries.get(ID).expiresAt == 1120, "known ARM never rolls back");
+                            if (fact == P11CastCooldownService.ReleaseFact.UNKNOWN) check(latest.entries.get(P11CooldownKey.legacy(ID)).kind == 2, "unknown remains uncertain");
+                            if (fact == P11CastCooldownService.ReleaseFact.ARM) check(latest.entries.get(P11CooldownKey.legacy(ID)).kind == 0
+                                    && latest.entries.get(P11CooldownKey.legacy(ID)).expiresAt == 1120, "known ARM never rolls back");
                             if (fact == P11CastCooldownService.ReleaseFact.NO_RELEASE) check(latest.entries.isEmpty(), "known clear remains clear");
                             f.afterPublication = () -> {}; pending.settle();
                             check(f.body.cooldown.data == latest && f.publications == writes, "settlement retry does not replay installed replacement");
@@ -662,6 +702,132 @@ final class P11CooldownProjectionTest {
                 static P11CastCooldownService.Prepared prepared(P11CastCooldownService.Admission admission) {
                     check(admission instanceof P11CastCooldownService.Prepared, "expected actual Prepared");
                     return (P11CastCooldownService.Prepared) admission;
+                }
+                static P11CooldownKey.LogicalPolicy policyKey(int n) {
+                    return P11CooldownKey.parsePolicy("gramarye:policy_" + n);
+                }
+                static P11CastCooldownService.Admission policyPrepare(Fixture f, int duration, Receipt receipt) {
+                    return f.service.prepareV0PolicyAdmission(f.server, f.actor, policyKey(0), duration, 0, 25, 24, receipt, f.work);
+                }
+                static void typed() {
+                    var rows = new HashMap<UUID, P11CastCooldownData.Entry>();
+                    for (int i = 0; i < 256; i++) {
+                        var id = new UUID(0, i); rows.put(id, pending(id));
+                    }
+                    var f = new Fixture(P11CastCooldownData.routed(1000, rows));
+                    var old = f.body.cooldown.data;
+                    var receipt = new Receipt();
+                    var pending = (P11CastCooldownService.Prepared) policyPrepare(f, 20, receipt);
+                    check(f.service.installPending(pending), "legacy full does not consume policy quota");
+                    check(f.body.cooldown.data.schemaVersion == 2 && f.body.cooldown.data.entries.size() == 257, "single mixed migration");
+                    for (var row : old.entries.entrySet()) check(f.body.cooldown.data.entries.get(row.getKey()) == row.getValue(), "legacy inner unchanged");
+                    reject(policyPrepare(f, 0, new Receipt()), CooldownRejectionReason.PENDING);
+                    var full = new HashMap<P11CooldownKey, P11CastCooldownData.Entry>();
+                    for (int i = 1; i <= 64; i++) {
+                        var key = policyKey(i); full.put(key, P11CastCooldownData.Entry.pendingPolicy(key, 20, 1000, ATTEMPT, 25));
+                    }
+                    var capped = new Fixture(P11CastCooldownData.routed(2, 1000, full));
+                    reject(policyPrepare(capped, 20, new Receipt()), CooldownRejectionReason.UNAVAILABLE);
+                    check(capped.body.cooldown.data.entries.size() == 64, "refusal does not evict or marker");
+                    check(policyPrepare(capped, 0, new Receipt()) instanceof P11CastCooldownService.Zero, "zero creates no row despite quota");
+                    check(capped.prepare(120, ref(ID, 1), new Receipt()) instanceof P11CastCooldownService.Prepared, "policy full preserves legacy quota");
+                    for (int l : new int[] {2, 41}) reject(f.service.prepareV0PolicyAdmission(f.server, f.actor, policyKey(3),
+                            20, 0, l + 1, l, new Receipt(), f.work), CooldownRejectionReason.UNAVAILABLE);
+                    var exact = new Fixture(data());
+                    reject(exact.service.prepareV0PolicyAdmission(exact.server, exact.actor, policyKey(0), 20,
+                            0, 101, 24, new Receipt(), exact.work), CooldownRejectionReason.UNAVAILABLE);
+                }
+                static void typedSource() {
+                    var f = new Fixture(null);
+                    var original = f.body.source; var receipt = new Receipt();
+                    var pending = (P11CastCooldownService.Prepared) policyPrepare(f, 20, receipt);
+                    check(f.body.source != original, "own initialization advanced source");
+                    check(f.service.installPending(pending), "own pending publication");
+                    var proof = f.service.claimPendingSource(pending, f.source, f.body, original);
+                    check(proof == f.body.source && proof != original, "exact own chain proof");
+                    check(f.service.claimPendingSource(pending, f.source, f.body, original) == null, "one use");
+                    for (int fault = 0; fault < 6; fault++) {
+                        var x = new Fixture(data()); var origin = x.body.source;
+                        var prepared = (P11CastCooldownService.Prepared) policyPrepare(x, 20, new Receipt());
+                        check(x.service.installPending(prepared), "negative installed");
+                        var source = x.source; var body = x.body; var input = origin;
+                        if (fault == 0) input = new P11ReceiptLedger.Source(origin.epoch(), origin.version());
+                        if (fault == 1) source = new P11QualifiedSourceOwner();
+                        if (fault == 2) body = new P11QualifiedSourceOwner.Body(x.actor, x.body.cooldown.data);
+                        if (fault == 3) x.body.source = new P11ReceiptLedger.Source(x.body.source.epoch(), x.body.source.version() + 1);
+                        if (fault == 4) x.actor.cooldown = data();
+                        if (fault == 5) { x.server.world.time++; x.capture(); }
+                        check(x.service.claimPendingSource(prepared, source, body, input) == null, "wrong exact proof/cell/body/source/material/generation");
+                        check(x.service.claimPendingSource(prepared, x.source, x.body, origin) == null, "failed claim also consumed");
+                    }
+                    var foreign = new Fixture(data()); var origin = foreign.body.source;
+                    var prepared = (P11CastCooldownService.Prepared) policyPrepare(foreign, 20, new Receipt());
+                    foreign.actor.beforePublication = () -> foreign.body.source = new P11ReceiptLedger.Source(
+                            foreign.body.source.epoch(), foreign.body.source.version() + 1);
+                    check(!foreign.service.installPending(prepared), "extra reentrant mutation is not own one-step publication");
+                    check(foreign.service.claimPendingSource(prepared, foreign.source, foreign.body, origin) == null, "no blind recapture");
+                }
+                static void typedArm() {
+                    var f = new Fixture(data()); var original = f.body.source; var receipt = new Receipt();
+                    var pending = (P11CastCooldownService.Prepared) policyPrepare(f, 20, receipt);
+                    check(f.service.installPending(pending), "typed install");
+                    check(f.service.claimPendingSource(pending, f.source, f.body, original) == f.body.source, "source claimed");
+                    receipt.fact = P11CastCooldownService.ReleaseFact.PENDING;
+                    f.actor.connection.actual.connected = false; f.server.players.values.clear();
+                    check(f.service.prepareArm(pending, new P11QualifiedSourceOwner.WorkReservation(f.actor), f.actor, 25) == null, "wrong work");
+                    check(f.service.prepareArm(pending, f.work, f.actor, 26) == null, "beyond real deadline");
+                    var arm = f.service.prepareArm(pending, f.work, f.actor, 25);
+                    check(arm != null, "inclusive V0 deadline and original accepted work, no online readmission");
+                    receipt.fact = P11CastCooldownService.ReleaseFact.ARM; receipt.released = arm.releasedAt();
+                    f.service.completeArm(arm);
+                    var active = f.body.cooldown.data.entries.get(policyKey(0));
+                    check(active.kind == 0 && active.releaseWindow == 25 && active.expiresAt == arm.releasedAt() + 20, "true release plus duration");
+                    pending.settle();
+                    check(f.body.cooldown.data.entries.get(policyKey(0)).kind == 0, "terminal does not reset or refund ARM");
+                }
+                static void retirement() {
+                    var f = new Fixture(data());
+                    check(f.service.preparePolicyRetirement(f.server, policyKey(0), f.source, f.body, f.body.source) == null,
+                            "empty is not durable without the source proof");
+                    check(f.source.retirementReadCalls == 1, "missing proof requests sole-owner native read without inventing it");
+                    var produced = new Fixture(data()); produced.source.allowRetirementRead = true;
+                    check(produced.service.preparePolicyRetirement(produced.server, policyKey(0), produced.source,
+                            produced.body, produced.body.source) != null && produced.source.retirementReadCalls == 1,
+                            "fresh owner-produced readback is used only after original quiescence checks");
+                    f.source.retirementReady = true;
+                    var proof = f.service.preparePolicyRetirement(f.server, policyKey(0), f.source, f.body, f.body.source);
+                    check(proof != null && f.service.claimPolicyRetirement(proof), "actual service consumes source fixture witness");
+                    check(!f.service.claimPolicyRetirement(proof), "retirement one use");
+                    for (int mismatch = 0; mismatch < 2; mismatch++) {
+                        var x = new Fixture(data()); x.source.retirementReady = true;
+                        var exact = x.service.preparePolicyRetirement(x.server, policyKey(0), x.source, x.body, x.body.source);
+                        check(!x.service.claimPolicyRetirement(exact, mismatch == 0 ? OTHER : x.actor.id,
+                                mismatch == 1 ? policyKey(1) : policyKey(0)), "expected owner/key cannot be rebound");
+                        check(!x.service.claimPolicyRetirement(exact, x.actor.id, policyKey(0)), "failed exact claim consumes proof");
+                    }
+                    for (int kind = 0; kind <= 4; kind++) {
+                        var entry = P11CastCooldownData.Entry.pendingPolicy(policyKey(0), 20, 1000, ATTEMPT, 25);
+                        if (kind == 0) entry = entry.active(1000);
+                        if (kind == 2) entry = entry.uncertain(P11CastCooldownData.Reason.RELEASE_UNKNOWN, 1000, false, -1);
+                        if (kind == 3) entry = P11CastCooldownData.Entry.policyRaw(policyKey(0), P11CastCooldownData.Reason.MALFORMED, new net.minecraft.nbt.Tag());
+                        if (kind == 4) entry = P11CastCooldownData.Entry.policyMarker(policyKey(0), P11CastCooldownData.Reason.BYTE_LIMIT, 279, 278);
+                        var x = new Fixture(P11CastCooldownData.routed(2, 1000, Map.of(policyKey(0), entry)));
+                        x.source.retirementReady = true;
+                        check(x.service.preparePolicyRetirement(x.server, policyKey(0), x.source, x.body, x.body.source) == null,
+                                "never remove pending/active/recovery/raw/marker obligations");
+                        check(x.source.retirementReadCalls == 0, "obligations cannot even request retirement native IO");
+                    }
+                    for (int failure = 0; failure < 4; failure++) {
+                        var x = new Fixture(data()); x.source.retirementReady = true;
+                        var stale = x.service.preparePolicyRetirement(x.server, policyKey(0), x.source, x.body, x.body.source);
+                        check(stale != null, "prepared retirement");
+                        if (failure == 0) x.source.retirementReady = false;
+                        if (failure == 1) x.body.source = new P11ReceiptLedger.Source(x.body.source.epoch(), x.body.source.version() + 1);
+                        if (failure == 2) x.failedWriter(true);
+                        if (failure == 3) { x.server.world.time++; x.capture(); }
+                        check(!x.service.claimPolicyRetirement(stale), "readback/source/writer/generation change refuses");
+                        check(!x.service.claimPolicyRetirement(stale), "failed proof claim consumed");
+                    }
                 }
                 static void reject(P11CastCooldownService.Admission admission, CooldownRejectionReason expected) {
                     check(admission instanceof P11CastCooldownService.Rejected rejected && rejected.reason() == expected,

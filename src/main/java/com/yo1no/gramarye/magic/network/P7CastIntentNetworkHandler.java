@@ -39,6 +39,35 @@ final class P7CastIntentNetworkHandler {
         Objects.requireNonNull(authenticatedPlayerId, "authenticatedPlayerId");
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(composition, "composition");
+        enqueueAuthenticated(new P7CastOperation.Legacy(payload.intent()),
+                authenticatedPlayerId, context, composition);
+    }
+
+    static void handleNormal(CastCurrentSpellPayload payload, IPayloadContext context,
+            P7NetworkComposition composition) {
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(context, "context");
+        Objects.requireNonNull(composition, "composition");
+        if (!(context.player() instanceof ServerPlayer actor)) {
+            context.disconnect(Component.literal("Invalid packet sender"));
+            return;
+        }
+        handleNormalAuthenticated(payload, actor.getUUID(), context, composition);
+    }
+
+    static void handleNormalAuthenticated(CastCurrentSpellPayload payload, UUID authenticatedPlayerId,
+            IPayloadContext context, P7NetworkComposition composition) {
+        Objects.requireNonNull(payload, "payload");
+        enqueueAuthenticated(new P7CastOperation.NormalSpell(payload.sequence()),
+                authenticatedPlayerId, context, composition);
+    }
+
+    private static void enqueueAuthenticated(P7CastOperation operation, UUID authenticatedPlayerId,
+            IPayloadContext context, P7NetworkComposition composition) {
+        Objects.requireNonNull(operation, "operation");
+        Objects.requireNonNull(authenticatedPlayerId, "authenticatedPlayerId");
+        Objects.requireNonNull(context, "context");
+        Objects.requireNonNull(composition, "composition");
         var permitOwner = composition.pendingPermitOwner();
         var connection = Objects.requireNonNull(context.connection(), "authenticated connection");
         var source = composition.connectionEpochSource();
@@ -59,7 +88,7 @@ final class P7CastIntentNetworkHandler {
         if (acquisition.outcome() == P7PendingPermitOwner.AcquireOutcome.SERVER_BUSY) {
             if (source.isCurrentCapture(identity, connection)) {
                 context.reply(new IntentAckPayload(new IntentAcknowledgement(
-                        payload.intent().sequence(),
+                        operation.sequence(),
                         IntentAcknowledgement.Disposition.SERVER_BUSY,
                         0,
                         null)));
@@ -74,7 +103,7 @@ final class P7CastIntentNetworkHandler {
             if (!source.isCurrentCapture(identity, connection)) {
                 return;
             }
-            var queuedIntent = new P7QueuedCastIntent(identity, payload.intent());
+            var queuedIntent = new P7QueuedCastIntent(identity, operation);
             var task = new P7ServerDispatchTask(
                     queuedIntent, composition.serverIntentDispatchPort(), permit);
             context.enqueueWork(task);

@@ -203,13 +203,14 @@ verify_p11_mixin_configuration() {
     expected+='"P11LivingEntityCreditMixin","P11EnderDragonCreditMixin","P11SculkCatalystCreditMixin","P11ExecuteCommandMixin",'
     expected+='"P11BuildContextsMixin","P11CallFunctionMixin","P11EntityCreditRemovalMixin","P11EntityRemovalMixin",'
     expected+='"P11EntityManagerCleanupMixin","P11P9EntitySectionMixin","P11P9EntityMoveMixin",'
-    expected+='"P11LevelEntityCleanupMixin","P11EntityLookupMixin","P11ServerBossEventMixin"],'
+    expected+='"P11LevelEntityCleanupMixin","P11EntityLookupMixin","P11ServerBossEventMixin",'
+    expected+='"P9V0LoadedPositionMixin","U0SectionQueryMixin","U0ProjectileQueryMixin"],'
     expected+='"client":["P11IntegratedPlayerListMixin","P11ClientPlayerMixin","P11ClientMinecraftMixin",'
     expected+='"P11ClientKeyboardMixin","P11ClientSceneScreenMixin","P11ClientPacketListenerMixin","P11ClientConfigurationMixin"],"injectors":{"defaultRequire":1}}'
     require_regular_file "${source}" 'P11 Mixin configuration is missing or not regular'
     [[ ! -L "${source}" ]] || fail 'P11 Mixin configuration must not be a symlink'
     # Ignore only JSON whitespace outside strings; the complete expected document
-    # fixes the schema, all 48 common entries, the seven client entries and required hooks.
+    # fixes the schema, all 51 common entries, the seven client entries and required hooks.
     actual="$(LC_ALL=C awk '
         {
             for (i = 1; i <= length($0); i++) {
@@ -368,6 +369,10 @@ verify_search_helpers() {
         's/"defaultRequire": 1/"defaultRequire": 0/' \
         's/P11EntityLookupMixin/P11UnexpectedMixin/' \
         's/P11ServerBossEventMixin/P11UnexpectedBossMixin/' \
+        's/P9V0LoadedPositionMixin/P9UnexpectedPositionMixin/' \
+        's/U0SectionQueryMixin/U0UnexpectedSectionMixin/' \
+        's/U0ProjectileQueryMixin/U0UnexpectedProjectileMixin/' \
+        's/U0SectionQueryMixin/U0QuerySwapMixin/;s/U0ProjectileQueryMixin/U0SectionQueryMixin/;s/U0QuerySwapMixin/U0ProjectileQueryMixin/' \
         's/P11P9EntitySectionMixin/P11UnexpectedSectionMixin/' \
         's/P11P9EntityMoveMixin/P11UnexpectedMoveMixin/' \
         '/"P11P9EntitySectionMixin",/d' \

@@ -673,15 +673,65 @@ public final class P11NativeStorageBoundary {
         }
     }
 
+    /** Same native private reader, only after a completed current original PD write. No save occurs here. */
+    static boolean readPrimaryForCooldownRetirement(P11QualifiedSourceOwner source,
+            P11QualifiedSourceOwner.Body body, P11ReceiptLedger.Source expected,
+            P11ReceiptLedger.PhysicalWriterReceipt writer, P11QualifiedSourceOwner.SelectionWitness witness) {
+        if (source == null || body == null || expected == null || writer == null || witness == null
+                || body.source != expected || root == null || root.writerOwner(body.actor.getServer().getPlayerList()) != source
+                || PRIMARY_READ.get() != null || WRITE.get() != null || CACHE.get() != null
+                || !source.completedPlayerWrite(body, writer, witness)
+                || !source.metadataCurrent(body, expected, witness)) { return false; }
+        var request = new PrimaryReadRequest(source, body);
+        request.receipt = writer;
+        request.witness = witness;
+        request.stage = PrimaryStage.READ_REQUESTED;
+        PRIMARY_READ.set(request);
+        boolean complete = false;
+        try {
+            ((P11NativeWorldAccess.PlayerStorage) body.actor.getServer().getPlayerList()).p11$preparePrimary(request);
+            complete = request.stage == PrimaryStage.VERIFIED && request.material != null
+                    && source.completedPlayerWrite(body, writer, witness)
+                    && source.metadataCurrent(body, expected, witness);
+            return complete;
+        } catch (P11QualifiedSourceOwner.SourceUnavailable unavailable) {
+            return false;
+        } finally {
+            PRIMARY_READ.remove();
+            request.clear();
+        }
+    }
+
     /** Internal opaque bridge: invokes the original virtual PlayerList.save, never another writer. */
     public static void preparePrimary(PlayerList list, PlayerDataStorage storage,
             PrimaryReadRequest request, Operation<Void> originalSave) {
-        if (request == null || PRIMARY_READ.get() != request || request.stage != PrimaryStage.CREATED
+        boolean retirementRead = request != null && request.stage == PrimaryStage.READ_REQUESTED
+                && request.storage == null && request.receipt != null && request.witness != null;
+        if (request == null || PRIMARY_READ.get() != request
+                || !(request.stage == PrimaryStage.CREATED || retirementRead)
                 || list != request.previous.actor.getServer().getPlayerList()
                 || root == null || root.playerStorageOwner(storage, request.previous.actor) != request.owner
                 || !((P11NativeWorldAccess.PlayerStorage) list).p11$independentOwnersMatch(request.previous.actor)
                 || !request.owner.canSerialize(request.previous)) { throw unavailable(); }
         request.storage = storage;
+        if (retirementRead) {
+            if (!request.owner.completedPlayerWrite(request.previous, request.receipt, request.witness)
+                    || !request.owner.metadataCurrent(request.previous, request.receipt.source(), request.witness)) {
+                throw unavailable();
+            }
+            ((P11NativeWorldAccess.PrimaryReader) storage).p11$readPrimary(request);
+            if (request.stage != PrimaryStage.READ || request.material == null) { throw unavailable(); }
+            var latest = selectedMaterial(request.previous);
+            NbtUtils.addCurrentDataVersion(latest);
+            if (!request.material.equals(latest)
+                    || !request.owner.completedPlayerWrite(request.previous, request.receipt, request.witness)
+                    || !request.owner.metadataCurrent(request.previous, request.receipt.source(), request.witness)) {
+                throw unavailable();
+            }
+            request.stage = PrimaryStage.VERIFIED;
+            request.owner.cooldownPrimaryReadback(request.previous, request.receipt, request.witness, request);
+            return;
+        }
         request.stage = PrimaryStage.SAVING;
         originalSave.call(request.previous.actor);
         if (request.duplicateWriter || !request.owner.completedPlayerWrite(request.previous, request.receipt)) {
@@ -699,6 +749,18 @@ public final class P11NativeStorageBoundary {
                 || !request.owner.completedPlayerWrite(request.previous, request.receipt)) { throw unavailable(); }
         request.witness = request.owner.captureSelection(request.previous);
         request.stage = PrimaryStage.VERIFIED;
+        request.owner.cooldownPrimaryReadback(request.previous, request.receipt, request.witness, request);
+    }
+
+    /** Opaque, current original-reader scope only; no caller may assert read success with scalars. */
+    static boolean cooldownReadbackScopeCurrent(PrimaryReadRequest request, P11QualifiedSourceOwner owner,
+            P11QualifiedSourceOwner.Body body, P11ReceiptLedger.PhysicalWriterReceipt writer,
+            P11QualifiedSourceOwner.SelectionWitness witness) {
+        return request != null && PRIMARY_READ.get() == request && request.stage == PrimaryStage.VERIFIED
+                && request.owner == owner && request.previous == body && request.receipt == writer
+                && request.witness == witness && request.readEntered && request.readState == ReadState.READ
+                && request.material != null && request.storage != null && root != null
+                && root.playerStorageOwner(request.storage, body.actor) == owner;
     }
 
     /** Only the original private .dat reader may fill this root-owned request. No DFU/load/event here. */

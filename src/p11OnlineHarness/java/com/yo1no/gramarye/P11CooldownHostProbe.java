@@ -256,7 +256,7 @@ public final class P11CooldownHostProbe {
                 && tag.get(AttachmentHolder.ATTACHMENTS_NBT_KEY) instanceof CompoundTag, "EXACT_" + route + "_OWNER");
         var data = P11CastCooldownCodec.read(tag.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY).get(P11CastCooldownAttachments.ID.toString()));
         require(data.kind == P11CastCooldownData.Kind.ROUTED && data.entries.size() == 1
-                && same(data.entries.get(r.reference.skillId().value()), r.active)
+                && same(data.entries.get(new P11CooldownKey.LegacySkill(r.reference.skillId())), r.active)
                 && data.clockFloor >= r.active.releasedAt && data.clockFloor <= r.server.overworld().getGameTime(), "EXACT_" + route + "_DATUM");
         return data;
     }
@@ -267,7 +267,7 @@ public final class P11CooldownHostProbe {
     private static P11CastCooldownData.Entry entry(Run r) {
         require(r.source.body(r.host) == r.body && r.body.cooldown != null && r.body.cooldown.current(r.host)
                 && r.body.cooldown.data.kind == P11CastCooldownData.Kind.ROUTED, "CURRENT_BOUND_DATUM");
-        var entry = r.body.cooldown.data.entries.get(r.reference.skillId().value()); require(entry != null, "EXACT_ENTRY"); return entry;
+        var entry = r.body.cooldown.data.entries.get(new P11CooldownKey.LegacySkill(r.reference.skillId())); require(entry != null, "EXACT_ENTRY"); return entry;
     }
     private static boolean same(P11CastCooldownData.Entry actual, P11CastCooldownData.Entry expected) {
         return actual != null && expected != null && actual.kind == 0 && actual.skillId.equals(expected.skillId)

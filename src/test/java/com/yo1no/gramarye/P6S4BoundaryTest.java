@@ -80,6 +80,12 @@ final class P6S4BoundaryTest {
                 P6RuntimeExecutionBridge.GuardPort.class,
                 P6RuntimeExecutionBridge.WorldCommitPort.class,
                 P6RuntimeExecutionBridge.AppliedFactObserver.class);
+        var executeV0 = bridge.getDeclaredMethod("executeV0",
+                P6RuntimeExecutionCapability.V0.class, ServerPlayer.class,
+                P6RuntimeExecutionBridge.Invocation.class, int.class,
+                P6RuntimeExecutionCapability.V0Call.class);
+        var normalAvailability = bridge.getDeclaredMethod("normalV0ManaAvailable",
+                P6RuntimeExecutionCapability.V0.class, ServerPlayer.class);
         var nested = Arrays.stream(bridge.getDeclaredClasses())
                 .map(Class::getSimpleName)
                 .collect(Collectors.toUnmodifiableSet());
@@ -95,10 +101,14 @@ final class P6S4BoundaryTest {
                         .filter(method -> Modifier.isPublic(method.getModifiers())
                                 || Modifier.isProtected(method.getModifiers()))
                         .count()),
-                () -> assertEquals(2, Arrays.stream(bridge.getDeclaredMethods())
-                        .filter(method -> Modifier.isPublic(method.getModifiers())
-                                || Modifier.isProtected(method.getModifiers()))
-                        .count()),
+                () -> assertEquals(Set.of(execute, executeV0, normalAvailability),
+                        Arrays.stream(bridge.getDeclaredMethods())
+                                .filter(method -> Modifier.isPublic(method.getModifiers())
+                                        || Modifier.isProtected(method.getModifiers()))
+                                .collect(Collectors.toUnmodifiableSet())),
+                () -> assertEquals(Modifier.PUBLIC | Modifier.STATIC, normalAvailability.getModifiers()),
+                () -> assertEquals(boolean.class, normalAvailability.getReturnType()),
+                () -> assertEquals(0, normalAvailability.getExceptionTypes().length),
                 () -> assertTrue(Modifier.isPublic(execute.getModifiers())),
                 () -> assertTrue(Modifier.isStatic(execute.getModifiers())),
                 () -> assertEquals(void.class, execute.getReturnType()),
@@ -192,9 +202,11 @@ final class P6S4BoundaryTest {
     @Test
     void v0ZeroFeeIsSealedToTheExactFixtureRoutesAndRetiredWithTheSlot() throws Exception {
         // This isolates the route binder from native/server custody. It cannot submit work.
-        var constructor = V0SlotBinding.class.getDeclaredConstructor();
+        var constructor = V0SlotBinding.class.getDeclaredConstructor(boolean.class);
+        assertTrue(Modifier.isPrivate(constructor.getModifiers()));
         assertTrue(constructor.trySetAccessible());
-        var binding = constructor.newInstance();
+        var binding = constructor.newInstance(false);
+        assertFalse(binding.normalPolicy(), "the original fixture route binder stays engineering-only");
         var zero = V0RuntimeCatalog.Selection.standalone(1L);
         var sameSite = V0RuntimeCatalog.Selection.standalone(1L);
         var positive = V0RuntimeCatalog.Selection.manifest(1L, 1L);

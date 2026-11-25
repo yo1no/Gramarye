@@ -367,8 +367,16 @@ class P4B2AApiGateTest {
                         "com/yo1no/gramarye/magic/definition/store/"
                                 + "SkillSavedDataPrimaryIngress.java",
                         "com/yo1no/gramarye/magic/definition/scoped/ScopeDSource.java",
-                        "com/yo1no/gramarye/magic/definition/scoped/ScopeDStorage.java"),
+                        "com/yo1no/gramarye/magic/definition/scoped/ScopeDStorage.java",
+                        "com/yo1no/gramarye/magic/definition/scoped/V0RuntimeCatalog.java"),
                 filesContaining(productionSources(MAIN_JAVA), "FileChannel.open("));
+        // 23 Part A: exact normal cold directory-force and two seed/roster lock scopes.
+        var normalCatalog = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
+                "com/yo1no/gramarye/magic/definition/scoped/V0RuntimeCatalog.java")));
+        assertEquals(3, occurrences(normalCatalog, "FileChannel.open("));
+        assertEquals(1, occurrences(bodyFollowing(normalCatalog, "void forceDirectory("), "FileChannel.open("));
+        assertEquals(1, occurrences(bodyFollowing(normalCatalog, "BootstrapCleanup cleanupBootstrap("), "FileChannel.open("));
+        assertEquals(1, occurrences(bodyFollowing(normalCatalog, "Optional<BootstrapRosterProof> prepareBootstrapSeedRetirement("), "FileChannel.open("));
         assertFalse(Pattern.compile("\\.\\s*position\\s*\\(")
                 .matcher(withoutCommentsAndLiterals(strict))
                 .find());
@@ -675,6 +683,19 @@ class P4B2AApiGateTest {
                     "Expected ordered fragment after offset " + previous + ": " + fragment);
             previous = current;
         }
+    }
+
+    private static String bodyFollowing(String source, String marker) {
+        int signature = source.indexOf(marker);
+        assertTrue(signature >= 0, marker);
+        int open = source.indexOf('{', signature + marker.length());
+        int depth = 1;
+        for (int index = open + 1; index < source.length(); index++) {
+            char c = source.charAt(index);
+            if (c == '{') { depth++; }
+            else if (c == '}' && --depth == 0) { return source.substring(open + 1, index); }
+        }
+        throw new AssertionError("source method did not close: " + marker);
     }
 
     private static String sourceSlice(String source, String start, String end) {

@@ -43,30 +43,25 @@ final class P9ClientCastInputTest {
     }
 
     @Test
-    void firstSequenceBuildsTheExactExistingP7Payload() {
+    void firstSequenceBuildsTheExactGenericCurrentSpellPayload() {
         var sequence = new P9ClientCastInput.OutgoingSequence();
-        var sent = new ArrayList<CastIntentPayload>();
+        var sent = new ArrayList<CastCurrentSpellPayload>();
 
         assertTrue(sequence.sendNext(sent::add));
 
         assertEquals(1, sent.size());
-        var intent = sent.getFirst().intent();
-        assertEquals(1L, intent.sequence());
-        assertEquals(0, intent.slot());
-        assertEquals(CastInputKind.CAST, intent.inputKind());
-        assertEquals(0, intent.presenceMask());
-        assertTrue(intent.aimHint().isEmpty());
-        assertTrue(intent.entityHint().isEmpty());
+        assertEquals(1L, sent.getFirst().sequence());
+        assertEquals("gramarye:cast_current_spell", sent.getFirst().type().id().toString());
         assertEquals(2L, sequence.expectedNext().orElseThrow());
     }
 
     @Test
     void maximumSequenceIsAttemptedOnceThenExhaustsUntilReset() {
         var sequence = new P9ClientCastInput.OutgoingSequence(Long.MAX_VALUE);
-        var sent = new ArrayList<CastIntentPayload>();
+        var sent = new ArrayList<CastCurrentSpellPayload>();
 
         assertTrue(sequence.sendNext(sent::add));
-        assertEquals(Long.MAX_VALUE, sent.getFirst().intent().sequence());
+        assertEquals(Long.MAX_VALUE, sent.getFirst().sequence());
         assertTrue(sequence.expectedNext().isEmpty());
         assertFalse(sequence.sendNext(sent::add));
         assertEquals(1, sent.size());
@@ -82,7 +77,7 @@ final class P9ClientCastInputTest {
 
         var thrown = assertThrows(IllegalStateException.class,
                 () -> sequence.sendNext(payload -> {
-                    assertEquals(1L, payload.intent().sequence());
+                    assertEquals(1L, payload.sequence());
                     throw failure;
                 }));
 
@@ -97,7 +92,7 @@ final class P9ClientCastInputTest {
 
         var thrown = assertThrows(AssertionError.class,
                 () -> sequence.sendNext(payload -> {
-                    assertEquals(1L, payload.intent().sequence());
+                    assertEquals(1L, payload.sequence());
                     throw failure;
                 }));
 
@@ -123,7 +118,11 @@ final class P9ClientCastInputTest {
         assertEquals(1, occurrences(input, "PacketDistributor.sendToServer("));
         assertEquals(1, occurrences(input, "new KeyMapping("));
         assertTrue(input.contains("private boolean pendingFlushRequired = true;"));
-        assertTrue(input.contains("dropAllPendingClicks();"));
+        assertTrue(input.contains("P9FreshPressState.drain(castKey::consumeClick)"));
+        assertTrue(input.contains("InputEvent.Key"));
+        assertTrue(input.contains("InputEvent.MouseButton.Post"));
+        assertFalse(input.contains("Integer.MAX_VALUE"));
+        assertFalse(input.contains("new CastIntent("));
         assertFalse(input.contains("KeyMapping.releaseAll"));
         assertFalse(input.contains("setDown("));
         assertFalse(input.contains("java.lang.reflect"));

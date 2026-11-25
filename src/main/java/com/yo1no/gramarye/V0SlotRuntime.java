@@ -8,6 +8,9 @@ import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
+import com.yo1no.gramarye.magic.network.P7ServerAuthorizationBoundary;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -48,6 +51,12 @@ final class V0SlotRuntime {
     private final UUID[] attemptedAttributions;
     private final Registry<DimensionType> dimensionTypes;
     private final Registry<LevelStem> levelStems;
+    private final P11CastCooldownService cooldowns;
+    private final NormalSpellPolicy normalActivation;
+    private final Map<SkillOwnerId, V0RuntimeCatalog.Selection> normalSelections = new HashMap<>();
+    private long provisioningTicket;
+    private SkillOwnerId provisioningOwner;
+    private boolean bootstrapStopped;
 
     private PendingCapture pending;
     private DispatchClaim currentDispatch;
@@ -82,6 +91,17 @@ final class V0SlotRuntime {
             throw new IllegalArgumentException("V0 slot requires its ready server owner");
         }
         this.binding = Objects.requireNonNull(binding, "binding");
+        if (binding.normalPolicy() != (startup.profile() == V0StartupProfile.Kind.NORMAL)) {
+            throw new IllegalArgumentException("V0 profile and binding disagree");
+        }
+        cooldowns = runtime.v0Cooldowns();
+        normalActivation = binding.activationPolicy();
+        if (binding.normalPolicy()) {
+            if (cooldowns == null || normalActivation == null) {
+                throw new IllegalArgumentException("Normal V0 requires its formal owners");
+            }
+            normalSelections.putAll(normalActivation.roots());
+        }
         catalog = binding.catalog();
         mailbox = binding.mailbox();
         limits = ready.limits();
@@ -95,6 +115,89 @@ final class V0SlotRuntime {
 
     boolean hasAuthority(V0CatalogAuthority supplied) {
         return supplied == authority;
+    }
+
+    boolean normalPolicy() { return binding.normalPolicy(); }
+
+    boolean sealBootstrapForSunset(V0CatalogAuthority exact, V0SlotBinding exactBinding) {
+        requireMain();
+        if (exact != authority || exactBinding != binding || !normalPolicy() || !normalActivation.bootstrap()
+                || stopped || suspended != null) { return false; }
+        bootstrapStopped = true;
+        normalSelections.clear();
+        if (pending != null) {
+            var rejected = pending;
+            pending = null;
+            completeNormal(rejected, V0Admission.SLOT_STALE);
+        }
+        return true;
+    }
+
+    boolean bootstrapDrainedForSunset(V0CatalogAuthority exact, V0SlotBinding exactBinding) {
+        requireMain();
+        return exact == authority && exactBinding == binding && normalPolicy() && normalActivation.bootstrap()
+                && bootstrapStopped && !stopped && suspended == null && pending == null
+                && provisioningTicket == 0 && provisioningOwner == null && pendingDiscard == null
+                && !accepting && currentDispatch == null && !hasLiveLineages()
+                && mailbox.idleForBootstrapRetirement();
+    }
+
+    long reserveBootstrapCleanupTicket(V0CatalogAuthority exact, V0SlotBinding exactBinding) {
+        requireMain();
+        if (!bootstrapDrainedForSunset(exact, exactBinding) || ticketHighWater == Long.MAX_VALUE) { return 0; }
+        return ++ticketHighWater;
+    }
+
+    P7ServerAuthorizationBoundary.NormalIngressDisposition reserveNormal(ServerPlayer actor,
+            V0PlayWitness witness, P11QualifiedSourceOwner source, P11QualifiedSourceOwner.Body body,
+            SkillOwnerId owner, P7ServerAuthorizationBoundary.NormalReceipt receipt, long runtimeTick) {
+        requireMain();
+        if (!normalPolicy() || stopped || suspended != null || bootstrapStopped && normalActivation.bootstrap()) {
+            return P7ServerAuthorizationBoundary.NormalIngressDisposition.UNAVAILABLE;
+        }
+        var selection = normalSelections.get(owner);
+        if (selection == null) {
+            if (!normalActivation.bootstrap()) {
+                return P7ServerAuthorizationBoundary.NormalIngressDisposition.NOT_READY;
+            }
+            reserveProvision(owner);
+            return P7ServerAuthorizationBoundary.NormalIngressDisposition.NOT_READY;
+        }
+        if (!reserveCapture(actor, witness, source, body, owner, selection, runtimeTick)) {
+            return P7ServerAuthorizationBoundary.NormalIngressDisposition.CAPACITY;
+        }
+        if (!receipt.defer()) { throw new IllegalStateException("Normal capture result join was already used"); }
+        pending.normalReceipt = receipt;
+        binding.wakeNormalCold();
+        return P7ServerAuthorizationBoundary.NormalIngressDisposition.PENDING;
+    }
+
+    private boolean reserveProvision(SkillOwnerId owner) {
+        if (stopped || suspended != null || bootstrapStopped || provisioningTicket != 0 || pending != null
+                || pendingDiscard != null || normalSelections.size() >= 31 || ticketHighWater == Long.MAX_VALUE) {
+            return false;
+        }
+        var request = new V0ProvisionRequest(authority, ticketHighWater + 1, owner);
+        if (!mailbox.submitProvision(request)) { return false; }
+        ticketHighWater = request.ticket();
+        provisioningTicket = request.ticket();
+        provisioningOwner = owner;
+        binding.wakeNormalCold();
+        return true;
+    }
+
+    private void acceptProvisionCompletion() {
+        var result = mailbox.takeProvisionCompletion().orElse(null);
+        if (result == null) { return; }
+        boolean matches = result.authority() == authority && result.ticket() == provisioningTicket
+                && result.owner().equals(provisioningOwner);
+        if (!matches) { return; }
+        provisioningTicket = 0;
+        provisioningOwner = null;
+        if (!stopped && suspended == null && !bootstrapStopped && result.result().ready()
+                && normalSelections.size() < 31) {
+            normalSelections.put(result.owner(), result.result().selection().orElseThrow());
+        }
     }
 
     boolean reserveCapture(ServerPlayer actor, V0PlayWitness witness, P11QualifiedSourceOwner source,
@@ -123,13 +226,14 @@ final class V0SlotRuntime {
                 || runtimeTick > Long.MAX_VALUE - PREPARATION_TICKS) {
             return false;
         }
-        var geometry = RootGeometry.sample(actor);
+        var geometry = RootGeometry.sample(actor, normalPolicy());
         if (geometry == null || !geometry.loaded()) {
             return false;
         }
         var request = new V0CaptureRequest(authority, ticketHighWater + 1, owner, selection,
                 runtimeTick + PREPARATION_TICKS, limits.maxManifestEntries());
-        long rootManaFee = binding.isZeroFeeSelection(selection) ? 0L : limits.positiveRootFee();
+        long rootManaFee = normalPolicy() ? normalActivation.manaFee()
+                : binding.isZeroFeeSelection(selection) ? 0L : limits.positiveRootFee();
         var captured = new PendingCapture(request, actor, actor.connection, witness, source, body, body.source,
                 geometry, rootManaFee);
         if (!mailbox.submit(request)) {
@@ -148,13 +252,23 @@ final class V0SlotRuntime {
             dispatchedThisTick = 0;
         }
         applyReopenAcknowledgment();
+        if (normalPolicy()) {
+            if (suspended != null) {
+                normalSelections.clear();
+                provisioningTicket = 0;
+                provisioningOwner = null;
+            }
+            acceptProvisionCompletion();
+        }
         if (pending != null && (runtimeTick > pending.request.inclusivePreparationDeadlineTick()
                 || suspended != null)) {
             // Retain only the timeout coordinate. The worker still owns the mailbox occupancy.
             if (suspended == null) {
                 lastExpiredTicket = pending.request.ticket();
             }
+            var expired = pending;
             pending = null;
+            completeNormal(expired, suspended == null ? V0Admission.DEADLINE_EXPIRED : V0Admission.SLOT_STALE);
         }
         if (pendingDiscard != null && settleDiscard(pendingDiscard)) {
             pendingDiscard = null;
@@ -190,6 +304,7 @@ final class V0SlotRuntime {
             pending = null;
         }
         if (!(completion.result() instanceof V0RuntimeCatalog.Candidate candidate)) {
+            if (matches) { completeNormal(capture, V0Admission.REJECTED); }
             return V0Admission.REJECTED;
         }
         if (accepting) {
@@ -197,23 +312,28 @@ final class V0SlotRuntime {
         }
         accepting = true;
         boolean committed = false;
-        boolean cleanupAttempted = false;
         int reservedCell = -1;
         long reservedLineage = 0;
         P11QualifiedSourceOwner.WorkReservation work = null;
+        Lineage staged = null;
+        boolean installationStarted = false;
+        boolean sourceProved = false;
+        boolean casStarted = false;
+        boolean casRefused = false;
+        Throwable primaryFailure = null;
         try {
             if (stopped || suspended != null) {
-                return V0Admission.SLOT_STALE;
+                return outcome(capture, matches, V0Admission.SLOT_STALE);
             }
             if (completion.ticket() == lastExpiredTicket
                     || (matches && runtimeTick > capture.request.inclusivePreparationDeadlineTick())) {
-                return V0Admission.DEADLINE_EXPIRED;
+                return outcome(capture, matches, V0Admission.DEADLINE_EXPIRED);
             }
             if (!matches) {
-                return V0Admission.SLOT_STALE;
+                return outcome(capture, matches, V0Admission.SLOT_STALE);
             }
             if (!current(capture)) {
-                return V0Admission.ACTOR_STALE;
+                return outcome(capture, matches, V0Admission.ACTOR_STALE);
             }
             var lease = candidate.lease();
             if (acceptedTick == runtimeTick || lease.programChargeBytes() <= 0
@@ -221,11 +341,11 @@ final class V0SlotRuntime {
                     || lineageHighWater == Long.MAX_VALUE || instanceHighWater > Long.MAX_VALUE - 2
                     || carrierHighWater > Long.MAX_VALUE - 2
                     || runtimeTick >= Long.MAX_VALUE - limits.lineageDeadlineTicks()) {
-                return V0Admission.CAPACITY;
+                return outcome(capture, matches, V0Admission.CAPACITY);
             }
             int cell = availableCell(capture.actor.getUUID());
             if (cell < 0 || ownerQueueOrder == Long.MAX_VALUE) {
-                return V0Admission.CAPACITY;
+                return outcome(capture, matches, V0Admission.CAPACITY);
             }
             long queueOrder = ownerQueueOrder + 1;
             long nextLineage = lineageHighWater + 1;
@@ -241,21 +361,54 @@ final class V0SlotRuntime {
             }
             var lineage = new Lineage(this, cell, capture, lease, dueTick + limits.lineageDeadlineTicks(), nextLineage,
                     instanceHighWater + 1, carrierHighWater + 1);
+            staged = lineage;
             work = runtime.reserveV0Work(capture.actor, limits.maxLineagesPerServer());
             if (work == null) {
-                return V0Admission.WORK_UNAVAILABLE;
+                return outcome(capture, matches, V0Admission.WORK_UNAVAILABLE);
             }
             lineage.work = work;
             var reservation = authority.reserve(candidate);
+            if (normalPolicy()) {
+                if (bootstrapStopped && normalActivation.bootstrap() || !runtime.normalV0ManaAvailable(capture.actor)) {
+                    return outcome(capture, matches, V0Admission.WORK_UNAVAILABLE);
+                }
+                var preparation = cooldowns.prepareV0PolicyAdmission(capture.geometry.level.getServer(), capture.actor,
+                        normalActivation.key(), normalActivation.cooldownTicks(), runtimeTick, lineage.deadline,
+                        limits.lineageDeadlineTicks(), lineage.cooldownReceipt, work);
+                if (preparation instanceof P11CastCooldownService.Rejected rejected) {
+                    capture.feedback = switch (rejected.reason()) {
+                        case ACTIVE, PENDING, RECOVERY -> P7ServerAuthorizationBoundary.NormalFeedback.COOLDOWN_ACTIVE;
+                        default -> P7ServerAuthorizationBoundary.NormalFeedback.UNAVAILABLE;
+                    };
+                    return outcome(capture, matches, V0Admission.WORK_UNAVAILABLE);
+                }
+                if (preparation instanceof P11CastCooldownService.Prepared prepared) {
+                    lineage.cooldownPreparation = prepared;
+                    installationStarted = true;
+                    if (!cooldowns.installPending(prepared)) {
+                        return outcome(capture, matches, V0Admission.WORK_UNAVAILABLE);
+                    }
+                    var ownSource = cooldowns.claimPendingSource(prepared, capture.source, capture.body, capture.sourceProof);
+                    if (ownSource == null) { return outcome(capture, matches, V0Admission.ACTOR_STALE); }
+                    capture.sourceProof = ownSource;
+                }
+            }
             if (!current(capture) || !work.qualifies(capture.actor) || suspended != null) {
-                return V0Admission.ACTOR_STALE;
+                return outcome(capture, matches, V0Admission.ACTOR_STALE);
             }
+            sourceProved = true;
             if (ownerQueueOrder != queueOrder - 1) {
-                return V0Admission.CAPACITY;
+                return outcome(capture, matches, V0Admission.CAPACITY);
             }
+            if (lineage.cooldownReceipt != null) { lineage.cooldownReceipt.beginPublication(); }
+            casStarted = true;
             switch (catalog.compareAndAccept(reservation, candidate)) {
-                case CATALOG_BUSY: return V0Admission.CATALOG_BUSY;
-                case HEAD_STALE, INVALID_RESERVATION: return V0Admission.REJECTED;
+                case CATALOG_BUSY:
+                    casRefused = true;
+                    return outcome(capture, matches, V0Admission.CATALOG_BUSY);
+                case HEAD_STALE, INVALID_RESERVATION:
+                    casRefused = true;
+                    return outcome(capture, matches, V0Admission.REJECTED);
                 case COMMITTED: break;
             }
             // The CAS linearized acceptance. These stores publish only preallocated cells.
@@ -267,27 +420,83 @@ final class V0SlotRuntime {
             acceptedTick = runtimeTick;
             ownerQueueOrder = queueOrder;
             committed = true;
-            return V0Admission.ACCEPTED;
+            if (lineage.cooldownReceipt != null) { lineage.cooldownReceipt.published(); }
+            return outcome(capture, matches, V0Admission.ACCEPTED);
         } catch (RuntimeException | Error primary) {
-            if (!committed) {
-                cleanupAttempted = true;
-                try {
-                    undoReservation(reservedCell, reservedLineage, candidate, work);
-                } catch (RuntimeException | Error ignoredCleanupFailure) {
-                    // The original P5 primary remains authoritative.
-                }
-            }
+            primaryFailure = primary;
             throw primary;
         } finally {
             try {
-                if (!committed && !cleanupAttempted) {
-                    undoReservation(reservedCell, reservedLineage, candidate, work);
+                if (!committed) {
+                    Throwable cleanupFailure = null;
+                    try {
+                        if (staged != null && staged.cooldownReceipt != null) {
+                            if (!installationStarted || sourceProved && (!casStarted || casRefused)) {
+                                staged.cooldownReceipt.revoke();
+                            } else { staged.cooldownReceipt.unknown(); }
+                            if (staged.cooldownPreparation != null) { staged.cooldownPreparation.settle(); }
+                        }
+                    } catch (RuntimeException | Error failure) {
+                        cleanupFailure = failure;
+                    }
+                    try {
+                        undoReservation(reservedCell, reservedLineage, candidate, work);
+                    } catch (RuntimeException | Error failure) {
+                        if (cleanupFailure == null) { cleanupFailure = failure; }
+                        else { suppress(cleanupFailure, failure); }
+                    }
+                    if (cleanupFailure != null) { throwUnchecked(cleanupFailure); }
                 }
+            } catch (RuntimeException | Error cleanup) {
+                if (primaryFailure == null) { primaryFailure = cleanup; throw cleanup; }
+                suppress(primaryFailure, cleanup);
             } finally {
                 accepting = false;
-                handoffRetirementIfSafe();
+                try {
+                    handoffRetirementIfSafe();
+                } catch (RuntimeException | Error cleanup) {
+                    if (primaryFailure == null) { primaryFailure = cleanup; throw cleanup; }
+                    suppress(primaryFailure, cleanup);
+                } finally {
+                    if (matches) {
+                        try { completeNormal(capture, capture.outcome); }
+                        catch (RuntimeException | Error delivery) {
+                            if (primaryFailure == null) { throw delivery; }
+                            suppress(primaryFailure, delivery);
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private static V0Admission outcome(PendingCapture capture, boolean matches, V0Admission result) {
+        if (matches) { capture.outcome = result; }
+        return result;
+    }
+
+    private static void suppress(Throwable primary, Throwable secondary) {
+        if (primary != secondary) {
+            try { primary.addSuppressed(secondary); }
+            catch (RuntimeException | Error suppressionFailure) { /* Preserve the original primary. */ }
+        }
+    }
+
+    private static void throwUnchecked(Throwable failure) {
+        if (failure instanceof RuntimeException runtimeFailure) { throw runtimeFailure; }
+        throw (Error) failure;
+    }
+
+    private static void completeNormal(PendingCapture capture, V0Admission result) {
+        var receipt = capture.normalReceipt;
+        capture.normalReceipt = null;
+        if (receipt == null || result == null) { return; }
+        var disposition = switch (result) {
+            case ACCEPTED -> P7ServerAuthorizationBoundary.AdmissionDisposition.ACCEPTED;
+            case REJECTED -> P7ServerAuthorizationBoundary.AdmissionDisposition.P5_ADMISSION_REJECTED;
+            default -> P7ServerAuthorizationBoundary.AdmissionDisposition.P5_UNAVAILABLE;
+        };
+        receipt.complete(capture.geometry.level.getServer(), capture.actor, disposition, capture.feedback);
     }
 
     int readyEvent(long runtimeTick, boolean v0BudgetAvailable, RuntimeEvent eligibleLegacyHead) {
@@ -662,6 +871,9 @@ final class V0SlotRuntime {
             }
         } catch (RuntimeException | Error primary) {
             try {
+                if (claim.role == V0P5Queue.ROOT_RELEASE && lineage.cooldownReceipt != null) {
+                    lineage.cooldownReceipt.unknown();
+                }
                 lineage.releasing = true;
                 finishChecked(claim);
             } catch (RuntimeException | Error cleanup) {
@@ -710,8 +922,31 @@ final class V0SlotRuntime {
         var receipt = invoke(adapter, frame, command);
         if (receipt.terminal() == P6RuntimeExecutionBridge.V0Terminal.CONFIRMED_APPLIED
                 && carrier.opened() && publishNativeCreate(carrier, lineage)) {
+            P11CastCooldownService.ArmPreparation arm = null;
+            if (!carrier.child && lineage.cooldownPreparation != null) {
+                if (lineage.cooldownReceipt.mayArm()) {
+                    arm = cooldowns.prepareArm(lineage.cooldownPreparation, lineage.work,
+                            lineage.capture.actor, currentTick);
+                }
+                if (arm == null || !lineage.cooldownReceipt.mayArm()
+                        || !carrier.opened() || qualification(lineage) != V0WorkQualification.EXECUTABLE) {
+                    lineage.cooldownReceipt.revoke();
+                    closeCarrier(carrier, V0TerminalReason.FAULT);
+                    lineage.cooldownPreparation.settle();
+                    return;
+                }
+            }
+            // All source, clock and allocation work is complete. These two stores publish
+            // the one true release; no observer can execute OPEN without its ARM fact.
+            if (arm != null) { lineage.cooldownReceipt.armed(arm.releasedAt()); }
             carrier.publishOpen();
+            if (arm != null) { cooldowns.completeArm(arm); }
             return;
+        }
+        if (!carrier.child && lineage.cooldownReceipt != null) {
+            if (receipt.terminal() == P6RuntimeExecutionBridge.V0Terminal.OUTCOME_UNKNOWN) {
+                lineage.cooldownReceipt.unknown();
+            } else { lineage.cooldownReceipt.revoke(); }
         }
         closeCarrier(carrier, switch (receipt.terminal()) {
             case REJECTED_BEFORE_COMMIT -> V0TerminalReason.REJECTED_BEFORE_COMMIT;
@@ -719,6 +954,7 @@ final class V0SlotRuntime {
             case CONFIRMED_APPLIED, CONFIRMED_APPLIED_WITH_FAILURE -> V0TerminalReason.FAULT;
             case OUTCOME_UNKNOWN -> V0TerminalReason.OUTCOME_UNKNOWN;
         });
+        if (!carrier.child && lineage.cooldownPreparation != null) { lineage.cooldownPreparation.settle(); }
     }
 
     private void dispatchHit(DispatchClaim claim, Lineage lineage, SkillRuntimeService.V0CarrierBinding carrier,
@@ -845,7 +1081,13 @@ final class V0SlotRuntime {
         if (firstClose) {
             mailbox.fence();
             binding.close();
+            // The original recipient is no longer current; no completion may move to a successor.
             pending = null;
+            normalSelections.clear();
+            provisioningTicket = 0;
+            provisioningOwner = null;
+            mailbox.takeProvisionCompletion();
+            mailbox.takeBootstrapCleanupCompletion();
             var outstanding = mailbox.takeCompletion().orElse(null);
             if (outstanding != null && outstanding.result() instanceof V0RuntimeCatalog.Candidate candidate) {
                 undoCandidate(candidate, null);
@@ -890,29 +1132,45 @@ final class V0SlotRuntime {
 
     private void undoReservation(int cell, long lineage, V0RuntimeCatalog.Candidate candidate,
             P11QualifiedSourceOwner.WorkReservation work) {
+        Throwable failure = null;
         try {
             if (cell >= 0 && !queue.rollback(cell, lineage)) {
                 throw new IllegalStateException("V0 provisional queue reservation could not be rolled back");
             }
-        } finally {
-            undoCandidate(candidate, work);
+        } catch (RuntimeException | Error primary) {
+            failure = primary;
         }
+        try {
+            undoCandidate(candidate, work);
+        } catch (RuntimeException | Error secondary) {
+            if (failure == null) { failure = secondary; }
+            else { suppress(failure, secondary); }
+        }
+        if (failure != null) { throwUnchecked(failure); }
     }
 
     private void undoCandidate(V0RuntimeCatalog.Candidate candidate,
             P11QualifiedSourceOwner.WorkReservation work) {
+        Throwable failure = null;
         try {
             if (work != null) {
                 work.release();
             }
-        } finally {
+        } catch (RuntimeException | Error primary) {
+            failure = primary;
+        }
+        try {
             if (!settleDiscard(candidate)) {
                 if (pendingDiscard != null && pendingDiscard != candidate) {
                     throw new IllegalStateException("V0 provisional cleanup capacity is exhausted");
                 }
                 pendingDiscard = candidate;
             }
+        } catch (RuntimeException | Error secondary) {
+            if (failure == null) { failure = secondary; }
+            else { suppress(failure, secondary); }
         }
+        if (failure != null) { throwUnchecked(failure); }
     }
 
     private boolean settleDiscard(V0RuntimeCatalog.Candidate candidate) {
@@ -942,6 +1200,13 @@ final class V0SlotRuntime {
         closeCarrier(lineage.childBinding, reason);
         if (!queue.onlyLeaseCleanupRemains(index, exact)) {
             return;
+        }
+        if (lineage.cooldownReceipt != null) {
+            if (lineage.cooldownReceipt.fact() == P11CastCooldownService.ReleaseFact.PENDING
+                    || lineage.cooldownReceipt.fact() == P11CastCooldownService.ReleaseFact.UNPUBLISHED) {
+                lineage.cooldownReceipt.revoke();
+            }
+            if (lineage.cooldownPreparation != null) { lineage.cooldownPreparation.settle(); }
         }
         if (lineage.work != null) {
             lineage.work.release();
@@ -975,9 +1240,13 @@ final class V0SlotRuntime {
         private final V0PlayWitness witness;
         private final P11QualifiedSourceOwner source;
         private final P11QualifiedSourceOwner.Body body;
-        private final P11ReceiptLedger.Source sourceProof;
+        private P11ReceiptLedger.Source sourceProof;
         private final RootGeometry geometry;
         private final long rootManaFee;
+        private P7ServerAuthorizationBoundary.NormalReceipt normalReceipt;
+        private P7ServerAuthorizationBoundary.NormalFeedback feedback =
+                P7ServerAuthorizationBoundary.NormalFeedback.UNAVAILABLE;
+        private V0Admission outcome;
 
         private PendingCapture(V0CaptureRequest request, ServerPlayer actor,
                 ServerGamePacketListenerImpl listener, V0PlayWitness witness,
@@ -1006,6 +1275,8 @@ final class V0SlotRuntime {
         private final V0CarrierBindingId rootCarrier;
         private final V0CarrierBindingId childCarrier;
         private P11QualifiedSourceOwner.WorkReservation work;
+        private final V0ReleaseReceipt cooldownReceipt;
+        private P11CastCooldownService.Prepared cooldownPreparation;
         private V0CatalogAuthority.ReleasePermit release;
         private boolean releasing;
 
@@ -1027,6 +1298,7 @@ final class V0SlotRuntime {
                 long lineage, long instance, long carrier) {
             this.attribution = capture.actor.getUUID();
             this.capture = capture;
+            cooldownReceipt = owner.normalPolicy() ? new V0ReleaseReceipt() : null;
             this.lease = new V0LeaseToken(lease);
             this.lineage = new V0LineageId(lineage);
             this.deadline = deadline;
@@ -1036,6 +1308,46 @@ final class V0SlotRuntime {
             this.childCarrier = new V0CarrierBindingId(carrier + 1);
             rootBinding = SkillRuntimeService.reserveV0Carrier(owner, cell, this.lineage, rootCarrier, false);
             childBinding = SkillRuntimeService.reserveV0Carrier(owner, cell, this.lineage, childCarrier, true);
+        }
+    }
+
+    /** Scalar facts of this exact root attempt; UUID equality alone conveys no authority. */
+    private static final class V0ReleaseReceipt implements P11CastCooldownService.ReleaseReceipt {
+        private final UUID attempt = UUID.randomUUID();
+        private P11CastCooldownService.ReleaseFact fact = P11CastCooldownService.ReleaseFact.UNPUBLISHED;
+        private long releasedAt = -1;
+        private boolean revoked;
+
+        @Override public UUID attemptId() { return attempt; }
+        @Override public P11CastCooldownService.ReleaseFact fact() { return fact; }
+        @Override public long releasedAt() { return releasedAt; }
+
+        private void beginPublication() {
+            if (revoked || fact != P11CastCooldownService.ReleaseFact.UNPUBLISHED) {
+                throw new IllegalStateException("V0 cooldown publication identity lost");
+            }
+            fact = P11CastCooldownService.ReleaseFact.UNKNOWN;
+        }
+
+        private void published() {
+            if (revoked || fact != P11CastCooldownService.ReleaseFact.UNKNOWN) {
+                throw new IllegalStateException("V0 cooldown publication fact lost");
+            }
+            fact = P11CastCooldownService.ReleaseFact.PENDING;
+        }
+
+        private boolean mayArm() { return !revoked && fact == P11CastCooldownService.ReleaseFact.PENDING; }
+        private void armed(long tick) { releasedAt = tick; fact = P11CastCooldownService.ReleaseFact.ARM; }
+        private void revoke() {
+            revoked = true;
+            if (fact != P11CastCooldownService.ReleaseFact.ARM) { fact = P11CastCooldownService.ReleaseFact.NO_RELEASE; }
+        }
+        private void unknown() {
+            revoked = true;
+            if (fact != P11CastCooldownService.ReleaseFact.ARM
+                    && fact != P11CastCooldownService.ReleaseFact.NO_RELEASE) {
+                fact = P11CastCooldownService.ReleaseFact.UNKNOWN;
+            }
         }
     }
 
@@ -1078,17 +1390,19 @@ final class V0SlotRuntime {
         private final int directionXQ15;
         private final int directionYQ15;
         private final int directionZQ15;
+        private final boolean normalProfile;
 
         private RootGeometry(ServerLevel level, Vec3 origin, int directionXQ15,
-                int directionYQ15, int directionZQ15) {
+                int directionYQ15, int directionZQ15, boolean normalProfile) {
             this.level = level;
             this.origin = origin;
             this.directionXQ15 = directionXQ15;
             this.directionYQ15 = directionYQ15;
             this.directionZQ15 = directionZQ15;
+            this.normalProfile = normalProfile;
         }
 
-        private static RootGeometry sample(ServerPlayer actor) {
+        private static RootGeometry sample(ServerPlayer actor, boolean normalProfile) {
             var level = actor.serverLevel();
             var eye = actor.getEyePosition();
             var look = actor.getLookAngle();
@@ -1104,11 +1418,11 @@ final class V0SlotRuntime {
             if (!finite(origin) || (x == 0 && y == 0 && z == 0)) {
                 return null;
             }
-            return new RootGeometry(level, origin, x, y, z);
+            return new RootGeometry(level, origin, x, y, z, normalProfile);
         }
 
         private boolean loaded() {
-            if (origin.y < level.getMinBuildHeight() + 64.0
+            if ((!normalProfile && origin.y < level.getMinBuildHeight() + 64.0)
                     || !level.getWorldBorder().isWithinBounds(origin.x, origin.z)) {
                 return false;
             }

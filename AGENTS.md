@@ -82,6 +82,8 @@ V0's original 55 required direct-acceptance rows are qualified locally against p
 
 V0 Integrated Delivery publication additionally requires final-commit local regression, candidate required CI, safe canonical integration and exact-main-SHA required CI. Actual final identities and results are maintained in the durable external acceptance package. Rebuilt ordinary/engineering runtime entries must remain equivalent to the qualified production candidate apart from the expected manifest commit identity. No global completion is implied by the local row status alone.
 
+U0's temporary Bootstrap implementation and 29 functional/direct-evidence rows are locally qualified as recorded in [U0 implementation acceptance](docs/architecture/U0-implementation-acceptance.md). Its final regression and publication row is separately gated by final-commit checks, candidate required CI, canonical integration and exact-main-SHA required CI. Actual final identities and results are maintained in the durable external U0 acceptance package. This status does not adopt a permanent Starter, learned/equipped model, future player activation policy, Element E or another phase.
+
 If the P4 amendment and another authoritative document have not been synchronized and still
 contain a substantive conflict, stop the affected work and report the exact conflict; do not choose
 one side or redesign the frozen architecture. Apply the same stop rule to other specification

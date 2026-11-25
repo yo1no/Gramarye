@@ -186,7 +186,7 @@ public final class P11CooldownCloneProbe {
                     && ++r.copyEntries == 1, "EXACT_NATIVE_COPY_ENTRY");
             var before = P11CastCooldownAttachments.existing(r.actor);
             require(before != null && before.kind == P11CastCooldownData.Kind.ROUTED
-                    && sameActive(before.entries.get(r.reference.skillId().value()), r.active), "COPY_CURRENT_SOURCE_ACTIVE");
+                    && sameActive(before.entries.get(new P11CooldownKey.LegacySkill(r.reference.skillId())), r.active), "COPY_CURRENT_SOURCE_ACTIVE");
             r.copyTarget = (ServerPlayer) to;
             r.copy = new Copy(before, P11CastCooldownAttachments.existing(r.copyTarget));
         });
@@ -242,14 +242,14 @@ public final class P11CooldownCloneProbe {
         var cooldown = P11CastCooldownCodec.read(data.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY)
                 .get(P11CastCooldownAttachments.ID.toString()));
         require(cooldown.kind == P11CastCooldownData.Kind.ROUTED && cooldown.clockFloor >= floor
-                && sameActive(cooldown.entries.get(r.reference.skillId().value()), r.active), "PHYSICAL_SAME_ACTIVE_AND_FLOOR");
+                && sameActive(cooldown.entries.get(new P11CooldownKey.LegacySkill(r.reference.skillId())), r.active), "PHYSICAL_SAME_ACTIVE_AND_FLOOR");
         r.savedFloor = cooldown.clockFloor;
     }
     private static P11CastCooldownData.Entry entry(Run r, ServerPlayer actor) {
         var body = r.owner.body(actor);
         require(body != null && r.owner.canCopy(body) && body.account == r.account
                 && body.cooldown.data.kind == P11CastCooldownData.Kind.ROUTED, "QUALIFIED_CURRENT_COOLDOWN_SOURCE");
-        return body.cooldown.data.entries.get(r.reference.skillId().value());
+        return body.cooldown.data.entries.get(new P11CooldownKey.LegacySkill(r.reference.skillId()));
     }
     private static boolean sameActive(P11CastCooldownData.Entry a, P11CastCooldownData.Entry b) {
         return a != null && b != null && a.kind == 0 && a.skillId.equals(b.skillId) && a.revision == b.revision

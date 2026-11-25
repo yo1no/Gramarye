@@ -112,6 +112,24 @@ final class P11CooldownServiceTest {
         assertThrows(IllegalArgumentException.class, () -> P11CastCooldownNbtSize.measure(namedEnd, 297, 8));
     }
 
+    @Test void policySettlementUsesCapturedWindowAndNeverDowngradesKnownArm() {
+        var key = P11CooldownKey.parsePolicy("gramarye:another_server_policy");
+        for (int window : new int[] {4, 25, 41}) {
+            var entry = P11CastCooldownData.Entry.pendingPolicy(key, 20, 1000, ATTEMPT, window);
+            var arm = new Receipt(ATTEMPT, P11CastCooldownService.ReleaseFact.ARM, 1000 + window);
+            var settled = P11CastCooldownService.settleEntry(entry, arm, 1000L + window, 1000 + window);
+            assertEquals(0, settled.material().kind);
+            assertEquals(1020 + window, settled.material().expiresAt);
+            assertEquals(window, settled.material().releaseWindow);
+            assertThrows(IllegalStateException.class, () -> P11CastCooldownService.settleEntry(settled.material(),
+                    new Receipt(ATTEMPT, P11CastCooldownService.ReleaseFact.NO_RELEASE, -1), null, 1000 + window));
+            assertNotNull(P11CastCooldownService.settleEntry(entry, null, 1019L + window, 1019 + window).material());
+            assertNull(P11CastCooldownService.settleEntry(entry, null, 1020L + window, 1020 + window).material());
+            assertSame(entry, P11CastCooldownService.settleEntry(entry,
+                    new Receipt(ATTEMPT, P11CastCooldownService.ReleaseFact.PENDING, -1), 2000L, 2000).material());
+        }
+    }
+
     @Test void receiptOwnershipPrecedesPublicationAndConsumptionFollowsActualInstallation() {
         String service = source("P11CastCooldownService.java");
         String install = method(service, "boolean installPending(");
@@ -120,14 +138,54 @@ final class P11CooldownServiceTest {
         assertFalse(ordered(install.replace("attempt.cell.attempts.put", "missing.put"),
                 "attempt.cell.attempts.put", "publish(source, body"));
         String settle = method(service, "private void reconcileAt(");
-        assertTrue(ordered(settle, "consumed.add(exact)", "publish(source, body, cell, replacement)",
+        assertTrue(ordered(settle, "consumed.add(exact)", "publish(source, body, cell, replacement, trace)",
                 "finally", "cell.data == replacement", "cell.attempts.remove"));
         assertFalse(ordered(settle.replace("cell.data == replacement", "true"),
-                "publish(source, body, cell, replacement)", "cell.data == replacement", "cell.attempts.remove"));
+                "publish(source, body, cell, replacement, trace)", "cell.data == replacement", "cell.attempts.remove"));
         assertTrue(method(service, "private void publish(").contains("P11CastCooldownAttachments.existing(body.actor) == replacement"));
         assertFalse(service.contains("randomUUID") || service.contains("System.currentTimeMillis"));
         assertTrue(method(service, "ArmPreparation prepareArm(").contains("work != attempt.work"));
         assertTrue(method(service, "Admission prepareAdmission(").contains("!work.qualifies(actor)"));
+    }
+
+    @Test void retirementReadbackComesOnlyFromTheOriginalVerifiedNativeReader() {
+        String boundary = source("P11NativeStorageBoundary.java");
+        String primary = method(boundary, "public static void preparePrimary(");
+        assertTrue(ordered(primary, "p11$readPrimary(request)", "request.material.equals(latest)",
+                "request.witness = request.owner.captureSelection", "request.stage = PrimaryStage.VERIFIED",
+                "request.owner.cooldownPrimaryReadback"));
+        String producer = method(boundary, "static boolean readPrimaryForCooldownRetirement(");
+        assertTrue(ordered(producer, "completedPlayerWrite", "metadataCurrent", "new PrimaryReadRequest",
+                "request.receipt = writer", "request.witness = witness", "request.stage = PrimaryStage.READ_REQUESTED",
+                "PRIMARY_READ.set", "p11$preparePrimary(request)", "PRIMARY_READ.remove", "request.clear"));
+        assertFalse(producer.contains("originalSave.call") || producer.contains("NbtIo") || producer.contains("Files.")
+                || producer.contains("retainWithoutReplacingPrimary"));
+        assertTrue(method(boundary, "private static PrimaryReadRequest synchronousPrimary(").contains("retainWithoutReplacingPrimary(source, previous)"));
+        String retirementBranch = primary.substring(primary.indexOf("if (retirementRead)"), primary.indexOf("request.stage = PrimaryStage.SAVING"));
+        assertTrue(ordered(retirementBranch, "completedPlayerWrite", "metadataCurrent", "p11$readPrimary",
+                "request.material.equals(latest)", "PrimaryStage.VERIFIED", "cooldownPrimaryReadback", "return;"));
+        assertFalse(retirementBranch.contains("originalSave.call") || retirementBranch.contains("captureSelection"));
+        String scope = method(boundary, "static boolean cooldownReadbackScopeCurrent(");
+        for (String guard : new String[] {"PRIMARY_READ.get() == request", "request.stage == PrimaryStage.VERIFIED",
+                "request.previous == body", "request.receipt == writer", "request.witness == witness",
+                "request.readState == ReadState.READ", "request.material != null", "root.playerStorageOwner"}) {
+            assertTrue(scope.contains(guard), guard);
+        }
+        String owner = source("P11QualifiedSourceOwner.java");
+        String observation = method(owner, "void cooldownPrimaryReadback(");
+        assertTrue(ordered(observation, "cooldownReadbackScopeCurrent", "completedPlayerWrite", "beginReadback",
+                "finishReadback", "body.source != version", "metadataCurrent", "persistedReadbackCurrent", "new CooldownReadback"));
+        assertTrue(observation.contains("throw observationFailure"));
+        assertTrue(observation.contains("if (primary == null) { throw cleanupFailure; }"));
+        String retirement = method(owner, "boolean cooldownRetirementCurrent(");
+        for (String guard : new String[] {"body.cooldownReadback == observed", "body.source == version", "observed.source == version",
+                "metadataCurrent", "completedPlayerWrite", "persistedReadbackCurrent", "body.account.dirty == null",
+                "!server.isSingleplayerOwner", "physicalClean"}) { assertTrue(retirement.contains(guard), guard); }
+        String service = source("P11CastCooldownService.java");
+        assertTrue(service.contains("private RetirementProof("));
+        assertTrue(method(service, "private boolean retirementCurrent(").contains("!cell.data.entries.containsKey(key)"));
+        assertTrue(method(service, "private boolean retirementCurrent(").contains("!cell.attempts.containsKey(key)"));
+        assertTrue(method(service, "boolean claimPolicyRetirement(RetirementProof proof, UUID expectedOwner").contains("finally { proof.clear(); }"));
     }
 
     @Test void requiredNativeMaterialCoversReadCopyWriteAndEverySelectionWitness() {

@@ -1,6 +1,7 @@
 package com.yo1no.gramarye;
 
 import com.yo1no.gramarye.magic.definition.scoped.V0RuntimeCatalog;
+import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import java.util.Objects;
 
 /** Exact, actor-free capability for one P5 slot. Catalog lease state consumes the permits. */
@@ -32,6 +33,27 @@ public final class V0CatalogAuthority {
     ReleasePermit permitRelease(V0RuntimeCatalog.Lease lease) {
         requireOwnerThread();
         return new ReleasePermit(this, Objects.requireNonNull(lease, "lease"));
+    }
+
+    BootstrapRetirementPermit permitBootstrapRetirement(V0BootstrapRetirementCoordinator.DrainProof drain,
+            P11CastCooldownService cooldowns, P11CastCooldownService.RetirementProof retirement,
+            SkillOwnerId owner) {
+        requireOwnerThread();
+        if (drain == null || cooldowns == null || owner == null
+                || owner.equals(V0BootstrapRetirementCoordinator.SEED_OWNER)) { return null; }
+        var catalog = drain.claim(this, owner, cooldowns);
+        if (catalog == null || !cooldowns.claimPolicyRetirement(retirement, owner.value(),
+                NormalSpellPolicy.BOOTSTRAP.key())) { return null; }
+        return new BootstrapRetirementPermit(this, owner, catalog);
+    }
+
+    BootstrapRetirementPermit permitBootstrapSeedRetirement(V0BootstrapRetirementCoordinator.DrainProof drain,
+            P11CastCooldownService cooldowns, V0RuntimeCatalog.BootstrapRosterProof roster) {
+        requireOwnerThread();
+        if (drain == null || cooldowns == null || roster == null) { return null; }
+        var catalog = drain.claim(this, V0BootstrapRetirementCoordinator.SEED_OWNER, cooldowns);
+        if (catalog == null || !roster.authorizeSeed(this, catalog)) { return null; }
+        return new BootstrapRetirementPermit(this, V0BootstrapRetirementCoordinator.SEED_OWNER, catalog);
     }
 
     public boolean isOwnerThread() {
@@ -73,6 +95,27 @@ public final class V0CatalogAuthority {
 
         public boolean matches(V0CatalogAuthority authority, V0RuntimeCatalog.Lease lease) {
             return this.authority == authority && this.lease == lease && authority.isOwnerThread();
+        }
+    }
+
+    /** One cold cleanup operation; only the root's proven retirement coordinator can mint it. */
+    public static final class BootstrapRetirementPermit {
+        private final V0CatalogAuthority authority;
+        private final SkillOwnerId owner;
+        private final V0RuntimeCatalog catalog;
+        private boolean consumed;
+
+        private BootstrapRetirementPermit(V0CatalogAuthority authority, SkillOwnerId owner, V0RuntimeCatalog catalog) {
+            this.authority = authority;
+            this.owner = owner;
+            this.catalog = catalog;
+        }
+
+        public synchronized boolean claim(V0CatalogAuthority exact, SkillOwnerId target, V0RuntimeCatalog source) {
+            if (consumed || exact != authority || !owner.equals(target) || source != catalog
+                    || exact.isOwnerThread()) { return false; }
+            consumed = true;
+            return true;
         }
     }
 }

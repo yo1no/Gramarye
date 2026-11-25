@@ -26,7 +26,6 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.slf4j.Logger;
@@ -45,8 +44,24 @@ final class V0Distribution {
 
     private V0Distribution() {}
 
+    static V0StartupProfile profile(MinecraftServer server, V0StartupLoadState engineeringState) {
+        var recipe = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize()
+                .resolve("v0-engineering.properties");
+        return Files.notExists(recipe, LinkOption.NOFOLLOW_LINKS)
+                ? V0StartupProfile.normal() : V0StartupProfile.engineering(engineeringState);
+    }
+
     static Optional<V0SlotBinding> open(V0SlotStartup startup) {
         var server = startup.server();
+        if (startup.profile() == V0StartupProfile.Kind.NORMAL) {
+            var recipe = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize()
+                    .resolve("v0-engineering.properties");
+            // A newly present, unreadable or malformed recipe is never absence fallback.
+            return server.isSameThread() && active == null
+                    && (previousLane == null || previousLane.finished())
+                    && Files.notExists(recipe, LinkOption.NOFOLLOW_LINKS)
+                    ? V0NormalComposition.open(startup) : Optional.empty();
+        }
         if (!server.isSameThread() || !(startup.v0State() instanceof V0StartupLoadState.Ready)
                 || active != null || !packagedArtifact() || previousLane != null && !previousLane.finished()) {
             return Optional.empty();
@@ -169,7 +184,6 @@ final class V0Distribution {
         private final Recipe recipe;
         private final V0EngineeringEntry entry;
         private final Consumer<ServerTickEvent.Post> tick;
-        private final Consumer<LivingDamageEvent.Post> damage;
         private final Consumer<ServerStoppedEvent> stopped;
         private final V0RuntimeCatalog.Selection standalone = V0RuntimeCatalog.Selection.standalone(STANDALONE_ROOT);
         private final V0RuntimeCatalog.Selection manifest = V0RuntimeCatalog.Selection.manifest(MANIFEST_ROOT, MANIFEST_ENTRY);
@@ -186,13 +200,11 @@ final class V0Distribution {
             this.recipe = recipe;
             entry = V0EngineeringEntry.open(startup);
             tick = this::step;
-            damage = P9V0WorldEffectHandoff::observeV0DamagePost;
             stopped = this::stop;
         }
 
         private void register() {
             NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, tick);
-            NeoForge.EVENT_BUS.addListener(damage);
             NeoForge.EVENT_BUS.addListener(stopped);
         }
 
@@ -382,7 +394,6 @@ final class V0Distribution {
             if (active == this) { active = null; }
             V0AuthenticatedLoginObservation.retire(startup.server(), startup.authority());
             NeoForge.EVENT_BUS.unregister(tick);
-            NeoForge.EVENT_BUS.unregister(damage);
             NeoForge.EVENT_BUS.unregister(stopped);
             cold.wake();
         }

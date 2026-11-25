@@ -286,7 +286,7 @@ public final class P11CooldownDualProbe {
         current(r, p); var data = p.body.cooldown.data;
         require(data != null && data.kind == P11CastCooldownData.Kind.ROUTED && data.entries.size() <= 1
                 && (data.entries.isEmpty() || data.entries.containsKey(p.reference.skillId().value())), "EXACT_OWNER_ONLY_MATERIAL");
-        return data.entries.get(p.reference.skillId().value());
+        return data.entries.get(new P11CooldownKey.LegacySkill(p.reference.skillId()));
     }
     private static void active(Run r, Participant p) {
         require(sameEntry(entry(r, p), p.active) && r.server.overworld().getGameTime() < p.active.expiresAt
@@ -319,7 +319,7 @@ public final class P11CooldownDualProbe {
         require(nbt.hasUUID("UUID") && nbt.getUUID("UUID").equals(p.actor.getUUID()), "PHYSICAL_EXACT_OWNER");
         var data = P11CastCooldownCodec.read(nbt.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY).get(P11CastCooldownAttachments.ID.toString()));
         require(data.kind == P11CastCooldownData.Kind.ROUTED && data.entries.size() == 1
-                && sameEntry(data.entries.get(p.reference.skillId().value()), p.active), "PHYSICAL_ONLY_OWN_SAME_ACTIVE");
+                && sameEntry(data.entries.get(new P11CooldownKey.LegacySkill(p.reference.skillId())), p.active), "PHYSICAL_ONLY_OWN_SAME_ACTIVE");
         p.physicalHash = P11C4aEvidence.hash(Files.readAllBytes(file)); p.writerAttempt = writer.attempt();
     }
     private static void writeParticipant(Run r, Participant p) throws IOException {

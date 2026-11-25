@@ -350,7 +350,7 @@ public final class P11CooldownFaultProbe {
         var owner = r.foundation.sourceOwner(r.server); var body = owner == null ? null : owner.body(r.actor);
         require(body != null && owner.canCopy(body) && body.cooldown.data.kind == P11CastCooldownData.Kind.ROUTED,
                 "ACTUAL_CURRENT_SOURCE");
-        return body.cooldown.data.entries.get(r.reference.skillId().value());
+        return body.cooldown.data.entries.get(new P11CooldownKey.LegacySkill(r.reference.skillId()));
     }
     private static boolean sameActive(P11CastCooldownData.Entry a, P11CastCooldownData.Entry b) {
         return a != null && a.kind == 0 && a.attemptId.equals(b.attemptId) && a.acceptedAt == b.acceptedAt

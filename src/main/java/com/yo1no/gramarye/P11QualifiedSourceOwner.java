@@ -803,6 +803,82 @@ final class P11QualifiedSourceOwner {
                 && facts.terminal() == P11ReceiptLedger.Terminal.COMPLETED).isPresent();
     }
 
+    /** Optional proof observation after the original private primary read and exact equality checks. */
+    void cooldownPrimaryReadback(Body body, P11ReceiptLedger.PhysicalWriterReceipt writer,
+            SelectionWitness witness, P11NativeStorageBoundary.PrimaryReadRequest nativeRead) {
+        if (!P11NativeStorageBoundary.cooldownReadbackScopeCurrent(nativeRead, this, body, writer, witness)) { return; }
+        P11ReceiptLedger.ReadbackReceipt readback = null;
+        Throwable primary = null;
+        body.cooldownReadback = null;
+        try {
+            if (!completedPlayerWrite(body, writer, witness) || !metadataCurrent(body, body.source, witness)) { return; }
+            var version = body.source;
+            readback = receipts.beginReadback(version, P11ReceiptLedger.WriterKind.PLAYER_DATA).orElse(null);
+            if (readback == null) { return; }
+            if (receipts.finishReadback(readback, P11ReceiptLedger.Observation.SUCCEEDED) != P11ReceiptLedger.Change.RECORDED
+                    || body.source != version || !completedPlayerWrite(body, writer, witness)
+                    || !metadataCurrent(body, version, witness) || !receipts.persistedReadbackCurrent(readback)) { return; }
+            body.cooldownReadback = new CooldownReadback(version, writer, readback, witness);
+        } catch (RuntimeException | Error observationFailure) {
+            body.cooldownReadback = null;
+            primary = observationFailure;
+            throw observationFailure;
+        } finally {
+            if (readback != null && readback.outcome() == P11ReceiptLedger.Observation.NOT_OBSERVED) {
+                try { receipts.finishReadback(readback, P11ReceiptLedger.Observation.UNKNOWN); }
+                catch (RuntimeException | Error cleanupFailure) {
+                    body.cooldownReadback = null;
+                    // UNKNOWN cleanup may not replace an already thrown exact primary.
+                    if (primary == null) { throw cleanupFailure; }
+                }
+            }
+        }
+    }
+
+    /** Sole cooldown retirement caller; never rebases a witness across its own reconciliation. */
+    boolean prepareCooldownRetirementReadback(Body body, P11ReceiptLedger.Source expected) {
+        if (body == null || expected == null || body.source != expected || !canCopy(body)
+                || server.isSingleplayerOwner(body.actor.getGameProfile())) { return false; }
+        SelectionWitness witness;
+        try { witness = captureSelection(body); }
+        catch (SourceUnavailable unavailable) { return false; }
+        if (body.source != expected || !metadataCurrent(body, expected, witness)) { return false; }
+        var writer = receipts.currentPlayerWriteForReadback(expected).orElse(null);
+        return writer != null && completedPlayerWrite(body, writer, witness)
+                && P11NativeStorageBoundary.readPrimaryForCooldownRetirement(this, body, expected, writer, witness)
+                && cooldownRetirementReadback(body, expected) != null;
+    }
+
+    CooldownReadback cooldownRetirementReadback(Body body, P11ReceiptLedger.Source version) {
+        var observed = body == null ? null : body.cooldownReadback;
+        return cooldownRetirementCurrent(body, version, observed) ? observed : null;
+    }
+
+    boolean cooldownRetirementCurrent(Body body, P11ReceiptLedger.Source version, CooldownReadback observed) {
+        // This original-reader branch proves PD readback, not a host LEVEL_PLAYER readback.
+        // Keep the latter unavailable rather than converting a completed write into a read fact.
+        return body != null && observed != null && body.cooldownReadback == observed && body.source == version
+                && observed.source == version && canCopy(body) && metadataCurrent(body, version, observed.witness)
+                && body.account.dirty == null && !server.isSingleplayerOwner(body.actor.getGameProfile())
+                && completedPlayerWrite(body, observed.writer, observed.witness)
+                && observed.readback.source() == version && receipts.persistedReadbackCurrent(observed.readback)
+                && physicalClean(body, P11ReceiptLedger.WriterKind.PLAYER_DATA)
+                && physicalClean(body, P11ReceiptLedger.WriterKind.STATISTICS)
+                && physicalClean(body, P11ReceiptLedger.WriterKind.ADVANCEMENTS);
+    }
+
+    /** One bounded observation owned by its exact body, not another data store or write grant. */
+    static final class CooldownReadback {
+        private final P11ReceiptLedger.Source source;
+        private final P11ReceiptLedger.PhysicalWriterReceipt writer;
+        private final P11ReceiptLedger.ReadbackReceipt readback;
+        private final SelectionWitness witness;
+        private CooldownReadback(P11ReceiptLedger.Source source, P11ReceiptLedger.PhysicalWriterReceipt writer,
+                P11ReceiptLedger.ReadbackReceipt readback, SelectionWitness witness) {
+            this.source = source; this.writer = writer; this.readback = readback; this.witness = witness;
+        }
+    }
+
     /** Exact new native attempt, not a prior clean flag, authorizes this synchronous reread. */
     boolean completedPlayerWrite(Body body, P11ReceiptLedger.PhysicalWriterReceipt receipt) {
         return completedPlayerWrite(body, receipt, null);
@@ -845,6 +921,7 @@ final class P11QualifiedSourceOwner {
             return;
         }
         var prior = body.source;
+        body.cooldownReadback = null;
         body.source = receipts.advanceMutationVersion(prior).orElseThrow(SourceUnavailable::new);
         provenance.advanceVersion(actor, epoch, version, body.source.version());
         body.account.dirty = resources.markDirty(body.account.resource, now()).orElseThrow();
@@ -1153,6 +1230,7 @@ final class P11QualifiedSourceOwner {
         P11ManaMaterial.State mana;
         P11CastCooldownMaterial.State cooldown;
         P11ReceiptLedger.Source source;
+        private CooldownReadback cooldownReadback;
         final P11ReceiptLedger.MaterialReceipt material;
         boolean loadObserved;
         boolean complete;

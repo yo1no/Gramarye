@@ -13,6 +13,8 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientPauseChangeEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
+import net.neoforged.neoforge.client.settings.IKeyConflictContext;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
@@ -24,7 +26,6 @@ import org.lwjgl.glfw.GLFW;
 /** Client-only owner of P9 discrete cast input and its per-connection sequence. */
 @EventBusSubscriber(modid = Gramarye.MOD_ID, value = Dist.CLIENT)
 final class P9ClientCastInput {
-    private static final int CAST_SLOT = 0;
     private static final P9ClientCastInput OWNER = new P9ClientCastInput();
 
     private final KeyMapping castKey = new KeyMapping(
@@ -39,6 +40,10 @@ final class P9ClientCastInput {
     private boolean pendingFlushRequired = true;
     private long transitionSuppressionGeneration;
     private final OutgoingSequence outgoingSequence = new OutgoingSequence();
+    private final P9FreshPressState freshPresses = new P9FreshPressState();
+    private InputConstants.Key observedKey = castKey.getKey();
+    private KeyModifier observedModifier = castKey.getKeyModifier();
+    private IKeyConflictContext observedConflictContext = castKey.getKeyConflictContext();
 
     private P9ClientCastInput() {}
 
@@ -71,6 +76,16 @@ final class P9ClientCastInput {
         OWNER.handleClientPostTick();
     }
 
+    @SubscribeEvent
+    static void onKeyInput(InputEvent.Key event) {
+        OWNER.recordPhysicalAction(event.getAction(), OWNER.castKey.matches(event.getKey(), event.getScanCode()));
+    }
+
+    @SubscribeEvent
+    static void onMouseInput(InputEvent.MouseButton.Post event) {
+        OWNER.recordPhysicalAction(event.getAction(), OWNER.castKey.matchesMouse(event.getButton()));
+    }
+
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void onScreenOpening(ScreenEvent.Opening event) {
         OWNER.handleScreenOpening(event);
@@ -100,27 +115,26 @@ final class P9ClientCastInput {
         requireClientThread();
         outgoingSequence.reset();
         senderSessionAvailable = true;
-        pendingFlushRequired = true;
+        markPendingFlush();
     }
 
     private void handleConnectionClosed() {
         requireClientThread();
         senderSessionAvailable = false;
         outgoingSequence.reset();
-        pendingFlushRequired = true;
-        dropAllPendingClicks();
+        markPendingFlush();
     }
 
     private void markContextTransition() {
         requireClientThread();
-        pendingFlushRequired = true;
+        markPendingFlush();
     }
 
     private void handleScreenOpening(ScreenEvent.Opening event) {
         Objects.requireNonNull(event, "event");
         requireClientThread();
         if (!event.isCanceled() && event.getNewScreen() != null) {
-            pendingFlushRequired = true;
+            markPendingFlush();
         }
     }
 
@@ -128,55 +142,81 @@ final class P9ClientCastInput {
         Objects.requireNonNull(event, "event");
         requireClientThread();
         if (event.isPaused()) {
-            pendingFlushRequired = true;
+            markPendingFlush();
         }
     }
 
     private void handleRenderFrame() {
         requireClientThread();
         if (!Minecraft.getInstance().isWindowActive()) {
-            pendingFlushRequired = true;
+            markPendingFlush();
         }
     }
 
-    private void handleClientPostTick() {
-        if (!keyMappingRegistered) {
-            return;
+    private void markPendingFlush() {
+        pendingFlushRequired = true;
+        freshPresses.invalidate();
+    }
+
+    private void observeBinding() {
+        if (!observedKey.equals(castKey.getKey()) || observedModifier != castKey.getKeyModifier()
+                || observedConflictContext != castKey.getKeyConflictContext()) {
+            observedKey = castKey.getKey();
+            observedModifier = castKey.getKeyModifier();
+            observedConflictContext = castKey.getKeyConflictContext();
+            markPendingFlush();
         }
+    }
+
+    private void recordPhysicalAction(int action, boolean mapped) {
+        if (!keyMappingRegistered) { return; }
         requireClientThread();
+        observeBinding();
+        if (!mapped) { return; }
+        boolean eligible = !pendingFlushRequired && castKey.isConflictContextAndModifierActive()
+                && evaluateGates(liveGateProbe(Minecraft.getInstance(), true)) == GateDecision.ALLOW;
+        freshPresses.action(action, eligible);
+        if (!eligible && action != GLFW.GLFW_RELEASE) { markPendingFlush(); }
+    }
+
+    private void handleClientPostTick() {
+        if (!keyMappingRegistered) { return; }
+        requireClientThread();
+        observeBinding();
         var minecraft = Minecraft.getInstance();
         long observedTransition = P11ClientTransitions.inputSuppressionGeneration();
         if (transitionSuppressionGeneration != observedTransition) {
             transitionSuppressionGeneration = observedTransition;
-            pendingFlushRequired = true;
+            markPendingFlush();
         }
         var gate = evaluateGates(liveGateProbe(minecraft, !pendingFlushRequired));
-        if (gate != GateDecision.ALLOW
-                && gate != GateDecision.PENDING_FLUSH_REQUIRED) {
-            pendingFlushRequired = true;
-            dropAllPendingClicks();
+        // One bounded drain in this Post, before any send. Callback events never drain or send.
+        var drained = drainPendingClicks();
+        if (gate != GateDecision.ALLOW && gate != GateDecision.PENDING_FLUSH_REQUIRED) {
+            markPendingFlush();
             return;
         }
         if (gate == GateDecision.PENDING_FLUSH_REQUIRED) {
-            dropAllPendingClicks();
-            if (evaluateGates(liveGateProbe(minecraft, true)) == GateDecision.ALLOW) {
+            freshPresses.invalidate();
+            if (drained.empty() && evaluateGates(liveGateProbe(minecraft, true)) == GateDecision.ALLOW) {
                 pendingFlushRequired = false;
             }
             return;
         }
-
-        // KeyMapping's pending-click counter is a finite int; this bound prevents an
-        // open-ended send loop without changing the one-attempt-per-click contract.
-        for (int remaining = Integer.MAX_VALUE;
-                remaining > 0 && castKey.consumeClick();
-                remaining--) {
-            if (evaluateGates(liveGateProbe(minecraft, true)) != GateDecision.ALLOW) {
-                pendingFlushRequired = true;
-                dropAllPendingClicks();
+        int attempts = freshPresses.takeEligible(drained.clicks(), drained.empty());
+        if (attempts < 0) { markPendingFlush(); return; }
+        for (int index = 0; index < attempts; index++) {
+            observeBinding();
+            if (evaluateGates(liveGateProbe(minecraft, !pendingFlushRequired)) != GateDecision.ALLOW) {
+                markPendingFlush();
                 return;
             }
             outgoingSequence.sendNext(P9ClientCastInput::sendPayload);
         }
+    }
+
+    private P9FreshPressState.Drain drainPendingClicks() {
+        return P9FreshPressState.drain(castKey::consumeClick);
     }
 
     private GateProbe liveGateProbe(Minecraft minecraft, boolean noPendingFlush) {
@@ -187,7 +227,7 @@ final class P9ClientCastInput {
                 noPendingFlush);
     }
 
-    private static void sendPayload(CastIntentPayload payload) {
+    private static void sendPayload(CastCurrentSpellPayload payload) {
         PacketDistributor.sendToServer(payload);
     }
 
@@ -220,12 +260,6 @@ final class P9ClientCastInput {
         return probe.noPendingFlush()
                 ? GateDecision.ALLOW
                 : GateDecision.PENDING_FLUSH_REQUIRED;
-    }
-
-    private void dropAllPendingClicks() {
-        while (castKey.consumeClick()) {
-            // consumeClick removes exactly one queued press from this mapping.
-        }
     }
 
     private static void requireClientThread() {
@@ -270,7 +304,7 @@ final class P9ClientCastInput {
 
     @FunctionalInterface
     interface PayloadSender {
-        void send(CastIntentPayload payload);
+        void send(CastCurrentSpellPayload payload);
     }
 
     static final class OutgoingSequence {
@@ -303,8 +337,7 @@ final class P9ClientCastInput {
                 return false;
             }
             var sequence = expectedNext.getAsLong();
-            var payload = new CastIntentPayload(new CastIntent(
-                    sequence, CAST_SLOT, CastInputKind.CAST, 0, null, null));
+            var payload = new CastCurrentSpellPayload(sequence);
             var decision = state.evaluate(sequence);
             if (!decision.sequenceConsumed()
                     || decision.classification()

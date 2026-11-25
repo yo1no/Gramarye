@@ -44,6 +44,12 @@ final class P6RuntimeExecutionBridgeTest {
                 P6RuntimeExecutionBridge.GuardPort.class,
                 P6RuntimeExecutionBridge.WorldCommitPort.class,
                 P6RuntimeExecutionBridge.AppliedFactObserver.class);
+        var executeV0 = P6RuntimeExecutionBridge.class.getDeclaredMethod("executeV0",
+                P6RuntimeExecutionCapability.V0.class, ServerPlayer.class,
+                P6RuntimeExecutionBridge.Invocation.class, int.class,
+                P6RuntimeExecutionCapability.V0Call.class);
+        var normalAvailability = P6RuntimeExecutionBridge.class.getDeclaredMethod("normalV0ManaAvailable",
+                P6RuntimeExecutionCapability.V0.class, ServerPlayer.class);
         Set<String> nested = Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredClasses())
                 .filter(type -> Modifier.isPublic(type.getModifiers()))
                 .map(Class::getSimpleName)
@@ -76,9 +82,16 @@ final class P6RuntimeExecutionBridgeTest {
                         "V0Reason",
                         "V0TerminalReceipt"),
                 nested);
-        assertEquals(2, Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredMethods())
-                .filter(method -> Modifier.isPublic(method.getModifiers()))
-                .count());
+        assertEquals(Set.of(execute, executeV0, normalAvailability),
+                Arrays.stream(P6RuntimeExecutionBridge.class.getDeclaredMethods())
+                        .filter(method -> Modifier.isPublic(method.getModifiers())
+                                || Modifier.isProtected(method.getModifiers()))
+                        .collect(Collectors.toSet()));
+        assertEquals(Modifier.PUBLIC | Modifier.STATIC, normalAvailability.getModifiers());
+        assertEquals(boolean.class, normalAvailability.getReturnType());
+        assertEquals(0, normalAvailability.getExceptionTypes().length);
+        assertThrows(NullPointerException.class,
+                () -> P6RuntimeExecutionBridge.normalV0ManaAvailable(null, null));
         assertEquals(1, P6RuntimeExecutionBridge.GuardPort.class
                 .getDeclaredMethods().length);
         assertEquals(1, P6RuntimeExecutionBridge.AppliedFactObserver.class

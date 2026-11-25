@@ -125,7 +125,10 @@ final class P7S2BoundaryTest {
             "P7Diagnostics.java", "P7ClientMirror.java",
             "P7ClientMirrorDispatchFactory.java", "P7ClientLifecycleEvents.java", "P7CooldownHud.java");
     private static final Set<String> S5_PRODUCTION_PATHS = Set.of(
-            "P9ClientCastInput.java", "P9ClientKeyMappings.java");
+            "P9ClientCastInput.java", "P9ClientKeyMappings.java", "P9FreshPressState.java");
+    private static final Map<String, Class<?>> U0_NORMAL_PRODUCTION_TYPES = Map.of(
+            "CastCurrentSpellPayload.java", CastCurrentSpellPayload.class,
+            "P7CastOperation.java", P7CastOperation.class);
 
     private static final Set<String> S2_TEST_PATHS = Set.of(
             "CastIntentPayloadCodecTest.java",
@@ -162,6 +165,7 @@ final class P7S2BoundaryTest {
                 .filter(path -> !S3_R1_PRODUCTION_PATHS.contains(path))
                 .filter(path -> !S4_PRODUCTION_PATHS.contains(path))
                 .filter(path -> !S5_PRODUCTION_PATHS.contains(path))
+                .filter(path -> !U0_NORMAL_PRODUCTION_TYPES.containsKey(path))
                 .filter(path -> !path.equals("P7S4NetworkGameTests.java"))
                 .collect(Collectors.toUnmodifiableSet());
         var actualS3R1Paths = allNetworkPaths.stream()
@@ -178,6 +182,14 @@ final class P7S2BoundaryTest {
         assertEquals(S5_PRODUCTION_PATHS, allNetworkPaths.stream()
                 .filter(S5_PRODUCTION_PATHS::contains).collect(Collectors.toSet()));
         assertTrue(allNetworkPaths.containsAll(S1_PRODUCTION_PATHS));
+        assertEquals(U0_NORMAL_PRODUCTION_TYPES.keySet(), allNetworkPaths.stream()
+                .filter(U0_NORMAL_PRODUCTION_TYPES::containsKey).collect(Collectors.toSet()));
+        U0_NORMAL_PRODUCTION_TYPES.forEach((path, type) -> {
+            assertEquals(PACKAGE_NAME, type.getPackageName(), path);
+            assertEquals(type.getSimpleName() + ".java", path);
+            assertFalse(java.lang.reflect.Modifier.isPublic(type.getModifiers()), path);
+            assertFalse(java.lang.reflect.Modifier.isProtected(type.getModifiers()), path);
+        });
         S2_PRODUCTION_TYPES.forEach((path, type) -> {
             assertEquals(PACKAGE_NAME, type.getPackageName(), path);
             assertEquals(type.getSimpleName() + ".java", path);
@@ -270,6 +282,25 @@ final class P7S2BoundaryTest {
     }
 
     @Test
+    void adoptedNormalSurfaceAddsOnlyOneScalarPayloadAndTwoClosedOperationVariants() {
+        assertEquals(Set.of(CastCurrentSpellPayload.class), U0_NORMAL_PRODUCTION_TYPES.values().stream()
+                .filter(CustomPacketPayload.class::isAssignableFrom).collect(Collectors.toSet()));
+        var fields = Arrays.stream(CastCurrentSpellPayload.class.getDeclaredFields())
+                .filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers())).toList();
+        assertEquals(1, fields.size());
+        assertEquals(long.class, fields.getFirst().getType());
+        assertTrue(java.lang.reflect.Modifier.isPrivate(fields.getFirst().getModifiers()));
+        assertTrue(java.lang.reflect.Modifier.isFinal(fields.getFirst().getModifiers()));
+        assertTrue(P7CastOperation.class.isSealed());
+        assertEquals(Set.of(P7CastOperation.Legacy.class, P7CastOperation.NormalSpell.class),
+                Set.of(P7CastOperation.class.getPermittedSubclasses()));
+        assertEquals("gramarye:cast_current_spell", CastCurrentSpellPayload.TYPE.id().toString());
+        assertEquals(1, U0_NORMAL_PRODUCTION_TYPES.values().stream()
+                .flatMap(type -> Arrays.stream(type.getDeclaredFields()))
+                .filter(field -> StreamCodec.class.isAssignableFrom(field.getType())).count());
+    }
+
+    @Test
     void compositionHasOnlyFourPrivateFinalDependenciesAndOneStagedSingleton() {
         var instanceFields = Arrays.stream(P7NetworkComposition.class.getDeclaredFields())
                 .filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers()))
@@ -313,7 +344,7 @@ final class P7S2BoundaryTest {
     @Test
     void queuedAndDispatchTypesRetainOnlyReviewedTypedState() {
         assertFieldTypes(P7QueuedCastIntent.class,
-                Set.of(P7SessionIdentity.class, CastIntent.class));
+                Set.of(P7SessionIdentity.class, P7CastOperation.class));
         assertFieldTypes(P7ServerDispatchTask.class,
                 Set.of(
                         P7QueuedCastIntent.class,
@@ -351,7 +382,8 @@ final class P7S2BoundaryTest {
 
     @Test
     void productionSourceHasNoS3SendClientWorkerOrUnsafeGenericSurface() {
-        var combined = S2_PRODUCTION_TYPES.keySet().stream()
+        var combined = Stream.concat(S2_PRODUCTION_TYPES.keySet().stream(),
+                        U0_NORMAL_PRODUCTION_TYPES.keySet().stream())
                 .map(NETWORK_MAIN::resolve)
                 .map(P7S2BoundaryTest::read)
                 .collect(Collectors.joining("\n"));
@@ -487,7 +519,10 @@ final class P7S2BoundaryTest {
                 com.yo1no.gramarye.V0CatalogAuthority.class, MinecraftServer.class, ServerPlayer.class);
         var currentV0Play = boundary.getDeclaredMethod("currentV0Play", com.yo1no.gramarye.V0CatalogAuthority.class,
                 P7ServerAuthorizationBoundary.V0PlayWitness.class, MinecraftServer.class, ServerPlayer.class);
-        assertEquals(Set.of(install, installProjection, acquireLogin, captureV0Play, currentV0Play),
+        var installNormal = boundary.getDeclaredMethod("install", P6RuntimeExecutionCapability.class,
+                rootIngress, P7ServerAuthorizationBoundary.SyncProjectionPort.class,
+                P7ServerAuthorizationBoundary.NormalRootIngressPort.class);
+        assertEquals(Set.of(install, installProjection, installNormal, acquireLogin, captureV0Play, currentV0Play),
                 Set.copyOf(publicOperations));
         assertTrue(java.lang.reflect.Modifier.isStatic(acquireLogin.getModifiers()));
         assertEquals(loginReadyPort, acquireLogin.getReturnType());
@@ -504,7 +539,7 @@ final class P7S2BoundaryTest {
         assertTrue(java.lang.reflect.Modifier.isStatic(install.getModifiers()));
         assertEquals(void.class, install.getReturnType());
         assertEquals(0, install.getExceptionTypes().length);
-        assertEquals(2, Arrays.stream(boundary.getDeclaredMethods())
+        assertEquals(3, Arrays.stream(boundary.getDeclaredMethods())
                 .filter(method -> method.getName().equals("install"))
                 .count());
 
@@ -526,7 +561,8 @@ final class P7S2BoundaryTest {
                         "AdmissionDisposition",
                         "TargetDisposition",
                         "LoginReadyPort", "SyncProjectionPort", "SyncCapture", "SyncProjection", "SyncEntry",
-                        "SyncSourceState", "SyncEntryState", "SyncReason", "V0PlayWitness"),
+                        "SyncSourceState", "SyncEntryState", "SyncReason", "V0PlayWitness",
+                        "NormalRootIngressPort", "NormalIngressDisposition", "NormalFeedback", "NormalReceipt"),
                 nested.stream().map(Class::getSimpleName).collect(Collectors.toSet()));
         assertTrue(nested.stream().allMatch(type ->
                 java.lang.reflect.Modifier.isPublic(type.getModifiers())));
@@ -590,7 +626,9 @@ final class P7S2BoundaryTest {
     private static void assertOutsidePackageCannotNameS2Types() {
         var compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler);
-        var declarations = S2_PRODUCTION_TYPES.values().stream()
+        var reviewed = Stream.concat(S2_PRODUCTION_TYPES.values().stream(),
+                U0_NORMAL_PRODUCTION_TYPES.values().stream()).toList();
+        var declarations = reviewed.stream()
                 .map(type -> "    " + type.getName() + " value" + type.getSimpleName() + ";")
                 .sorted()
                 .collect(Collectors.joining("\n"));
@@ -619,7 +657,7 @@ final class P7S2BoundaryTest {
                 .collect(Collectors.joining("\n"));
 
         assertFalse(Boolean.TRUE.equals(compiled));
-        S2_PRODUCTION_TYPES.values().forEach(type -> assertTrue(
+        reviewed.forEach(type -> assertTrue(
                 errors.contains(type.getSimpleName()),
                 () -> "external compiler did not reject " + type.getName() + ": " + errors));
     }

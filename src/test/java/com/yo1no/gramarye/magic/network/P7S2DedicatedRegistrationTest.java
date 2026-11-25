@@ -39,6 +39,10 @@ final class P7S2DedicatedRegistrationTest {
         var classNames = List.of(
                 "com.yo1no.gramarye.magic.network.P7PayloadRegistrar",
                 "com.yo1no.gramarye.magic.network.CastIntentPayload",
+                "com.yo1no.gramarye.magic.network.CastCurrentSpellPayload",
+                "com.yo1no.gramarye.magic.network.P7CastOperation",
+                "com.yo1no.gramarye.magic.network.P7CastOperation$Legacy",
+                "com.yo1no.gramarye.magic.network.P7CastOperation$NormalSpell",
                 "com.yo1no.gramarye.magic.network.IntentAckPayload",
                 "com.yo1no.gramarye.magic.network.PlayerManaSyncPayload",
                 "com.yo1no.gramarye.magic.network.SkillCooldownSyncPayload",
@@ -71,7 +75,9 @@ final class P7S2DedicatedRegistrationTest {
         assertFalse(lifecycle.contains("public class P7ClientLifecycleEvents"));
         assertEquals(5, lifecycle.split("@SubscribeEvent", -1).length - 1);
         assertTrue(input.contains("final class P9ClientCastInput"));
-        assertEquals(4, input.split("@SubscribeEvent", -1).length - 1);
+        assertEquals(6, input.split("@SubscribeEvent", -1).length - 1);
+        assertTrue(input.contains("static void onKeyInput(InputEvent.Key event)"));
+        assertTrue(input.contains("static void onMouseInput(InputEvent.MouseButton.Post event)"));
         assertTrue(mappings.contains("final class P9ClientKeyMappings"));
         assertEquals(1, mappings.split("@SubscribeEvent", -1).length - 1);
         try (var paths = Files.walk(NETWORK_MAIN)) {

@@ -180,7 +180,8 @@ final class SkillRuntimeService {
             V0StartupLoadState v0State) {
         // The existing native-harness injections match the two-argument lifecycle method.
         handleRuntimeStarted(event, limits);
-        if (!(v0State instanceof V0StartupLoadState.Ready ready)) {
+        var selected = V0Distribution.profile(event.getServer(), v0State);
+        if (!(selected.state() instanceof V0StartupLoadState.Ready ready)) {
             return;
         }
         var server = event.getServer();
@@ -190,11 +191,33 @@ final class SkillRuntimeService {
             return;
         }
         var authority = V0CatalogAuthority.open(slot.token.value(), ready.limits());
-        var startup = new V0SlotStartup(server, authority, v0State, this);
+        var startup = selected.kind() == V0StartupProfile.Kind.NORMAL
+                ? new V0SlotStartup(server, authority, selected.state(), this, selected.kind())
+                : new V0SlotStartup(server, authority, selected.state(), this);
         var binding = V0Distribution.open(startup);
         if (binding.isPresent()) {
-            slot.v0 = new V0SlotRuntime(startup, binding.orElseThrow());
-            v0ReloadTarget = slot.v0;
+            var bound = binding.orElseThrow();
+            V0SlotRuntime prepared;
+            try {
+                prepared = new V0SlotRuntime(startup, bound);
+                if (bound.normalPolicy()) { bound.startNormalCold(); }
+            } catch (RuntimeException | Error primary) {
+                if (bound.normalPolicy()) {
+                    try { bound.abortUnpublished(authority); }
+                    catch (RuntimeException | Error cleanup) {
+                        if (cleanup != primary) {
+                            try { primary.addSuppressed(cleanup); }
+                            catch (RuntimeException | Error suppressionFailure) {
+                                // The unpublished startup's original failure remains primary.
+                            }
+                        }
+                    }
+                }
+                throw primary;
+            }
+            // Construction and owned-worker start completed; only these references publish the slot.
+            slot.v0 = prepared;
+            v0ReloadTarget = prepared;
         }
     }
 
@@ -219,6 +242,38 @@ final class SkillRuntimeService {
         return witness.isPresent()
                 && slot.v0.reserveCapture(actor, witness.orElseThrow(), source, body,
                         owner, selection, slot.runtimeTick);
+    }
+
+    P7ServerAuthorizationBoundary.NormalIngressDisposition admitNormalSpell(MinecraftServer server,
+            ServerPlayer actor, P7ServerAuthorizationBoundary.NormalReceipt receipt) {
+        if (server == null || actor == null || receipt == null || !server.isSameThread()
+                || actor.getServer() != server || !server.isRunning() || server.isStopped()
+                || server.getPlayerList().getPlayer(actor.getUUID()) != actor || !actor.isAlive()
+                || actor.isRemoved() || actor.isSpectator() || actor.isFakePlayer() || foundation == null) {
+            return P7ServerAuthorizationBoundary.NormalIngressDisposition.REJECTED;
+        }
+        var slot = slots.get(server);
+        if (slot == null || slot.state != ServerSlot.State.RUNNING || slot.v0 == null
+                || !slot.v0.normalPolicy() || p9ReloadCloseRequested.get()) {
+            return P7ServerAuthorizationBoundary.NormalIngressDisposition.UNAVAILABLE;
+        }
+        var source = foundation.sourceOwner(server);
+        var body = source == null ? null : source.body(actor);
+        if (body == null || !source.qualifiedForV0Capture(body)) {
+            return P7ServerAuthorizationBoundary.NormalIngressDisposition.UNAVAILABLE;
+        }
+        var witness = P7ServerAuthorizationBoundary.captureV0Play(slot.v0.authority(), server, actor).orElse(null);
+        if (!receipt.matches(slot.v0.authority(), witness)) {
+            return P7ServerAuthorizationBoundary.NormalIngressDisposition.REJECTED;
+        }
+        return slot.v0.reserveNormal(actor, witness, source, body, new SkillOwnerId(actor.getUUID()),
+                receipt, slot.runtimeTick);
+    }
+
+    P11CastCooldownService v0Cooldowns() { return cooldowns; }
+
+    boolean normalV0ManaAvailable(ServerPlayer actor) {
+        return v0Statements != null && v0Statements.normalManaAvailable(actor);
     }
 
     boolean currentV0Actor(V0SlotRuntime v0, V0CatalogAuthority authority,
@@ -1307,6 +1362,8 @@ final class SkillRuntimeService {
             this.id = id;
             this.child = child;
         }
+
+        boolean normalPolicy() { return owner.normalPolicy(); }
 
         boolean prepare(P9StarterProjectile supplied) {
             if (phase != Phase.RESERVED || !owner.reserveNativeCarrier(this, supplied)) {

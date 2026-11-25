@@ -241,6 +241,7 @@ class P3D3AApiGateTest {
                 "P11KeepAliveCommonMixin", "P11KeepAliveConnectionMixin",
                 "P11LivePlayMixin", "P11LiveCommonSendMixin", "P11ServerBossEventMixin",
                 "P11P9EntitySectionMixin", "P11P9EntityMoveMixin",
+                "P9V0LoadedPositionMixin", "U0SectionQueryMixin", "U0ProjectileQueryMixin",
                 "P11ClientPlayerMixin", "P11ClientMinecraftMixin", "P11ClientKeyboardMixin",
                 "P11ClientSceneScreenMixin", "P11ClientPacketListenerMixin", "P11ClientConfigurationMixin").stream()
                 .map(name -> "com.yo1no.gramarye.mixin." + name)
@@ -280,12 +281,24 @@ class P3D3AApiGateTest {
                 "src/main/java/com/yo1no/gramarye/mixin/P11ServerBossEventMixin.java",
                 "src/main/java/com/yo1no/gramarye/mixin/P11P9EntitySectionMixin.java",
                 "src/main/java/com/yo1no/gramarye/mixin/P11P9EntityMoveMixin.java",
+                "src/main/java/com/yo1no/gramarye/U0BoundedEntityQuery.java",
+                "src/main/java/com/yo1no/gramarye/U0BoundedQueryAccess.java",
+                "src/main/java/com/yo1no/gramarye/mixin/P9V0LoadedPositionMixin.java",
+                "src/main/java/com/yo1no/gramarye/mixin/U0SectionQueryMixin.java",
+                "src/main/java/com/yo1no/gramarye/mixin/U0ProjectileQueryMixin.java",
+                "src/v0Engineering/resources/gramarye.v0.engineering.mixins.json",
+                "src/test/java/com/yo1no/gramarye/U0BoundedEntityQueryTest.java",
+                "src/test/java/com/yo1no/gramarye/U0BoundedQueryScopeTest.java",
                 "src/p9S5ClientHarness/resources/gramarye-p11-native-harness.mixins.json")) {
             assertNativeSlicePath(exact, 0);
             assertNativeSlicePath(exact + ".extra", 1);
         }
         assertNativeSlicePath("src/main/java/com/yo1no/gramarye/P11Unexpected.java", 1);
         assertNativeSlicePath("src/main/java/com/yo1no/gramarye/mixin/P11UnexpectedMixin.java", 1);
+        assertNativeSlicePath("src/main/java/com/yo1no/gramarye/U0Unexpected.java", 1);
+        assertNativeSlicePath("src/main/java/com/yo1no/gramarye/mixin/U0UnexpectedMixin.java", 1);
+        assertNativeSlicePath("src/main/java/com/yo1no/gramarye/mixin/U0BoundedQueryAccess.java", 1);
+        assertNativeSlicePath("src/v0Engineering/java/com/yo1no/gramarye/v0engineering/mixin/U0SectionQueryMixin.java", 1);
         assertNativeSlicePath("src/p9S5ClientHarness/resources/data/gramarye_p11_engineering/"
                 + "function/unreviewed.mcfunction", 1);
     }

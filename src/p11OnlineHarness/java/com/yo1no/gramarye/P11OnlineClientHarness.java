@@ -2,7 +2,9 @@ package com.yo1no.gramarye;
 
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -12,6 +14,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.UUID;
+import java.util.Map;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
 import net.minecraft.client.gui.screens.ConnectScreen;
@@ -19,6 +22,8 @@ import net.minecraft.client.gui.screens.DisconnectedScreen;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
@@ -87,8 +92,150 @@ public final class P11OnlineClientHarness {
     private static long capacityScene;
     private static long capacityEpoch;
     private static long capacityOriginalGeneration;
+    private static boolean u0TraceFlushAttempted;
+    private static boolean u0TraceFlushSucceeded;
+    private static boolean u0ExitGameRequested;
+    private static boolean u0LogoutPauseOpened, u0LogoutButtonIssued;
+    private static boolean u0LifecycleFirstTryIssued, u0LifecycleRetryIssued;
+    private static int u0LifecycleCloneCount, u0LifecycleRespawnReturns;
 
     private P11OnlineClientHarness() {}
+
+    private static boolean u0LateFinishEligible(boolean terminalScreen, boolean detached, int actualLogouts,
+            boolean attempted, boolean finishCue) {
+        return terminalScreen && detached && actualLogouts > 0 && !attempted && finishCue;
+    }
+
+    private static void u0FlushTrace() throws IOException, URISyntaxException {
+        if (u0TraceFlushAttempted || output == null) return;
+        u0TraceFlushAttempted = true;
+        Throwable primary = null;
+        try {
+            P11C4aEvidence.write(output, "loaded-sources-terminal.json", P11OnlineServerHarness.u0LoadedSources());
+        } catch (IOException | URISyntaxException | RuntimeException | Error observationFailure) {
+            primary = observationFailure;
+            try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+            catch (RuntimeException | Error unavailableRecorder) { }
+            throw observationFailure;
+        } finally {
+            try { U0OrdinaryTrace.write(output); }
+            catch (IOException | RuntimeException | Error traceFailure) {
+                if (primary == null) { throw traceFailure; }
+            }
+        }
+        u0TraceFlushSucceeded = true; // Both original sinks returned; not an observer/row acceptance claim.
+    }
+
+    private static boolean u0ExitGameEligible(boolean terminalScreen, boolean detached, int actualLogouts,
+            boolean flushSucceeded, boolean requested, boolean exitCue) {
+        return terminalScreen && detached && actualLogouts > 0 && flushSucceeded && !requested && exitCue;
+    }
+
+    private static boolean u0PrepareExitGame(boolean terminalScreen, boolean detached) throws IOException {
+        if (!terminalScreen || !detached || logouts <= 0 || !u0TraceFlushSucceeded || u0ExitGameRequested) return false;
+        if (!u0ExitGameEligible(terminalScreen, detached, logouts, u0TraceFlushSucceeded, u0ExitGameRequested,
+                P11C4aEvidence.cuePresent(serverOutput, role + "-exit-game.ready"))) return false;
+        u0ExitGameRequested = true; // Before exclusive output/native stop; failures cannot retry this request.
+        P11C4aEvidence.write(output, "native-exit-request.json", Map.of("format", "U0_NATIVE_EXIT_REQUEST_V1",
+                "status", "ORIGINAL_STOP_REQUESTED_NOT_PROCESS_EXIT_PROOF", "role", role,
+                "matchedNativeLogouts", logouts, "nativeTerminalScreen", terminalScreen,
+                "fullyDetached", detached, "traceFlushCompleted", true, "nativeProcessExitProved", false));
+        return true;
+    }
+
+    /** Closed qualification choice, joined only to this client's already-observed public player identity. */
+    private static boolean u0LogoutSelected(boolean requireCurrent) throws IOException {
+        if (playerId == null || requireCurrent && (currentPlayer == null || currentConnection == null
+                || currentPlayer.getUUID() != playerId && !currentPlayer.getUUID().equals(playerId))) return false;
+        var file = P11C4aEvidence.root().resolve("scenario/logout-selected.json");
+        if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return false;
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(file)
+                || Files.size(file) < 1 || Files.size(file) > 2048) throw new IOException("U0_LOGOUT_SELECTION_BOUND");
+        var value = JsonParser.parseString(Files.readString(file, StandardCharsets.US_ASCII)).getAsJsonObject();
+        if (!value.keySet().equals(java.util.Set.of("format", "pseudonym", "mode"))
+                || !value.get("format").getAsString().equals("U0_LOGOUT_SELECTED_V1")
+                || !java.util.Set.of("NORMAL", "CLEANUP_FAULT").contains(value.get("mode").getAsString()))
+            throw new IOException("U0_LOGOUT_SELECTION_SCHEMA");
+        var pseudonym = value.get("pseudonym").getAsString();
+        if (!pseudonym.matches("[0-9a-f]{64}")) throw new IOException("U0_LOGOUT_SELECTION_DOMAIN");
+        return pseudonym.equals(P11C4aEvidence.pseudonym(playerId));
+    }
+
+    private static Button u0PrepareLogoutButton(Minecraft minecraft) throws IOException {
+        if (u0LogoutButtonIssued || minecraft.getOverlay() != null || !(minecraft.screen instanceof PauseScreen)
+                || currentPlayer == null || minecraft.player != currentPlayer || currentConnection == null
+                || !currentConnection.isConnected() || minecraft.getConnection() != currentListener
+                || currentListener == null || currentListener.getConnection() != currentConnection
+                || currentConnection.getPacketListener() != currentListener || !u0LogoutSelected(true)) return null;
+        Button selected = null;
+        for (var child : minecraft.screen.children()) {
+            if (child instanceof Button button && button.active && button.visible
+                    && button.getMessage().getContents() instanceof TranslatableContents key
+                    && key.getKey().equals("menu.disconnect")) {
+                if (selected != null) throw new IllegalStateException("U0_LOGOUT_AMBIGUOUS_NATIVE_BUTTON");
+                selected = button;
+            }
+        }
+        if (selected == null) return null;
+        u0LogoutButtonIssued = true;
+        P11C4aEvidence.write(output, "logout-native-gui-request.json", Map.of("format", "U0_LOGOUT_GUI_REQUEST_V1",
+                "originalPauseScreen", true, "originalButtonKey", "menu.disconnect", "physicalOsInputClaim", false,
+                "actualServerLogoutProof", false));
+        return selected; // Original callback executes outside the observer catch, including native report dialogs.
+    }
+
+    /** Read only this run's bounded closed selection record; never account/profile/authentication data. */
+    private static boolean u0LifecycleSelected(Minecraft minecraft) throws IOException {
+        if (currentPlayer == null || minecraft.player != currentPlayer || currentConnection == null
+                || currentListener == null || minecraft.getConnection() != currentListener
+                || currentPlayer.connection != currentListener || currentListener.getConnection() != currentConnection
+                || currentConnection.getPacketListener() != currentListener || !currentConnection.isConnected()
+                || currentConnection.isMemoryConnection() || !currentConnection.isEncrypted()) return false;
+        var directory = P11C4aEvidence.root().resolve("scenario");
+        if (!P11C4aEvidence.cuePresent(directory, "lifecycle-respawn.ready")) return false;
+        var file = directory.resolve("lifecycle-selected.json");
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(file)
+                || Files.size(file) < 1 || Files.size(file) > 2048) throw new IOException("U0_LIFECYCLE_SELECTION_BOUND");
+        var selected = JsonParser.parseString(Files.readString(file, StandardCharsets.US_ASCII)).getAsJsonObject();
+        if (!selected.keySet().equals(java.util.Set.of("format", "pseudonym"))
+                || !selected.get("format").getAsString().equals("U0_LIFECYCLE_SELECTED_V1"))
+            throw new IOException("U0_LIFECYCLE_SELECTION_SCHEMA");
+        String who = selected.get("pseudonym").getAsString();
+        if (!who.matches("[0-9a-f]{64}")) throw new IOException("U0_LIFECYCLE_SELECTION_DOMAIN");
+        return who.equals(P11C4aEvidence.pseudonym(currentPlayer.getUUID()));
+    }
+
+    private static Button u0PrepareLifecycleButton(Minecraft minecraft) throws IOException {
+        if (minecraft.getOverlay() != null || !u0LifecycleSelected(minecraft)) return null;
+        var view = P11ClientTransitions.view();
+        String key;
+        boolean retry;
+        if (!u0LifecycleFirstTryIssued && minecraft.screen instanceof DeathScreen && currentPlayer.isDeadOrDying()
+                && view != null && view.kind() == P11TransitionProtocol.Kind.DEATH
+                && view.scope() == P11TransitionProtocol.Scope.PLAY
+                && view.outcome() == P11TransitionProtocol.Outcome.BINDING) {
+            key = "deathScreen.respawn"; retry = false;
+        } else if (u0LifecycleFirstTryIssued && !u0LifecycleRetryIssued
+                && minecraft.screen instanceof P11ClientTransitionScreen && view != null
+                && view.kind() == P11TransitionProtocol.Kind.DEATH && P11ClientTransitions.retryArmed()) {
+            key = "screen.gramarye.transition.retry"; retry = true;
+        } else { return null; }
+        Button selected = null;
+        for (var child : minecraft.screen.children()) {
+            if (child instanceof Button button && button.visible && button.active
+                    && button.getMessage().getContents() instanceof TranslatableContents text && text.getKey().equals(key)) {
+                if (selected != null) throw new IllegalStateException("U0_LIFECYCLE_AMBIGUOUS_NATIVE_BUTTON");
+                selected = button;
+            }
+        }
+        if (selected == null) return null;
+        if (retry) u0LifecycleRetryIssued = true; else u0LifecycleFirstTryIssued = true;
+        P11C4aEvidence.write(output, retry ? "lifecycle-retry-request.json" : "lifecycle-first-try-request.json",
+                Map.of("format", "U0_LIFECYCLE_GUI_CALLBACK_REQUEST_V1", "callbackKey", key,
+                        "nativeControllerOutcomeBefore", view.outcome().name(), "nativeControllerReasonBefore", view.reason().name(),
+                        "physicalOsInputClaim", false, "actualTryPermitOrRespawnProved", false));
+        return selected; // Invoke the original Button.onPress only after leaving every observation catch.
+    }
 
     private static boolean enabled() {
         return System.getProperty(PREFIX + "output") != null && P11OnlineInputs.onlineContextCase();
@@ -96,6 +243,94 @@ public final class P11OnlineClientHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void tick(ClientTickEvent.Post ignored) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            int nativeConnect = 0;
+            boolean nativeExit = false;
+            Button nativeLifecycleButton = null;
+            Button nativeLogoutButton = null;
+            boolean nativeLogoutPause = false;
+            var minecraft = Minecraft.getInstance();
+            try {
+                if (output == null) {
+                    role = P11C4aEvidence.property("role");
+                    if (!(role.equals("a") || role.equals("b"))) { throw new IllegalStateException("U0_ROLE"); }
+                    port = P11C4aEvidence.port();
+                    output = P11C4aEvidence.reserve("client-" + role);
+                    serverOutput = P11C4aEvidence.root().resolve("server");
+                    P11C4aEvidence.write(output, "loaded-sources-ready.json", P11OnlineServerHarness.u0LoadedSources());
+                    P11C4aEvidence.write(output, "inputs.json", Map.of("status", "ORDINARY_CLIENT_PREPARED_NOT_AUTH_PROOF",
+                            "role", role, "runId", P11C4aEvidence.property("runId")));
+                }
+                if (minecraft.level != null) { U0OrdinaryTrace.nativeTick(minecraft.level.getGameTime()); }
+                boolean terminalScreen = minecraft.screen instanceof TitleScreen
+                        || minecraft.screen instanceof DisconnectedScreen;
+                boolean detached = !nativeCall && minecraft.getOverlay() == null
+                        && minecraft.player == null && minecraft.level == null && minecraft.getConnection() == null
+                        && minecraft.getSingleplayerServer() == null;
+                if (u0LateFinishEligible(terminalScreen, detached, logouts, u0TraceFlushAttempted,
+                        logouts > 0 && !u0TraceFlushAttempted
+                                && P11C4aEvidence.cuePresent(serverOutput, role + "-finish.ready"))) {
+                    u0FlushTrace();
+                }
+                if (!nativeCall && minecraft.getOverlay() == null && minecraft.screen instanceof TitleScreen
+                        && minecraft.player == null && minecraft.level == null && minecraft.getConnection() == null
+                        && minecraft.getSingleplayerServer() == null) {
+                    if (!u0TraceFlushAttempted && logins == 0 && phase == Phase.BOOTSTRAP
+                            && P11C4aEvidence.cuePresent(serverOutput, role + "-connect.ready")) {
+                        nativeConnect = 1;
+                    } else if (!u0TraceFlushAttempted && logins == 1 && logouts == 1 && phase == Phase.FIRST_DISCONNECTED
+                            && P11C4aEvidence.cuePresent(serverOutput, role + "-reconnect.ready")) {
+                        nativeConnect = 2;
+                    }
+                }
+                // Reconnect only this selected, already-logged-out genuine account, using original connector.
+                if (nativeConnect == 0 && !nativeExit && detached && !u0TraceFlushAttempted
+                        && logins == 1 && logouts == 1 && phase == Phase.FIRST_DISCONNECTED
+                        && (terminalScreen || minecraft.screen instanceof JoinMultiplayerScreen)
+                        && u0LogoutSelected(false)
+                        && P11C4aEvidence.cuePresent(P11C4aEvidence.root().resolve("scenario"), "logout-reconnect.ready")) {
+                    nativeConnect = 2;
+                }
+                nativeExit = u0PrepareExitGame(terminalScreen, detached);
+                if (!nativeExit && nativeConnect == 0) {
+                    if (u0LogoutSelected(true)
+                            && P11C4aEvidence.cuePresent(P11C4aEvidence.root().resolve("scenario"), "logout-disconnect.ready")) {
+                        if (!u0LogoutPauseOpened && minecraft.screen == null && minecraft.getOverlay() == null) {
+                            u0LogoutPauseOpened = true; nativeLogoutPause = true;
+                        } else { nativeLogoutButton = u0PrepareLogoutButton(minecraft); }
+                    }
+                    if (nativeLogoutButton == null && !nativeLogoutPause) nativeLifecycleButton = u0PrepareLifecycleButton(minecraft);
+                }
+            } catch (Exception | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            // This is a real native UI operation, not an observer: preserve its original Throwable.
+            if (nativeExit) { minecraft.stop(); return; }
+            if (nativeLogoutPause) { minecraft.setScreen(new PauseScreen(true)); return; }
+            if (nativeLogoutButton != null) { nativeLogoutButton.onPress(); return; }
+            if (nativeLifecycleButton != null) {
+                nativeLifecycleButton.onPress(); // Original native callback Throwable remains outside the observer shield.
+                try {
+                    var actual = P11ClientTransitions.view();
+                    if (actual == null) throw new IllegalStateException("U0_LIFECYCLE_CALLBACK_STATE_MISSING");
+                    P11C4aEvidence.write(output, u0LifecycleRetryIssued
+                            ? "lifecycle-retry-return.json" : "lifecycle-first-try-return.json",
+                            Map.of("format", "U0_LIFECYCLE_GUI_CALLBACK_RETURN_V1",
+                                    "status", "CALLBACK_RETURN_AND_CLIENT_STATE_NOT_SERVER_PERMIT",
+                                    "connectionEpoch", actual.connectionEpoch(), "sceneSerial", actual.sceneSerial(),
+                                    "requestSeq", actual.requestSeq(), "actorGeneration", actual.actorGeneration(),
+                                    "outcome", actual.outcome().name(), "reason", actual.reason().name(),
+                                    "physicalOsInputClaim", false));
+                } catch (Exception | Error observationFailure) {
+                    try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                    catch (RuntimeException | Error unavailableRecorder) { }
+                }
+                return;
+            }
+            if (nativeConnect != 0) { connect(minecraft, nativeConnect == 2); }
+            return;
+        }
         if (!enabled() || terminal || nativeCall) { return; }
         var minecraft = Minecraft.getInstance();
         try {
@@ -219,6 +454,29 @@ public final class P11OnlineClientHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void loggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            try {
+                var minecraft = Minecraft.getInstance(); var player = event.getPlayer(); var connection = event.getConnection();
+                boolean exact = minecraft.isSameThread() && minecraft.getSingleplayerServer() == null
+                        && player != null && connection != null && !connection.isMemoryConnection()
+                        && connection.isConnected() && connection.isEncrypted() && minecraft.player == player
+                        && minecraft.getConnection() == player.connection && player.connection.getConnection() == connection
+                        && connection.getPacketListener() == player.connection
+                        && (playerId == null || playerId.equals(player.getUUID()));
+                if (exact) {
+                    playerId = player.getUUID(); currentPlayer = player;
+                    currentListener = player.connection; currentConnection = connection; logins++;
+                    phase = Phase.FIRST_PLAY;
+                }
+                U0OrdinaryTrace.note(exact ? "CLIENT_NATIVE_LOGIN" : "OBSERVATION_FAILURE",
+                        logins, 0, 0, 0, 0, 0, exact ? 1 : 0, 0, 0,
+                        player == null ? "" : P11C4aEvidence.pseudonym(player.getUUID()));
+            } catch (RuntimeException | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            return;
+        }
         if (!enabled() || terminal) { return; }
         try {
             var minecraft = Minecraft.getInstance();
@@ -262,6 +520,26 @@ public final class P11OnlineClientHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void cloned(ClientPlayerNetworkEvent.Clone event) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            if (!u0LifecycleFirstTryIssued) return;
+            try {
+                var minecraft = Minecraft.getInstance();
+                boolean exact = event.getOldPlayer() == currentPlayer && event.getNewPlayer() != currentPlayer
+                        && event.getConnection() == currentConnection && event.getNewPlayer() == minecraft.player
+                        && event.getNewPlayer().connection == currentListener && currentListener != null
+                        && currentListener.getConnection() == currentConnection && currentConnection.isConnected()
+                        && currentConnection.getPacketListener() == currentListener
+                        && event.getNewPlayer().getUUID().equals(playerId) && u0LifecycleCloneCount < 2;
+                if (!exact) throw new IllegalStateException("U0_LIFECYCLE_CLIENT_CLONE_TUPLE");
+                currentPlayer = event.getNewPlayer(); u0LifecycleCloneCount++;
+                U0OrdinaryTrace.note("CLIENT_NATIVE_RESPAWN_CLONE", u0LifecycleCloneCount, 0, 0, 0, 0, 0,
+                        1, 1, 0, P11C4aEvidence.pseudonym(currentPlayer.getUUID()));
+            } catch (RuntimeException | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            return;
+        }
         if (!enabled() || terminal || !capacityRespawnSelected()) { return; }
         try {
             var minecraft = Minecraft.getInstance();
@@ -281,6 +559,27 @@ public final class P11OnlineClientHarness {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void loggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            try {
+                if (event.getPlayer() == null && event.getConnection() == null) {
+                    U0OrdinaryTrace.note("CLIENT_NULL_LOGOUT", 0, 0, 0, 0, 0, 0, 0, 0, 0, "");
+                    return;
+                }
+                boolean exact = event.getPlayer() == currentPlayer && event.getConnection() == currentConnection
+                        && currentPlayer != null && currentConnection != null;
+                U0OrdinaryTrace.note(exact ? "CLIENT_NATIVE_LOGOUT" : "OBSERVATION_FAILURE",
+                        logins, logouts, 0, 0, 0, 0, exact ? 1 : 0, 0, 0, "");
+                if (exact) { logouts++; retiredConnection = currentConnection; }
+                currentPlayer = null; currentListener = null; currentConnection = null; phase = Phase.FIRST_DISCONNECTED;
+                if (exact && output != null && P11C4aEvidence.cuePresent(serverOutput, role + "-finish.ready")) {
+                    u0FlushTrace();
+                }
+            } catch (Exception | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            return;
+        }
         if (!enabled() || terminal) { return; }
         try {
             if (event.getPlayer() == null && event.getConnection() == null) {
@@ -384,6 +683,24 @@ public final class P11OnlineClientHarness {
     }
 
     public static void afterRespawn(ClientPacketListener listener, ClientboundRespawnPacket packet) {
+        if ("u0-ordinary-ab".equals(System.getProperty("gramarye.p11.online.case", ""))) {
+            if (!u0LifecycleFirstTryIssued) return;
+            try {
+                var minecraft = Minecraft.getInstance();
+                boolean exact = listener == currentListener && minecraft.player == currentPlayer && currentPlayer != null
+                        && currentPlayer.connection == listener && listener.getConnection() == currentConnection
+                        && currentConnection != null && currentConnection.getPacketListener() == listener
+                        && u0LifecycleRespawnReturns < 2;
+                if (!exact) throw new IllegalStateException("U0_LIFECYCLE_NATIVE_RESPAWN_RETURN");
+                u0LifecycleRespawnReturns++;
+                U0OrdinaryTrace.note("CLIENT_RESPAWN_HANDLER_RETURN", u0LifecycleRespawnReturns, u0LifecycleCloneCount,
+                        0, 0, 0, 0, packet.shouldKeep(ClientboundRespawnPacket.KEEP_ALL_DATA) ? 1 : 0, 1, 0, "");
+            } catch (RuntimeException | Error observationFailure) {
+                try { U0OrdinaryTrace.note("OBSERVATION_FAILURE", 0, 0, 0, 0, 0, 0, 0, 0, 0, ""); }
+                catch (RuntimeException | Error unavailableRecorder) { }
+            }
+            return;
+        }
         if (!enabled() || terminal || !capacityRespawnSelected()) { return; }
         try {
             exactCurrent(Minecraft.getInstance(), listener);

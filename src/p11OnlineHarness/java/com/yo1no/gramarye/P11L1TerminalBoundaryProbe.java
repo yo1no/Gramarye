@@ -194,6 +194,7 @@ public final class P11L1TerminalBoundaryProbe {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     static void leave(EntityLeaveLevelEvent event) {
+        U0OrdinaryLogoutScenario.leaving(event); // Reuse this one existing typed callback, no new registration.
         var r = run;
         if (r == null || r.mode != Mode.LOGOUT_CLEANUP_FAULT || event.getEntity() != r.actor || !r.inLogout) { return; }
         require(r.server.isSameThread() && r.leaveFaults == 0 && r.accepted && r.permit != null

@@ -42,11 +42,11 @@ final class P7ServerAuthorizationDispatcher {
         if (session.isEmpty()) {
             return;
         }
-        var intent = queuedIntent.intent();
+        long sequence = queuedIntent.sequence();
         if (!serverAccess.running(server)) {
             resultSink.accept(P7AdmissionDispositionMapper.serverUnavailable(
                     identity,
-                    intent.sequence(),
+                    sequence,
                     session.orElseThrow().admissionState().sequenceState().expectedNext()));
             return;
         }
@@ -54,42 +54,54 @@ final class P7ServerAuthorizationDispatcher {
         if (actor == null
                 || !sessionService.matchesCurrentActor(server, identity, actor)) {
             resultSink.accept(P7AdmissionDispositionMapper.disconnected(
-                    identity, intent.sequence(), false));
+                    identity, sequence, false));
             return;
         }
         if (!sessionService.admissionOpen(server)) {
             resultSink.accept(P7AdmissionDispositionMapper.reloadInProgress(
                     identity,
-                    intent.sequence(),
+                    sequence,
                     session.orElseThrow().admissionState().sequenceState().expectedNext()));
             return;
         }
 
         var authoritativeTick = serverAccess.authoritativeTick(server);
         var transition = sessionService.transition(
-                server, identity, authoritativeTick, intent.sequence());
+                server, identity, authoritativeTick, sequence);
         if (transition.isEmpty()) {
             return;
         }
         var decision = transition.orElseThrow();
         if (decision.disconnect()) {
             var result = P7AdmissionDispositionMapper.fromAdmissionSemantics(
-                    identity, intent.sequence(), decision);
+                    identity, sequence, decision);
             resultSink.accept(result);
             disconnectPort.disconnect(server, actor, identity);
             return;
         }
         if (decision.outcome() != CastIntentAdmissionSemantics.Outcome.ELIGIBLE) {
             resultSink.accept(P7AdmissionDispositionMapper.fromAdmissionSemantics(
-                    identity, intent.sequence(), decision));
+                    identity, sequence, decision));
+            feedbackNormal(queuedIntent, server, actor,
+                    decision.outcome() == CastIntentAdmissionSemantics.Outcome.RATE_LIMITED
+                            ? P7ServerAuthorizationBoundary.NormalFeedback.RATE_LIMITED
+                            : P7ServerAuthorizationBoundary.NormalFeedback.UNAVAILABLE);
             return;
         }
         if (!actor.isAlive() || actor.isSpectator()) {
             resultSink.accept(P7AdmissionDispositionMapper.unauthorizedAfterConsumption(
-                    identity, intent.sequence()));
+                    identity, sequence));
+            feedbackNormal(queuedIntent, server, actor,
+                    P7ServerAuthorizationBoundary.NormalFeedback.UNAVAILABLE);
             return;
         }
 
+        if (queuedIntent.operation() instanceof P7CastOperation.NormalSpell) {
+            dispatchNormal(server, actor, identity, sequence);
+            return;
+        }
+
+        var intent = queuedIntent.intent();
         var aimHint = intent.aimHint().orElse(null);
         var entityHint = intent.entityHint().orElse(null);
         var validator = targetValidator;
@@ -102,5 +114,50 @@ final class P7ServerAuthorizationDispatcher {
                 "root ingress disposition");
         resultSink.accept(P7AdmissionDispositionMapper.fromRootDisposition(
                 identity, intent.sequence(), disposition));
+    }
+
+    private void dispatchNormal(net.minecraft.server.MinecraftServer server,
+            net.minecraft.server.level.ServerPlayer actor, P7SessionIdentity identity, long sequence) {
+        var receipt = P7ServerAuthorizationBoundary.normalReceipt(identity, sequence);
+        var outcome = P7ServerAuthorizationBoundary.dispatchNormal(server, actor, receipt);
+        if (outcome == P7ServerAuthorizationBoundary.NormalIngressDisposition.PENDING) {
+            if (!receipt.deferred()) {
+                throw new P7SemanticInvariantException("normal pending result has no bounded P5 capture");
+            }
+            return;
+        }
+        if (receipt.deferred()) {
+            throw new P7SemanticInvariantException("normal deferred capture returned an immediate result");
+        }
+        receipt.immediateCompleted();
+        if (serverAccess.currentPlayer(server, identity.authenticatedPlayerId()) != actor
+                || !sessionService.matchesCurrentActor(server, identity, actor)) { return; }
+        var disposition = switch (outcome) {
+            case NOT_READY, UNAVAILABLE -> P7ServerAuthorizationBoundary.AdmissionDisposition.P5_UNAVAILABLE;
+            case CAPACITY, COOLDOWN, INSUFFICIENT_MANA ->
+                    P7ServerAuthorizationBoundary.AdmissionDisposition.P5_ADMISSION_REJECTED;
+            case REJECTED -> P7ServerAuthorizationBoundary.AdmissionDisposition.UNAUTHORIZED_INTENT;
+            case PENDING -> throw new P7SemanticInvariantException("pending normal outcome was not deferred");
+        };
+        resultSink.accept(P7AdmissionDispositionMapper.fromRootDisposition(identity, sequence, disposition));
+        var feedback = switch (outcome) {
+            case NOT_READY -> P7ServerAuthorizationBoundary.NormalFeedback.NOT_READY;
+            case CAPACITY -> P7ServerAuthorizationBoundary.NormalFeedback.CAPACITY;
+            case COOLDOWN -> P7ServerAuthorizationBoundary.NormalFeedback.COOLDOWN_ACTIVE;
+            case INSUFFICIENT_MANA -> P7ServerAuthorizationBoundary.NormalFeedback.INSUFFICIENT_MANA;
+            case UNAVAILABLE, REJECTED -> P7ServerAuthorizationBoundary.NormalFeedback.UNAVAILABLE;
+            case PENDING -> throw new P7SemanticInvariantException("pending normal outcome has no immediate feedback");
+        };
+        P7NetworkComposition.normalFeedback(actor, feedback);
+    }
+
+    private void feedbackNormal(P7QueuedCastIntent queued,
+            net.minecraft.server.MinecraftServer server, net.minecraft.server.level.ServerPlayer actor,
+            P7ServerAuthorizationBoundary.NormalFeedback feedback) {
+        if (queued.operation() instanceof P7CastOperation.NormalSpell
+                && serverAccess.currentPlayer(server, queued.sessionIdentity().authenticatedPlayerId()) == actor
+                && sessionService.matchesCurrentActor(server, queued.sessionIdentity(), actor)) {
+            P7NetworkComposition.normalFeedback(actor, feedback);
+        }
     }
 }

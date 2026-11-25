@@ -461,7 +461,12 @@ final class P9S5BoundaryTest {
                 "screen.gramarye.transition.reason.control_dispatch_busy",
                 "gramarye.transition.capacity",
                 "gramarye.transition.unavailable",
-                "gramarye.transition.expired");
+                "gramarye.transition.expired",
+                "message.gramarye.cast.insufficient_mana",
+                "message.gramarye.cast.cooldown_active",
+                "message.gramarye.cast.not_ready",
+                "message.gramarye.cast.rate_limited",
+                "message.gramarye.cast.unavailable");
         var english = JsonParser.parseString(Files.readString(en, StandardCharsets.UTF_8)).getAsJsonObject();
         var chinese = JsonParser.parseString(Files.readString(zh, StandardCharsets.UTF_8)).getAsJsonObject();
         assertAll(
@@ -473,8 +478,8 @@ final class P9S5BoundaryTest {
                         jsonResources),
                 () -> assertEquals(keys, english.keySet()),
                 () -> assertEquals(keys, chinese.keySet()),
-                () -> assertEquals("Cast Skill", english.get("key.gramarye.cast").getAsString()),
-                () -> assertEquals("施放技能", chinese.get("key.gramarye.cast").getAsString()),
+                () -> assertEquals("Cast Spell", english.get("key.gramarye.cast").getAsString()),
+                () -> assertEquals("施放法術", chinese.get("key.gramarye.cast").getAsString()),
                 () -> assertEquals("Gramarye", english.get("key.categories.gramarye").getAsString()),
                 () -> assertEquals("Gramarye", chinese.get("key.categories.gramarye").getAsString()),
                 () -> assertEquals("Starter skill slot is already occupied",

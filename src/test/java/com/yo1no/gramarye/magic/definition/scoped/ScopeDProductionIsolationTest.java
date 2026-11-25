@@ -32,7 +32,11 @@ final class ScopeDProductionIsolationTest {
     private static final String ROOT_SOURCE = "com/yo1no/gramarye/";
     private static final Set<String> FACADE_IMPORTERS = Set.of(
             "SkillRuntimeService.java", "V0CaptureCompletion.java", "V0CaptureRequest.java", "V0CatalogAuthority.java",
-            "V0ColdMailbox.java", "V0LeaseToken.java", "V0NativeCallFrame.java", "V0SlotBinding.java", "V0SlotRuntime.java");
+            "V0ColdMailbox.java", "V0LeaseToken.java", "V0NativeCallFrame.java", "V0SlotBinding.java", "V0SlotRuntime.java",
+            // Adopted U0 ordinary cold-owner / completion / exact Sunset root, facade only.
+            "V0BootstrapRetirementCoordinator.java", "V0BootstrapCleanupCompletion.java", "V0NormalComposition.java",
+            "V0NormalColdLane.java", "V0ProvisionCompletion.java", "NormalSpellPolicy.java",
+            "V0BootstrapCleanupRequest.java");
     private static final Pattern SNAPSHOT_CONSTRUCTION = Pattern.compile(
             "\\b(?:new\\s+(?:ScopeDFrontend\\.)?Snapshot\\s*\\(|Snapshot\\s*::\\s*new\\b)");
 
@@ -100,7 +104,8 @@ final class ScopeDProductionIsolationTest {
                     }
                     assertFalse(bytecode.contains("test:") || bytecode.contains("gramarye:compiler_fixture_"),
                             entry.getName() + " contains a synthetic descriptor tag");
-                    if (!entry.getName().startsWith(PACKAGE + "ScopeDFrontend")) {
+                    if (!entry.getName().startsWith(PACKAGE + "ScopeDFrontend")
+                            && !entry.getName().equals(PACKAGE + "V0NormalBootstrap.class")) {
                         assertFalse(bytecode.contains(PACKAGE + "ScopeDFrontend$Snapshot"),
                                 entry.getName() + " reaches the frontend snapshot builder");
                     }
@@ -112,6 +117,12 @@ final class ScopeDProductionIsolationTest {
                 }
             }
         }
+        // The adopted fixed trusted ordinary builder is one package-private helper, not a frontend API.
+        assertFalse(Modifier.isPublic(V0NormalBootstrap.class.getModifiers()));
+        assertTrue(Arrays.stream(V0NormalBootstrap.class.getDeclaredConstructors())
+                .allMatch(constructor -> Modifier.isPrivate(constructor.getModifiers())));
+        assertFalse(Arrays.stream(V0NormalBootstrap.class.getDeclaredMethods())
+                .anyMatch(method -> Modifier.isPublic(method.getModifiers()) || Modifier.isProtected(method.getModifiers())));
         String frontendSource = Files.readString(MAIN.resolve(PACKAGE + "ScopeDFrontend.java"));
         assertFalse(SNAPSHOT_CONSTRUCTION.matcher(frontendSource).find(), "Production configures a frontend snapshot");
     }

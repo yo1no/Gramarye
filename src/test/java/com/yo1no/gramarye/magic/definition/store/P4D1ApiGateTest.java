@@ -212,6 +212,7 @@ final class P4D1ApiGateTest {
         assertEquals(
                 Set.of(
                         "com/yo1no/gramarye/magic/network/CastIntentPayload.java",
+                        "com/yo1no/gramarye/magic/network/CastCurrentSpellPayload.java",
                         "com/yo1no/gramarye/magic/network/IntentAckPayload.java",
                         "com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java",
                         "com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java",

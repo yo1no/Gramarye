@@ -1,4 +1,4 @@
-package com.yo1no.gramarye.v0engineering.mixin;
+package com.yo1no.gramarye.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;

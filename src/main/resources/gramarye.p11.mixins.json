@@ -51,7 +51,10 @@
     "P11P9EntityMoveMixin",
     "P11LevelEntityCleanupMixin",
     "P11EntityLookupMixin",
-    "P11ServerBossEventMixin"
+    "P11ServerBossEventMixin",
+    "P9V0LoadedPositionMixin",
+    "U0SectionQueryMixin",
+    "U0ProjectileQueryMixin"
   ],
   "client": [
     "P11IntegratedPlayerListMixin",

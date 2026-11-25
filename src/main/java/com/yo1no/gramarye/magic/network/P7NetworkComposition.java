@@ -7,6 +7,7 @@ import com.yo1no.gramarye.magic.runtime.mana.P7ManaSnapshotBridge;
 import com.yo1no.gramarye.magic.definition.submission.SkillSubmissionRecoveryService.MetadataContinuation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
 
 final class P7NetworkComposition {
     private static P6RuntimeExecutionCapability manaCapability;
@@ -79,6 +80,46 @@ final class P7NetworkComposition {
 
     static P7ReloadAdmissionGate reloadGate() {
         return ProductionHolder.RELOAD_GATE;
+    }
+
+    static void completeNormal(MinecraftServer exactServer, ServerPlayer exactActor,
+            P7SessionIdentity identity, long sequence,
+            P7ServerAuthorizationBoundary.AdmissionDisposition disposition,
+            P7ServerAuthorizationBoundary.NormalFeedback feedback) {
+        var access = ProductionHolder.SERVER_ACCESS;
+        if (exactServer == null || exactActor == null || access.currentServer() != exactServer) { return; }
+        if (!access.sameThread(exactServer)) {
+            throw new P7SemanticInvariantException("normal completion requires the server thread");
+        }
+        var sessions = ProductionHolder.SESSION_SERVICE;
+        if (!sessions.isCurrentServer(exactServer, identity.serverGeneration())
+                || access.currentPlayer(exactServer, identity.authenticatedPlayerId()) != exactActor
+                || !sessions.matchesCurrentActor(exactServer, identity, exactActor)) { return; }
+        var result = P7AdmissionDispositionMapper.fromRootDisposition(identity, sequence, disposition);
+        try {
+            ProductionHolder.RESULT_SINK.accept(result);
+        } catch (RuntimeException cosmeticDeliveryFailure) {
+            // Only this already-decided ACK delivery is optional; never replay its gameplay.
+        }
+        if (disposition != P7ServerAuthorizationBoundary.AdmissionDisposition.ACCEPTED) {
+            normalFeedback(exactActor, feedback == null
+                    ? P7ServerAuthorizationBoundary.NormalFeedback.UNAVAILABLE : feedback);
+        }
+    }
+
+    static void normalFeedback(ServerPlayer actor, P7ServerAuthorizationBoundary.NormalFeedback feedback) {
+        String suffix = switch (Objects.requireNonNull(feedback, "feedback")) {
+            case NOT_READY -> "not_ready";
+            case CAPACITY, UNAVAILABLE -> "unavailable";
+            case COOLDOWN_ACTIVE -> "cooldown_active";
+            case INSUFFICIENT_MANA -> "insufficient_mana";
+            case RATE_LIMITED -> "rate_limited";
+        };
+        try {
+            actor.displayClientMessage(Component.translatable("message.gramarye.cast." + suffix), true);
+        } catch (RuntimeException cosmeticFailure) {
+            // This try covers only vanilla text delivery; it cannot undo gameplay or replay input.
+        }
     }
 
     P7ConnectionEpochSnapshotSource connectionEpochSource() {

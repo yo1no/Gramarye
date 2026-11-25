@@ -220,7 +220,7 @@ public final class P11CooldownRestartProbe {
         require(player.hasUUID("UUID") && player.getUUID("UUID").equals(owner), "PHYSICAL_OWNER");
         var attachment = player.getCompound(AttachmentHolder.ATTACHMENTS_NBT_KEY);
         var material = P11CastCooldownCodec.read(attachment.get(P11CastCooldownAttachments.ID.toString()));
-        require(material.kind == P11CastCooldownData.Kind.ROUTED && same(material.entries.get(reference.skillId().value()), obligation),
+        require(material.kind == P11CastCooldownData.Kind.ROUTED && same(material.entries.get(new P11CooldownKey.LegacySkill(reference.skillId())), obligation),
                 "PHYSICAL_UNREFUNDED_ACTIVE_OBLIGATION");
         int matches = 0;
         for (Tag tag : attachment.getCompound("gramarye:player_skills").getList("equipped_slots", Tag.TAG_COMPOUND)) {

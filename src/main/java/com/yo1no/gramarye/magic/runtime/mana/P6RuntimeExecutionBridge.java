@@ -1,5 +1,7 @@
 package com.yo1no.gramarye.magic.runtime.mana;
 
+import java.util.Objects;
+
 import com.yo1no.gramarye.P6RuntimeExecutionCapability;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +12,18 @@ import net.minecraft.server.level.ServerPlayer;
 
 /** Capability-gated public entry into the package-private P6 transaction core. */
 public final class P6RuntimeExecutionBridge {
+    /** Existing material only: a free normal policy cannot turn missing Mana into available zero. */
+    public static boolean normalV0ManaAvailable(
+            P6RuntimeExecutionCapability.V0 capability, ServerPlayer actor) {
+        Objects.requireNonNull(capability, "capability");
+        if (actor == null || actor.getServer() == null || !actor.getServer().isSameThread()) { return false; }
+        var account = new V0ManaAccountAccess(actor);
+        if (!account.accountId().equals(actor.getUUID()) || account.availability() != ManaAvailability.AVAILABLE) {
+            return false;
+        }
+        long balance = account.balance();
+        return balance >= 0 && balance <= 1_000_000_000L;
+    }
     private static final ActionExecutorRegistry PRODUCTION_EXECUTORS =
             new ActionExecutorRegistry(List.of(
                     new ActionExecutorRegistration(

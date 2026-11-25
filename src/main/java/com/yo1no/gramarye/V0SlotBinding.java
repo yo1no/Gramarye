@@ -9,14 +9,53 @@ final class V0SlotBinding {
     private V0RuntimeCatalog catalog;
     private V0ColdMailbox mailbox;
     private Set<V0RuntimeCatalog.Selection> zeroFeeSelections;
+    private final boolean normalProfile;
+    private V0NormalColdLane normalCold;
+    private NormalSpellPolicy activationPolicy;
 
-    private V0SlotBinding() { }
+    private V0SlotBinding(boolean normalProfile) { this.normalProfile = normalProfile; }
 
     static V0SlotBinding create(V0RuntimeCatalog catalog, V0ColdMailbox mailbox) {
-        var binding = new V0SlotBinding();
+        var binding = new V0SlotBinding(false);
         binding.catalog = Objects.requireNonNull(catalog, "catalog");
         binding.mailbox = Objects.requireNonNull(mailbox, "mailbox");
         return binding;
+    }
+
+    static V0SlotBinding createNormal(V0RuntimeCatalog catalog, V0ColdMailbox mailbox, V0NormalColdLane cold) {
+        return createNormal(catalog, mailbox, cold, NormalSpellPolicy.BOOTSTRAP);
+    }
+
+    static V0SlotBinding createNormal(V0RuntimeCatalog catalog, V0ColdMailbox mailbox, V0NormalColdLane cold,
+            NormalSpellPolicy policy) {
+        var binding = new V0SlotBinding(true);
+        binding.catalog = Objects.requireNonNull(catalog, "catalog");
+        binding.mailbox = Objects.requireNonNull(mailbox, "mailbox");
+        binding.normalCold = Objects.requireNonNull(cold, "cold");
+        binding.activationPolicy = Objects.requireNonNull(policy, "policy");
+        return binding;
+    }
+
+    boolean normalPolicy() { return normalProfile; }
+    NormalSpellPolicy activationPolicy() { return activationPolicy; }
+
+    void startNormalCold() {
+        if (normalProfile) {
+            Objects.requireNonNull(normalCold, "closed normal binding").start();
+        }
+    }
+
+    void abortUnpublished(V0CatalogAuthority authority) {
+        var cold = normalCold;
+        if (normalProfile && cold != null) {
+            cold.abortUnpublished(authority);
+            close();
+        }
+    }
+
+    void wakeNormalCold() {
+        var cold = normalCold;
+        if (cold != null) { cold.wake(); }
     }
 
     /** Installed once by the engineering distribution using its own stable routes. */
@@ -51,8 +90,10 @@ final class V0SlotBinding {
     }
 
     void close() {
+        wakeNormalCold();
         catalog = null;
         mailbox = null;
+        normalCold = null;
         zeroFeeSelections = Set.of();
     }
 }

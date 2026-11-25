@@ -7,7 +7,7 @@
   "hud.gramarye.cooldown.recovery": "技能：需要恢復",
   "hud.gramarye.cooldown.unavailable": "技能：不可用",
   "commands.gramarye.starter.slot_occupied": "起始技能欄位已被佔用",
-  "key.gramarye.cast": "施放技能",
+  "key.gramarye.cast": "施放法術",
   "key.categories.gramarye": "Gramarye",
   "commands.gramarye.starter.source_rejected": "此命令僅限目前連線的玩家本人使用。",
   "commands.gramarye.starter.template_unavailable": "起始技能範本目前無法使用。",
@@ -67,5 +67,10 @@
   "screen.gramarye.transition.reason.control_dispatch_busy": "請求未被受理，正在等待控制服務。",
   "gramarye.transition.capacity": "伺服器的玩家入場等待名額已滿，請稍後重新連線。",
   "gramarye.transition.unavailable": "伺服器必要的玩家轉換功能目前無法使用。",
-  "gramarye.transition.expired": "等待玩家入場的時間已到期。"
+  "gramarye.transition.expired": "等待玩家入場的時間已到期。",
+  "message.gramarye.cast.not_ready": "法術尚未就緒",
+  "message.gramarye.cast.cooldown_active": "法術冷卻中",
+  "message.gramarye.cast.rate_limited": "施放過於頻繁",
+  "message.gramarye.cast.unavailable": "法術暫時無法使用",
+  "message.gramarye.cast.insufficient_mana": "魔力不足"
 }

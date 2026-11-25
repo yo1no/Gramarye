@@ -1,0 +1,27 @@
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "package": "com.yo1no.gramarye.harnessmixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "P11OnlineLoginMixin",
+    "P11OnlineAuthenticatorMixin",
+    "U0NormalSlotTraceMixin",
+    "U0NormalReceiptTraceMixin",
+    "U0NormalCarrierTraceMixin",
+    "U0A05ScalarTraceMixin",
+    "U0TrueDamagePostTraceMixin",
+    "U0BoundedScanTraceMixin",
+    "U0EntityTickTraceMixin",
+    "U0DistanceTicketTraceMixin",
+    "U0CurrentActorTraceMixin",
+    "P11L1TerminalLogoutMixin"
+  ],
+  "client": [
+    "U0NormalInputTraceMixin",
+    "U0VanillaFeedbackTraceMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -81,6 +81,8 @@ final class P8S4PayloadBoundaryTest {
     void uniqueP7RegistrarRetainsFourP7RolesThenAddsOneP8BridgeCall() {
         var registrar = read(REGISTRAR_SOURCE);
         var cast = registrar.indexOf("CastIntentPayload.TYPE");
+        var normal = registrar.indexOf("CastCurrentSpellPayload.TYPE");
+        var normalRegistrar = registrar.indexOf("event.registrar(CastCurrentSpellPayload.NORMAL_PROTOCOL_VERSION)");
         var acknowledgement = registrar.indexOf("IntentAckPayload.TYPE");
         var mana = registrar.indexOf("PlayerManaSyncPayload.TYPE");
         var cooldown = registrar.indexOf("SkillCooldownSyncPayload.TYPE");
@@ -88,7 +90,14 @@ final class P8S4PayloadBoundaryTest {
 
         assertAll(
                 () -> assertEquals(1, occurrences(registrar, "@EventBusSubscriber")),
-                () -> assertEquals(1, occurrences(registrar, ".playToServer(")),
+                // The original P7 legacy C2S remains one; only the adopted generic N1 is added.
+                () -> assertEquals(2, occurrences(registrar, ".playToServer(")),
+                () -> assertEquals(1, occurrences(registrar, "registrar.playToServer(")),
+                () -> assertEquals(1, occurrences(registrar,
+                        "event.registrar(CastCurrentSpellPayload.NORMAL_PROTOCOL_VERSION)")),
+                () -> assertEquals(1, occurrences(registrar, "P7CastIntentNetworkHandler.handleNormal(")),
+                () -> assertTrue(cast >= 0 && cast < normalRegistrar
+                        && normalRegistrar < normal && normal < acknowledgement),
                 () -> assertEquals(3, occurrences(registrar, ".playToClient(")),
                 () -> assertEquals(1, occurrences(
                         registrar, "event.registrar(P7NetworkBounds.PROTOCOL_VERSION)")),
