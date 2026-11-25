@@ -522,7 +522,7 @@ verify_p11_native_helper_error_catches() {
                 expect("commitFamily", 1, samePrimary)
                 expect("submit", 1, samePrimary)
             } else if (kind == "p7_handler" || kind == "p7_task") {
-                operation = kind == "p7_handler" ? "handleAuthenticated" : "run"
+                operation = kind == "p7_handler" ? "enqueueAuthenticated" : "run"
                 expect(operation, 1, "catch(RuntimeException|Errorfailure){primary=failure;throwfailure;}")
                 expect(operation, 2, "catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}")
                 expect("suppress", 1, "catch(RuntimeException|ErrorsuppressionFailure){}")
@@ -561,10 +561,15 @@ verify_p11_native_helper_error_catches() {
             } else if (kind == "keep_alive") {
                 expect("beginAck", 1, "catch(RuntimeException|Errorfailure){end(region);throwfailure;}")
             } else if (kind == "source_stop") {
+                expect("cooldownPrimaryReadback", 1, "catch(RuntimeException|ErrorobservationFailure){body.cooldownReadback=null;primary=observationFailure;throwobservationFailure;}")
+                expect("cooldownPrimaryReadback", 2, "catch(RuntimeException|ErrorcleanupFailure){body.cooldownReadback=null;if(primary==null){throwcleanupFailure;}}")
                 expect("flushDetachedPlayersAtStop", 1, "catch(RuntimeException|Errorfailure){failures=increment(failures);try{if(body!=null&&accounts.get(body.actor.getUUID())==account&&account.current==body&&account.candidate==null){account.fault=Fault.WRITE;receipts.markDirty(body.source,P11ReceiptLedger.WriterKind.PLAYER_DATA);account.dirty=resources.markDirty(account.resource,now()).orElseThrow();}}catch(RuntimeException|Errorsecondary){failures=increment(failures);}}")
                 expect("flushDetachedPlayersAtStop", 2, "catch(RuntimeException|Errorsecondary){failures=increment(failures);}")
                 expect("flushDetachedIndependent", 1, "catch(RuntimeException|Errorfailure){body.account.fault=Fault.WRITE;failures=increment(failures);}")
             } else if (kind == "p5_l1") {
+                expect("voidhandleRuntimeStarted(ServerStartedEventevent,P5RuntimeLimitslimits,V0StartupLoadStatev0State)", 1, "catch(RuntimeException|Errorprimary){if(bound.normalPolicy()){try{bound.abortUnpublished(authority);}catch(RuntimeException|Errorcleanup){if(cleanup!=primary){try{primary.addSuppressed(cleanup);}catch(RuntimeException|ErrorsuppressionFailure){}}}}throwprimary;}")
+                expect("voidhandleRuntimeStarted(ServerStartedEventevent,P5RuntimeLimitslimits,V0StartupLoadStatev0State)", 2, "catch(RuntimeException|Errorcleanup){if(cleanup!=primary){try{primary.addSuppressed(cleanup);}catch(RuntimeException|ErrorsuppressionFailure){}}}")
+                expect("voidhandleRuntimeStarted(ServerStartedEventevent,P5RuntimeLimitslimits,V0StartupLoadStatev0State)", 3, "catch(RuntimeException|ErrorsuppressionFailure){}")
                 preserved = "catch(Errorprimary){slot.p9ErrorCleanup.prepare(server);throwpreserveErrorFault(slot,primary);}"
                 expect("handleRuntimePost", 1, preserved)
                 expect("handleRuntimePost", 2, preserved)
@@ -579,16 +584,31 @@ verify_p11_native_helper_error_catches() {
                 expect("clearSlotAndV0Normal", 2, "catch(RuntimeException|Errorignored){}")
                 expect("stopV0PreservingFault", 1, "catch(RuntimeException|Errorignored){}")
             } else if (kind == "p5_v0") {
-                expect("acceptCompletion", 1, "catch(RuntimeException|Errorprimary){if(!committed){cleanupAttempted=true;try{undoReservation(reservedCell,reservedLineage,candidate,work);}catch(RuntimeException|ErrorignoredCleanupFailure){}}throwprimary;}")
-                expect("acceptCompletion", 2, "catch(RuntimeException|ErrorignoredCleanupFailure){}")
-                expect("dispatch", 1, "catch(RuntimeException|Errorprimary){try{lineage.releasing=true;finishChecked(claim);}catch(RuntimeException|Errorcleanup){}throwprimary;}")
+                expect("acceptCompletion", 1, "catch(RuntimeException|Errorprimary){primaryFailure=primary;throwprimary;}")
+                expect("acceptCompletion", 2, "catch(RuntimeException|Errorfailure){cleanupFailure=failure;}")
+                expect("acceptCompletion", 3, "catch(RuntimeException|Errorfailure){if(cleanupFailure==null){cleanupFailure=failure;}else{suppress(cleanupFailure,failure);}}")
+                expect("acceptCompletion", 4, "catch(RuntimeException|Errorcleanup){if(primaryFailure==null){primaryFailure=cleanup;throwcleanup;}suppress(primaryFailure,cleanup);}")
+                expect("acceptCompletion", 5, "catch(RuntimeException|Errorcleanup){if(primaryFailure==null){primaryFailure=cleanup;throwcleanup;}suppress(primaryFailure,cleanup);}")
+                expect("acceptCompletion", 6, "catch(RuntimeException|Errordelivery){if(primaryFailure==null){throwdelivery;}suppress(primaryFailure,delivery);}")
+                expect("dispatch", 1, "catch(RuntimeException|Errorprimary){try{if(claim.role==V0P5Queue.ROOT_RELEASE&&lineage.cooldownReceipt!=null){lineage.cooldownReceipt.unknown();}lineage.releasing=true;finishChecked(claim);}catch(RuntimeException|Errorcleanup){}throwprimary;}")
                 expect("dispatch", 2, "catch(RuntimeException|Errorcleanup){}")
                 expect("settleLineage", 1, "catch(RuntimeException|Errorprimary){try{closeCarrier(lineage.childBinding,reason);}catch(RuntimeException|Errorignored){}throwprimary;}")
                 expect("settleLineage", 2, "catch(RuntimeException|Errorignored){}")
+                expect("suppress", 1, "catch(RuntimeException|ErrorsuppressionFailure){/*Preservetheoriginalprimary.*/}")
+                expect("undoCandidate", 1, "catch(RuntimeException|Errorprimary){failure=primary;}")
+                expect("undoCandidate", 2, "catch(RuntimeException|Errorsecondary){if(failure==null){failure=secondary;}else{suppress(failure,secondary);}}")
+                expect("undoReservation", 1, "catch(RuntimeException|Errorprimary){failure=primary;}")
+                expect("undoReservation", 2, "catch(RuntimeException|Errorsecondary){if(failure==null){failure=secondary;}else{suppress(failure,secondary);}}")
             } else if (kind == "v0_catalog") {
+                expect("ensureNormalBootstrap", 1, "catch(RuntimeException|Errorfailure){fenceWriter(active,writing);throwfailure;}")
+                expect("cleanupBootstrap", 1, "catch(RuntimeException|Errorfailure){fenceWriter(active,writing);throwfailure;}")
                 expect("prepare", 1, "catch(RuntimeException|Errorfailure){fenceWriter(writer,expected);throwfailure;}")
                 expect("write", 1, "catch(RuntimeException|Errorfailure){fenceWriter(writer,writing);throwfailure;}")
                 expect("Writer.open", 1, "catch(IOException|RuntimeException|Errorprimary){try{storage.close();}catch(IOExceptioncloseFailure){primary.addSuppressed(closeFailure);}throwprimary;}")
+            } else if (kind == "v0_normal_cold") {
+                expect("run", 1, "catch(RuntimeException|Errorprimary){try{if(!retirementTaken){catalog.suspend(authority);LOGGER.error(\"V0_NORMAL_COLDoutcome=UNEXPECTED_FAILURE\");while(!mailbox.retirementForColdLane()){LockSupport.parkNanos(this,2_000_000L);}retirementTaken=true;retire();}}catch(RuntimeException|ErrorcleanupFailure){if(cleanupFailure!=primary){try{primary.addSuppressed(cleanupFailure);}catch(RuntimeException|ErrorsuppressionFailure){}}}throwprimary;}")
+                expect("run", 2, "catch(RuntimeException|ErrorcleanupFailure){if(cleanupFailure!=primary){try{primary.addSuppressed(cleanupFailure);}catch(RuntimeException|ErrorsuppressionFailure){}}}")
+                expect("run", 3, "catch(RuntimeException|ErrorsuppressionFailure){}")
             } else if (kind == "p9_l1") {
                 preserved = "catch(Errorfailure){clearObservedHit();locallyClaimedOrTerminal=true;throwfailure;}"
                 expect("tick", 1, preserved)
@@ -642,7 +662,7 @@ verify_p11_native_helper_error_catches() {
             }
             if (line ~ /^    ((public|private) )?(static )?.*\(/ && line !~ /^        /) {
                 method = line; sub(/\(.*/, "", method); sub(/^.*[ \t]/, "", method)
-                if (kind == "operation" || kind == "a05_observer" || kind == "p8_server") {
+                if (kind == "operation" || kind == "a05_observer" || kind == "p8_server" || (kind == "p5_l1" && method == "handleRuntimeStarted")) {
                     while (line !~ /[={;]/) {
                         if ((getline continuation) <= 0) reject("incomplete operation method declaration")
                         sub(/\/\/.*$/, "", continuation)
@@ -652,13 +672,13 @@ verify_p11_native_helper_error_catches() {
                     gsub(/[[:space:]]/, "", method)
                 }
             }
-            if (kind == "p5_l1" && method != "handleRuntimePost" && method != "submitProjectileHit" && method != "beginNormalLogout" && method != "endNormalLogout" && method != "endV0NormalLogoutPreservingFault" && method != "acquireAndPublishRoot" && method != "P9InstanceErrorCleanup.accept" && method != "clearSlotAndV0Normal" && method != "stopV0PreservingFault") next
+            if (kind == "p5_l1" && method != "handleRuntimePost" && method != "submitProjectileHit" && method != "beginNormalLogout" && method != "endNormalLogout" && method != "endV0NormalLogoutPreservingFault" && method != "acquireAndPublishRoot" && method != "P9InstanceErrorCleanup.accept" && method != "clearSlotAndV0Normal" && method != "stopV0PreservingFault" && method != "voidhandleRuntimeStarted(ServerStartedEventevent,P5RuntimeLimitslimits,V0StartupLoadStatev0State)") next
             gsub(/[[:space:]]/, "", line)
             source[method] = source[method] line
         }
         END {
             if (bad) exit 1
-            if (kind == "p7_handler" && !index(source["handleAuthenticated"], "finally{if(!submissionReturned){if(primary==null){permit.releaseAfterEnqueueFailure();}else{try{permit.releaseAfterEnqueueFailure();}catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}}}}")) reject("changed submission finally ownership")
+            if (kind == "p7_handler" && !index(source["enqueueAuthenticated"], "finally{if(!submissionReturned){if(primary==null){permit.releaseAfterEnqueueFailure();}else{try{permit.releaseAfterEnqueueFailure();}catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}}}}")) reject("changed submission finally ownership")
             if (kind == "p7_task" && !index(source["run"], "finally{if(primary==null){permit.releaseAfterTask();}else{try{permit.releaseAfterTask();}catch(RuntimeException|Errorsecondary){suppress(primary,secondary);}}}")) reject("changed task finally ownership")
             if (kind == "p7_lifecycle" && !index(source["stop"], "finally{discardStoppedState(server,primary);}")) reject("changed stop finally cleanup")
             for (method in source) {
@@ -1069,7 +1089,7 @@ verify_search_helpers() {
             's/void chunkStatus(/void unreviewedChunkStatus(/g' \
             's/void moved(/void unreviewedMoved(/g' \
             's/cleanup = failure;/cleanup = new Error();/g' \
-            's/void handleAuthenticated(/void unreviewedAuthenticated(/g' \
+            's/void enqueueAuthenticated(/void unreviewedAuthenticated(/g' \
             's/void run(/void unreviewedRun(/g' \
             's/AcquireResult acquire(/AcquireResult unreviewedAcquire(/g' \
             's/int stop(/int unreviewedStop(/g' \
@@ -1096,6 +1116,25 @@ verify_search_helpers() {
                 fail 'P11 native helper self-check accepted a changed binding/body/primary or foreign method'
             fi
         done
+    done
+    native_source='src/main/java/com/yo1no/gramarye/V0NormalColdLane.java'
+    verify_p11_native_helper_error_catches "${native_source}" v0_normal_cold
+    for mutation in \
+        's/Error primary/Error unreviewed/g' \
+        's/Error cleanupFailure/Error unreviewed/g' \
+        's/Error suppressionFailure/Error unreviewed/g' \
+        's/throw primary;/throw new Error();/g' \
+        's/catalog.suspend(authority);/unsafe();/g' \
+        's/retirementTaken = true;/retirementTaken = false;/g' \
+        's/while (!mailbox.retirementForColdLane())/while (true)/g' \
+        's/void run(/void unreviewedRun(/g'; do
+        sed "${mutation}" "${native_source}" > "${HELPER_FIXTURE}"
+        if cmp -s "${native_source}" "${HELPER_FIXTURE}"; then
+            fail 'normal cold Error mutation did not change its exact catch owner'
+        fi
+        if (verify_p11_native_helper_error_catches "${HELPER_FIXTURE}" v0_normal_cold) >/dev/null 2>&1; then
+            fail 'normal cold helper self-check accepted changed run catches, retirement, or primary'
+        fi
     done
     for native_kind in a05_observer p8_server; do
         if [[ "${native_kind}" == a05_observer ]]; then
@@ -1997,6 +2036,10 @@ verify_b2_sources_and_outputs() {
             verify_p11_native_helper_error_catches "${source}" "${fixture_kind}"
             continue
         fi
+        if [[ "${source}" == 'src/main/java/com/yo1no/gramarye/V0NormalColdLane.java' ]]; then
+            verify_p11_native_helper_error_catches "${source}" v0_normal_cold
+            continue
+        fi
         if [[ "${source}" == "${store_service}" \
                 || "${source}" == "${runtime_service}" \
                 || "${source}" == "${v0_slot_runtime}" \
@@ -2083,13 +2126,13 @@ verify_b2_sources_and_outputs() {
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error([^[:alnum:]_\$]|$)' \
-        28 \
-        'SkillRuntimeService must contain exactly its twenty-eight reviewed Error cleanup catches'
+        31 \
+        'SkillRuntimeService must contain exactly its thirty-one reviewed Error cleanup catches'
     require_ere_count \
         "${runtime_service}" \
         'catch[[:space:]]*\([^)]*(java\.lang\.)?Error[[:space:]]+primary[[:space:]]*\)' \
-        12 \
-        'SkillRuntimeService must contain exactly twelve same-identity primary Error catches'
+        13 \
+        'SkillRuntimeService must contain exactly thirteen same-identity primary Error catches'
     require_ere_count \
         "${runtime_service}" \
         '^[[:space:]]*clearSlotAfterError\(slot\);$' \
