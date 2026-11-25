@@ -64,6 +64,7 @@ final class U0NormalRuntimeReceiptTest {
     private static String scaffolding() { return """
             package com.yo1no.gramarye;
             import java.util.UUID;
+            import java.util.Objects;
             public final class Control {
                 final Queue queue = new Queue();
                 V0RuntimeCatalog.Candidate pendingDiscard;
@@ -76,11 +77,19 @@ final class U0NormalRuntimeReceiptTest {
                 }
                 /* ACTUAL_BODIES */
                 public static void run(String name) {
-                    var r = new V0ReleaseReceipt();
+                    var r = new V0ReleaseReceipt(new UUID(1, 1));
                     if (name.equals("arm")) {
+                        check(r.attemptId().equals(new UUID(1, 1)), "exact supplied attempt scalar");
+                        boolean nullRefused = false;
+                        try { new V0ReleaseReceipt(null); } catch (NullPointerException expected) { nullRefused = true; }
+                        check(nullRefused, "null attempt refused");
+                        var sameBits = new V0ReleaseReceipt(new UUID(1, 1));
+                        check(sameBits.attemptId().equals(r.attemptId()) && sameBits != r, "equal scalar is not same receipt");
                         check(!r.mayArm(), "unpublished"); r.beginPublication(); r.published();
                         check(r.mayArm(), "pending"); r.armed(17); r.revoke(); r.unknown();
                         check(r.fact() == P11CastCooldownService.ReleaseFact.ARM && r.releasedAt() == 17 && !r.mayArm(), "monotonic ARM");
+                        check(sameBits.fact() == P11CastCooldownService.ReleaseFact.UNPUBLISHED && !sameBits.mayArm(),
+                                "ARM never transfers to another receipt with equal UUID bits");
                     } else if (name.equals("unknown")) {
                         r.beginPublication(); r.unknown();
                         check(r.fact() == P11CastCooldownService.ReleaseFact.UNKNOWN && !r.mayArm(), "unknown stays unknown");

@@ -240,8 +240,8 @@ final class P4D2BApiGateTest {
                 relativeSourcesMatching(PREPARE_JOURNAL_CLEAR_CALL));
         assertEquals(Set.of("SkillSubmissionRecoveryService.java"),
                 relativeSourcesMatching(COMMIT_JOURNAL_CLEAR_CALL));
-        // 23 B.7's private attempt UUID is not a second SkillId allocator.
-        assertEquals(Set.of("RandomUuidSkillIdSource.java", "V0SlotRuntime.java"),
+        // 18's sole random allocator remains exact; 23 B.7's attempt ID is only slot/ticket scalar correlation.
+        assertEquals(Set.of("RandomUuidSkillIdSource.java"),
                 relativeSourcesContaining("UUID.randomUUID()"));
         var normalRuntime = withoutCommentsAndLiterals(read(MAIN_JAVA.resolve(
                 "com/yo1no/gramarye/V0SlotRuntime.java")));
@@ -249,8 +249,12 @@ final class P4D2BApiGateTest {
         int receiptEnd = normalRuntime.indexOf("private static final class Impact {", receiptStart);
         assertTrue(receiptStart >= 0 && receiptEnd > receiptStart);
         var scalarReceipt = normalRuntime.substring(receiptStart, receiptEnd);
-        assertEquals(1, occurrences(normalRuntime.replaceAll("\\s+", ""), "UUID.randomUUID()"));
-        assertTrue(scalarReceipt.contains("private final UUID attempt = UUID.randomUUID();"));
+        assertFalse(normalRuntime.contains("UUID.randomUUID"));
+        assertEquals(1, occurrences(normalRuntime.replaceAll("\\s+", ""),
+                "newV0ReleaseReceipt(owner.authority.cooldownAttemptId(capture.request.ticket()))"));
+        assertTrue(scalarReceipt.contains("private final UUID attempt;"));
+        assertTrue(scalarReceipt.contains("private V0ReleaseReceipt(UUID attempt)"));
+        assertTrue(scalarReceipt.contains("this.attempt = Objects.requireNonNull(attempt,"));
         for (String forbidden : List.of("SkillId", "SkillReference", "ServerPlayer", "MinecraftServer", "WorkReservation")) {
             assertFalse(scalarReceipt.contains(forbidden), forbidden);
         }

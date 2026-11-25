@@ -3,6 +3,7 @@ package com.yo1no.gramarye;
 import com.yo1no.gramarye.magic.definition.scoped.V0RuntimeCatalog;
 import com.yo1no.gramarye.magic.api.id.SkillOwnerId;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Exact, actor-free capability for one P5 slot. Catalog lease state consumes the permits. */
 public final class V0CatalogAuthority {
@@ -23,6 +24,15 @@ public final class V0CatalogAuthority {
         }
         return new V0CatalogAuthority(slotGeneration, Thread.currentThread().threadId(),
                 limits.maxManifestEntries());
+    }
+
+    /** Private-attempt scalar only; equal UUID bits do not qualify a receipt or another authority. */
+    UUID cooldownAttemptId(long captureTicket) {
+        requireOwnerThread();
+        if (captureTicket <= 0) {
+            throw new IllegalArgumentException("V0 cooldown capture ticket must be positive");
+        }
+        return new UUID(slotGeneration, captureTicket);
     }
 
     Reservation reserve(V0RuntimeCatalog.Candidate candidate) {

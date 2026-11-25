@@ -17,6 +17,17 @@ final class V0NormalStartupTest {
     @Test
     void constructorFailureBeforeStartHasNoWorkerOrFilesystemResponsibility() {
         var setup = setup();
+        assertEquals(new java.util.UUID(1, 1), setup.authority.cooldownAttemptId(1));
+        assertEquals(new java.util.UUID(1, Long.MAX_VALUE), setup.authority.cooldownAttemptId(Long.MAX_VALUE));
+        assertEquals(setup.authority.cooldownAttemptId(1), setup.authority.cooldownAttemptId(1));
+        assertEquals(new java.util.UUID(Long.MAX_VALUE, Long.MAX_VALUE),
+                V0CatalogAuthority.open(Long.MAX_VALUE, limits()).cooldownAttemptId(Long.MAX_VALUE));
+        assertNotEquals(setup.authority.cooldownAttemptId(1), setup.authority.cooldownAttemptId(2));
+        assertThrows(IllegalArgumentException.class, () -> setup.authority.cooldownAttemptId(0));
+        assertThrows(IllegalArgumentException.class, () -> setup.authority.cooldownAttemptId(-1));
+        assertThrows(IllegalArgumentException.class, () -> setup.authority.cooldownAttemptId(Long.MIN_VALUE));
+        assertThrows(IllegalArgumentException.class, () -> V0CatalogAuthority.open(0, limits()));
+        assertThrows(IllegalArgumentException.class, () -> V0CatalogAuthority.open(-1, limits()));
         setup.binding.abortUnpublished(setup.authority);
         assertTrue(setup.cold.finished());
         assertThrows(IllegalStateException.class, setup.cold::start);
@@ -40,6 +51,18 @@ final class V0NormalStartupTest {
     void wrongAuthorityCannotAbortOrPoisonTheOriginalStartup() throws Exception {
         var setup = setup();
         var wrong = V0CatalogAuthority.open(2, limits());
+        assertNotEquals(setup.authority.cooldownAttemptId(1), wrong.cooldownAttemptId(1));
+        var sameNumericAuthority = V0CatalogAuthority.open(1, limits());
+        assertEquals(setup.authority.cooldownAttemptId(1), sameNumericAuthority.cooldownAttemptId(1));
+        assertThrows(IllegalStateException.class, () -> setup.binding.abortUnpublished(sameNumericAuthority));
+        var offThread = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        var observer = Thread.ofPlatform().daemon().unstarted(() -> {
+            try { setup.authority.cooldownAttemptId(1); }
+            catch (RuntimeException | Error refused) { offThread.set(refused); }
+        });
+        observer.start(); observer.join(5_000);
+        assertFalse(observer.isAlive(), "fixed owner-thread check must terminate");
+        assertInstanceOf(IllegalStateException.class, offThread.get());
         assertThrows(IllegalStateException.class, () -> setup.binding.abortUnpublished(wrong));
         assertFalse(setup.cold.finished());
         setup.binding.startNormalCold();

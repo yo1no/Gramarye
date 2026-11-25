@@ -236,6 +236,7 @@ verify_d2a_sources_and_owners() {
 is_reviewed_p7_s2_or_p8_s4_platform_owner() {
     case "$1:$2" in
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java | \
+        CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/CastCurrentSpellPayload.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java | \
         CustomPacketPayload:src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java | \

@@ -44,12 +44,20 @@ final commit/tree and CI identities are recorded there after execution.
 
 ## Artifact and evidence boundaries
 
-The accepted development ordinary archive is SHA-256
+The earlier native04–13 ordinary archive is SHA-256
 `d4a0460dc20975922c81ff2263f14d7af9afd1336e0d0c8523cd50ca5aa00e77`
 (5,724,203 bytes); engineering is
 `1e60275cd76a8e6f98b2cc9d0d40aacdcca320e905d656fea34bb63cad6bf56e`
-(5,761,950 bytes). Final rebuilt entries must match these accepted U0 runtime
-entries except for the expected manifest commit identity. Final source/classfile
+(5,761,950 bytes). These historical identities and their original observations
+remain preserved. The private receipt-mint correction keeps P4's sole random
+SkillId adapter: an owner-thread-only package-private factory derives the opaque
+attempt UUID from the existing positive slot generation and capture ticket.
+It adds no public/protected declaration; exact receipt/key/cell/source/work/slot
+checks remain unchanged. Its bounded scalar controls and minimum ordinary
+positive-path requalification are required before publication. The corrected
+qualified development archive identities and results are maintained in the
+durable acceptance package. Final rebuilt entries must match that corrected
+qualified pair except for the expected manifest commit identity. Final source/classfile
 surface accounting, caller checks and the absence of all24 qualification roots
 and both qualification resources from both distributable archives are required.
 

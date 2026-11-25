@@ -1949,6 +1949,7 @@ verify_b2_sources_and_outputs() {
         'src/main/java/com/yo1no/gramarye/PresentationEventPayload.java' \
         'src/main/java/com/yo1no/gramarye/ProfileCatalogPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/CastIntentPayload.java' \
+        'src/main/java/com/yo1no/gramarye/magic/network/CastCurrentSpellPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/IntentAckPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/PlayerManaSyncPayload.java' \
         'src/main/java/com/yo1no/gramarye/magic/network/SkillCooldownSyncPayload.java' \

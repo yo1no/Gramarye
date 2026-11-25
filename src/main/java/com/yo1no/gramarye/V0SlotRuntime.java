@@ -1298,7 +1298,8 @@ final class V0SlotRuntime {
                 long lineage, long instance, long carrier) {
             this.attribution = capture.actor.getUUID();
             this.capture = capture;
-            cooldownReceipt = owner.normalPolicy() ? new V0ReleaseReceipt() : null;
+            cooldownReceipt = owner.normalPolicy()
+                    ? new V0ReleaseReceipt(owner.authority.cooldownAttemptId(capture.request.ticket())) : null;
             this.lease = new V0LeaseToken(lease);
             this.lineage = new V0LineageId(lineage);
             this.deadline = deadline;
@@ -1313,10 +1314,14 @@ final class V0SlotRuntime {
 
     /** Scalar facts of this exact root attempt; UUID equality alone conveys no authority. */
     private static final class V0ReleaseReceipt implements P11CastCooldownService.ReleaseReceipt {
-        private final UUID attempt = UUID.randomUUID();
+        private final UUID attempt;
         private P11CastCooldownService.ReleaseFact fact = P11CastCooldownService.ReleaseFact.UNPUBLISHED;
         private long releasedAt = -1;
         private boolean revoked;
+
+        private V0ReleaseReceipt(UUID attempt) {
+            this.attempt = Objects.requireNonNull(attempt, "attempt");
+        }
 
         @Override public UUID attemptId() { return attempt; }
         @Override public P11CastCooldownService.ReleaseFact fact() { return fact; }
